@@ -1,12 +1,13 @@
 import { itemText } from '@/domain/shopping';
 
-import { INGREDIENTS, RECIPES, pantryItem } from './__fixtures__/catalog';
+import { INGREDIENTS, RECIPES, ingredient, pantryItem } from './__fixtures__/catalog';
 import {
   buildPlannedList,
   ingredientIdsOf,
   pantryEntries,
   type PlannedListInput,
 } from './buildList';
+import { catalogNameIndex } from './pantryLink';
 import type { PlannedMealRef } from './planRange';
 
 const meal = (recipeId: string, servings: number, date = '2026-11-12'): PlannedMealRef => ({
@@ -93,27 +94,40 @@ describe('subtracting the pantry', () => {
     expect(list.inPantry.map((i) => i.key)).toEqual(expect.arrayContaining(['i:onion', 'i:salt']));
   });
 
-  it('ignores free-text pantry items, which cannot be matched safely', () => {
+  it('ignores free-text pantry items whose name is not a catalog ingredient', () => {
     expect(pantryEntries([pantryItem('p1', null, 3)])).toEqual([]);
-    expect(amountsOf(build({ pantry: [pantryItem('onion', null, 9)] }), 'i:onion')).toEqual([
-      [3, 'each'],
-    ]);
+    const loose = { ...pantryItem('p1', null, 9), name: 'red onion' };
+    expect(amountsOf(build({ pantry: [loose] }), 'i:onion')).toEqual([[3, 'each']]);
   });
 
-  it('matches unmatched lines to free-text pantry items by name and unit word', () => {
-    const key = 't:fresh coriander';
-    const loose = (qty: number | null, unit: string | null, name = 'Fresh  Coriander') => ({
-      ...pantryItem('c', null, qty, unit),
-      name,
+  it('treats a free-text item named like a catalog ingredient as that ingredient', () => {
+    const names = catalogNameIndex(INGREDIENTS);
+    const eggs = { ...pantryItem('p1', null, 2), name: '  Eggs ' };
+    expect(pantryEntries([eggs], names)).toEqual([
+      { ingredient_id: 'egg', quantity: 2, unit: null },
+    ]);
+    // The plural and the name both link; 4 eggs planned, 2 at home.
+    expect(amountsOf(build({ pantry: [eggs] }), 'i:egg')).toEqual([[2, 'each']]);
+    const onion = { ...pantryItem('p2', null, null), name: 'Onion' };
+    expect(build({ pantry: [onion] }).inPantry.map((i) => i.key)).toContain('i:onion');
+  });
+
+  it('leaves a name two catalog ingredients share unlinked', () => {
+    const names = catalogNameIndex([
+      ...INGREDIENTS,
+      ingredient('spring_onion', 'produce', { name: 'onion' }),
+    ]);
+    expect(names.get('onion')).toBeNull();
+    expect(pantryEntries([{ ...pantryItem('p1', null, 2), name: 'onion' }], names)).toEqual([]);
+  });
+
+  it('links only to ingredients the plan uses, so other names still cover unmatched lines', () => {
+    const coriander = ingredient('coriander', 'produce', { name: 'fresh coriander' });
+    const list = build({
+      ingredients: [...INGREDIENTS, coriander],
+      pantry: [{ ...pantryItem('c', null, 1, 'handful'), name: 'Fresh coriander' }],
     });
-    // Same name, any spacing or case, with no quantity: covered.
-    expect(build({ pantry: [loose(null, null)] }).inPantry.map((i) => i.key)).toContain(key);
-    // Same unit word: subtracted.
-    expect(build({ pantry: [loose(1, 'Handful')] }).inPantry.map((i) => i.key)).toContain(key);
-    // A different unit word cannot be compared, and a different name is something else.
-    const other = build({ pantry: [loose(2, 'bunch'), loose(5, null, 'coriander seeds')] });
-    expect(other.items.find((i) => i.key === key)).toMatchObject({ pantry: 'none' });
-    expect(amountsOf(other, key)).toEqual([[1, 'handful']]);
+    expect(list.inPantry.map((i) => i.key)).toContain('t:fresh coriander');
   });
 });
 
