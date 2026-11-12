@@ -123,6 +123,49 @@ begin
 end;
 $$;
 
+-- Sync tombstones older than 90 days have long reached every active device. Removing them
+-- records the highest revision removed per account, and sync_pull tells any device whose cursor
+-- is older than that to resync from scratch. Works in batches; a backlog clears over a few runs.
+create function private.job_compact_sync_tombstones()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_count integer;
+begin
+  with doomed as (
+    select t.user_id, t.collection, t.doc_id
+    from public.user_documents t
+    where t.deleted_at is not null
+      and t.server_updated_at < now() - interval '90 days'
+    order by t.server_updated_at
+    limit 50000
+  ),
+  gone as (
+    -- Re-checking the tombstone here means a document revived by a concurrent push survives.
+    delete from public.user_documents d
+    using doomed x
+    where d.user_id = x.user_id
+      and d.collection = x.collection
+      and d.doc_id = x.doc_id
+      and d.deleted_at is not null
+      and d.server_updated_at < now() - interval '90 days'
+    returning d.user_id, d.revision
+  ),
+  marked as (
+    update private.sync_usage u
+    set compacted_through = greatest(u.compacted_through, g.through)
+    from (select gone.user_id, max(gone.revision) as through from gone group by gone.user_id) g
+    where u.user_id = g.user_id
+    returning u.user_id
+  )
+  select count(*)::integer into v_count from gone;
+  return v_count;
+end;
+$$;
+
 -- Purge-queue rows that exhausted their retries are dropped after 30 days.
 create function private.job_prune_purge_queue()
 returns integer
@@ -147,6 +190,7 @@ revoke all on function private.job_purge_caches() from public;
 revoke all on function private.job_purge_notifications() from public;
 revoke all on function private.job_prune_purge_queue() from public;
 revoke all on function private.job_purge_rate_events() from public;
+revoke all on function private.job_compact_sync_tombstones() from public;
 grant execute on function
   private.job_purge_friend_invites(),
   private.job_queue_stale_uploads(),
@@ -154,7 +198,8 @@ grant execute on function
   private.job_purge_caches(),
   private.job_purge_notifications(),
   private.job_prune_purge_queue(),
-  private.job_purge_rate_events()
+  private.job_purge_rate_events(),
+  private.job_compact_sync_tombstones()
   to service_role;
 
 do $$
@@ -173,5 +218,6 @@ begin
   perform cron.schedule('famara-purge-notifications', '47 3 * * *', 'select private.job_purge_notifications()');
   perform cron.schedule('famara-prune-purge-queue', '57 3 * * 0', 'select private.job_prune_purge_queue()');
   perform cron.schedule('famara-purge-rate-events', '27 * * * *', 'select private.job_purge_rate_events()');
+  perform cron.schedule('famara-compact-sync-tombstones', '23 4 * * *', 'select private.job_compact_sync_tombstones()');
 end;
 $$;

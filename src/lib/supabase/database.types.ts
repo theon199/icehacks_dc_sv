@@ -1623,6 +1623,11 @@ export interface SyncPullResult {
   documents: StoredSyncDocument[];
   cursor: number;
   has_more: boolean;
+  /**
+   * True when deletions newer than `p_since` were compacted away. No documents come back: pull
+   * again from 0 and drop every synced local document that the full pull does not return.
+   */
+  resync: boolean;
 }
 
 export interface EarnedBadge {
@@ -1803,6 +1808,7 @@ export type RpcErrorCode =
   | "invite_used"
   | "invalid_document"
   | "too_many_documents"
+  | "document_too_large"
   | "sync_quota"
   | "invalid_details"
   | "invalid_message"

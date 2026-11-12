@@ -67,11 +67,21 @@ A profile is created by trigger when an auth user is created; `handle` comes fro
 
 ### Sync
 
-`user_documents` (PK `user_id, collection, doc_id`): `data` jsonb (≤ 256 KB), `updated_at` and
-`device_id` from the client, `deleted_at` tombstone, `revision` (server-assigned, monotonic per
-user), `server_updated_at`. Collection names match `^[a-z][a-z0-9_]{0,39}$`. Read-only for clients;
-written through `sync_push`. Per account at most 10 000 documents (tombstones included) and 50 MB
-of document data are kept; a push that would exceed either fails as a whole (`sync_quota`, 413).
+`user_documents` (PK `user_id, collection, doc_id`): `data` jsonb (≤ 256 KB of JSON text),
+`updated_at` and `device_id` from the client, `deleted_at` tombstone, `revision` (server-assigned,
+monotonic per user), `server_updated_at`. Collection names match `^[a-z][a-z0-9_]{0,39}$`.
+Read-only for clients; written through `sync_push`.
+
+Quotas count live documents only: at most 10 000 live documents and 50 MB of live document JSON
+per account. A push fails as a whole (`sync_quota`, 413) only when it leaves the account over a
+limit and raises that total, so edits and deletes always succeed, and deleting a document frees
+its slot straight away. Totals live in `private.sync_usage`, kept by statement-level triggers on
+`user_documents`, so no check scans an account's documents.
+
+Tombstones are compacted: the daily `job_compact_sync_tombstones` removes those older than 90
+days, and `sync_push` removes the oldest once an account holds more than 20 000. The highest
+revision removed is kept in `sync_usage.compacted_through`; a device pulling from an older cursor
+gets `resync: true` and must rebuild from a full pull (see `sync_pull`).
 
 ### Community
 
@@ -171,8 +181,8 @@ limit. Ledger rows are purged after two days.
 
 | Signature | Returns | Semantics |
 | --- | --- | --- |
-| `sync_push(p_docs jsonb)` | `{applied: [{collection, doc_id, revision}], rejected: [{collection, doc_id, reason, server}]}` | Up to 500 docs `{collection, doc_id, data, updated_at, device_id, deleted_at?}`. Applies when `(updated_at, device_id)` is strictly greater than the stored pair; re-sending exactly the stored version counts as applied; the same pair with different content is rejected as `conflict` (a device bug: keep the server copy); otherwise `reason: "stale"` with the server copy. Per-account caps → `sync_quota` (413). `updated_at` more than 1 h in the future → `future_timestamp`. Tombstones store `{}` as data. Duplicates in one batch collapse to the newest |
-| `sync_pull(p_since bigint = 0, p_limit int = 500)` | `{documents: [...], cursor, has_more}` | Documents (including tombstones) with `revision > p_since`, oldest first, ≤ 1000 per page. Pass `cursor` back until `has_more` is false. Pushes per user are serialised, so the cursor never skips a later commit |
+| `sync_push(p_docs jsonb)` | `{applied: [{collection, doc_id, revision}], rejected: [{collection, doc_id, reason, server}]}` | Up to 500 docs `{collection, doc_id, data, updated_at, device_id, deleted_at?}`. Applies when `(updated_at, device_id)` is strictly greater than the stored pair; re-sending exactly the stored version counts as applied; the same pair with different content is rejected as `conflict` (a device bug: keep the server copy); otherwise `reason: "stale"` with the server copy. Growing past the live-document caps → `sync_quota` (413); a `data` object over 256 KB → `document_too_large`. `updated_at` more than 1 h in the future → `future_timestamp`. Tombstones store `{}` as data. Duplicates in one batch collapse to the newest |
+| `sync_pull(p_since bigint = 0, p_limit int = 500)` | `{documents: [...], cursor, has_more, resync}` | Documents (including tombstones) with `revision > p_since`, oldest first, ≤ 1000 and about 4 MB of JSON per page (always at least one document). Pass `cursor` back until `has_more` is false. Pushes per user are serialised, so the cursor never skips a later commit. `resync: true` (no documents) means deletions after `p_since` were compacted away: pull again from 0 and drop every already-synced local document the full pull does not return |
 
 ### Community
 
@@ -266,6 +276,7 @@ Created by the last migration when `pg_cron` is available (idempotent by job nam
 | `famara-purge-notifications` | daily 03:47 | read notifications older than 90 days, all older than a year |
 | `famara-prune-purge-queue` | weekly | purge-queue rows that exhausted their retries |
 | `famara-purge-rate-events` | hourly :27 | rate-limit ledger rows older than two days |
+| `famara-compact-sync-tombstones` | daily 04:23 | sync tombstones older than 90 days (devices behind them are told to resync) |
 
 ## Edge-function shared modules (`supabase/functions/_shared`)
 

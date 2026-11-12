@@ -9,6 +9,11 @@
 -- Pull uses a server-assigned `revision` cursor rather than timestamps: pushes for one user are
 -- serialised by an advisory lock, so revisions grow in commit order and a cursor can never skip a
 -- document that commits later.
+--
+-- Deletions travel as tombstones (deleted_at set, data emptied) so other devices learn about
+-- them. Tombstones are compacted away after 90 days, or sooner once an account holds more than
+-- 20 000 of them; private.sync_usage remembers the highest revision compacted, and sync_pull
+-- asks any device whose cursor is older than that to resync from scratch.
 
 create sequence private.user_document_revision_seq as bigint;
 
@@ -19,7 +24,8 @@ create table public.user_documents (
   doc_id text not null
     constraint user_documents_doc_id_length check (char_length(doc_id) between 1 and 128),
   data jsonb not null default '{}'::jsonb
-    constraint user_documents_data_size check (pg_column_size(data) <= 262144),
+    -- Measured as JSON text, like the account totals below, so compression cannot stretch it.
+    constraint user_documents_data_size check (pg_catalog.octet_length(data::text) <= 262144),
   updated_at timestamptz not null,
   device_id text not null
     constraint user_documents_device_id_length check (char_length(device_id) between 1 and 64),
@@ -30,6 +36,10 @@ create table public.user_documents (
 );
 
 create index user_documents_user_revision_idx on public.user_documents (user_id, revision);
+create index user_documents_tombstone_revision_idx
+  on public.user_documents (user_id, revision) where deleted_at is not null;
+create index user_documents_tombstone_age_idx
+  on public.user_documents (server_updated_at) where deleted_at is not null;
 
 comment on table public.user_documents is
   'Per-user synced documents. Written only through sync_push(); read through sync_pull().';
@@ -46,6 +56,161 @@ grant select on public.user_documents to authenticated;
 grant select, insert, update, delete on public.user_documents to service_role;
 
 -- ---------------------------------------------------------------------------------------------
+-- Per-account usage counters
+-- ---------------------------------------------------------------------------------------------
+-- Running totals kept by statement-level triggers on user_documents, so quota checks never scan
+-- an account's documents. Bytes are the length of the document JSON text, which stays the same
+-- however Postgres happens to store (or compress) the value.
+
+create table private.sync_usage (
+  user_id uuid references auth.users on delete cascade primary key,
+  live_docs bigint not null default 0,
+  live_bytes bigint not null default 0,
+  tombstones bigint not null default 0,
+  -- Highest revision of a tombstone removed by compaction. A device whose pull cursor is below
+  -- it may have missed that deletion.
+  compacted_through bigint not null default 0
+);
+
+alter table private.sync_usage
+  enable row level security;
+
+grant select, insert, update, delete on private.sync_usage to service_role;
+
+create function private.user_documents_count_insert()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into private.sync_usage as u (user_id, live_docs, live_bytes, tombstones)
+  select
+    n.user_id,
+    count(*) filter (where n.deleted_at is null),
+    coalesce(sum(pg_catalog.octet_length(n.data::text)) filter (where n.deleted_at is null), 0),
+    count(*) filter (where n.deleted_at is not null)
+  from new_rows n
+  group by n.user_id
+  on conflict (user_id) do update
+    set live_docs = u.live_docs + excluded.live_docs,
+        live_bytes = u.live_bytes + excluded.live_bytes,
+        tombstones = u.tombstones + excluded.tombstones;
+  return null;
+end;
+$$;
+
+create function private.user_documents_count_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into private.sync_usage as u (user_id, live_docs, live_bytes, tombstones)
+  select
+    c.user_id,
+    sum(c.sign * (c.deleted_at is null)::integer),
+    sum(c.sign * case when c.deleted_at is null then pg_catalog.octet_length(c.data::text) else 0 end),
+    sum(c.sign * (c.deleted_at is not null)::integer)
+  from (
+    select n.user_id, n.deleted_at, n.data, 1 as sign from new_rows n
+    union all
+    select o.user_id, o.deleted_at, o.data, -1 as sign from old_rows o
+  ) c
+  group by c.user_id
+  on conflict (user_id) do update
+    set live_docs = u.live_docs + excluded.live_docs,
+        live_bytes = u.live_bytes + excluded.live_bytes,
+        tombstones = u.tombstones + excluded.tombstones;
+  return null;
+end;
+$$;
+
+-- Only adjusts existing totals: when an account is deleted its usage row goes with it, and the
+-- cascade must not recreate one.
+create function private.user_documents_count_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update private.sync_usage u
+  set live_docs = u.live_docs - d.live_docs,
+      live_bytes = u.live_bytes - d.live_bytes,
+      tombstones = u.tombstones - d.tombstones
+  from (
+    select
+      o.user_id,
+      count(*) filter (where o.deleted_at is null) as live_docs,
+      coalesce(sum(pg_catalog.octet_length(o.data::text)) filter (where o.deleted_at is null), 0) as live_bytes,
+      count(*) filter (where o.deleted_at is not null) as tombstones
+    from old_rows o
+    group by o.user_id
+  ) d
+  where u.user_id = d.user_id;
+  return null;
+end;
+$$;
+
+create trigger user_documents_count_insert
+  after insert on public.user_documents
+  referencing new table as new_rows
+  for each statement execute function private.user_documents_count_insert();
+create trigger user_documents_count_update
+  after update on public.user_documents
+  referencing old table as old_rows new table as new_rows
+  for each statement execute function private.user_documents_count_update();
+create trigger user_documents_count_delete
+  after delete on public.user_documents
+  referencing old table as old_rows
+  for each statement execute function private.user_documents_count_delete();
+
+-- Removes the user's oldest tombstones beyond p_keep and records the highest revision removed.
+-- sync_push calls it while holding the user's sync lock.
+create function private.compact_user_tombstones(p_user uuid, p_keep integer)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_excess bigint;
+  v_removed integer;
+  v_through bigint;
+begin
+  select u.tombstones - p_keep into v_excess from private.sync_usage u where u.user_id = p_user;
+  if coalesce(v_excess, 0) <= 0 then
+    return 0;
+  end if;
+
+  with doomed as (
+    select t.collection, t.doc_id
+    from public.user_documents t
+    where t.user_id = p_user and t.deleted_at is not null
+    order by t.revision
+    limit v_excess
+  ),
+  gone as (
+    delete from public.user_documents d
+    using doomed x
+    where d.user_id = p_user
+      and d.collection = x.collection
+      and d.doc_id = x.doc_id
+      and d.deleted_at is not null
+    returning d.revision
+  )
+  select count(*)::integer, max(g.revision) into v_removed, v_through from gone g;
+
+  update private.sync_usage u
+  set compacted_through = greatest(u.compacted_through, coalesce(v_through, 0))
+  where u.user_id = p_user;
+  return v_removed;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------------------------
 -- sync_push
 -- ---------------------------------------------------------------------------------------------
 -- Input: jsonb array of
@@ -59,8 +224,11 @@ grant select, insert, update, delete on public.user_documents to service_role;
 -- a device bug can produce); `server` carries the copy the server keeps. Re-sending exactly the
 -- document that is already stored is reported as applied.
 --
--- Per account the server keeps at most 10 000 documents (tombstones included) and 50 MB of
--- document data; a push that would exceed either fails as a whole with PT413 'sync_quota'.
+-- Per account the server keeps at most 10 000 live documents and 50 MB of live document JSON;
+-- tombstones do not count. A push fails as a whole with PT413 'sync_quota' only when it leaves
+-- the account over a limit AND raises that total, so edits and deletes always go through and a
+-- delete followed by a create at the limit is fine. Tombstones beyond 20 000 are compacted,
+-- oldest first (see the header).
 
 create function public.sync_push(p_docs jsonb)
 returns jsonb
@@ -72,8 +240,10 @@ declare
   v_uid uuid := private.require_uid();
   v_count integer;
   v_result jsonb;
-  v_total_docs bigint;
-  v_total_bytes bigint;
+  v_docs_before bigint;
+  v_bytes_before bigint;
+  v_docs_after bigint;
+  v_bytes_after bigint;
 begin
   if p_docs is null or jsonb_typeof(p_docs) <> 'array' then
     raise exception 'invalid_input' using errcode = '22023', detail = 'docs must be a JSON array.';
@@ -101,9 +271,21 @@ begin
     raise exception 'invalid_document' using errcode = '22023',
       detail = 'Each document needs string collection, doc_id, device_id, updated_at and an object data.';
   end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_docs) e
+    where pg_catalog.octet_length((e -> 'data')::text) > 262144
+  ) then
+    raise exception 'document_too_large' using errcode = '22023',
+      detail = 'Each document can hold at most 256 KB of JSON.';
+  end if;
 
   -- One writer per user at a time keeps revisions in commit order.
   perform pg_advisory_xact_lock(hashtextextended('famara.sync:' || v_uid::text, 0));
+
+  select coalesce(max(u.live_docs), 0), coalesce(max(u.live_bytes), 0)
+  into v_docs_before, v_bytes_before
+  from private.sync_usage u
+  where u.user_id = v_uid;
 
   with incoming as (
     -- Collapse duplicates inside one batch to the newest version of each document.
@@ -207,14 +389,17 @@ begin
   into v_result
   from outcome o;
 
-  select count(*), coalesce(sum(pg_catalog.pg_column_size(d.data)), 0)
-  into v_total_docs, v_total_bytes
-  from public.user_documents d
-  where d.user_id = v_uid;
-  if v_total_docs > 10000 or v_total_bytes > 52428800 then
+  select coalesce(max(u.live_docs), 0), coalesce(max(u.live_bytes), 0)
+  into v_docs_after, v_bytes_after
+  from private.sync_usage u
+  where u.user_id = v_uid;
+  if (v_docs_after > 10000 and v_docs_after > v_docs_before)
+     or (v_bytes_after > 52428800 and v_bytes_after > v_bytes_before) then
     raise exception 'sync_quota' using errcode = 'PT413',
       detail = 'Synced data is over the per-account limit (10 000 documents or 50 MB).';
   end if;
+
+  perform private.compact_user_tombstones(v_uid, 20000);
 
   return v_result;
 exception
@@ -230,9 +415,15 @@ comment on function public.sync_push(jsonb) is
 -- ---------------------------------------------------------------------------------------------
 -- sync_pull
 -- ---------------------------------------------------------------------------------------------
--- Returns documents with revision > p_since (tombstones included), oldest first.
--- Output: { "documents": [...], "cursor": bigint, "has_more": boolean }
+-- Returns documents with revision > p_since (tombstones included), oldest first: at most p_limit
+-- documents (1..1000) and about 4 MB of document JSON per page, but always at least one.
+-- Output: { "documents": [...], "cursor": bigint, "has_more": boolean, "resync": boolean }
 -- Pass the returned cursor back as p_since until has_more is false.
+--
+-- "resync": true means tombstones newer than p_since were compacted away, so this device may
+-- have missed deletions. No documents are returned; the device pulls again from 0 and drops
+-- every already-synced local document that the full pull does not return (pending local edits
+-- are pushed afterwards as usual).
 
 create function public.sync_pull(p_since bigint default 0, p_limit integer default 500)
 returns jsonb
@@ -245,20 +436,43 @@ declare
   v_uid uuid := private.require_uid();
   v_limit integer := least(greatest(coalesce(p_limit, 500), 1), 1000);
   v_since bigint := greatest(coalesce(p_since, 0), 0);
+  v_budget constant bigint := 4194304;
+  v_compacted bigint;
   v_docs jsonb;
   v_cursor bigint;
+  v_kept integer;
   v_rows integer;
 begin
+  select coalesce(max(u.compacted_through), 0) into v_compacted
+  from private.sync_usage u
+  where u.user_id = v_uid;
+  if v_since > 0 and v_since < v_compacted then
+    return jsonb_build_object('documents', '[]'::jsonb, 'cursor', 0, 'has_more', true, 'resync', true);
+  end if;
+
   with page as (
-    select d.collection, d.doc_id, d.data, d.updated_at, d.device_id, d.deleted_at, d.revision
+    select d.collection, d.doc_id, d.data, d.updated_at, d.device_id, d.deleted_at, d.revision,
+      pg_catalog.octet_length(d.data::text) as bytes
     from public.user_documents d
     where d.user_id = v_uid
       and d.revision > v_since
     order by d.revision
     limit v_limit + 1
   ),
+  sized as (
+    select page.*,
+      row_number() over w as rn,
+      sum(page.bytes) over w as running_bytes,
+      count(*) over () as page_rows
+    from page
+    window w as (order by page.revision rows between unbounded preceding and current row)
+  ),
   limited as (
-    select * from page order by revision limit v_limit
+    -- The running total only grows, so the rows kept are always a prefix of the page.
+    select sized.*
+    from sized
+    where sized.rn <= v_limit
+      and (sized.rn = 1 or sized.running_bytes <= v_budget)
   )
   select
     coalesce(jsonb_agg(jsonb_build_object(
@@ -271,22 +485,33 @@ begin
       'revision', l.revision
     ) order by l.revision), '[]'::jsonb),
     max(l.revision),
-    (select count(*) from page)::integer
-  into v_docs, v_cursor, v_rows
+    count(*)::integer,
+    coalesce(max(l.page_rows), 0)::integer
+  into v_docs, v_cursor, v_kept, v_rows
   from limited l;
 
   return jsonb_build_object(
     'documents', v_docs,
-    'cursor', coalesce(v_cursor, v_since),
-    'has_more', v_rows > v_limit
+    -- The last page has caught up with everything, compacted revisions included; without this a
+    -- device that just resynced would land below compacted_through and be told to resync again.
+    'cursor', case
+      when v_rows > v_kept then v_cursor
+      else greatest(coalesce(v_cursor, v_since), v_since, v_compacted)
+    end,
+    'has_more', v_rows > v_kept,
+    'resync', false
   );
 end;
 $$;
 
 comment on function public.sync_pull(bigint, integer) is
-  'Pages the caller''s documents changed after a revision cursor.';
+  'Pages the caller''s documents changed after a revision cursor; signals when a full resync is needed.';
 
 revoke all on sequence private.user_document_revision_seq from public;
+revoke all on function private.user_documents_count_insert() from public;
+revoke all on function private.user_documents_count_update() from public;
+revoke all on function private.user_documents_count_delete() from public;
+revoke all on function private.compact_user_tombstones(uuid, integer) from public;
 grant execute on function public.sync_push(jsonb) to authenticated;
 grant execute on function public.sync_pull(bigint, integer) to authenticated;
 
