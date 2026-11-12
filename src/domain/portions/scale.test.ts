@@ -235,7 +235,12 @@ describe('measured minimums never exceed the recipe', () => {
 describe('unrecognised unit words', () => {
   it('keeps the exact amount instead of rounding it as a count', () => {
     const [flour] = scaleLines([line('flour', 1, 'heaping cup', 140)], 0.25);
-    expect(flour).toMatchObject({ quantity: 0.25, unit: null, exactQuantity: 0.25, adjusted: false });
+    expect(flour).toMatchObject({
+      quantity: 0.25,
+      unit: null,
+      exactQuantity: 0.25,
+      adjusted: false,
+    });
     expect(flour?.grams).toBeCloseTo(35, 10);
   });
 

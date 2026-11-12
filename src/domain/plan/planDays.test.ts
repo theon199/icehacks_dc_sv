@@ -362,4 +362,23 @@ describe('planDays', () => {
     expect(a).toEqual(b);
     expect(a.search.candidatesConsidered).toBe(cands.length);
   });
+
+  it('falls back to the reference targets when the energy target is unusable', () => {
+    const cands = catalog(31, 60);
+    const reference = planDays({ candidates: cands, targets: dailyTargets() });
+    for (const kcal of [0, -500, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const result = planDays({ candidates: cands, targets: { ...targets, kcal } });
+      expect(Number.isFinite(result.objective)).toBe(true);
+      expect(result).toEqual(reference);
+    }
+  });
+
+  it('drops other targets that are not finite instead of producing NaN', () => {
+    const cands = catalog(32, 60);
+    const broken: DailyTargets = { ...targets, sodium_mg: Number.NaN, fiber_g: -1 };
+    const result = planDays({ candidates: cands, targets: broken });
+    expect(Number.isFinite(result.objective)).toBe(true);
+    expect(result.days.every((d) => Number.isFinite(d.distance))).toBe(true);
+    expect(Number.isFinite(planDistance(mealsOf(result), cands, broken))).toBe(true);
+  });
 });

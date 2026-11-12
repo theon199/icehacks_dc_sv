@@ -27,6 +27,9 @@
  * a recipe with unknown allergen data must not reach this function). This module only optimises
  * nutrition and preference; it never checks safety.
  *
+ * Targets: an energy target that is not a positive number falls back to the 2,000 kcal reference
+ * targets; any other target that is not a finite, non-negative number is dropped (read as 0).
+ *
  * Missing nutrient values: recipes without energy are excluded. A missing limit nutrient is
  * assumed to sit exactly at the limit's density (neutral); a missing protein or fiber value counts
  * as zero (pessimistic). Reported day totals use only real values and list gaps as incomplete.
@@ -47,9 +50,11 @@
  */
 import {
   compareToTargets,
+  dailyTargets,
   type NutrientKey,
   sumNutrition,
   TARGET_KIND,
+  TARGET_NUTRIENTS,
   type DailyTargets,
   type NutrientTotals,
   type NutritionFacts,
@@ -156,6 +161,20 @@ function distance(v: Vector, targets: DailyTargets, share: number): number {
 
 function finite(n: unknown): n is number {
   return typeof n === 'number' && Number.isFinite(n);
+}
+
+/**
+ * Targets the planner can safely divide by. An energy target that is missing, zero, negative or
+ * not a number cannot anchor the objective, so the reference targets are used instead. Any other
+ * target that is not a finite, non-negative number is read as 0, which drops it from the objective.
+ */
+function usableTargets(targets: DailyTargets | null | undefined): DailyTargets {
+  if (!targets || !finite(targets.kcal) || targets.kcal <= 0) return dailyTargets();
+  const bad = TARGET_NUTRIENTS.filter((n) => !finite(targets[n]) || targets[n] < 0);
+  if (bad.length === 0) return targets;
+  const fixed: { -readonly [K in keyof DailyTargets]: DailyTargets[K] } = { ...targets };
+  for (const n of bad) fixed[n] = 0;
+  return fixed;
 }
 
 interface Prepared {
@@ -285,7 +304,7 @@ function clampInt(n: number | undefined, lo: number, hi: number, fallback: numbe
 export function* planDaysSteps(
   input: PlanDaysInput,
 ): Generator<PlanProgress, PlanDaysResult, void> {
-  const targets = input.targets;
+  const targets = usableTargets(input.targets);
   const dayCount = clampInt(input.days, 1, 7, 2);
   const layout = input.smallAppetite === true ? SMALL_APPETITE_DAY : STANDARD_DAY;
   const beamWidth = clampInt(input.beamWidth, 1, 1000, DEFAULT_BEAM_WIDTH);
@@ -541,8 +560,9 @@ export function planDays(input: PlanDaysInput): PlanDaysResult {
 export function planDistance(
   days: readonly (readonly { recipeId: string | null; portion: number }[])[],
   candidates: readonly DayPlanCandidate[],
-  targets: DailyTargets,
+  rawTargets: DailyTargets,
 ): number {
+  const targets = usableTargets(rawTargets);
   const byId = new Map(candidates.map((c) => [c.id, c]));
   let total = 0;
   for (const meals of days) {

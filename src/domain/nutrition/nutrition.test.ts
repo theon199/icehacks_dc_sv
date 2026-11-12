@@ -1,4 +1,6 @@
 import {
+  ACTIVITY_FACTOR,
+  activityFactor,
   ageFromBirthYear,
   compareToTargets,
   dailyTargets,
@@ -8,6 +10,8 @@ import {
   restingEnergy,
   sodiumLimitForAge,
   sumNutrition,
+  DEFAULT_ACTIVITY,
+  TARGET_NUTRIENTS,
   type ActivityLevel,
   type NutrientTotals,
 } from './index';
@@ -206,5 +210,18 @@ describe('compareToTargets', () => {
     });
     expect(compareToTargets({ ...totals, kcal: 1500 }, t).kcal).toBe('under');
     expect(compareToTargets({ ...totals, kcal: 2300 }, t).kcal).toBe('over');
+  });
+});
+
+describe('unrecognised activity levels', () => {
+  it('fall back to the default activity instead of producing NaN targets', () => {
+    const details = { age: 40, sex: 'female' as const, heightCm: 165, weightKg: 65 };
+    const expected = dailyTargets({ ...details, activity: DEFAULT_ACTIVITY });
+    for (const activity of ['couch', 'toString', '', 42, null, undefined]) {
+      const t = dailyTargets({ ...details, activity: activity as unknown as ActivityLevel });
+      expect(t).toEqual(expected);
+      for (const n of TARGET_NUTRIENTS) expect(Number.isFinite(t[n])).toBe(true);
+    }
+    expect(activityFactor('very_active')).toBe(ACTIVITY_FACTOR.very_active);
   });
 });

@@ -63,11 +63,19 @@ export function restingEnergy(details: PersonalDetails): number | null {
   return 10 * weightKg + 6.25 * heightCm - 5 * age + constant;
 }
 
+/** Multiplier for an activity level; anything unrecognised counts as `DEFAULT_ACTIVITY`. */
+export function activityFactor(activity: ActivityLevel | null | undefined): number {
+  return typeof activity === 'string' &&
+    Object.prototype.hasOwnProperty.call(ACTIVITY_FACTOR, activity)
+    ? ACTIVITY_FACTOR[activity]
+    : ACTIVITY_FACTOR[DEFAULT_ACTIVITY];
+}
+
 /** Estimated daily energy need, clamped to a safe range, rounded to 10 kcal. */
 export function energyTarget(details: PersonalDetails): { kcal: number; personal: boolean } {
   const rest = restingEnergy(details);
   if (rest === null) return { kcal: REFERENCE_KCAL, personal: false };
-  const factor = ACTIVITY_FACTOR[details.activity ?? DEFAULT_ACTIVITY];
+  const factor = activityFactor(details.activity);
   const kcal = Math.min(MAX_KCAL, Math.max(MIN_KCAL, rest * factor));
   return { kcal: Math.round(kcal / 10) * 10, personal: true };
 }
