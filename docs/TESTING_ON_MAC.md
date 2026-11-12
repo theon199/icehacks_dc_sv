@@ -12,7 +12,7 @@ dashboard shows over this text.
 
 | Item | Why | Notes |
 | --- | --- | --- |
-| A Mac with macOS 15 or later and about 30 GB free | Xcode and the native build | Apple silicon recommended |
+| A Mac with macOS 15.6 or later (what Xcode 26 needs) and about 30 GB free | Xcode and the native build | Apple silicon recommended |
 | Xcode 26 (App Store), opened once to accept the license | builds the iOS app | Settings → Components: install an iOS 18+ simulator |
 | Node 22 LTS | runs the tooling | `brew install node@22 && brew link --overwrite --force node@22`, or nvm: `nvm install` (reads `.nvmrc`) |
 | Git and the GitHub CLI | clone the repo | `brew install git gh`, then `gh auth login` |
@@ -172,7 +172,9 @@ See the README for the other build profiles.
 ## 7. Optional providers
 
 - **Push notifications** (iPhone only, paid Apple Developer account): run `npx eas-cli init` and
-  copy the project id it prints into `.env.local` as `EAS_PROJECT_ID=<id>`. Then run
+  copy the project id it prints into `.env.local` as `EAS_PROJECT_ID=<id>` (the project page on
+  expo.dev also shows it) *(check in the Expo dashboard)*. If an `ios/` folder exists from an
+  earlier build, run `npx expo prebuild --clean` so the native config picks up the project id. Then run
   `npx eas-cli credentials` → iOS → Push Notifications and add an APNs key *(check in the Expo
   dashboard)*. Rebuild with `npx expo run:ios --device`. Without the project id the app never
   registers the device, and nothing is pushed.

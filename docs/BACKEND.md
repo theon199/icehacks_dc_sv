@@ -217,7 +217,7 @@ limit. Ledger rows are purged after two days.
 
 | Signature | Returns | Semantics |
 | --- | --- | --- |
-| `record_cook_event(p_recipe_ref, p_local_date, p_cooked_at = now(), p_cuisine = null, p_rating = null, p_client_event_id = null)` | `{event_id, new_badges[], stats}` | Idempotent per `p_client_event_id` (calls from one member are serialised). `cooked_at` within the last 30 days; `local_date` within a day of `cooked_at`; 30 per day. Only cooks logged within two days of happening count towards badges |
+| `record_cook_event(p_recipe_ref, p_local_date, p_cooked_at = now(), p_cuisine = null, p_rating = null, p_client_event_id = null, p_expected_user = null)` | `{event_id, new_badges[], stats}` | Idempotent per `p_client_event_id` (calls from one member are serialised). `cooked_at` within the last 30 days; `local_date` within a day of `cooked_at`; 30 per day. Only cooks logged within two days of happening count towards badges. When `p_expected_user` is given and is not the caller, nothing is recorded and the call fails with `PT409` (`account_mismatch`); the app sends the account that logged the cook |
 | `my_stats(p_today date = null)` *invoker* | jsonb `{cooked_count, cooked_this_week, current_streak, longest_streak, last_cooked_at, cuisine_count, cuisines[], post_count, likes_received, badges[]}` | `p_today` is the device's local date (clamped to UTC ± 1 day) |
 | `weekly_top_dishes(p_limit = 10, p_min_cooks = 2)` | table `(recipe_ref, cook_count, cooks, avg_rating, post_count)` | Last 7 days; only recipes cooked by ≥ 2 distinct people |
 
@@ -432,7 +432,8 @@ back with a looser schema, so out-of-range values are trimmed instead of failing
 **`chef`** — input `{messages, profile, candidates, image?}`. `messages`: 1–40 `{role, content}`
 (≤ 4000 chars each, last one from the user); the most recent 16 are sent, consecutive turns from
 the same speaker are merged. `profile`: `{cuisines, diet, allergens, goals, time_budget_minutes,
-small_appetite}`. `candidates`: ≤ 60 recipes the device already filtered for allergens and diet,
+small_appetite, allergens_answered?}`; `allergens_answered: false` (default true) tells Chef the
+allergen question is unanswered, so it treats every allergen as possible. `candidates`: ≤ 60 recipes the device already filtered for allergens and diet,
 `{id, title, cuisine, minutes, kcal, protein_g, tags}` with unique ids. `image`: base64 JPEG
 ≤ 1.5 MB decoded. Output `{reply, recipe_ids, follow_ups}`: `reply` is markdown-lite (links,
 images, HTML and headings are stripped), `recipe_ids` ≤ 6, `follow_ups` ≤ 3. The output schema

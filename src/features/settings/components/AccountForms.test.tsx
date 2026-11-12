@@ -43,7 +43,7 @@ describe('ChangeEmailForm', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(mockAuth.updateUser).toHaveBeenCalledWith(
       { email: 'sam@new.example.com' },
-      { emailRedirectTo: 'famara:///auth/callback' },
+      { emailRedirectTo: 'famara://auth/callback' },
     );
     expect(screen.getByTestId('account-email-input')).toHaveDisplayValue('');
     expect(useToastStore.getState().queue[0]?.tone).toBe('success');

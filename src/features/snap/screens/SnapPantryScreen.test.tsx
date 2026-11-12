@@ -150,7 +150,12 @@ describe('SnapPantryScreen', () => {
     await renderScreen(<SnapPantryScreen />);
     expect(screen.getByText('No pantry photo yet')).toBeOnTheScreen();
     await userEvent.setup().press(screen.getByRole('button', { name: 'Open Snap' }));
-    expect(mockRouter.back).toHaveBeenCalled();
+    // Straight to the camera in pantry mode, never back to whatever opened this screen.
+    expect(mockRouter.replace).toHaveBeenCalledWith({
+      pathname: '/snap',
+      params: { mode: 'pantry' },
+    });
+    expect(mockRouter.back).not.toHaveBeenCalled();
   });
 
   it('keeps an amount of a thousand or more as typed when the field is left', async () => {

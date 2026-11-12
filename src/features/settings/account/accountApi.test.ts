@@ -75,7 +75,7 @@ describe('changeEmail', () => {
     await changeEmail(' new@example.com ');
     expect(mockAuth.updateUser).toHaveBeenCalledWith(
       { email: 'new@example.com' },
-      { emailRedirectTo: 'famara:///auth/callback' },
+      { emailRedirectTo: 'famara://auth/callback' },
     );
   });
 
