@@ -133,6 +133,11 @@ export function toDisplayUnit(quantity: number, unit: UnitId, system: UnitSystem
   }
   if (system === 'us') {
     const step = US_VOLUME_LADDER.find((s) => base >= s.from) ?? { unit: 'tsp' as UnitId };
+    const cups = fromBase(base, 'cup');
+    // Between ¼ and ½ cup, "6 tbsp" is more exact than rounding to "⅓ cup".
+    if (step.unit === 'cup' && cups < 0.5 && Math.abs(snappedValue(cups) - cups) > cups * 0.03) {
+      return { quantity: fromBase(base, 'tbsp'), unit: 'tbsp' };
+    }
     return { quantity: fromBase(base, step.unit), unit: step.unit };
   }
   if (base <= UNITS.tbsp.base * 2 + 1e-9) {

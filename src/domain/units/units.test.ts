@@ -299,6 +299,8 @@ describe('display units', () => {
       unit: 'tbsp',
     });
     expect(toDisplayUnit(8, 'tbsp', 'us').unit).toBe('cup');
+    expect(toDisplayUnit(6, 'tbsp', 'us').unit).toBe('tbsp');
+    expect(toDisplayUnit(4, 'tbsp', 'us').unit).toBe('cup');
     expect(toDisplayUnit(2, 'tsp', 'us').unit).toBe('tsp');
     expect(toDisplayUnit(20, 'cup', 'us').unit).toBe('gallon');
     expect(toDisplayUnit(500, 'ml', 'us').unit).toBe('cup');
