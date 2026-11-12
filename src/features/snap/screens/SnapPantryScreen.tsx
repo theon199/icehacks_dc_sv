@@ -23,6 +23,18 @@ import {
 import { nameKey } from '../logic/words';
 import { selectPantryResult, useSnapSession, type PantrySnapResult } from '../snapSession';
 
+/** What to say when the pantry kept some (or none) of the ticked items. */
+function refusalMessage(landed: number, refused: number, full: boolean): string {
+  const lead = landed === 0 ? '' : `Added ${landed}. `;
+  if (full) {
+    return landed === 0
+      ? `Your pantry is full (${MAX_PANTRY_ITEMS} items). Remove a few items to make room.`
+      : `${lead}${refused} didn't fit: your pantry holds ${MAX_PANTRY_ITEMS} items.`;
+  }
+  const what = refused === 1 ? "1 item couldn't" : `${refused} items couldn't`;
+  return `${lead}${what} be added. Check the name and amount, then try again.`;
+}
+
 /** Review what a pantry photo found, add it to the pantry, then see meals it makes possible. */
 export function SnapPantryScreen() {
   const result = useSnapSession(selectPantryResult);
@@ -66,7 +78,8 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
     const entries = toNewPantryItems(items, matches);
     if (entries.length === 0) return;
     addMany(entries);
-    // The pantry turns items away once it is full; only report what it really stored.
+    // The pantry turns items away when it is full or an entry breaks its rules; only report what
+    // it really stored.
     const stored = usePantryStore.getState().items;
     const refusedKeys = new Set<string>();
     entries.forEach((entry, index) => {
@@ -80,13 +93,8 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
       for (const item of kept) {
         if (!refusedKeys.has(item.key)) dispatch({ type: 'remove', key: item.key });
       }
-      toast.show({
-        message:
-          landed === 0
-            ? `Your pantry is full (${MAX_PANTRY_ITEMS} items). Remove a few items to make room.`
-            : `Added ${landed}. ${refusedKeys.size} didn't fit: your pantry holds ${MAX_PANTRY_ITEMS} items.`,
-        tone: 'danger',
-      });
+      const full = Object.keys(stored).length >= MAX_PANTRY_ITEMS;
+      toast.show({ message: refusalMessage(landed, refusedKeys.size, full), tone: 'danger' });
       return;
     }
     haptics.success();

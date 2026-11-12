@@ -7,7 +7,13 @@ import { Icon, IconButton, minTouchTarget, PressableScale, space, Text, useTheme
 
 import { InlineInput } from './InlineInput';
 import { CONFIDENCE_LABELS, confidenceBand } from '../logic/estimate';
-import { parseQty, type DraftAction, type DraftItem } from '../logic/pantryDraft';
+import {
+  MAX_UNIT_LENGTH,
+  parseQty,
+  roundQty,
+  type DraftAction,
+  type DraftItem,
+} from '../logic/pantryDraft';
 
 export interface DraftItemRowProps {
   item: DraftItem;
@@ -17,10 +23,11 @@ export interface DraftItemRowProps {
 }
 
 /**
- * The amount as editable text. Plain digits with a dot and no thousands separators, so the text
- * always reads back as the same amount ("1,000" would read as 1).
+ * The amount as editable text. Plain digits with a dot and no thousands separators, at the same
+ * precision `parseQty` keeps, so the text always reads back as the same amount ("1,000" would read
+ * as 1, and fewer decimals would turn 0.004 into 0).
  */
-const qtyText = (qty: number | null) => (qty == null ? '' : String(Math.round(qty * 100) / 100));
+const qtyText = (qty: number | null) => (qty == null ? '' : String(roundQty(qty) ?? ''));
 
 function matchLine(item: DraftItem, matchName: string | null | undefined): string {
   const source =
@@ -104,13 +111,11 @@ export const DraftItemRow = memo(function DraftItemRow({
           />
           <InlineInput
             value={item.unit ?? ''}
-            onChangeText={(unit) =>
-              dispatch({ type: 'setUnit', key: item.key, unit: unit.trim() ? unit : null })
-            }
+            onChangeText={(unit) => dispatch({ type: 'setUnit', key: item.key, unit })}
             accessibilityLabel={`Unit for ${item.name}`}
             placeholder="Unit"
             autoCapitalize="none"
-            maxLength={24}
+            maxLength={MAX_UNIT_LENGTH}
             editable={item.qty != null}
             width={68}
             testID={`draft-unit-${item.key}`}

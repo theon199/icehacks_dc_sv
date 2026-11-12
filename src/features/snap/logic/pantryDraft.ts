@@ -12,6 +12,28 @@ import { capitalize, nameKey } from './words';
 export const AUTO_SELECT_CONFIDENCE = 0.5;
 export const MAX_NAME_LENGTH = 80;
 export const MAX_QTY = 100_000;
+/** The pantry turns away longer units, so the draft never holds one. */
+export const MAX_UNIT_LENGTH = 24;
+/** Amounts keep this many decimals everywhere: when read, stored in the draft and shown. */
+export const QTY_DECIMALS = 3;
+
+const QTY_SCALE = 10 ** QTY_DECIMALS;
+
+/** An amount at draft precision, or null when nothing usable is left after rounding. */
+export function roundQty(value: number | null): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value * QTY_SCALE) / QTY_SCALE;
+  return rounded > 0 && rounded <= MAX_QTY ? rounded : null;
+}
+
+/**
+ * A unit cut to what the pantry accepts; null when blank. Inner and trailing spaces stay while the
+ * person types ("fl oz"); the pantry trims them when the item is stored.
+ */
+export function limitUnit(unit: string | null): string | null {
+  if (unit == null || !unit.trim()) return null;
+  return unit.trimStart().slice(0, MAX_UNIT_LENGTH);
+}
 
 export interface DraftItem {
   /** Stable key for list rendering and edits. */
@@ -34,14 +56,17 @@ export type DraftAction =
   | { type: 'selectAll'; selected: boolean };
 
 export function draftFromDetections(items: readonly SnapPantryItem[]): DraftItem[] {
-  return items.map((item, index) => ({
-    key: `found-${index}`,
-    name: capitalize(item.name).slice(0, MAX_NAME_LENGTH),
-    qty: item.quantity,
-    unit: item.quantity == null ? null : item.unit,
-    confidence: item.confidence,
-    selected: item.confidence >= AUTO_SELECT_CONFIDENCE,
-  }));
+  return items.map((item, index) => {
+    const qty = roundQty(item.quantity);
+    return {
+      key: `found-${index}`,
+      name: capitalize(item.name).slice(0, MAX_NAME_LENGTH),
+      qty,
+      unit: qty == null ? null : limitUnit(item.unit),
+      confidence: item.confidence,
+      selected: item.confidence >= AUTO_SELECT_CONFIDENCE,
+    };
+  });
 }
 
 function patch(items: DraftItem[], key: string, change: Partial<DraftItem>): DraftItem[] {
@@ -63,12 +88,12 @@ export function draftReducer(items: DraftItem[], action: DraftAction): DraftItem
     case 'rename':
       return patch(items, action.key, { name: action.name.slice(0, MAX_NAME_LENGTH) });
     case 'setQty': {
-      const qty = action.qty != null && action.qty > 0 && action.qty <= MAX_QTY ? action.qty : null;
+      const qty = roundQty(action.qty);
       // A unit without an amount means nothing, so clearing the amount clears the unit too.
       return patch(items, action.key, qty == null ? { qty, unit: null } : { qty });
     }
     case 'setUnit':
-      return patch(items, action.key, { unit: action.unit });
+      return patch(items, action.key, { unit: limitUnit(action.unit) });
     case 'remove':
       return items.filter((item) => item.key !== action.key);
     case 'add': {
@@ -99,8 +124,8 @@ export function parseQty(text: string): number | null | undefined {
     : /^\d*\.?\d+$/.test(trimmed)
       ? Number(trimmed)
       : Number.NaN;
-  if (!Number.isFinite(value) || value <= 0 || value > MAX_QTY) return undefined;
-  return Math.round(value * 1000) / 1000;
+  if (!Number.isFinite(value)) return undefined;
+  return roundQty(value) ?? undefined;
 }
 
 export function selectedItems(items: readonly DraftItem[]): DraftItem[] {

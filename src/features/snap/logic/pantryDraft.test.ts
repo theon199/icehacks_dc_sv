@@ -3,6 +3,7 @@ import { addPantryItem } from '@/stores/pantry';
 import {
   draftFromDetections,
   draftReducer,
+  MAX_UNIT_LENGTH,
   parseQty,
   selectedItems,
   toNewPantryItems,
@@ -49,6 +50,26 @@ describe('pantry draft', () => {
     expect(cleared[0]).toMatchObject({ qty: null, unit: null });
     const negative = draftReducer(draft, { type: 'setQty', key, qty: -2 });
     expect(negative[0]).toMatchObject({ qty: null });
+  });
+
+  it('keeps units within what the pantry accepts', () => {
+    const draft = draftFromDetections(detections);
+    const key = (draft[0] as DraftItem).key;
+    const long = draftReducer(draft, { type: 'setUnit', key, unit: 'x'.repeat(40) });
+    expect(long[0]?.unit).toHaveLength(MAX_UNIT_LENGTH);
+    expect(draftReducer(draft, { type: 'setUnit', key, unit: 'fl ' })[0]?.unit).toBe('fl ');
+    expect(draftReducer(draft, { type: 'setUnit', key, unit: '   ' })[0]?.unit).toBeNull();
+  });
+
+  it('keeps amounts at the precision they are shown with', () => {
+    const [tiny, none] = draftFromDetections([
+      { name: 'saffron', quantity: 0.0042, unit: 'g', confidence: 0.8 },
+      { name: 'dust', quantity: 0.0001, unit: 'g', confidence: 0.8 },
+    ]);
+    expect(tiny).toMatchObject({ qty: 0.004, unit: 'g' });
+    expect(none).toMatchObject({ qty: null, unit: null });
+    expect(parseQty('0.004')).toBe(0.004);
+    expect(parseQty('0.0004')).toBeUndefined();
   });
 
   it('returns the same list for no-op actions', () => {
