@@ -5,19 +5,31 @@
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
+import { dayIndexOf, weekStartOf } from '@/domain/plan';
 import { catalogKeys, getRecipeDetail, useIngredients, type RecipeDetail } from '@/lib/catalog';
-import { useMealPlanStore } from '@/stores/mealPlan';
+import { entryPortion, slotKey, useMealPlanStore, type PlanWeek } from '@/stores/mealPlan';
 import { selectPantryItems, usePantryStore } from '@/stores/pantry';
 import { selectSmallAppetite, usePreferencesStore } from '@/stores/preferences';
 
 import { buildPlannedList, ingredientIdsOf, type ListRecipe, type PlannedList } from './buildList';
-import { plannedMealsInRange, recipeIdsOf, type DateRange } from './planRange';
+import { plannedMealsInRange, recipeIdsOf, type DateRange, type PlannedMealRef } from './planRange';
 
 /**
- * Small appetite mode plans half-portion meals (snacks stay whole), so the list buys half as much
- * per meal serving.
+ * Planned meals with each one's portion folded into its servings, so the list buys what will be
+ * cooked: two half-portion servings need as much as one whole serving. The portion is the one the
+ * meal was planned at, or the small-appetite setting's for a meal planned without one.
  */
-const SMALL_APPETITE_PORTION = 0.5;
+export function portionedMeals(
+  meals: readonly PlannedMealRef[],
+  weeks: Readonly<Record<string, PlanWeek>>,
+  smallAppetite: boolean,
+): PlannedMealRef[] {
+  return meals.map((meal) => {
+    const entry = weeks[weekStartOf(meal.date)]?.slots[slotKey(dayIndexOf(meal.date), meal.meal)];
+    const portion = entryPortion(entry ?? {}, meal.meal, smallAppetite);
+    return portion === 1 ? meal : { ...meal, servings: meal.servings * portion };
+  });
+}
 
 // The catalog ships with the app and never changes while it runs.
 const recipeQueryOptions = {
@@ -92,13 +104,14 @@ export function useShoppingList(range: DateRange): ShoppingListResult {
   const list = useMemo(() => {
     if (meals.length === 0 || details.pending || !ingredientsReady) return null;
     return buildPlannedList({
-      meals,
+      meals: portionedMeals(meals, weeks, smallAppetite),
       recipes: details.recipes,
       ingredients: ingredients.data ?? [],
       pantry,
-      portion: smallAppetite ? SMALL_APPETITE_PORTION : 1,
+      // Each meal's portion is already in its servings.
+      portion: 1,
     });
-  }, [meals, details, ingredientsReady, ingredients.data, pantry, smallAppetite]);
+  }, [meals, weeks, details, ingredientsReady, ingredients.data, pantry, smallAppetite]);
 
   const error = details.error ?? ingredients.error;
   const status: ShoppingListStatus =

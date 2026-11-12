@@ -60,7 +60,7 @@ async function renderDay(isSafe: (recipe: RecipeSummary) => boolean = () => true
       slots={slots}
       recipes={new Map()}
       readOnly={false}
-      smallPortions={false}
+      smallAppetite={false}
       moveWeeks={[WEEK]}
       isSafe={isSafe}
     />,

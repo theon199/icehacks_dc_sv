@@ -17,8 +17,8 @@ export interface SlotRowProps {
   /** The planned recipe no longer passes the person's allergen and diet rules. */
   unsafe: boolean;
   readOnly: boolean;
-  /** Small appetite mode: meals are planned as half portions. */
-  smallPortions: boolean;
+  /** Size of each serving relative to a standard one (0.5 for a small meal); 1 when empty. */
+  portion: number;
   onAdd: (slot: MealSlot) => void;
   onOpen: (recipeId: string) => void;
   onActions: (slot: MealSlot) => void;
@@ -32,9 +32,13 @@ const FILLED_ACTIONS = [
   { name: 'clear', label: 'Remove from plan' },
 ] as const;
 
-export function servingsText(servings: number, smallPortions: boolean): string {
-  const base = servings === 1 ? '1 serving' : `${servings} servings`;
-  return smallPortions ? `${base}, small portions` : base;
+/** "2 servings", "2 half-size servings" or "1 serving at 1.5× size". */
+export function servingsText(servings: number, portion: number): string {
+  const noun = servings === 1 ? 'serving' : 'servings';
+  if (portion === 1) return `${servings} ${noun}`;
+  if (portion === 0.5) return `${servings} half-size ${noun}`;
+  const size = Number.isInteger(portion * 100) ? String(portion) : portion.toFixed(2);
+  return `${servings} ${noun} at ${size}× size`;
 }
 
 /** One meal slot of a day: the planned recipe with its actions, or an add button. */
@@ -44,7 +48,7 @@ export const SlotRow = memo(function SlotRow({
   recipe,
   unsafe,
   readOnly,
-  smallPortions,
+  portion,
   onAdd,
   onOpen,
   onActions,
@@ -90,7 +94,7 @@ export const SlotRow = memo(function SlotRow({
 
   const title = recipe?.title ?? 'Recipe unavailable';
   const meta = [
-    servingsText(entry.servings, smallPortions),
+    servingsText(entry.servings, portion),
     recipe?.totalMinutes != null ? formatMinutes(recipe.totalMinutes) : null,
   ]
     .filter(Boolean)

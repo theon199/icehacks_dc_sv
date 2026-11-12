@@ -8,7 +8,7 @@ import { useRecipes, type RecipeSummary } from '@/lib/catalog';
 import { plannedRecipeIds, usePreferencesStore } from '@/stores';
 import { Button, Card, gutter, ListRow, space, Text } from '@/ui';
 
-import { WeekCostSummary } from '../deps';
+import { CostSummary } from '../deps';
 import { DayMeals } from './DayMeals';
 import { DayRail } from './DayRail';
 import { PlanWeekMenu } from './PlanWeekMenu';
@@ -21,7 +21,7 @@ import {
   useWeekSlots,
 } from '../hooks/usePlanner';
 import { useIsRecipeSafe } from '../hooks/useSavedRecipes';
-import { initialDay, mealsPerDay, remainingDays, weekDays } from '../model/week';
+import { initialDay, mealsPerDay, remainingDays, weekCostRecipes, weekDays } from '../model/week';
 
 export interface PlanTabProps {
   header: ReactNode;
@@ -51,6 +51,7 @@ export function PlanTab({ header, today }: PlanTabProps) {
     () => plannedRecipeIds({ weekStart, slots, archivedAt: null }),
     [weekStart, slots],
   );
+  const costRecipes = useMemo(() => weekCostRecipes(slots, smallAppetite), [slots, smallAppetite]);
   const planned = useRecipes(ids);
   const recipes = useMemo(
     () => new Map<string, RecipeSummary>((planned.data ?? []).map((r) => [r.id, r])),
@@ -157,14 +158,14 @@ export function PlanTab({ header, today }: PlanTabProps) {
               slots={slots}
               recipes={recipes}
               readOnly={archived}
-              smallPortions={smallAppetite}
+              smallAppetite={smallAppetite}
               moveWeeks={[weekStart, addDays(weekStart, 7)]}
               isSafe={isSafe}
             />
           </View>
         </GestureDetector>
       ) : null}
-      <WeekCostSummary recipeIds={ids} />
+      {costRecipes.length > 0 ? <CostSummary recipes={costRecipes} /> : null}
       <View>
         <ListRow
           title="Shopping list"

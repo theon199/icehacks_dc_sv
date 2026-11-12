@@ -71,7 +71,7 @@ export function PlanWeekScreen({ week }: PlanWeekScreenProps) {
       </View>
       <Toggle
         label="Plan small meals"
-        description="Favors gentle recipes and adds a snack each day"
+        description="Half-size portions, gentler recipes and a daily snack, kept at that size in your plan"
         value={smallAppetite}
         onValueChange={setSmallAppetite}
         testID="small-meals"
