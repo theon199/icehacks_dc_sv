@@ -1,4 +1,4 @@
-import { parsePushData, resolvePushTap } from './routing';
+import { isCurrentPath, parsePushData, resolvePushTap } from './routing';
 
 const data = {
   notification_id: 'n-1',
@@ -43,5 +43,23 @@ describe('parsePushData', () => {
   it('ignores oversized optional ids instead of rejecting the payload', () => {
     const parsed = parsePushData({ ...data, actor_id: 'x'.repeat(500) });
     expect(parsed?.actor_id).toBeNull();
+  });
+});
+
+describe('isCurrentPath', () => {
+  it('matches the same route whether or not its id is escaped', () => {
+    expect(isCurrentPath('/cook/mealdb:1', '/cook/mealdb%3A1')).toBe(true);
+    expect(isCurrentPath('/cook/mealdb%3A1', '/cook/mealdb%3A1')).toBe(true);
+    expect(isCurrentPath('/cook/mealdb:1/', '/cook/mealdb%3A1')).toBe(true);
+  });
+
+  it('tells different routes apart', () => {
+    expect(isCurrentPath('/cook/mealdb:1/done', '/cook/mealdb%3A1')).toBe(false);
+    expect(isCurrentPath('/cook/mealdb:2', '/cook/mealdb%3A1')).toBe(false);
+    expect(isCurrentPath(null, '/cook/mealdb%3A1')).toBe(false);
+  });
+
+  it('copes with a malformed escape', () => {
+    expect(isCurrentPath('/cook/%E0%A4%A', '/cook/%E0%A4%A')).toBe(true);
   });
 });

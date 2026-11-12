@@ -53,3 +53,21 @@ export function resolvePushTap(data: unknown, currentUserId: string | null): Pus
     }) ?? '/notifications';
   return { href, notificationId: parsed.notification_id };
 }
+
+function decodePath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * Whether `url` is the screen already showing at `pathname`, compared after decoding so an escaped
+ * id (`/cook/mealdb%3A1`) matches its decoded form. Query strings are not part of either value.
+ */
+export function isCurrentPath(pathname: string | null | undefined, url: string): boolean {
+  if (!pathname) return false;
+  const strip = (path: string) => decodePath(path).replace(/\/+$/, '');
+  return strip(pathname) === strip(url);
+}
