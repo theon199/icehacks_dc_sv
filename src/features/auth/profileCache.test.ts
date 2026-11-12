@@ -2,28 +2,26 @@ import Storage from 'expo-sqlite/kv-store';
 
 import { storageKey } from '@/lib/storage/kv';
 
-import { readCachedSetup, writeCachedSetup } from './profileCache';
+import { forgetCachedSetup, readCachedSetup, writeCachedSetup } from './profileCache';
 
 describe('profile cache', () => {
-  it('round-trips setup progress per person', () => {
-    writeCachedSetup('alex', { birthYear: 1988, onboardingComplete: true, aiConsent: true });
-    expect(readCachedSetup('alex')).toEqual({
-      birthYear: 1988,
-      onboardingComplete: true,
-      aiConsent: true,
-    });
-    expect(readCachedSetup('sam')).toEqual({
-      birthYear: null,
-      onboardingComplete: false,
-      aiConsent: false,
-    });
+  it('keeps a birth-year hint per person', () => {
+    writeCachedSetup('alex', { birthYear: 1988 });
+    expect(readCachedSetup('alex')).toEqual({ birthYear: 1988 });
+    expect(readCachedSetup('sam')).toEqual({ birthYear: null });
   });
 
-  it('reads entries written before AI consent was tracked as not consented', () => {
+  it('ignores fields from older entries', () => {
     Storage.setItemSync(
       storageKey('session.setup.jo'),
-      JSON.stringify({ birthYear: 1999, onboardingComplete: true }),
+      JSON.stringify({ birthYear: 1999, aiConsent: true, onboardingComplete: true }),
     );
-    expect(readCachedSetup('jo').aiConsent).toBe(false);
+    expect(readCachedSetup('jo')).toEqual({ birthYear: 1999 });
+  });
+
+  it('forgets the hint of a deleted account', () => {
+    writeCachedSetup('kim', { birthYear: 2001 });
+    forgetCachedSetup('kim');
+    expect(readCachedSetup('kim')).toEqual({ birthYear: null });
   });
 });
