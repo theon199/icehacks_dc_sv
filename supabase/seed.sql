@@ -1,0 +1,2 @@
+-- Famara intentionally ships no seed data: the community starts empty and catalog data lives
+-- in the bundled SQLite catalog. Local development accounts are created through the app.
