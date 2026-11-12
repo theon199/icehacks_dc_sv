@@ -1,12 +1,19 @@
+import { MAX_DOC_BYTES } from '@/lib/sync/engine';
+import { fingerprint, stableStringify, utf8Bytes } from '@/lib/sync/fingerprint';
+
 import {
   appendMessage,
   chefSync,
   createThread,
+  boundThread,
+  MAX_MESSAGE_CHARS,
   MAX_MESSAGES_PER_THREAD,
-  MAX_THREAD_JSON_CHARS,
+  MAX_THREAD_BYTES,
   MAX_THREADS,
   selectThreadList,
+  threadBytes,
   trimThreads,
+  type ChefThread,
   useChefStore,
 } from './chef';
 import {
@@ -41,9 +48,11 @@ import {
 } from './settings';
 import {
   clearChecked,
+  MAX_SHOPPING_CHECKS,
   selectCheckedKeys,
   setChecked,
   shoppingLineKey,
+  shoppingSync,
   useShoppingStore,
 } from './shopping';
 
@@ -165,6 +174,31 @@ describe('shopping check-offs', () => {
     useShoppingStore.getState().toggle('eggs');
     expect(selectCheckedKeys(useShoppingStore.getState()).size).toBe(0);
   });
+  it('keeps only the most recent ticks, locally and after a merge', () => {
+    let checks = {};
+    for (let i = 0; i < MAX_SHOPPING_CHECKS; i += 1) {
+      checks = setChecked(
+        checks,
+        `line-${i}`,
+        true,
+        new Date(Date.UTC(2026, 10, 1, 0, i)).toISOString(),
+      );
+    }
+    checks = setChecked(checks, 'newest', true, at(1));
+    expect(Object.keys(checks)).toHaveLength(MAX_SHOPPING_CHECKS);
+    expect(checks).not.toHaveProperty('line-0');
+    expect(checks).toHaveProperty('newest');
+
+    useShoppingStore.setState({ checked: checks });
+    shoppingSync.applyRemote({
+      upserts: [{ docId: 'remote', data: { key: 'remote', checkedAt: at(2) } }],
+      deletes: [],
+    });
+    const merged = useShoppingStore.getState().checked;
+    expect(Object.keys(merged)).toHaveLength(MAX_SHOPPING_CHECKS);
+    expect(merged).toHaveProperty('remote');
+    expect(merged).not.toHaveProperty('line-1');
+  });
 });
 
 describe('chef threads', () => {
@@ -198,7 +232,7 @@ describe('chef threads', () => {
     }
     const thread = threads.t;
     expect(thread?.messages.length).toBeLessThanOrEqual(MAX_MESSAGES_PER_THREAD);
-    expect(JSON.stringify(thread).length).toBeLessThanOrEqual(MAX_THREAD_JSON_CHARS);
+    expect(thread && threadBytes(thread)).toBeLessThanOrEqual(MAX_THREAD_BYTES);
     expect(thread?.messages.at(-1)?.id).toBe(`m${MAX_MESSAGES_PER_THREAD + 9}`);
 
     let many = {};
@@ -206,6 +240,41 @@ describe('chef threads', () => {
       many = createThread(many, { id: `t${i}`, at: at(i) });
     expect(Object.keys(trimThreads(many))).toHaveLength(MAX_THREADS);
     expect(Object.keys(many)).not.toContain('t0');
+  });
+
+  it.each([
+    ['Cyrillic', 'Борщ со сметаной и чесночными пампушками. '],
+    ['emoji', '🍲🥗🍜🥘🍛'],
+    ['CJK', '味噌汁と焼き魚、ご飯と漬物。'],
+  ])('keeps a 300 KB %s thread under the sync document limit', (_, phrase) => {
+    const text = phrase
+      .repeat(Math.ceil(MAX_MESSAGE_CHARS / phrase.length))
+      .slice(0, MAX_MESSAGE_CHARS);
+    const messages: ChefThread['messages'] = [];
+    let raw = 0;
+    for (let i = 0; raw < 300 * 1024; i += 1) {
+      const message = { id: `m${i}`, role: 'assistant' as const, text, at: at(1), recipeIds: [] };
+      messages.push(message);
+      raw += utf8Bytes(JSON.stringify(message));
+    }
+    const big: ChefThread = { id: 't', title: 'big', createdAt: at(0), updatedAt: at(1), messages };
+    // Fewer UTF-16 characters than bytes: a character count would let this through.
+    expect(JSON.stringify(big).length).toBeLessThan(threadBytes(big));
+    expect(threadBytes(big)).toBeGreaterThan(MAX_DOC_BYTES);
+
+    const bounded = boundThread(big);
+    expect(utf8Bytes(stableStringify(bounded))).toBeLessThanOrEqual(MAX_THREAD_BYTES);
+    expect(MAX_THREAD_BYTES).toBeLessThan(MAX_DOC_BYTES);
+    expect(bounded.messages.at(-1)?.id).toBe(messages.at(-1)?.id);
+
+    // Appending one more message keeps it bounded too.
+    const threads = appendMessage({ t: bounded }, 't', {
+      id: 'next',
+      role: 'user',
+      text,
+      at: at(2),
+    });
+    expect(fingerprint(threads.t ?? {}).bytes).toBeLessThanOrEqual(MAX_THREAD_BYTES);
   });
 
   it('syncs one document per thread', () => {
