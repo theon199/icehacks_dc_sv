@@ -15,6 +15,9 @@ const MAX_MINUTES = 600;
  * allergen list can only hold allergen ids, so an empty list there would read as "no allergens";
  * this entry tells Chef that nothing is known yet instead. Chef reads it as "allergens and diet
  * not answered yet".
+ *
+ * Temporary: it relies on how the Chef function prints diet slugs. Once the function accepts
+ * `allergens_answered` (issue #49), send that instead and remove this entry.
  */
 export const SAFETY_NOT_ANSWERED = 'allergens_and_diet_not_answered_yet';
 
