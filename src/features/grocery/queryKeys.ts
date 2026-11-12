@@ -3,5 +3,4 @@ export const groceryKeys = {
   all: ['grocery'] as const,
   prices: (ids: readonly string[]) => ['grocery', 'prices', [...ids]] as const,
   walmartStatus: ['grocery', 'walmart', 'status'] as const,
-  walmartItems: (ids: readonly string[]) => ['grocery', 'walmart', 'items', [...ids]] as const,
 };
