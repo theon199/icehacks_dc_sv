@@ -127,8 +127,13 @@ describe('toUserPreferences', () => {
 
   it('falls back to unanswered defaults when the document does not fit the domain', () => {
     const odd = answered({ allergens: ['peanut'], householdSize: 0 });
-    expect(toUserPreferences(odd, 'us')).toBe(DEFAULT_PREFERENCES);
+    expect(toUserPreferences(odd, 'us')).toEqual(DEFAULT_PREFERENCES);
     expect(DEFAULT_PREFERENCES.allergens).toBeNull();
+    // The person's units survive the fallback; only the answers are reset.
+    const metric = toUserPreferences(odd, 'metric');
+    expect(metric).toEqual({ ...DEFAULT_PREFERENCES, units: 'metric' });
+    expect(metric.allergens).toBeNull();
+    expect(metric.diets).toBeNull();
   });
 
   it('accepts every stored diet and allergen id', () => {

@@ -15,6 +15,7 @@ import type { SafetyPrefs } from '@/domain/safety';
 import { cuisineIdSchema } from '@/domain/types/cuisines';
 import type { FeedbackEvent as DomainFeedbackEvent } from '@/domain/types/feedback';
 import type { Goal } from '@/domain/types/goals';
+import { logger } from '@/lib/logger';
 
 import type { FeedbackEvent as StoredFeedbackEvent } from './feedback';
 import type { HealthGoal, Preferences } from './preferences';
@@ -36,11 +37,16 @@ export const GOAL_TO_DOMAIN: Readonly<Record<HealthGoal, Goal>> = Object.freeze(
   steadier_energy: 'steady_energy',
 });
 
-const GOAL_TO_STORED = Object.freeze(
-  Object.fromEntries(
-    Object.entries(GOAL_TO_DOMAIN).map(([stored, domain]) => [domain, stored]),
-  ) as Record<Goal, HealthGoal>,
-);
+/** The reverse of `GOAL_TO_DOMAIN`, written out so a goal missing on either side fails typecheck. */
+const GOAL_TO_STORED = Object.freeze({
+  more_protein: 'more_protein',
+  more_fiber: 'more_fiber',
+  lower_sodium: 'lower_sodium',
+  heart_friendly: 'heart_friendly',
+  lighter_meals: 'lighter_meals',
+  plant_forward: 'plant_forward',
+  steady_energy: 'steadier_energy',
+} satisfies Readonly<Record<Goal, HealthGoal>>);
 
 export function toDomainGoal(goal: HealthGoal): Goal {
   return GOAL_TO_DOMAIN[goal];
@@ -75,7 +81,9 @@ const ANY_EFFORT = 3;
 /**
  * Full ranking preferences from the stored document. The result is validated against the domain
  * schema; a document that does not fit (for example a vocabulary from a newer build) falls back to
- * `DEFAULT_PREFERENCES`, whose safety answers are unanswered, so nothing is shown as safe.
+ * `DEFAULT_PREFERENCES` with the person's units, whose safety answers are unanswered, so nothing is
+ * shown as safe. That fallback is logged (field paths only), since it means the person will be asked
+ * their safety questions again.
  */
 export function toUserPreferences(prefs: Preferences, units: Units): UserPreferences {
   const safety = toSafetyPrefs(prefs);
@@ -91,13 +99,28 @@ export function toUserPreferences(prefs: Preferences, units: Units): UserPrefere
     smallAppetite: prefs.smallAppetite,
     units,
   });
-  return parsed.success ? parsed.data : DEFAULT_PREFERENCES;
+  if (parsed.success) return parsed.data;
+  logger.warn('Preferences did not fit the domain schema; using unanswered defaults', {
+    fields: [...new Set(parsed.error.issues.map((issue) => issue.path.join('.')))],
+  });
+  return { ...DEFAULT_PREFERENCES, units };
 }
 
 // --- Feedback ----------------------------------------------------------------------------------
 
+/** A stored event the domain has a kind for: everything but `unsave`. */
+type StoredSignal = StoredFeedbackEvent & { kind: DomainFeedbackEvent['kind'] };
+
+function isSignal(event: StoredFeedbackEvent): event is StoredSignal {
+  return event.kind !== 'unsave';
+}
+
 /**
  * Stored feedback as the ranking domain reads it, oldest first.
+ *
+ * Precondition: `events` must already be oldest first, the order `selectFeedbackEvents` returns
+ * (by `at`, then `id`). The unsave rule below pairs each unsave with the saves that came before it
+ * in the list, so an unsorted list would withdraw the wrong save or none.
  *
  * - The domain has no "unsave": an `unsave` withdraws the latest earlier `save` of the same recipe
  *   and is not itself passed on. Saves before that one are never touched, so a second unsave with
@@ -114,7 +137,7 @@ export function toDomainFeedback(events: readonly StoredFeedbackEvent[]): Domain
   for (const event of events) {
     const at = Date.parse(event.at);
     if (!Number.isFinite(at)) continue;
-    if (event.kind === 'unsave') {
+    if (!isSignal(event)) {
       const index = latestSave.get(event.recipeId);
       if (index !== undefined) {
         kept[index] = null;
@@ -123,18 +146,14 @@ export function toDomainFeedback(events: readonly StoredFeedbackEvent[]): Domain
       continue;
     }
     if (event.kind === 'save') latestSave.set(event.recipeId, kept.length);
-    kept.push(toDomainEvent(event, event.kind, at));
+    kept.push(toDomainEvent(event, at));
   }
   return kept.filter((event): event is DomainFeedbackEvent => event !== null);
 }
 
-function toDomainEvent(
-  event: StoredFeedbackEvent,
-  kind: DomainFeedbackEvent['kind'],
-  at: number,
-): DomainFeedbackEvent {
-  const base = { recipeId: event.recipeId, kind, at };
-  if (kind !== 'not_for_me' || !event.reason) return { ...base, reasons: [] };
+function toDomainEvent(event: StoredSignal, at: number): DomainFeedbackEvent {
+  const base = { recipeId: event.recipeId, kind: event.kind, at };
+  if (event.kind !== 'not_for_me' || !event.reason) return { ...base, reasons: [] };
   const reasons = [event.reason];
   return event.reason === 'dislike_ingredient' && event.ingredientId
     ? { ...base, reasons, ingredientId: event.ingredientId }
