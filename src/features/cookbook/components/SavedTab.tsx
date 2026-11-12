@@ -36,10 +36,25 @@ function openRecipe(recipe: RecipeSummary) {
 export function SavedTab({ header, today }: SavedTabProps) {
   const saved = useSavedRecipes();
   const smallAppetite = usePreferencesStore((s) => s.prefs.smallAppetite);
-  const [filters, setFilters] = useState<SavedFilters>(DEFAULT_SAVED_FILTERS);
+  const [chosenFilters, setFilters] = useState<SavedFilters>(DEFAULT_SAVED_FILTERS);
+  // The Gentle chip only exists in small appetite mode; when it is hidden its filter is off too.
+  const filters = useMemo(
+    () => (smallAppetite ? chosenFilters : { ...chosenFilters, gentle: false }),
+    [chosenFilters, smallAppetite],
+  );
   const [actionsFor, setActionsFor] = useState<RecipeSummary | null>(null);
   const [planning, setPlanning] = useState<RecipeSummary | null>(null);
   const visible = useMemo(() => filterSaved(saved.recipes, filters), [saved.recipes, filters]);
+  const { isSafe } = saved;
+
+  // Planning is fail-closed: a recipe that does not pass the current allergen and diet rules never
+  // reaches the slot picker or the plan, whatever path asked for it.
+  const startPlanning = useCallback(
+    (recipe: RecipeSummary) => {
+      if (isSafe(recipe)) setPlanning(recipe);
+    },
+    [isSafe],
+  );
 
   const remove = useCallback((recipe: RecipeSummary) => {
     const { saved: entries, unsave, save } = useSavedStore.getState();
@@ -52,8 +67,18 @@ export function SavedTab({ header, today }: SavedTabProps) {
   }, []);
 
   const confirmPlan = (recipe: RecipeSummary, target: SlotRef) => {
-    plannerActions.place(target, recipe.id);
     setPlanning(null);
+    if (!isSafe(recipe)) {
+      toast.show({
+        message: `${recipe.title} does not fit your allergens or diet`,
+        tone: 'danger',
+      });
+      return;
+    }
+    if (!plannerActions.place(target, recipe.id)) {
+      toast.show({ message: 'That week is archived. Restore it to plan meals.', tone: 'danger' });
+      return;
+    }
     const day = weekDays(target.week, today)[target.day];
     toast.show({
       message: `Planned for ${day?.short ?? ''} ${SLOT_LABELS[target.slot].toLowerCase()}`,
@@ -61,7 +86,6 @@ export function SavedTab({ header, today }: SavedTabProps) {
     });
   };
 
-  const { isSafe } = saved;
   const renderItem = useCallback(
     ({ item }: { item: RecipeSummary }) => (
       <SavedRecipeCard
@@ -69,11 +93,11 @@ export function SavedTab({ header, today }: SavedTabProps) {
         unsafe={!isSafe(item)}
         onOpen={openRecipe}
         onActions={setActionsFor}
-        onPlan={setPlanning}
+        onPlan={startPlanning}
         onRemove={remove}
       />
     ),
-    [isSafe, remove],
+    [isSafe, startPlanning, remove],
   );
 
   const listHeader = (
@@ -142,12 +166,16 @@ export function SavedTab({ header, today }: SavedTabProps) {
         actions={
           actionsFor
             ? [
-                {
-                  key: 'plan',
-                  label: 'Add to plan',
-                  icon: 'calendar.badge.plus',
-                  onPress: () => setPlanning(actionsFor),
-                },
+                ...(isSafe(actionsFor)
+                  ? [
+                      {
+                        key: 'plan',
+                        label: 'Add to plan',
+                        icon: 'calendar.badge.plus' as const,
+                        onPress: () => startPlanning(actionsFor),
+                      },
+                    ]
+                  : []),
                 {
                   key: 'open',
                   label: 'Open recipe',

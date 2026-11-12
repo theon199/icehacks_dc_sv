@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
@@ -20,6 +20,7 @@ import {
   usePastActiveWeeks,
   useWeekSlots,
 } from '../hooks/usePlanner';
+import { useIsRecipeSafe } from '../hooks/useSavedRecipes';
 import { initialDay, mealsPerDay, remainingDays, weekDays } from '../model/week';
 
 export interface PlanTabProps {
@@ -32,8 +33,12 @@ const SWIPE_DISTANCE = 60;
 /** The weekly planner: week pager, day rail and the selected day's meals. */
 export function PlanTab({ header, today }: PlanTabProps) {
   const currentWeek = weekStartOf(today);
-  const [weekStart, setWeekStart] = useState(currentWeek);
-  const [day, setDay] = useState<DayIndex>(() => initialDay(currentWeek, today));
+  // Week and day change together (swiping past Sunday turns the week), so they share one state.
+  const [position, setPosition] = useState<{ week: IsoDate; day: DayIndex }>(() => ({
+    week: currentWeek,
+    day: initialDay(currentWeek, today),
+  }));
+  const { week: weekStart, day } = position;
   const slots = useWeekSlots(weekStart);
   const archived = useIsWeekArchived(weekStart);
   const pastActive = usePastActiveWeeks(today);
@@ -51,26 +56,29 @@ export function PlanTab({ header, today }: PlanTabProps) {
     () => new Map<string, RecipeSummary>((planned.data ?? []).map((r) => [r.id, r])),
     [planned.data],
   );
+  const isSafe = useIsRecipeSafe();
   const canAutoFill = !archived && remainingDays(weekStart, today).length > 0;
 
-  const goToWeek = (week: IsoDate, nextDay?: DayIndex) => {
-    setWeekStart(week);
-    setDay(nextDay ?? initialDay(week, today));
-  };
-  const step = (delta: 1 | -1) => {
-    const next = day + delta;
-    if (next < 0) goToWeek(addDays(weekStart, -7), 6);
-    else if (next > 6) goToWeek(addDays(weekStart, 7), 0);
-    else setDay(next as DayIndex);
-  };
-  const swipe = Gesture.Pan()
-    .activeOffsetX([-24, 24])
-    .failOffsetY([-16, 16])
-    .runOnJS(true)
-    .onEnd((e) => {
-      if (e.translationX <= -SWIPE_DISTANCE) step(1);
-      else if (e.translationX >= SWIPE_DISTANCE) step(-1);
-    });
+  const goToWeek = (week: IsoDate) => setPosition({ week, day: initialDay(week, today) });
+  const setDay = useCallback((next: DayIndex) => setPosition((p) => ({ ...p, day: next })), []);
+  // Built once: the swipe only ever moves relative to the current position.
+  const swipe = useMemo(() => {
+    const step = (delta: 1 | -1) =>
+      setPosition((p) => {
+        const next = p.day + delta;
+        if (next < 0) return { week: addDays(p.week, -7), day: 6 };
+        if (next > 6) return { week: addDays(p.week, 7), day: 0 };
+        return { ...p, day: next as DayIndex };
+      });
+    return Gesture.Pan()
+      .activeOffsetX([-24, 24])
+      .failOffsetY([-16, 16])
+      .runOnJS(true)
+      .onEnd((e) => {
+        if (e.translationX <= -SWIPE_DISTANCE) step(1);
+        else if (e.translationX >= SWIPE_DISTANCE) step(-1);
+      });
+  }, []);
 
   const info = days[day] ?? days[0];
   return (
@@ -151,6 +159,7 @@ export function PlanTab({ header, today }: PlanTabProps) {
               readOnly={archived}
               smallPortions={smallAppetite}
               moveWeeks={[weekStart, addDays(weekStart, 7)]}
+              isSafe={isSafe}
             />
           </View>
         </GestureDetector>

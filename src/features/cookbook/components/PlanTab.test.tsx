@@ -1,12 +1,17 @@
 import { act, fireEvent, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 
 import { getRecipeSummaries } from '@/lib/catalog/queries';
-import { useMealPlanStore, useSavedStore } from '@/stores';
+import { useMealPlanStore, usePreferencesStore, useSavedStore } from '@/stores';
 import { useToastStore } from '@/ui';
 
 import { PlanTab } from './PlanTab';
-import { candidatePool } from '../__fixtures__/recipes';
-import { clearQueryClients, renderCookbook, resetCookbookStores } from '../__fixtures__/render';
+import { candidatePool, makeCandidate } from '../__fixtures__/recipes';
+import {
+  AFTER_SHEET,
+  clearQueryClients,
+  renderCookbook,
+  resetCookbookStores,
+} from '../__fixtures__/render';
 import { plannerActions } from '../hooks/usePlanner';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
@@ -17,7 +22,14 @@ jest.mock('@/lib/catalog/queries', () => ({
 
 const TODAY = '2026-11-11';
 const WEEK = '2026-11-09';
-const pool = candidatePool();
+const base = makeCandidate('base');
+const pool = [
+  ...candidatePool(),
+  makeCandidate('nutty', {
+    title: 'Peanut noodles',
+    allergens: { ...base.allergens, peanut: 'contains' },
+  }),
+];
 const slots = (week = WEEK) => useMealPlanStore.getState().weeks[week]?.slots ?? {};
 
 beforeEach(() => {
@@ -60,6 +72,19 @@ describe('PlanTab', () => {
     expect(await screen.findByLabelText(/Breakfast: Dish b1/)).toBeOnTheScreen();
   });
 
+  it('asks for allergen answers before offering recipes to add', async () => {
+    const user = userEvent.setup();
+    useSavedStore.getState().save('b1');
+    usePreferencesStore.getState().update({ allergensAnswered: false });
+    await renderPlan();
+
+    await user.press(screen.getByTestId('slot-add-breakfast'));
+    const sheet = await screen.findByTestId('add-meal-sheet');
+    expect(await within(sheet).findByText('Tell us about allergies first')).toBeOnTheScreen();
+    expect(within(sheet).queryByText('No recipes found')).not.toBeOnTheScreen();
+    expect(within(sheet).queryByTestId('pick-b1')).not.toBeOnTheScreen();
+  });
+
   it('moves a meal with the accessible move sheet', async () => {
     const user = userEvent.setup();
     plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm1');
@@ -68,7 +93,7 @@ describe('PlanTab', () => {
 
     await user.press(screen.getByTestId('slot-more-dinner'));
     await user.press(screen.getByTestId('action-move'));
-    const picker = await screen.findByTestId('slot-picker');
+    const picker = await screen.findByTestId('slot-picker', {}, AFTER_SHEET);
     expect(within(picker).getByRole('radio', { name: 'Wed 11' })).toBeChecked();
 
     await user.press(within(picker).getByTestId('pick-day-4'));
@@ -86,7 +111,7 @@ describe('PlanTab', () => {
     await renderPlan();
     await user.press(screen.getByTestId('slot-more-dinner'));
     await user.press(screen.getByTestId('action-move'));
-    expect(screen.getByTestId('slot-picker-confirm')).toBeDisabled();
+    expect(await screen.findByTestId('slot-picker-confirm', {}, AFTER_SHEET)).toBeDisabled();
     expect(screen.getByText('Choose a different day or meal.')).toBeOnTheScreen();
   });
 
@@ -111,6 +136,55 @@ describe('PlanTab', () => {
       nativeEvent: { actionName: 'move' },
     });
     expect(await screen.findByTestId('slot-picker')).toBeOnTheScreen();
+  });
+
+  it('undo after a removal leaves a meal planned there since in place', async () => {
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm1');
+    await renderPlan();
+    const row = await screen.findByTestId('slot-dinner');
+    await fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'clear' } });
+    const [toast] = useToastStore.getState().queue;
+
+    await act(async () => plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm2'));
+    await act(async () => toast?.action?.onPress());
+    expect(slots()['2-dinner']?.recipeId).toBe('m2');
+  });
+
+  it('flags a planned meal that conflicts with an allergen declared after planning', async () => {
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'nutty');
+    plannerActions.place({ week: WEEK, day: 2, slot: 'lunch' }, 'm1');
+    await renderPlan();
+    expect(await screen.findByLabelText(/^Dinner: Peanut noodles/)).toBeOnTheScreen();
+    expect(screen.queryByTestId('slot-unsafe-dinner')).not.toBeOnTheScreen();
+
+    await act(async () => usePreferencesStore.getState().setAllergens(['peanut']));
+    expect(await screen.findByTestId('slot-unsafe-dinner')).toHaveTextContent('Check allergens');
+    expect(screen.getByLabelText(/^Dinner: Peanut noodles.*Check allergens/)).toBeOnTheScreen();
+    expect(screen.queryByTestId('slot-unsafe-lunch')).not.toBeOnTheScreen();
+  });
+
+  it('will not move a meal into an archived week', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: '2026-11-16', day: 0, slot: 'lunch' }, 'm2');
+    plannerActions.archive('2026-11-16');
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm1');
+    await renderPlan();
+
+    await user.press(screen.getByTestId('slot-more-dinner'));
+    await user.press(screen.getByTestId('action-move'));
+    const picker = await screen.findByTestId('slot-picker', {}, AFTER_SHEET);
+    expect(within(picker).getByRole('radio', { name: 'Next week (archived)' })).toBeDisabled();
+    expect(
+      plannerActions.move(
+        { week: WEEK, day: 2, slot: 'dinner' },
+        {
+          week: '2026-11-16',
+          day: 0,
+          slot: 'dinner',
+        },
+      ),
+    ).toBe(false);
+    expect(slots()['2-dinner']?.recipeId).toBe('m1');
   });
 
   it('archives earlier weeks that still have meals', async () => {

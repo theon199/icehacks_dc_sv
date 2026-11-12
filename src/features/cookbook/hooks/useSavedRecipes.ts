@@ -12,6 +12,12 @@ export function useSafetyRules(): SafetyRules {
   return useMemo(() => compileSafetyRules(toDomainPreferences(prefs)), [prefs]);
 }
 
+/** A stable check of one recipe against the person's current allergen and diet rules. */
+export function useIsRecipeSafe(): (recipe: RecipeSummary) => boolean {
+  const rules = useSafetyRules();
+  return useCallback((recipe: RecipeSummary) => isRecipeSafe(recipe, rules), [rules]);
+}
+
 /**
  * Saved recipes, most recently saved first, plus a check for ones that no longer fit the person's
  * allergens or diet (preferences can change after saving).
@@ -19,8 +25,7 @@ export function useSafetyRules(): SafetyRules {
 export function useSavedRecipes() {
   const ids = useSavedStore(selectSavedIds);
   const query = useRecipes(ids);
-  const rules = useSafetyRules();
-  const isSafe = useCallback((recipe: RecipeSummary) => isRecipeSafe(recipe, rules), [rules]);
+  const isSafe = useIsRecipeSafe();
   // Keep the previous list only while it still matches what is saved (removals show at once).
   const recipes = useMemo(() => {
     if (ids.length === 0) return [];

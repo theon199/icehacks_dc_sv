@@ -1,4 +1,4 @@
-import { act, screen, userEvent, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 
 import { getRecipeSummaries } from '@/lib/catalog/queries';
 import { useMealPlanStore, usePreferencesStore, useSavedStore } from '@/stores';
@@ -6,7 +6,12 @@ import { useToastStore } from '@/ui';
 
 import { CookbookScreen } from './CookbookScreen';
 import { candidatePool, makeCandidate } from '../__fixtures__/recipes';
-import { clearQueryClients, renderCookbook, resetCookbookStores } from '../__fixtures__/render';
+import {
+  AFTER_SHEET,
+  clearQueryClients,
+  renderCookbook,
+  resetCookbookStores,
+} from '../__fixtures__/render';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/lib/catalog/queries', () => ({
@@ -73,7 +78,7 @@ describe('CookbookScreen — Saved', () => {
     await renderCookbook(<CookbookScreen />);
     await user.longPress(await screen.findByTestId('saved-card-m1'));
     await user.press(await screen.findByTestId('action-remove'));
-    expect(useSavedStore.getState().saved.m1).toBeUndefined();
+    await waitFor(() => expect(useSavedStore.getState().saved.m1).toBeUndefined(), AFTER_SHEET);
 
     const [toast] = useToastStore.getState().queue;
     expect(toast?.message).toBe('Removed Dish m1');
@@ -88,7 +93,7 @@ describe('CookbookScreen — Saved', () => {
     await user.press(await screen.findByTestId('saved-more-b1'));
     await user.press(await screen.findByTestId('action-plan'));
 
-    const picker = await screen.findByTestId('slot-picker');
+    const picker = await screen.findByTestId('slot-picker', {}, AFTER_SHEET);
     expect(within(picker).getByRole('radio', { name: 'Breakfast' })).toBeChecked();
     await user.press(within(picker).getByRole('radio', { name: 'Next week' }));
     await user.press(within(picker).getByTestId('pick-day-0'));
@@ -97,6 +102,57 @@ describe('CookbookScreen — Saved', () => {
     expect(useMealPlanStore.getState().weeks['2026-11-16']?.slots['0-breakfast']?.recipeId).toBe(
       'b1',
     );
+  });
+
+  it('never offers to plan a saved recipe that fails the allergen rules', async () => {
+    const user = userEvent.setup();
+    saveAll(['nutty']);
+    usePreferencesStore.getState().setAllergens(['peanut']);
+    await renderCookbook(<CookbookScreen />);
+    const card = await screen.findByTestId('saved-card-nutty');
+    expect(card.props.accessibilityActions.map((a: { name: string }) => a.name)).toEqual([
+      'activate',
+      'remove',
+    ]);
+
+    // A stray VoiceOver "plan" action is ignored too.
+    await fireEvent(card, 'accessibilityAction', { nativeEvent: { actionName: 'plan' } });
+    await user.press(screen.getByTestId('saved-more-nutty'));
+    expect(await screen.findByTestId('action-remove')).toBeOnTheScreen();
+    expect(screen.queryByTestId('action-plan')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('slot-picker')).not.toBeOnTheScreen();
+    expect(useMealPlanStore.getState().weeks).toEqual({});
+  });
+
+  it('drops a planned recipe that stopped being safe before the slot was confirmed', async () => {
+    const user = userEvent.setup();
+    saveAll(['nutty']);
+    await renderCookbook(<CookbookScreen />);
+    await user.press(await screen.findByTestId('saved-more-nutty'));
+    await user.press(await screen.findByTestId('action-plan'));
+    const picker = await screen.findByTestId('slot-picker', {}, AFTER_SHEET);
+
+    await act(async () => usePreferencesStore.getState().setAllergens(['peanut']));
+    await user.press(within(picker).getByTestId('slot-picker-confirm'));
+
+    expect(useMealPlanStore.getState().weeks).toEqual({});
+    expect(useToastStore.getState().queue[0]?.message).toBe(
+      'Peanut noodles does not fit your allergens or diet',
+    );
+  });
+
+  it('turns the Gentle filter off when small appetite mode is switched off', async () => {
+    const user = userEvent.setup();
+    usePreferencesStore.getState().update({ smallAppetite: true });
+    saveAll(['b1', 'm1']);
+    await renderCookbook(<CookbookScreen />);
+    await screen.findByTestId('saved-card-b1');
+    await user.press(screen.getByTestId('saved-gentle'));
+    expect(await screen.findByText('No matches')).toBeOnTheScreen();
+
+    await act(async () => usePreferencesStore.getState().update({ smallAppetite: false }));
+    expect(screen.queryByTestId('saved-gentle')).not.toBeOnTheScreen();
+    expect(await screen.findByText('2 recipes')).toBeOnTheScreen();
   });
 
   it('switches to the planner', async () => {

@@ -1,4 +1,5 @@
 import { FlashList } from '@shopify/flash-list';
+import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -64,7 +65,21 @@ export function AddMealSheet({ title, onPick, onClose }: AddMealSheetProps) {
   const loading = source === 'search' ? search.isPending : saved.isLoading;
   const error = source === 'search' ? search.error : saved.error;
   let empty = null;
-  if (error) empty = <ErrorState error={error} />;
+  if (!prefs.allergensAnswered) {
+    // Nothing is known to be safe until allergens are answered, so an empty list is not "no match".
+    empty = (
+      <EmptyState
+        icon="checkmark.shield"
+        title="Tell us about allergies first"
+        message="Only recipes we know are safe for you can be planned. Answer the allergen question in Preferences."
+        actionLabel="Open preferences"
+        onAction={() => {
+          onClose();
+          router.push('/preferences');
+        }}
+      />
+    );
+  } else if (error) empty = <ErrorState error={error} />;
   else if (loading) empty = <ActivityIndicator accessibilityLabel="Loading recipes" />;
   else if (source === 'saved' && saved.ids.length === 0) {
     empty = (

@@ -14,6 +14,8 @@ export interface SlotRowProps {
   slot: MealSlot;
   entry: PlanEntry | undefined;
   recipe: RecipeSummary | undefined;
+  /** The planned recipe no longer passes the person's allergen and diet rules. */
+  unsafe: boolean;
   readOnly: boolean;
   /** Small appetite mode: meals are planned as half portions. */
   smallPortions: boolean;
@@ -40,6 +42,7 @@ export const SlotRow = memo(function SlotRow({
   slot,
   entry,
   recipe,
+  unsafe,
   readOnly,
   smallPortions,
   onAdd,
@@ -108,7 +111,13 @@ export const SlotRow = memo(function SlotRow({
     >
       <PressableScale
         accessibilityRole="button"
-        accessibilityLabel={`${label}: ${title}, ${meta}`}
+        accessibilityLabel={[
+          `${label}: ${title}`,
+          meta,
+          unsafe ? 'Check allergens: does not fit your allergens or diet' : '',
+        ]
+          .filter(Boolean)
+          .join(', ')}
         accessibilityActions={readOnly ? [{ name: 'activate' }] : FILLED_ACTIONS}
         onAccessibilityAction={onA11yAction}
         onPress={() => onOpen(entry.recipeId)}
@@ -138,6 +147,14 @@ export const SlotRow = memo(function SlotRow({
           <Text variant="caption" tone="muted" numberOfLines={1}>
             {meta}
           </Text>
+          {unsafe ? (
+            <View style={styles.flag} testID={`slot-unsafe-${slot}`}>
+              <Icon name="exclamationmark.triangle.fill" size={12} color="warning" />
+              <Text variant="caption" color="warning" numberOfLines={1}>
+                Check allergens
+              </Text>
+            </View>
+          ) : null}
         </View>
       </PressableScale>
       {readOnly ? null : (
@@ -172,4 +189,5 @@ const styles = StyleSheet.create({
     padding: space.sm,
   },
   thumb: { width: 64, height: 64 },
+  flag: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
 });

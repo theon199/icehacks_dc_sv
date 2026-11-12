@@ -69,6 +69,32 @@ describe('planner actions', () => {
     expect(slots()['2-lunch']?.recipeId).toBe('auto2');
   });
 
+  it('leaves an archived week untouched until it is restored', () => {
+    plannerActions.place(cell(0, 'dinner'), 'kept');
+    plannerActions.archive(WEEK);
+
+    expect(plannerActions.place(cell(1, 'dinner'), 'r1')).toBe(false);
+    expect(plannerActions.move(cell(0, 'dinner'), cell(0, 'dinner', NEXT))).toBe(false);
+    plannerActions.place(cell(0, 'lunch', NEXT), 'other');
+    expect(plannerActions.move(cell(0, 'lunch', NEXT), cell(2, 'lunch'))).toBe(false);
+    expect(
+      plannerActions.applyWrites(WEEK, [{ slot: '3-dinner', recipeId: 'r2', servings: 2 }]),
+    ).toBe(0);
+    plannerActions.clear(cell(0, 'dinner'));
+    plannerActions.clearDay(WEEK, 0);
+    expect(Object.keys(slots())).toEqual(['0-dinner']);
+
+    plannerActions.restore(WEEK);
+    expect(plannerActions.place(cell(1, 'dinner'), 'r1')).toBe(true);
+    expect(slots()['1-dinner']?.recipeId).toBe('r1');
+  });
+
+  it('restores a removed meal only into a slot that is still empty', () => {
+    expect(plannerActions.restoreIfEmpty(cell(2, 'lunch'), 'first', 2)).toBe(true);
+    expect(plannerActions.restoreIfEmpty(cell(2, 'lunch'), 'second', 2)).toBe(false);
+    expect(slots()['2-lunch']?.recipeId).toBe('first');
+  });
+
   it('archives past weeks, restores and deletes them', () => {
     plannerActions.place(cell(0, 'dinner', '2026-11-02'), 'old');
     plannerActions.place(cell(0, 'dinner'), 'current');

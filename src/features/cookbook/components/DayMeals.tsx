@@ -24,6 +24,8 @@ export interface DayMealsProps {
   smallPortions: boolean;
   /** Weeks a meal can be moved to. */
   moveWeeks: readonly IsoDate[];
+  /** The person's current allergen and diet rules; meals planned before a change may now fail them. */
+  isSafe: (recipe: RecipeSummary) => boolean;
 }
 
 function openRecipe(id: string) {
@@ -40,6 +42,7 @@ export function DayMeals({
   readOnly,
   smallPortions,
   moveWeeks,
+  isSafe,
 }: DayMealsProps) {
   const day: DayIndex = info.day;
   const meals = mealsForDay(slots, day);
@@ -64,7 +67,11 @@ export function DayMeals({
         message: `Removed from ${SLOT_LABELS[slot].toLowerCase()}`,
         action: {
           label: 'Undo',
-          onPress: () => plannerActions.place(ref(slot), entry.recipeId, entry.servings),
+          onPress: () => {
+            if (!plannerActions.restoreIfEmpty(ref(slot), entry.recipeId, entry.servings)) {
+              toast.show({ message: `${SLOT_LABELS[slot]} already has a meal again` });
+            }
+          },
         },
       });
     },
@@ -99,21 +106,25 @@ export function DayMeals({
           />
         ) : null}
       </View>
-      {meals.map((meal) => (
-        <SlotRow
-          key={meal.slot}
-          slot={meal.slot}
-          entry={meal.entry}
-          recipe={meal.entry ? recipes.get(meal.entry.recipeId) : undefined}
-          readOnly={readOnly}
-          smallPortions={smallPortions}
-          onAdd={setAdding}
-          onOpen={openRecipe}
-          onActions={setActionsFor}
-          onMove={setMoving}
-          onClear={clear}
-        />
-      ))}
+      {meals.map((meal) => {
+        const recipe = meal.entry ? recipes.get(meal.entry.recipeId) : undefined;
+        return (
+          <SlotRow
+            key={meal.slot}
+            slot={meal.slot}
+            entry={meal.entry}
+            recipe={recipe}
+            unsafe={recipe !== undefined && !isSafe(recipe)}
+            readOnly={readOnly}
+            smallPortions={smallPortions}
+            onAdd={setAdding}
+            onOpen={openRecipe}
+            onActions={setActionsFor}
+            onMove={setMoving}
+            onClear={clear}
+          />
+        );
+      })}
       <ActionSheet
         visible={actionsFor !== null}
         title={actionsFor ? titleOf(actionsFor) : ''}
@@ -150,8 +161,9 @@ export function DayMeals({
           title={`${info.short} ${SLOT_LABELS[adding].toLowerCase()}`}
           onClose={() => setAdding(null)}
           onPick={(recipe) => {
-            plannerActions.place(ref(adding), recipe.id);
             setAdding(null);
+            if (!isSafe(recipe)) return;
+            plannerActions.place(ref(adding), recipe.id);
           }}
         />
       ) : null}
@@ -166,9 +178,13 @@ export function DayMeals({
           source={ref(moving)}
           onClose={() => setMoving(null)}
           onConfirm={(target) => {
-            plannerActions.move(ref(moving), target);
             setMoving(null);
-            toast.show({ message: 'Meal moved', tone: 'success' });
+            const moved = plannerActions.move(ref(moving), target);
+            toast.show(
+              moved
+                ? { message: 'Meal moved', tone: 'success' }
+                : { message: 'Archived weeks cannot be changed', tone: 'danger' },
+            );
           }}
         />
       ) : null}

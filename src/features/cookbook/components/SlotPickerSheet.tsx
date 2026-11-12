@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { MEAL_SLOTS, type IsoDate } from '@/domain/plan';
 import { useRecipes } from '@/lib/catalog';
-import { slotKey } from '@/stores';
+import { slotKey, useMealPlanStore } from '@/stores';
 import { Button, ChoiceChip, space, Text } from '@/ui';
 
 import { BottomSheet } from './BottomSheet';
@@ -50,9 +50,16 @@ export function SlotPickerSheet({
   const occupantIds = useMemo(() => (occupant ? [occupant.recipeId] : []), [occupant]);
   const occupantRecipe = useRecipes(occupantIds).data?.[0];
   const unchanged = sameRef(source, target);
+  // Archived weeks are read-only, so they are shown but cannot be chosen.
+  const archivedKey = useMealPlanStore((s) =>
+    weeks.filter((w) => s.weeks[w]?.archivedAt != null).join(','),
+  );
+  const archived = useMemo(() => new Set(archivedKey.split(',')), [archivedKey]);
+  const targetArchived = archived.has(target.week);
 
   let note: string | null = null;
-  if (unchanged) note = 'Choose a different day or meal.';
+  if (targetArchived) note = 'That week is archived. Restore it to plan meals there.';
+  else if (unchanged) note = 'Choose a different day or meal.';
   else if (occupant) {
     const name = occupantRecipe?.title ?? 'the meal there';
     note = source ? `Swaps places with ${name}.` : `Replaces ${name}.`;
@@ -70,7 +77,7 @@ export function SlotPickerSheet({
           <Button
             label={confirmLabel}
             onPress={() => onConfirm(target)}
-            disabled={unchanged}
+            disabled={unchanged || targetArchived}
             fullWidth
             testID="slot-picker-confirm"
           />
@@ -84,8 +91,11 @@ export function SlotPickerSheet({
             <ChoiceChip
               key={week}
               mode="radio"
-              label={weekTitle(week, today)}
+              label={
+                archived.has(week) ? `${weekTitle(week, today)} (archived)` : weekTitle(week, today)
+              }
               selected={target.week === week}
+              disabled={archived.has(week) && target.week !== week}
               onToggle={() => setTarget((t) => ({ ...t, week }))}
             />
           ))}

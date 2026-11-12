@@ -10,7 +10,7 @@ import { Icon, IconButton, PressableScale, space, Text, useTheme } from '@/ui';
 
 export interface SavedRecipeCardProps {
   recipe: RecipeSummary;
-  /** The recipe no longer fits the person's allergens or diet. */
+  /** The recipe no longer fits the person's allergens or diet; planning it is not offered. */
   unsafe: boolean;
   onOpen: (recipe: RecipeSummary) => void;
   onActions: (recipe: RecipeSummary) => void;
@@ -18,9 +18,15 @@ export interface SavedRecipeCardProps {
   onRemove: (recipe: RecipeSummary) => void;
 }
 
-const A11Y_ACTIONS = [
+const SAFE_ACTIONS = [
   { name: 'activate' },
   { name: 'plan', label: 'Add to plan' },
+  { name: 'remove', label: 'Remove from saved' },
+] as const;
+
+/** A recipe that does not fit the person's allergens or diet can be opened or removed, never planned. */
+const UNSAFE_ACTIONS = [
+  { name: 'activate' },
   { name: 'remove', label: 'Remove from saved' },
 ] as const;
 
@@ -50,7 +56,7 @@ export const SavedRecipeCard = memo(function SavedRecipeCard({
         onOpen(recipe);
         break;
       case 'plan':
-        onPlan(recipe);
+        if (!unsafe) onPlan(recipe);
         break;
       case 'remove':
         onRemove(recipe);
@@ -71,7 +77,7 @@ export const SavedRecipeCard = memo(function SavedRecipeCard({
           .filter(Boolean)
           .join(', ')}
         accessibilityHint="Opens the recipe. Long press for more actions."
-        accessibilityActions={A11Y_ACTIONS}
+        accessibilityActions={unsafe ? UNSAFE_ACTIONS : SAFE_ACTIONS}
         onAccessibilityAction={onA11yAction}
         onPress={() => onOpen(recipe)}
         onLongPress={() => {
