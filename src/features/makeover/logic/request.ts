@@ -6,7 +6,14 @@ import type { MakeoverRequest, MakeoverResponse } from '@/lib/api/ai';
 import type { RecipeDetail } from '@/lib/catalog';
 import { HEALTH_GOALS, type HealthGoal, type Preferences } from '@/stores';
 
-import type { CheckedText } from './allergenCheck';
+import type { AllergenId } from '@/domain/types/allergens';
+
+import {
+  findAllergenMentions,
+  mentionRoot,
+  type AllergenHit,
+  type CheckedText,
+} from './allergenCheck';
 
 export const MAX_REQUEST_CHARS = 300;
 
@@ -64,15 +71,41 @@ export function makeoverRequestFrom(
   };
 }
 
+type CheckedMakeover = Pick<MakeoverResponse, 'title' | 'ingredients' | 'steps' | 'swaps' | 'note'>;
+
+const NOTE = 'Note';
+
 /** The parts of a makeover that must not name a declared allergen (not what was swapped out). */
-export function checkedTexts(
-  makeover: Pick<MakeoverResponse, 'title' | 'ingredients' | 'steps' | 'swaps' | 'note'>,
-): CheckedText[] {
+export function checkedTexts(makeover: CheckedMakeover): CheckedText[] {
   return [
     { where: 'Title', text: makeover.title },
     ...makeover.ingredients.map((text, index) => ({ where: `Ingredient ${index + 1}`, text })),
     ...makeover.steps.map((text, index) => ({ where: `Step ${index + 1}`, text })),
     ...makeover.swaps.map((swap, index) => ({ where: `Swap ${index + 1}`, text: swap.to })),
-    { where: 'Note', text: makeover.note },
+    { where: NOTE, text: makeover.note },
   ];
+}
+
+const mentionKey = (hit: Pick<AllergenHit, 'allergen' | 'found'>) =>
+  `${hit.allergen}:${mentionRoot(hit.found)}`;
+
+/**
+ * Declared allergens the makeover still mentions. The note may name what a swap took out ("the
+ * butter is now olive oil", "just as creamy" after cream was swapped out), so a mention in the
+ * note only counts when no swap removed that ingredient; the
+ * title, ingredients, steps and swap replacements are always held to every mention.
+ */
+export function makeoverAllergenHits(
+  makeover: CheckedMakeover,
+  allergens: readonly AllergenId[],
+): AllergenHit[] {
+  const removed = new Set(
+    findAllergenMentions(
+      makeover.swaps.map((swap) => ({ where: 'Removed', text: swap.from })),
+      allergens,
+    ).map(mentionKey),
+  );
+  return findAllergenMentions(checkedTexts(makeover), allergens).filter(
+    (hit) => hit.where !== NOTE || !removed.has(mentionKey(hit)),
+  );
 }

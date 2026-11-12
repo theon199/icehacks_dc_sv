@@ -7,8 +7,10 @@
  * ("parmesan" for milk, "soy sauce" for wheat and soy, "flour" for wheat), handles plurals and
  * "-ed" forms, ignores a short list of look-alikes ("coconut milk", "peanut butter" for milk,
  * "water chestnut"), and lets an explicit qualifier ("dairy-free yogurt", "gluten-free pasta")
- * clear the next few words for the allergen it names. A qualifier never clears a word that is
- * the allergen itself ("soy-free tofu" is still soy). A clean result is not a safety guarantee.
+ * clear the noun right after it for the allergen it names. That reach is two words at most and
+ * ends early at any punctuation or joining word ("vegan chili with cheese" still finds cheese).
+ * A qualifier never clears a word that is the allergen itself ("soy-free tofu" is still soy). A
+ * clean result is not a safety guarantee.
  */
 import type { AllergenId } from '@/domain/types/allergens';
 
@@ -74,11 +76,15 @@ const WHEAT_TERMS = [
 const TERMS: Readonly<Record<AllergenId, readonly string[]>> = {
   milk: [
     'milk',
+    'milky',
     'butter',
+    'buttery',
     'buttermilk',
     'cream',
+    'creamy',
     'creme fraiche',
     'cheese',
+    'cheesy',
     'parmesan',
     'mozzarella',
     'cheddar',
@@ -102,7 +108,7 @@ const TERMS: Readonly<Record<AllergenId, readonly string[]>> = {
     'dairy',
     'lactose',
   ],
-  egg: ['egg', 'yolk', 'egg white', 'mayonnaise', 'mayo', 'meringue', 'aioli'],
+  egg: ['egg', 'eggy', 'yolk', 'egg white', 'mayonnaise', 'mayo', 'meringue', 'aioli'],
   fish: [
     'fish',
     'salmon',
@@ -261,11 +267,56 @@ const QUALIFIERS: Readonly<Record<string, readonly AllergenId[]>> = {
   'plant-based': ['milk', 'egg', 'fish', 'shellfish'],
 };
 
-/** How many words after a qualifier it covers. */
-const QUALIFIER_REACH = 3;
+/** How many words after a qualifier it can cover: the noun it describes, at most two words. */
+const QUALIFIER_REACH = 2;
+
+/**
+ * Words that start a new part of a sentence. A qualifier never reaches past one, so in "vegan
+ * stock and butter" the butter is still found.
+ */
+const JOINERS: ReadonlySet<string> = new Set([
+  'and',
+  'or',
+  'but',
+  'plus',
+  'with',
+  'without',
+  'then',
+  'on',
+  'onto',
+  'over',
+  'into',
+  'in',
+  'to',
+  'top',
+  'topped',
+  'add',
+  'added',
+  'serve',
+  'served',
+  'sprinkle',
+  'garnish',
+  'before',
+  'after',
+  'also',
+  'alongside',
+]);
+
+interface Token {
+  readonly word: string;
+  /** Punctuation (a comma, a full stop, a bracket, a slash…) sits between this word and the last. */
+  readonly breakBefore: boolean;
+}
+
+const WORD = /[a-z0-9]+(?:['-][a-z0-9]+)*/g;
 
 /** Lowercase, accents folded, "dairy free" → "dairy-free", split into words. */
 export function words(text: string): string[] {
+  return tokens(text).map((token) => token.word);
+}
+
+/** The words of a text and where punctuation fell between them. */
+function tokens(text: string): Token[] {
   const folded = text
     .normalize('NFKD')
     .replace(/\p{M}+/gu, '')
@@ -273,7 +324,14 @@ export function words(text: string): string[] {
     .replace(/[‘’]/g, "'")
     .replace(/\b(dairy|milk|egg|gluten|wheat|nut|soy|sesame)\s+free\b/g, '$1-free')
     .replace(/\bplant\s+based\b/g, 'plant-based');
-  return folded.match(/[a-z0-9]+(?:['-][a-z0-9]+)*/g) ?? [];
+  const found: Token[] = [];
+  let end = 0;
+  for (const match of folded.matchAll(WORD)) {
+    const start = match.index ?? 0;
+    found.push({ word: match[0], breakBefore: /\S/.test(folded.slice(end, start)) });
+    end = start + match[0].length;
+  }
+  return found;
 }
 
 /** Singular, un-"-ed" form, so "anchovies" meets "anchovy" and "buttered" meets "butter". */
@@ -287,6 +345,25 @@ export function stem(word: string): string {
 type Phrase = readonly string[];
 
 const phrase = (text: string): Phrase => words(text).map(stem);
+
+/** Describing words and the ingredient they come from. */
+const ADJECTIVE_ROOTS: Readonly<Record<string, string>> = {
+  buttery: 'butter',
+  creamy: 'cream',
+  cheesy: 'cheese',
+  milky: 'milk',
+  eggy: 'egg',
+};
+
+/**
+ * One spelling for a mention, so "Butter", "buttered" and "buttery" all read as "butter". Used
+ * to tell whether two mentions name the same ingredient.
+ */
+export function mentionRoot(found: string): string {
+  return phrase(found)
+    .map((part) => ADJECTIVE_ROOTS[part] ?? part)
+    .join(' ');
+}
 
 interface CompiledRules {
   readonly terms: readonly Phrase[];
@@ -320,7 +397,8 @@ function samePhrase(a: Phrase, b: Phrase): boolean {
 
 /** Every mention of `allergen` in one text. */
 function scan(text: string, allergen: AllergenId): string[] {
-  const raw = words(text);
+  const parts = tokens(text);
+  const raw = parts.map((token) => token.word);
   const stems = raw.map(stem);
   const rules = rulesFor(allergen);
   const covered = new Array<boolean>(stems.length).fill(false);
@@ -335,6 +413,8 @@ function scan(text: string, allergen: AllergenId): string[] {
   const found: string[] = [];
   for (let index = 0; index < stems.length; index++) {
     const word = raw[index] ?? '';
+    // A qualifier describes only the words right after it, within the same part of the sentence.
+    if (parts[index]?.breakBefore || JOINERS.has(word)) clearedUntil = -1;
     if (QUALIFIERS[word]?.includes(allergen)) {
       clearedUntil = index + QUALIFIER_REACH;
       continue;

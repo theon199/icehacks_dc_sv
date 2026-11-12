@@ -7,9 +7,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MakeoverRequest, MakeoverResponse } from '@/lib/api/ai';
 import { usePreferencesStore } from '@/stores';
 
+import type { AllergenId } from '@/domain/types/allergens';
+
 import { aiApi, describeAiProblem, type AiProblem } from './deps';
-import { findAllergenMentions, type AllergenHit } from './logic/allergenCheck';
-import { checkedTexts } from './logic/request';
+import type { AllergenHit } from './logic/allergenCheck';
+import { makeoverAllergenHits } from './logic/request';
 
 export type MakeoverState =
   | { readonly status: 'idle' }
@@ -19,6 +21,8 @@ export type MakeoverState =
       readonly makeover: MakeoverResponse;
       /** Declared allergens the answer still mentions; saving is blocked while any remain. */
       readonly hits: readonly AllergenHit[];
+      /** Every allergen the answer was checked against. */
+      readonly checked: readonly AllergenId[];
     }
   | { readonly status: 'failed'; readonly problem: AiProblem };
 
@@ -41,9 +45,9 @@ export function useMakeover() {
       if (controller.signal.aborted) return;
       const { prefs } = usePreferencesStore.getState();
       // Check against everything declared now and everything the request was made for.
-      const allergens = [...new Set([...prefs.allergens, ...request.allergens])];
-      const hits = findAllergenMentions(checkedTexts(makeover), allergens);
-      setState({ status: 'done', makeover, hits });
+      const checked = [...new Set([...prefs.allergens, ...request.allergens])];
+      const hits = makeoverAllergenHits(makeover, checked);
+      setState({ status: 'done', makeover, hits, checked });
     } catch (error) {
       if (controller.signal.aborted) return;
       setState({ status: 'failed', problem: describeAiProblem(error, COPY) });

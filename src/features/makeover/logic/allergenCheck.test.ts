@@ -20,6 +20,10 @@ describe('findAllergenMentions', () => {
     ['rolled oats', 'gluten', ['gluten:oats']],
     ['a drizzle of tahini', 'sesame', ['sesame:tahini']],
     ['Crème fraîche', 'milk', ['milk:creme fraiche']],
+    ['a buttery crumb', 'milk', ['milk:buttery']],
+    ['a cheesy topping', 'milk', ['milk:cheesy']],
+    ['creamy tomato soup', 'milk', ['milk:creamy']],
+    ['an eggy batter', 'egg', ['egg:eggy']],
   ] as const)('finds "%s" for %s', (text, allergen, expected) => {
     expect(found(text, [allergen])).toEqual(expected);
   });
@@ -58,6 +62,23 @@ describe('findAllergenMentions', () => {
       'milk:feta',
       'milk:cheese',
     ]);
+    expect(found('vegan stock simmered gently cheese', ['milk'])).toEqual(['milk:cheese']);
+  });
+
+  it('stops a qualifier at punctuation and joining words', () => {
+    expect(found('Top the vegan chili with cheese', ['milk'])).toEqual(['milk:cheese']);
+    expect(found('Use vegan stock, butter and parmesan', ['milk'])).toEqual([
+      'milk:butter',
+      'milk:parmesan',
+    ]);
+    expect(found('dairy-free. Add cream', ['milk'])).toEqual(['milk:cream']);
+    expect(found('gluten-free (or regular) pasta', ['gluten'])).toEqual(['gluten:pasta']);
+  });
+
+  it('still clears the noun a qualifier describes', () => {
+    expect(found('vegan parmesan', ['milk'])).toEqual([]);
+    expect(found('Grate over some vegan parmesan cheese.', ['milk'])).toEqual([]);
+    expect(found('a dairy-free creamy sauce', ['milk'])).toEqual([]);
   });
 
   it('reports where each mention is and ignores allergens nobody declared', () => {

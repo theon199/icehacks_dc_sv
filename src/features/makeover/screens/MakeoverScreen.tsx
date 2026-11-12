@@ -200,7 +200,7 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
           originalTitle={recipe.title}
           makeover={state.makeover}
           hits={state.hits}
-          checked={prefs.allergens}
+          checked={state.checked}
         />
       </Screen>
     );
