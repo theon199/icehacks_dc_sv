@@ -10,3 +10,5 @@ supabase
 tools/data
 assets
 *.db
+# Docs are prose edited by many contributors and are not machine-formatted.
+docs

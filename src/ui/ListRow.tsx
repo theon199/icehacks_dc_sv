@@ -70,13 +70,18 @@ export function ListRow({
         </Text>
       ) : null}
       {accessory ??
-        (onPress ? <Icon name="chevron.right" size={14} color="textSubtle" weight="semibold" /> : null)}
+        (onPress ? (
+          <Icon name="chevron.right" size={14} color="textSubtle" weight="semibold" />
+        ) : null)}
     </>
   );
 
   const rowStyle = [
     styles.row,
-    divider && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+    divider && {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+    },
   ];
 
   if (!onPress) {

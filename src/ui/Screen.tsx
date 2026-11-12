@@ -71,7 +71,9 @@ export function Screen({
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.flex, { paddingTop, paddingHorizontal: horizontal }, contentContainerStyle]}>
+    <View
+      style={[styles.flex, { paddingTop, paddingHorizontal: horizontal }, contentContainerStyle]}
+    >
       {children}
     </View>
   );

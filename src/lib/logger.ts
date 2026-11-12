@@ -49,7 +49,9 @@ export function createLogger(options: LoggerOptions): Logger {
 
   function write(level: LogLevel, message: string, context?: Record<string, unknown>) {
     if (levelRank[level] < levelRank[options.minLevel]) return;
-    const entry: LogEntry = context ? { level, message, context, at: now() } : { level, message, at: now() };
+    const entry: LogEntry = context
+      ? { level, message, context, at: now() }
+      : { level, message, at: now() };
     buffer.push(entry);
     if (buffer.length > BUFFER_SIZE) buffer.shift();
     for (const sink of sinks) {

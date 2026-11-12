@@ -21,7 +21,14 @@ export interface IconProps {
  * Decorative icon. Icons are hidden from assistive technology; the control that contains one is
  * responsible for its accessible label.
  */
-export function Icon({ name, android, size = 22, color = 'text', weight = 'medium', style }: IconProps) {
+export function Icon({
+  name,
+  android,
+  size = 22,
+  color = 'text',
+  weight = 'medium',
+  style,
+}: IconProps) {
   const theme = useTheme();
   const box = { width: size, height: size };
   return (

@@ -8,6 +8,7 @@
  *
  * Usage: npm run brand:assets  (requires Node 22.18+ for TypeScript imports)
  */
+import { Buffer } from 'node:buffer';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

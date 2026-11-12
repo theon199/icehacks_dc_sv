@@ -36,7 +36,12 @@ const sizeStyle: Record<ButtonSize, { height: number; paddingHorizontal: number;
 
 const variantColors: Record<
   ButtonVariant,
-  { bg: keyof Palette | null; pressed: keyof Palette | null; fg: keyof Palette; border?: keyof Palette }
+  {
+    bg: keyof Palette | null;
+    pressed: keyof Palette | null;
+    fg: keyof Palette;
+    border?: keyof Palette;
+  }
 > = {
   primary: { bg: 'primary', pressed: 'primaryPressed', fg: 'onPrimary' },
   secondary: { bg: 'surface', pressed: 'surfaceSunken', fg: 'primary', border: 'border' },

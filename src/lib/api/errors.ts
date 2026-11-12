@@ -84,7 +84,10 @@ export function apiErrorMessage(error: ApiError): string {
     case 'rate_limited':
       return `You've hit the limit for now. Try again ${waitPhrase(error.retryAfterSeconds)}.`;
     case 'validation':
-      return error.serverMessage ?? 'Something in that request was not quite right. Please check it and try again.';
+      return (
+        error.serverMessage ??
+        'Something in that request was not quite right. Please check it and try again.'
+      );
     case 'server':
       return 'Something went wrong on our side. Please try again shortly.';
   }

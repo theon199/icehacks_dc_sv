@@ -9,7 +9,13 @@ jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
   notificationAsync: jest.fn(() => Promise.resolve()),
   selectionAsync: jest.fn(() => Promise.resolve()),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy', Soft: 'soft', Rigid: 'rigid' },
+  ImpactFeedbackStyle: {
+    Light: 'light',
+    Medium: 'medium',
+    Heavy: 'heavy',
+    Soft: 'soft',
+    Rigid: 'rigid',
+  },
   NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
 }));
 
@@ -56,6 +62,6 @@ jest.mock('expo-sqlite/kv-store', () => {
 });
 
 jest.mock('expo-symbols', () => {
-  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  const { View } = jest.requireActual<{ View: unknown }>('react-native');
   return { SymbolView: View };
 });

@@ -53,11 +53,7 @@ export function EmptyState({
         ) : null}
       </View>
       {actionLabel && onAction ? (
-        <Button
-          label={actionLabel}
-          onPress={onAction}
-          variant={danger ? 'secondary' : 'primary'}
-        />
+        <Button label={actionLabel} onPress={onAction} variant={danger ? 'secondary' : 'primary'} />
       ) : null}
       {children}
     </View>
@@ -72,6 +68,12 @@ const styles = StyleSheet.create({
     paddingVertical: space.xxxl,
     paddingHorizontal: space.xl,
   },
-  badge: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+  badge: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   text: { gap: space.sm, maxWidth: 340 },
 });

@@ -5,14 +5,7 @@ import { useTheme } from './ThemeProvider';
 import { maxFontSizeMultiplier, type Palette, type TextVariant } from './tokens';
 
 export type TextTone =
-  | 'default'
-  | 'muted'
-  | 'subtle'
-  | 'primary'
-  | 'accent'
-  | 'danger'
-  | 'success'
-  | 'inverse';
+  'default' | 'muted' | 'subtle' | 'primary' | 'accent' | 'danger' | 'success' | 'inverse';
 
 const toneColor: Record<TextTone, keyof Palette> = {
   default: 'text',

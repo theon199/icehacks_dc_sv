@@ -15,7 +15,11 @@ const PREFIX = 'famara:';
 
 export const storageKey = (name: string) => `${PREFIX}${name}`;
 
-function decode<S extends z.ZodType>(name: string, raw: string | null, schema: S): z.infer<S> | null {
+function decode<S extends z.ZodType>(
+  name: string,
+  raw: string | null,
+  schema: S,
+): z.infer<S> | null {
   if (raw == null) return null;
   try {
     const parsed = schema.safeParse(JSON.parse(raw));

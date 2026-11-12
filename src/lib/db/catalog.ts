@@ -16,8 +16,8 @@ import {
 import { z } from 'zod';
 
 import { logger } from '../logger';
-import { defineKvKey } from '../storage/kv';
 import { resolveCatalogAssetId } from './catalogAsset';
+import { defineKvKey } from '../storage/kv';
 
 /** Must equal `meta.schema_version` of the bundled catalog. Bump together with docs/DATA.md. */
 export const CATALOG_SCHEMA_VERSION = 1;

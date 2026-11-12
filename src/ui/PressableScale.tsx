@@ -12,8 +12,7 @@ import { useTheme } from './ThemeProvider';
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export type PressableStyle =
-  | StyleProp<ViewStyle>
-  | ((state: { pressed: boolean }) => StyleProp<ViewStyle>);
+  StyleProp<ViewStyle> | ((state: { pressed: boolean }) => StyleProp<ViewStyle>);
 
 export interface PressableScaleProps extends Omit<PressableProps, 'style' | 'children'> {
   children?: ReactNode;
@@ -39,7 +38,7 @@ export function PressableScale({
   const [pressed, setPressed] = useState(false);
   const target = pressedScale ?? theme.motion.pressScale;
   const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   const duration = theme.motion.duration.fast;
   const resolvedStyle = typeof style === 'function' ? style({ pressed }) : style;
 
@@ -47,12 +46,12 @@ export function PressableScale({
     <AnimatedPressable
       onPressIn={(event) => {
         setPressed(true);
-        if (!reduceMotion && target !== 1) scale.value = withTiming(target, { duration });
+        if (!reduceMotion && target !== 1) scale.set(withTiming(target, { duration }));
         onPressIn?.(event);
       }}
       onPressOut={(event) => {
         setPressed(false);
-        if (!reduceMotion) scale.value = withTiming(1, { duration });
+        if (!reduceMotion) scale.set(withTiming(1, { duration }));
         onPressOut?.(event);
       }}
       style={[resolvedStyle, animatedStyle]}

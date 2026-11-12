@@ -224,7 +224,12 @@ export interface Elevation {
 
 export const elevation: Record<'none' | 'low' | 'medium' | 'high', Elevation> = {
   none: { shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
-  low: { shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  low: {
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
   medium: {
     shadowOpacity: 0.1,
     shadowRadius: 14,

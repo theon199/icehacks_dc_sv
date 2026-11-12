@@ -8,8 +8,8 @@
 import type { z } from 'zod';
 
 import { getPublicEnv } from '../env';
-import { getAccessToken } from '../supabase/client';
 import { ApiError, kindForStatus } from './errors';
+import { getAccessToken } from '../supabase/client';
 
 export const DEFAULT_TIMEOUT_MS = 20_000;
 const FUNCTION_NAME = /^[a-z0-9][a-z0-9_-]*$/i;

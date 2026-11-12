@@ -16,12 +16,7 @@ export interface WordmarkProps {
 export function Wordmark({ size = 40 }: WordmarkProps) {
   const theme = useTheme();
   return (
-    <View
-      style={styles.row}
-      accessible
-      accessibilityRole="header"
-      accessibilityLabel="Famara"
-    >
+    <View style={styles.row} accessible accessibilityRole="header" accessibilityLabel="Famara">
       <LogoMark size={size} decorative />
       <Text
         accessible={false}

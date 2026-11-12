@@ -35,7 +35,8 @@ const impactStyle: Record<ImpactStrength, Haptics.ImpactFeedbackStyle> = {
 export const haptics = {
   /** Picking a value: chips, segmented controls, toggles. */
   selection: () => run(() => Haptics.selectionAsync()),
-  impact: (strength: ImpactStrength = 'light') => run(() => Haptics.impactAsync(impactStyle[strength])),
+  impact: (strength: ImpactStrength = 'light') =>
+    run(() => Haptics.impactAsync(impactStyle[strength])),
   success: () => run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
   warning: () => run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)),
   error: () => run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)),
