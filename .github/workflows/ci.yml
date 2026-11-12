@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Placeholder public values so config validation and bundling work without secrets.
+  EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder_key_000000
+
+jobs:
+  verify:
+    name: Typecheck, lint, format, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Format
+        run: npm run format:check
+      - name: Unit tests
+        run: npm test -- --ci --maxWorkers=50%
+
+  bundle:
+    name: iOS bundle size
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Export iOS bundle and check budget
+        run: npm run bundle:check

@@ -18,7 +18,8 @@
     "test": "jest",
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "brand:assets": "node tools/brand/generate.mjs",
-    "bundle:check": "node tools/bundle-check.mjs"
+    "bundle:check": "npm run bundle:export && node tools/bundle-check.mjs dist",
+    "bundle:export": "expo export --platform ios --output-dir dist"
   },
   "dependencies": {
     "@expo-google-fonts/figtree": "^0.4.1",
