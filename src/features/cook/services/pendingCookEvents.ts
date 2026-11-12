@@ -86,19 +86,20 @@ export interface FlushDeps {
   now?: () => number;
 }
 
-let flushing: Promise<number> | null = null;
+/** Runs in progress, one per account, so a second account never piggybacks on the first. */
+const inFlight = new Map<string, Promise<number>>();
 
 /**
  * Sends this account's queued cooks in order. Stops at the first temporary failure (the network is
  * likely down) and drops events the server refuses or that have grown too old to be accepted.
- * Returns how many were delivered. Concurrent calls share one run.
+ * Returns how many were delivered. Concurrent calls for the same account share one run.
  */
 export function flushPendingCookEvents(ownerId: string, deps: FlushDeps): Promise<number> {
-  if (flushing) return flushing;
-  flushing = runFlush(ownerId, deps).finally(() => {
-    flushing = null;
-  });
-  return flushing;
+  const running = inFlight.get(ownerId);
+  if (running) return running;
+  const run = runFlush(ownerId, deps).finally(() => inFlight.delete(ownerId));
+  inFlight.set(ownerId, run);
+  return run;
 }
 
 async function runFlush(ownerId: string, deps: FlushDeps): Promise<number> {

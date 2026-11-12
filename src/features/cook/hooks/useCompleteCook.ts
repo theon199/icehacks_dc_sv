@@ -28,8 +28,11 @@ function storeDeps(userId: string | null): CompletionDeps {
     recordCookEvent: (request) =>
       userId ? recordCookEvent(request) : Promise.reject(new Error('signed out')),
     classifyFailure: classifyCookEventError,
+    // Signed out there is no account to deliver to later: the cook stays local only.
     enqueue: (request) => {
-      if (userId) usePendingCookEvents.getState().add(userId, request);
+      if (!userId) return false;
+      usePendingCookEvents.getState().add(userId, request);
+      return true;
     },
     localDate: localDateString,
   };

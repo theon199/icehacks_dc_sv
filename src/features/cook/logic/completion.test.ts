@@ -37,7 +37,10 @@ function storeDeps(recordCookEvent: CompletionDeps['recordCookEvent']): Completi
     recordFeedback: (event, at) => useFeedbackStore.getState().record(event, at),
     recordCookEvent,
     classifyFailure: classifyCookEventError,
-    enqueue: (request) => usePendingCookEvents.getState().add('user-1', request),
+    enqueue: (request) => {
+      usePendingCookEvents.getState().add('user-1', request);
+      return true;
+    },
     localDate: localDateString,
   };
 }
@@ -102,6 +105,16 @@ describe('completeCook', () => {
         }),
       },
     ]);
+  });
+
+  it('reports local_only when there is no account to queue the event for', async () => {
+    const rpc = jest.fn().mockRejectedValue(new Error('signed out'));
+    const deps: CompletionDeps = { ...storeDeps(rpc), enqueue: () => false };
+
+    const outcome = await completeCook(completion(), deps);
+
+    expect(outcome.status).toBe('local_only');
+    expect(selectCookEntries(useCookLogStore.getState())).toHaveLength(1);
   });
 
   it('does not queue an event the server refused', async () => {
@@ -186,12 +199,61 @@ describe('classifyCookEventError', () => {
     expect(classifyCookEventError(new CookEventError('x', '22023'))).toBe('drop');
     expect(classifyCookEventError(new CookEventError('x', 'PT429'))).toBe('drop');
   });
+
+  it('drops cooks from an account that may not record them (suspended or age gate)', () => {
+    expect(classifyCookEventError(new CookEventError('suspended', 'PT403'))).toBe('drop');
+  });
 });
 
 describe('badgeMessage', () => {
-  it('names the badges just earned', () => {
+  it('counts the badges just earned without restating their names', () => {
     expect(badgeMessage([])).toBeNull();
-    expect(badgeMessage(['first_cook'])).toBe('New badge: First dish cooked');
-    expect(badgeMessage(['mystery'])).toBe('New badge earned');
+    expect(badgeMessage(['first_cook'])).toBe('You earned a new badge. See it on your profile.');
+    expect(badgeMessage(['first_cook', 'streak_3', 'first_cook'])).toBe(
+      'You earned 2 new badges. See them on your profile.',
+    );
+  });
+});
+
+describe('flushPendingCookEvents across accounts', () => {
+  it('runs a separate flush for a second account while the first is still sending', async () => {
+    const at = new Date();
+    const queue = usePendingCookEvents.getState();
+    queue.add(
+      'user-1',
+      buildCookEventRequest(completion({ clientEventId: 'one', cookedAt: at }), localDateString),
+    );
+    queue.add(
+      'user-2',
+      buildCookEventRequest(completion({ clientEventId: 'two', cookedAt: at }), localDateString),
+    );
+    let release: () => void = () => undefined;
+    const slow = jest.fn(
+      () =>
+        new Promise<{ eventId: string; newBadges: string[] }>((resolve) => {
+          release = () => resolve({ eventId: 'x', newBadges: [] });
+        }),
+    );
+    const fast = jest.fn().mockResolvedValue({ eventId: 'y', newBadges: [] });
+
+    const first = flushPendingCookEvents('user-1', {
+      recordCookEvent: slow,
+      classifyFailure: classifyCookEventError,
+    });
+    const again = flushPendingCookEvents('user-1', {
+      recordCookEvent: fast,
+      classifyFailure: classifyCookEventError,
+    });
+    const second = flushPendingCookEvents('user-2', {
+      recordCookEvent: fast,
+      classifyFailure: classifyCookEventError,
+    });
+
+    expect(again).toBe(first);
+    await expect(second).resolves.toBe(1);
+    expect(fast.mock.calls.map(([sent]) => sent.clientEventId)).toEqual(['two']);
+    release();
+    await expect(first).resolves.toBe(1);
+    expect(usePendingCookEvents.getState().events).toEqual([]);
   });
 });

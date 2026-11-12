@@ -41,14 +41,21 @@ export async function recordCookEvent(request: CookEventRequest): Promise<CookEv
   return { eventId: parsed.data.event_id, newBadges: parsed.data.new_badges };
 }
 
+/** Server answers that mean "this cook will never be accepted as sent". */
+const FINAL_REFUSALS = new Set([
+  'invalid_response',
+  // The account may not record cooks (suspended, or below the minimum age).
+  'PT403',
+  // The daily cook limit.
+  'PT429',
+]);
+
 /**
- * Codes the server uses for requests that will never succeed as sent: bad input (`22023`, or any
- * other data exception) and the daily cook limit (`PT429`). Everything else, including a dropped
- * connection or an expired session, is worth retrying later.
+ * Whether a failed cook event is worth sending again. Refusals that will not change with a retry
+ * (the codes above, and any data exception `22xxx` such as bad input) are dropped; everything
+ * else, including a dropped connection or an expired session, is retried later.
  */
 export function classifyCookEventError(error: unknown): CookEventFailure {
   if (!(error instanceof CookEventError) || error.code === null) return 'retry';
-  const code = error.code;
-  if (code === 'invalid_response' || code === 'PT429' || code.startsWith('22')) return 'drop';
-  return 'retry';
+  return FINAL_REFUSALS.has(error.code) || error.code.startsWith('22') ? 'drop' : 'retry';
 }

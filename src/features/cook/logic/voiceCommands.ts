@@ -102,34 +102,17 @@ const UNIT_SECONDS: Readonly<Record<string, number>> = {
   hrs: 3600,
 };
 
-const NUMBER_WORDS: Readonly<Record<string, number>> = {
-  zero: 0,
-  one: 1,
-  two: 2,
-  three: 3,
-  four: 4,
-  five: 5,
-  six: 6,
-  seven: 7,
-  eight: 8,
-  nine: 9,
-  ten: 10,
-  eleven: 11,
-  twelve: 12,
-  thirteen: 13,
-  fourteen: 14,
-  fifteen: 15,
-  sixteen: 16,
-  seventeen: 17,
-  eighteen: 18,
-  nineteen: 19,
-  twenty: 20,
-  thirty: 30,
-  forty: 40,
-  fifty: 50,
-  sixty: 60,
-  ninety: 90,
-};
+/** Spoken numbers: the words below twenty by position, then the tens, then "hundred". */
+const BELOW_TWENTY = (
+  'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen ' +
+  'fifteen sixteen seventeen eighteen nineteen'
+).split(' ');
+const TENS = 'twenty thirty forty fifty sixty seventy eighty ninety'.split(' ');
+const NUMBER_WORDS: ReadonlyMap<string, number> = new Map([
+  ...BELOW_TWENTY.map((word, value): [string, number] => [word, value]),
+  ...TENS.map((word, index): [string, number] => [word, (index + 2) * 10]),
+  ['hundred', 100],
+]);
 
 const MAX_TIMER_SECONDS = 12 * 3600;
 
@@ -146,7 +129,7 @@ export function tokenize(text: string): string[] {
 
 function numberValue(word: string): number | null {
   if (/^\d+(\.\d+)?$/.test(word)) return Number(word);
-  return NUMBER_WORDS[word] ?? null;
+  return NUMBER_WORDS.get(word) ?? null;
 }
 
 const isNumberish = (word: string) =>
@@ -182,10 +165,19 @@ export function parseDuration(words: readonly string[]): number | null {
       }
       continue;
     }
+    if (word === 'hundred') {
+      // "a hundred" / "one hundred" / "two hundred": scales whatever came before it.
+      pending = (pending ?? 1) * 100;
+      continue;
+    }
     const value = numberValue(word);
     if (value !== null) {
-      // "twenty five" → 25; "one and a half" → 1.5 (handled by the half branch).
-      pending = pending !== null && pending >= 20 && value < 10 ? pending + value : value;
+      // "twenty five" → 25, "one hundred twenty" → 120; "one and a half" → 1.5 (half branch).
+      const before: number | null = pending;
+      const joins: boolean =
+        before !== null &&
+        ((before >= 100 && before % 100 === 0 && value < 100) || (before >= 20 && value < 10));
+      pending = joins && before !== null ? before + value : value;
     }
   }
   if (!found || total <= 0) return null;

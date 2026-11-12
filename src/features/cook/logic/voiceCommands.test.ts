@@ -70,6 +70,14 @@ describe('parseDuration', () => {
     expect(parseDuration(tokenize('minute'))).toBeNull();
   });
 
+  it('reads the tens up to ninety and hundreds', () => {
+    expect(parseDuration(tokenize('seventy five seconds'))).toBe(75);
+    expect(parseDuration(tokenize('eighty seconds'))).toBe(80);
+    expect(parseDuration(tokenize('a hundred seconds'))).toBe(100);
+    expect(parseDuration(tokenize('one hundred twenty seconds'))).toBe(120);
+    expect(parseDuration(tokenize('two hundred and fifty seconds'))).toBe(250);
+  });
+
   it('caps absurd durations at twelve hours', () => {
     expect(parseDuration(tokenize('ninety hours'))).toBe(12 * 3600);
   });
@@ -139,5 +147,14 @@ describe('createVoiceCommandStream', () => {
     // The recogniser shrinks its guess; a new command after it is still heard.
     expect(stream.push('', false)).toEqual([]);
     expect(stream.push('next', false)).toEqual([{ type: 'next' }]);
+  });
+});
+
+describe('parseVoiceCommand with larger numbers', () => {
+  it('starts a timer for seventy five seconds', () => {
+    expect(parseVoiceCommand('set a timer for seventy five seconds')).toEqual({
+      type: 'start_timer',
+      seconds: 75,
+    });
   });
 });

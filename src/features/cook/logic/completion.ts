@@ -42,7 +42,8 @@ export interface CompletionDeps {
   recordFeedback(event: NewFeedbackEvent, at: string): void;
   recordCookEvent(request: CookEventRequest): Promise<CookEventResponse>;
   classifyFailure(error: unknown): CookEventFailure;
-  enqueue(request: CookEventRequest): void;
+  /** Queues the request for a later retry; false when it cannot be queued (signed out). */
+  enqueue(request: CookEventRequest): boolean;
   localDate(date: Date): string;
 }
 
@@ -103,8 +104,7 @@ export async function reportCook(
     const response = await deps.recordCookEvent(request);
     return { status: 'synced', newBadges: response.newBadges };
   } catch (error) {
-    if (deps.classifyFailure(error) === 'retry') {
-      deps.enqueue(request);
+    if (deps.classifyFailure(error) === 'retry' && deps.enqueue(request)) {
       return { status: 'queued' };
     }
     return { status: 'local_only' };
@@ -122,22 +122,14 @@ export async function completeCook(
     : { status: result.status, entryId };
 }
 
-const BADGE_COPY: Readonly<Record<string, string>> = {
-  first_cook: 'First dish cooked',
-  cooks_10: '10 dishes cooked',
-  cooks_50: '50 dishes cooked',
-  streak_3: '3-day cooking streak',
-  streak_7: '7-day cooking streak',
-  streak_30: '30-day cooking streak',
-  cuisines_5: '5 cuisines explored',
-  cuisines_10: '10 cuisines explored',
-  first_post: 'First post shared',
-};
-
-/** Toast copy for badges just earned, or null when there are none. */
+/**
+ * Toast copy for badges just earned, or null when there are none. Badge names live on the server
+ * (and on the profile screen that lists them), so the toast counts them rather than naming them.
+ */
 export function badgeMessage(badges: readonly string[]): string | null {
-  if (badges.length === 0) return null;
-  const named = badges.map((id) => BADGE_COPY[id]).filter((name): name is string => !!name);
-  if (named.length === 0) return badges.length === 1 ? 'New badge earned' : 'New badges earned';
-  return `New badge: ${named.join(', ')}`;
+  const count = new Set(badges).size;
+  if (count === 0) return null;
+  return count === 1
+    ? 'You earned a new badge. See it on your profile.'
+    : `You earned ${count} new badges. See them on your profile.`;
 }
