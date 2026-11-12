@@ -18,7 +18,11 @@ export function youtubeVideoId(url: string): string | null {
   let candidate: string | null = null;
   if (host === 'youtu.be') {
     candidate = parsed.pathname.split('/')[1] ?? null;
-  } else if (host === 'youtube.com' || host === 'youtube-nocookie.com' || host === 'music.youtube.com') {
+  } else if (
+    host === 'youtube.com' ||
+    host === 'youtube-nocookie.com' ||
+    host === 'music.youtube.com'
+  ) {
     if (parsed.pathname === '/watch') candidate = parsed.searchParams.get('v');
     else {
       const [, kind, id] = parsed.pathname.split('/');
@@ -79,7 +83,13 @@ export function tutorialItems(tutorials: readonly RecipeTutorial[]): TutorialIte
     if (seen.has(key)) continue;
     seen.add(key);
     if (videoId) {
-      out.push({ kind: 'youtube', key, videoId, title: t.title ?? 'Video walkthrough', url: t.url });
+      out.push({
+        kind: 'youtube',
+        key,
+        videoId,
+        title: t.title ?? 'Video walkthrough',
+        url: t.url,
+      });
     } else {
       out.push({
         kind: 'link',

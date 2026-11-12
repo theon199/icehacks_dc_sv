@@ -256,7 +256,11 @@ export function pairFamily<T extends { id: string; familyId: string; healthScore
   let best: T | null = null;
   for (const other of candidates) {
     if (other.id === recipe.id || other.familyId !== recipe.familyId) continue;
-    if (!best || Math.abs(other.healthScore - recipe.healthScore) > Math.abs(best.healthScore - recipe.healthScore)) {
+    if (
+      !best ||
+      Math.abs(other.healthScore - recipe.healthScore) >
+        Math.abs(best.healthScore - recipe.healthScore)
+    ) {
       best = other;
     }
   }

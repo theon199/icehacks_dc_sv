@@ -11,6 +11,7 @@ import {
   GOAL_DETAILS,
   recipeGoalMask,
   type FeatureName,
+  type Goal,
   type RankContext,
   type RecipeScore,
   type RecipeSummary,
@@ -77,7 +78,9 @@ function explainFeature(
       if (ctx.loved.has(recipe.cuisine)) return { detail: `You love ${name} food.` };
       const neighbour = ctx.lovedRegions.get(recipe.region);
       if (neighbour) {
-        return { detail: `${name} cooking, close to the ${cuisineLabel(neighbour)} food you love.` };
+        return {
+          detail: `${name} cooking, close to the ${cuisineLabel(neighbour)} food you love.`,
+        };
       }
       return { detail: `${name} cooking is outside the cuisines you picked.` };
     }
@@ -90,7 +93,7 @@ function explainFeature(
       }
       const mask = recipeGoalMask(recipe.goalTags);
       const served = ctx.goals.filter((goal) => mask & GOAL_DETAILS[goal].mask);
-      const label = (goals: typeof served) =>
+      const label = (goals: readonly Goal[]) =>
         listOf(goals.map((goal) => GOAL_DETAILS[goal].label.toLowerCase()));
       if (served.length === 0) {
         return {
