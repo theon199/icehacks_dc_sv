@@ -1,6 +1,6 @@
 import { defaultPreferences } from '@/stores';
 
-import { SAFETY_NOT_ANSWERED, chefProfileFrom } from './profile';
+import { chefProfileFrom } from './profile';
 import { answeredPrefs } from '../__fixtures__/recipe';
 
 describe('chefProfileFrom', () => {
@@ -12,12 +12,24 @@ describe('chefProfileFrom', () => {
       allergens: ['milk'],
       diets: ['vegan'],
     });
+    expect(profile.allergens_answered).toBe(false);
     expect(profile.allergens).toEqual([]);
-    expect(profile.diet).toEqual([SAFETY_NOT_ANSWERED]);
+    expect(profile.diet).toEqual([]);
   });
 
-  it('is a lowercase identifier Chef accepts as a diet entry', () => {
-    expect(SAFETY_NOT_ANSWERED).toMatch(/^[a-z][a-z0-9_]{0,39}$/);
+  it('leaves the flag out once answered, which Chef reads as answered', () => {
+    const profile = chefProfileFrom(answeredPrefs({ allergens: ['milk'] }));
+    expect('allergens_answered' in profile).toBe(false);
+  });
+
+  it('only ever sends lowercase identifiers as diet entries', () => {
+    const slug = /^[a-z][a-z0-9_]{0,39}$/;
+    for (const prefs of [
+      { ...defaultPreferences, allergensAnswered: false },
+      answeredPrefs({ diets: ['vegetarian', 'pescatarian'] }),
+    ]) {
+      for (const entry of chefProfileFrom(prefs).diet) expect(entry).toMatch(slug);
+    }
   });
 
   it('sends an explicit "none" as empty lists once answered', () => {
