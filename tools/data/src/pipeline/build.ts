@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { ingredientAllergens, ingredientAllergenStatus, ingredientDietFlags, gramsPerUnit, pluralName } from '../derive/ingredients.ts';
 import { nutrientProfile, type NutrientProfile } from '../derive/nutrition.ts';
@@ -115,24 +115,39 @@ export async function buildCatalog(log: (message: string) => void): Promise<Buil
   const epoch = process.env.SOURCE_DATE_EPOCH;
   const builtAt = epoch && /^\d+$/.test(epoch) ? new Date(Number(epoch) * 1000).toISOString() : new Date().toISOString();
   const sourceDigest = digest({ sources, ingredients: INGREDIENTS, substitutions: SUBSTITUTIONS, fdc: [...fdcIds].sort((a, b) => a - b) });
+  // Everything is written next to the assets first and only moved into place once every
+  // post-write gate passes, so a failing build never leaves a half-updated catalog behind.
   mkdirSync(dirname(DB_PATH), { recursive: true });
-  const dbCheck = writeCatalog({ path: DB_PATH, builtAt, sourceDigest, ingredients: ingredientRows, recipes, substitutions: SUBSTITUTIONS });
-  gates.check(dbCheck.integrity === 'ok', () => `sqlite integrity_check: ${dbCheck.integrity}`);
-  gates.check(dbCheck.foreignKeyViolations === 0, () => `sqlite foreign_key_check: ${dbCheck.foreignKeyViolations} violations`);
-  gates.check(dbCheck.ftsRows === recipes.length, () => `FTS rows ${dbCheck.ftsRows} != recipes ${recipes.length}`);
+  const stagedDb = `${DB_PATH}.staging`;
+  const stagedManifest = `${MANIFEST_PATH}.staging`;
+  try {
+    const dbCheck = writeCatalog({ path: stagedDb, builtAt, sourceDigest, ingredients: ingredientRows, recipes, substitutions: SUBSTITUTIONS });
+    gates.check(dbCheck.integrity === 'ok', () => `sqlite integrity_check: ${dbCheck.integrity}`);
+    gates.check(dbCheck.foreignKeyViolations === 0, () => `sqlite foreign_key_check: ${dbCheck.foreignKeyViolations} violations`);
+    gates.check(dbCheck.ftsRows === recipes.length, () => `FTS rows ${dbCheck.ftsRows} != recipes ${recipes.length}`);
 
-  const bytes = statSync(DB_PATH).size;
-  gates.check(bytes < MAX_DB_BYTES, () => `catalog is ${bytes} bytes (limit ${MAX_DB_BYTES})`);
-  const sha256 = createHash('sha256').update(readFileSync(DB_PATH)).digest('hex');
-  const manifest = {
-    schema_version: SCHEMA_VERSION,
-    built_at: builtAt,
-    recipe_count: recipes.length,
-    ingredient_count: ingredientRows.length,
-    sha256,
-    bytes,
-  };
-  writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
-  if (gates.violations.length > 0) writeFileSync(REPORT_PATH, `${JSON.stringify({ ...report, violations: gates.violations }, null, 1)}\n`);
-  return { recipes: recipes.length, ingredients: ingredientRows.length, bytes, sha256, violations: gates.violations, checks: gates.checkCount };
+    const bytes = statSync(stagedDb).size;
+    gates.check(bytes < MAX_DB_BYTES, () => `catalog is ${bytes} bytes (limit ${MAX_DB_BYTES})`);
+    const sha256 = createHash('sha256').update(readFileSync(stagedDb)).digest('hex');
+    if (gates.violations.length > 0) {
+      writeFileSync(REPORT_PATH, `${JSON.stringify({ ...report, violations: gates.violations }, null, 1)}\n`);
+      return { recipes: recipes.length, ingredients: ingredientRows.length, bytes, sha256, violations: gates.violations, checks: gates.checkCount };
+    }
+    const manifest = {
+      schema_version: SCHEMA_VERSION,
+      built_at: builtAt,
+      recipe_count: recipes.length,
+      ingredient_count: ingredientRows.length,
+      sha256,
+      bytes,
+    };
+    writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
+    renameSync(stagedDb, DB_PATH);
+    renameSync(stagedManifest, MANIFEST_PATH);
+    return { recipes: recipes.length, ingredients: ingredientRows.length, bytes, sha256, violations: gates.violations, checks: gates.checkCount };
+  } finally {
+    rmSync(stagedDb, { force: true });
+    rmSync(`${stagedDb}-journal`, { force: true });
+    rmSync(stagedManifest, { force: true });
+  }
 }

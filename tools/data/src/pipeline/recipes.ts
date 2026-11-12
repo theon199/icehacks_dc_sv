@@ -17,7 +17,7 @@ import {
   mapCourse,
 } from '../derive/recipe.ts';
 import { healthScore } from '../score.ts';
-import type { LinkStatus } from '../sources/links.ts';
+import { preferHttps, type LinkStatus } from '../sources/links.ts';
 import { DietFlag, type Nutrition, type NutritionConfidence, type SourceRecipe } from '../types.ts';
 import type { BuildIssue, RecipeIngredientRow, RecipeRow, RecipeTutorialRow } from './types.ts';
 
@@ -35,6 +35,8 @@ export function kcalInRange(kcal: number | null, published: boolean): boolean {
   const min = published ? PUBLISHED_KCAL_MIN : KCAL_PER_SERVING_RANGE[0];
   return kcal !== null && kcal >= min && kcal <= KCAL_PER_SERVING_RANGE[1];
 }
+/** Published prep times above this are treated as mostly waiting; active time is estimated instead. */
+const MAX_PUBLISHED_ACTIVE_MINUTES = 60;
 /** Salt assumed for a whole recipe when a line says "salt to taste". */
 const SALT_TO_TASTE_GRAMS = 1.5;
 
@@ -47,11 +49,15 @@ export interface RecipeContext {
   links: ReadonlyMap<string, LinkStatus>;
 }
 
-interface ParsedLine {
+export interface ParsedLine {
   row: RecipeIngredientRow;
   measure: Measure;
   matched: MatchedLine;
   primary: IngredientDef | null;
+  /** Ingredient whose weight and nutrients the line contributes (primary, or its preparedAs). */
+  nutritionDef: IngredientDef | null;
+  /** Grams the line adds to the recipe's nutrition and portion weight (frying oil is reduced). */
+  eatenGrams: number | null;
 }
 
 const OPTIONAL = /\boptional\b/i;
@@ -92,9 +98,15 @@ function parseLine(source: SourceRecipe, index: number, ctx: RecipeContext, issu
     const size = /^(small|medium|large)\b/i.exec(name)?.[1]?.toLowerCase();
     if (measure.size === null && (size === 'small' || size === 'medium' || size === 'large')) measure.size = size;
   }
+  // "250ml vegetable stock cube" measures made-up stock, not powder.
+  let nutritionDef = primary;
+  if (primary?.preparedAs && measure.quantity !== null && measure.unit !== null && measure.unit in VOLUME_ML) {
+    const ml = measure.quantity * VOLUME_ML[measure.unit as keyof typeof VOLUME_ML];
+    if (ml >= PREPARED_MIN_ML) nutritionDef = ctx.defs.get(primary.preparedAs) ?? primary;
+  }
   let grams: number | null = null;
-  if (primary && !measure.unquantified && measure.quantity !== null) {
-    grams = measureToGrams(measure, ctx.units.get(primary.id) ?? {});
+  if (nutritionDef && !measure.unquantified && measure.quantity !== null) {
+    grams = measureToGrams(measure, ctx.units.get(nutritionDef.id) ?? {});
     if (grams === null && measure.unit && GENERIC_UNIT_GRAMS[measure.unit] !== undefined) grams = measure.quantity * (GENERIC_UNIT_GRAMS[measure.unit] ?? 0);
     const explicit = measure.grams !== null || (measure.unit !== null && (measure.unit in MASS_UNITS || measure.unit in VOLUME_ML));
     if (grams !== null && !explicit && grams > MAX_COUNTED_LINE_GRAMS) {
@@ -116,7 +128,40 @@ function parseLine(source: SourceRecipe, index: number, ctx: RecipeContext, issu
     measure,
     matched,
     primary,
+    nutritionDef,
+    eatenGrams: grams,
   };
+}
+
+/** A concentrate measured by at least this volume is taken to mean the prepared liquid. */
+const PREPARED_MIN_ML = 60;
+
+/** Share of a frying medium that ends up in the food, and the ceiling relative to the food fried. */
+export const FRYING_OIL_ABSORBED_SHARE = 0.15;
+export const FRYING_OIL_MAX_SHARE_OF_FOOD = 0.15;
+/** Oil lines at least this heavy count as a frying medium when the method fries anything. */
+const FRYING_OIL_MIN_GRAMS = 120;
+const FRYING_LINE = /(?<!stir[- ]?)\b(?:deep[- ]?)?fr(?:y|ying)\b/i;
+/** Any frying verb in the method; "stir-fry" and the noun "frying pan" do not count. */
+const FRYING_METHOD = /(?<!stir[- ]?)\b(?:deep[- ]?|shallow[- ]?)?(?:fry|fries|fried|frying)\b(?!\s+pan)|\bdeep[- ]fat\b/i;
+
+/**
+ * Oil used as a frying medium is mostly left in the pan. A line counts as frying oil when it says
+ * so ("oil for frying", "2 quarts frying oil") or when it weighs at least 120 g in a recipe whose
+ * method fries something. Such lines contribute 15% of their weight, capped at 15% of the
+ * weight of the other food, to nutrition and portion estimates. The ingredient row keeps the
+ * measured weight.
+ */
+export function applyFryingAbsorption(lines: ParsedLine[], steps: readonly string[]): void {
+  const fries = steps.some((s) => FRYING_METHOD.test(s));
+  const isFrying = (l: ParsedLine) =>
+    l.nutritionDef?.category === 'oil' && l.eatenGrams !== null && (FRYING_LINE.test(l.row.text) || (fries && l.eatenGrams >= FRYING_OIL_MIN_GRAMS));
+  const frying = lines.filter(isFrying);
+  if (frying.length === 0) return;
+  const otherFood = lines.filter((l) => !isFrying(l) && !l.nutritionDef?.water).reduce((sum, l) => sum + (l.eatenGrams ?? 0), 0);
+  const oil = frying.reduce((sum, l) => sum + (l.eatenGrams ?? 0), 0);
+  const absorbed = Math.min(oil * FRYING_OIL_ABSORBED_SHARE, otherFood * FRYING_OIL_MAX_SHARE_OF_FOOD);
+  for (const line of frying) line.eatenGrams = oil > 0 ? ((line.eatenGrams ?? 0) / oil) * absorbed : 0;
 }
 
 interface Totals {
@@ -137,7 +182,7 @@ function totals(lines: readonly ParsedLine[], ctx: RecipeContext): Totals {
   let known = 0;
   let saltToTaste = false;
   for (const line of lines) {
-    const def = line.primary;
+    const def = line.nutritionDef;
     if (!def) {
       if (!line.measure.unquantified) quantified++;
       continue;
@@ -147,7 +192,7 @@ function totals(lines: readonly ParsedLine[], ctx: RecipeContext): Totals {
       continue;
     }
     quantified++;
-    const grams = line.row.grams;
+    const grams = line.eatenGrams;
     const per100 = ctx.profiles.get(def.id);
     // Without FDC data only negligible amounts (wrapping leaves, colourings) count as known.
     if (grams === null || (!per100 && grams >= 5)) continue;
@@ -172,21 +217,28 @@ const SUPPORTING = new Set([
   'whole_wheat_flour', 'cornstarch', 'potato_starch', 'tapioca', 'breadcrumbs', 'cornmeal', 'rice_flour', 'scallion', 'chili_pepper',
 ]);
 
+/**
+ * How strongly a title names an ingredient: 2 when the title names it outright, 1 when the title
+ * names a food the ingredient is made from ("Peanut Soup" and peanut butter), otherwise 0.
+ */
+export function titleRank(named: ReadonlySet<string>, id: string): number {
+  if (named.has(id)) return 2;
+  const parts = id.split('_');
+  for (const n of named) if (n.split('_').every((p) => parts.includes(p))) return 1;
+  return 0;
+}
+
 /** Up to three ingredients for the summary: those the title names first, then the heaviest. */
 function keyIngredients(title: string, lines: readonly ParsedLine[], ctx: RecipeContext): string[] {
   const named = new Set(ctx.matcher.findAll(title).map((m) => m.id));
+  const rank = (l: ParsedLine) => (l.primary ? titleRank(named, l.primary.id) : 0);
   const foods = lines.filter((l) => {
     const def = l.primary;
     return def !== null && !def.water && ['produce', 'protein', 'legume', 'grain', 'dairy', 'nut_seed', 'sweetener'].includes(def.category);
   });
-  const featured = foods.filter((l) => l.primary && l.primary.category !== 'sweetener' && (named.has(l.primary.id) || !SUPPORTING.has(l.primary.id)));
+  const featured = foods.filter((l) => l.primary && l.primary.category !== 'sweetener' && (rank(l) > 0 || !SUPPORTING.has(l.primary.id)));
   const candidates = featured.length > 0 ? featured : foods;
-  const ranked = [...candidates].sort(
-    (a, b) =>
-      Number(named.has(b.primary?.id ?? '')) - Number(named.has(a.primary?.id ?? '')) ||
-      (b.row.grams ?? 0) - (a.row.grams ?? 0) ||
-      a.row.position - b.row.position,
-  );
+  const ranked = [...candidates].sort((a, b) => rank(b) - rank(a) || (b.row.grams ?? 0) - (a.row.grams ?? 0) || a.row.position - b.row.position);
   const names: string[] = [];
   for (const line of ranked) {
     const name = line.primary ? (pluralName(line.primary) ?? line.primary.name).toLowerCase() : '';
@@ -231,7 +283,8 @@ function tutorials(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[
       continue;
     }
     const title = t.title ?? status?.title ?? null;
-    if (!out.has(t.url)) out.set(t.url, { kind: t.kind, url: t.url, title, publisher: t.publisher });
+    const url = preferHttps(t.url, ctx.links);
+    if (!out.has(url)) out.set(url, { kind: t.kind, url, title, publisher: t.publisher });
   }
   return [...out.values()];
 }
@@ -240,6 +293,7 @@ function tutorials(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[
 export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[]): Omit<RecipeRow, 'slug'> | null {
   const lines = source.lines.map((_, i) => parseLine(source, i, ctx, issues));
   const steps = splitSteps(source.instructions);
+  applyFryingAbsorption(lines, steps);
   if (lines.length === 0 || steps.length === 0) {
     issues.push({ recipe_id: source.id, kind: 'excluded', detail: lines.length === 0 ? 'no ingredient lines' : 'no instructions' });
     return null;
@@ -285,7 +339,9 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
   // Time and effort
   const estimate = estimateTimes(lines.length, stepRows.map((s) => s.timer_seconds), course);
   const total = source.totalMinutes ?? (source.prepMinutes !== null && source.cookMinutes !== null ? source.prepMinutes + source.cookMinutes : estimate.total);
-  const active = Math.min(total, source.prepMinutes ?? estimate.active);
+  // A published prep time over an hour includes hands-off waiting (soaking, chilling, marinating).
+  const prep = source.prepMinutes !== null && source.prepMinutes <= MAX_PUBLISHED_ACTIVE_MINUTES ? source.prepMinutes : estimate.active;
+  const active = Math.min(total, prep);
   const effort = computeEffort(lines.length, steps, active);
 
   // Safety and goals. A dish named after a food that its ingredient list omits ("... pork
@@ -332,7 +388,9 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     goals,
   });
 
-  const searchNames = [...new Set(lines.flatMap((l) => (l.primary ? [l.primary.name] : [])))].join(' ');
+  // Search text: each ingredient's name followed by its synonyms (so "garbanzo", "aubergine" and
+  // "courgette" find recipes), as unique words to keep the index small.
+  const searchNames = searchWords(lines.flatMap((l) => (l.primary ? [l.primary.name, ...l.primary.syn] : [])));
   return {
     id: source.id,
     title: source.title,
@@ -348,7 +406,7 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     image_url: source.imageUrl,
     image_credit: source.imageCredit,
     source_name: source.sourceName,
-    source_url: source.sourceUrl,
+    source_url: source.sourceUrl === null ? null : preferHttps(source.sourceUrl, ctx.links),
     license: source.license,
     nutrition,
     nutrition_confidence: confidence,
@@ -363,4 +421,15 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     tutorials: tutorials(source, ctx, issues),
     search_ingredients: searchNames,
   };
+}
+
+/** Unique lower-case words of the given phrases, in first-seen order ("or" and "and" dropped). */
+export function searchWords(phrases: readonly string[]): string {
+  const words = new Set<string>();
+  for (const phrase of phrases) {
+    for (const word of phrase.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+      if (word.length > 1 && word !== 'or' && word !== 'and') words.add(word);
+    }
+  }
+  return [...words].join(' ');
 }

@@ -20,7 +20,7 @@ async function main(): Promise<void> {
     const foods = await loadFdcFoods(ids);
     for (const food of foods.values()) {
       console.log(`${food.fdcId} ${food.dataType} ${food.description}`);
-      console.log(`  kcal=${food.nutrients.get(1008) ?? food.nutrients.get(2047)} portions=${food.portions.map((p) => `${p.amount} ${p.label}=${p.grams}g`).join('; ')}`);
+      console.log(`  kcal=${food.nutrients.get(1008) ?? food.nutrients.get(2047)} sodium_mg=${food.nutrients.get(1093)} portions=${food.portions.map((p) => `${p.amount} ${p.label}=${p.grams}g`).join('; ')}`);
     }
     return;
   }

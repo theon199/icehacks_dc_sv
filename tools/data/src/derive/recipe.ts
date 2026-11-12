@@ -21,6 +21,8 @@ const MEALDB_COURSE: Record<string, Course> = {
 /** MedlinePlus index pages in priority order. Diet listings (low-fat, vegetarian...) are ignored. */
 const MEDLINEPLUS_COURSE: ReadonlyArray<readonly [string, Course]> = [
   ['drinks', 'drink'],
+  // Dips, salsas and dressings are also filed under meal listings; the dish type wins.
+  ['dips-salsas-and-sauces', 'snack'],
   ['soups', 'soup'],
   ['salads', 'salad'],
   ['desserts', 'dessert'],
@@ -30,7 +32,6 @@ const MEDLINEPLUS_COURSE: ReadonlyArray<readonly [string, Course]> = [
   ['side-dishes', 'side'],
   ['breads', 'side'],
   ['snacks', 'snack'],
-  ['dips-salsas-and-sauces', 'snack'],
 ];
 
 export function mapCourse(source: 'mealdb' | 'medlineplus', categories: readonly string[], title: string): Course {
@@ -166,7 +167,7 @@ export interface GoalInputs {
 }
 
 /**
- * Goal tags per serving (all informational, documented in docs/data/DERIVED.md):
+ * Goal tags per serving (all informational, documented in docs/data/METHODS.md):
  * - high_protein: >= 20 g protein, or >= 10 g with >= 25% of energy from protein
  * - high_fiber: >= 5.6 g fiber (20% of the 28 g Daily Value, the FDA "high" level)
  * - lower_sodium: <= 600 mg for mains and soups, <= 480 mg otherwise (FDA "healthy" limits)
@@ -181,14 +182,15 @@ export function goalTags(input: GoalInputs): GoalTag[] {
   const tags = new Set<GoalTag>();
   const n = input.nutrition;
   if (n && n.kcal !== null && n.kcal > 0) {
+    // A tag whose input is missing is not awarded: unknown is never treated as zero.
     const kcal = n.kcal;
-    const protein = n.protein_g ?? 0;
-    const fiber = n.fiber_g ?? 0;
+    const protein = n.protein_g;
+    const fiber = n.fiber_g;
     const sodium = n.sodium_mg;
     const sat = n.sat_fat_g;
-    const added = n.added_sugar_g ?? 0;
-    if (protein >= 20 || (protein >= 10 && (protein * 4) / kcal >= 0.25)) tags.add('high_protein');
-    if (fiber >= 5.6) tags.add('high_fiber');
+    const added = n.added_sugar_g;
+    if (protein !== null && (protein >= 20 || (protein >= 10 && (protein * 4) / kcal >= 0.25))) tags.add('high_protein');
+    if (fiber !== null && fiber >= 5.6) tags.add('high_fiber');
     const sodiumLimit = input.course === 'main' || input.course === 'soup' ? 600 : 480;
     if (sodium !== null && sodium <= sodiumLimit) tags.add('lower_sodium');
     const lowerSat = sat !== null && (sat * 9) / kcal < 0.1;
@@ -196,7 +198,7 @@ export function goalTags(input: GoalInputs): GoalTag[] {
     const light = ['side', 'salad', 'snack', 'dessert', 'drink'].includes(input.course) && kcal <= 150;
     const dense = input.servingGrams !== null && input.servingGrams > 0 ? (kcal / input.servingGrams) * 100 : null;
     if (light || (dense !== null && dense <= 120 && kcal <= 600)) tags.add('lower_calorie');
-    if (lowerSat && sodium !== null && sodium <= 600 && fiber >= 2.8 && (added * 4) / kcal < 0.1) tags.add('heart_friendly');
+    if (lowerSat && sodium !== null && sodium <= 600 && fiber !== null && fiber >= 2.8 && added !== null && (added * 4) / kcal < 0.1) tags.add('heart_friendly');
   }
   if (input.vegan || (input.vegetarian && input.plantShare !== null && input.plantShare >= 0.5)) tags.add('plant_forward');
   const order: GoalTag[] = ['high_protein', 'high_fiber', 'lower_sodium', 'lower_sat_fat', 'lower_calorie', 'plant_forward', 'heart_friendly'];
@@ -256,9 +258,9 @@ const VARIANT_WORDS = new Set([
   'a', 'an', 'the', 'and', 'with', 'in', 'of', 'on', 'for', 'to', 'de', 'la', 'le', 'el', 'con', 'di', 'da', 'recipe',
   'easy', 'quick', 'simple', 'healthy', 'healthier', 'classic', 'homemade', 'best', 'my', 'our', 'ultimate', 'perfect',
   'traditional', 'authentic', 'style', 'old', 'fashioned', 'mom', 'moms', 'grandma', 'grandmas', 'favorite', 'favourite',
-  'baked', 'grilled', 'roasted', 'roast', 'fried', 'pan', 'oven', 'slow', 'cooker', 'crockpot', 'instant', 'pot', 'one',
+  'baked', 'grilled', 'roasted', 'roast', 'pan', 'oven', 'slow', 'cooker', 'crockpot', 'instant', 'pot', 'one',
   'sheet', 'skillet', 'lighter', 'light', 'low', 'fat', 'sodium', 'skinny', 'mini', 'little', 'big', 'super', 'extra',
-  'crispy', 'creamy', 'cheesy', 'spicy', 'sweet', 'fresh', 'hearty', 'simple', 'basic', 'delicious', 'yummy', 'tasty',
+  'crispy', 'creamy', 'cheesy', 'spicy', 'fresh', 'hearty', 'simple', 'basic', 'delicious', 'yummy', 'tasty',
 ]);
 
 /** Groups near-identical titles ("Easy Meatballs", "Baked Meatballs") into one dish family. */

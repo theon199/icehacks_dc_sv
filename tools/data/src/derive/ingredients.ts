@@ -97,7 +97,11 @@ const NOT_A_PIECE = /^(oz|ounces?|lb|pounds?|fl\b|fluid|serving|nlea|container|u
 export function gramsPerUnit(def: IngredientDef, portions: readonly FdcPortion[]): Record<string, number> {
   const out: Record<string, number> = {};
   let namedPiece: number | undefined;
-  for (const portion of portions) {
+  // Recipes measure liquids as poured, so "cup, fluid" beats "cup, whipped" (heavy cream lists
+  // whipped first at about half the weight). The first portion of each unit wins after sorting.
+  const rank = (label: string) => (/\bfluid\b/i.test(label) ? 0 : /\b(whipped|foam)\b/i.test(label) ? 2 : 1);
+  const ordered = [...portions].sort((a, b) => rank(a.label) - rank(b.label));
+  for (const portion of ordered) {
     const label = portion.label.replace(/^\d+(\.\d+)?\s*/, '').trim();
     const size = SIZE_IN_LABEL.find(([pattern]) => pattern.test(label));
     const known = VOLUME_LABEL.test(label) ? PORTION_UNITS.find(([pattern]) => pattern.test(label)) : (size ?? PORTION_UNITS.find(([pattern]) => pattern.test(label)));

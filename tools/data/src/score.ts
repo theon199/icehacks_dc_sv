@@ -13,6 +13,7 @@
  *
  * score = clamp(0.5 + 0.5 * P - 0.5 * N), rounded to 3 decimals.
  * Without usable nutrition the score is 0.3 + 0.4 * plants (a neutral-to-low default).
+ * A term whose nutrient is unknown is left out of its average rather than counted as zero.
  * Same inputs always give the same score.
  */
 
@@ -33,13 +34,21 @@ const round3 = (value: number) => Math.round(value * 1000) / 1000;
 export function healthScore(input: ScoreInputs): number {
   const plants = clamp01((input.vegetableShare ?? 0) / 0.5);
   if (input.kcal === null || input.kcal <= 0) return round3(0.3 + 0.4 * plants);
-  const per100 = 100 / input.kcal;
-  const fiber = clamp01(((input.fiber_g ?? 0) * per100) / 1.4);
-  const protein = clamp01(((input.protein_g ?? 0) * per100) / 5);
-  const sodium = clamp01(((input.sodium_mg ?? 0) * per100 - 50) / 200);
-  const satFat = clamp01((((input.sat_fat_g ?? 0) * 9) / input.kcal - 0.07) / 0.13);
-  const sugar = clamp01((((input.added_sugar_g ?? 0) * 4) / input.kcal - 0.05) / 0.2);
-  const positives = (fiber + protein + plants) / 3;
-  const negatives = (sodium + satFat + sugar) / 3;
+  const kcal = input.kcal;
+  const per100 = 100 / kcal;
+  // Each term is scored only when its nutrient is known; missing values are skipped, not zeroed.
+  const term = (value: number | null, score: (v: number) => number) => (value === null ? null : clamp01(score(value)));
+  const fiber = term(input.fiber_g, (v) => (v * per100) / 1.4);
+  const protein = term(input.protein_g, (v) => (v * per100) / 5);
+  const sodium = term(input.sodium_mg, (v) => (v * per100 - 50) / 200);
+  const satFat = term(input.sat_fat_g, (v) => ((v * 9) / kcal - 0.07) / 0.13);
+  const sugar = term(input.added_sugar_g, (v) => ((v * 4) / kcal - 0.05) / 0.2);
+  const positives = mean([fiber, protein, plants]);
+  const negatives = mean([sodium, satFat, sugar]);
   return round3(clamp01(0.5 + 0.5 * positives - 0.5 * negatives));
+}
+
+function mean(values: ReadonlyArray<number | null>): number {
+  const known = values.filter((v): v is number => v !== null);
+  return known.length === 0 ? 0 : known.reduce((a, b) => a + b, 0) / known.length;
 }

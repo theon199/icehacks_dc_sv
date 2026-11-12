@@ -63,11 +63,33 @@ async function checkWeb(url: string): Promise<Omit<LinkStatus, 'checkedAt'>> {
   }
 }
 
+/** The https form of a plain-http web address, or null when it already is https (or not http). */
+export function httpsVariant(url: string): string | null {
+  return url.startsWith('http://') ? `https://${url.slice('http://'.length)}` : null;
+}
+
+/**
+ * Upgrades a plain-http address to https when the https form was checked and answered with a
+ * success or redirect status. Hosts that never answered over https keep their original address.
+ */
+export function preferHttps(url: string, statuses: ReadonlyMap<string, LinkStatus>): string {
+  const secure = httpsVariant(url);
+  if (!secure) return url;
+  const status = statuses.get(secure);
+  return status && !status.dead && status.status >= 200 && status.status < 400 ? secure : url;
+}
+
 /** HEAD/oEmbed-checks every tutorial URL once (resumable; results cached). */
 export async function checkTutorialLinks(tutorials: SourceTutorial[], log: (message: string) => void): Promise<void> {
   const statuses = await readLinkStatuses();
-  const pending = [...new Map(tutorials.map((t) => [t.url, t])).values()]
-    .filter((t) => !statuses.has(t.url) && !t.url.startsWith('https://medlineplus.gov/'))
+  const unique = [...new Map(tutorials.map((t) => [t.url, t])).values()].filter((t) => !t.url.startsWith('https://medlineplus.gov/'));
+  // Plain-http pages are also tried over https so the catalog can link to the secure address.
+  const upgrades = unique.flatMap((t) => {
+    const secure = t.kind === 'web' ? httpsVariant(t.url) : null;
+    return secure ? [{ ...t, url: secure }] : [];
+  });
+  const pending = [...new Map([...unique, ...upgrades].map((t) => [t.url, t])).values()]
+    .filter((t) => !statuses.has(t.url))
     .sort((a, b) => a.url.localeCompare(b.url));
   log(`Links: ${pending.length} to check (${statuses.size} cached)`);
   let done = 0;
