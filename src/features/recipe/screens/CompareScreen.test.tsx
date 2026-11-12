@@ -100,7 +100,9 @@ const satay = makeDetail({
   healthScore: 0.95,
   allergens: allergenMap({ peanut: 'contains' }),
 });
-const ALL = [rich, lean, solo, nutty, satay];
+/** A recipe that belongs to no dish family. */
+const loose = makeDetail({ id: 'loose', title: 'Loose soup', familyId: '' });
+const ALL = [rich, lean, solo, nutty, satay, loose];
 
 /** One dish's versions, with the allergen part of the filters applied the way the catalog does. */
 function familyFor(familyId: string, filters: FamilyFilters): RecipeSummary[] {
@@ -176,6 +178,16 @@ describe('CompareScreen', () => {
     );
     expect(await screen.findByText('No healthier version yet', {}, SLOW)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Make it healthier' })).toBeTruthy();
+  });
+
+  it('shows a recipe without a dish family on its own instead of waiting for versions', async () => {
+    await renderWithTheme(
+      <Providers>
+        <CompareScreen fromId="loose" />
+      </Providers>,
+    );
+    expect(await screen.findByText('No healthier version yet', {}, SLOW)).toBeTruthy();
+    expect(getRecipesByFamily).not.toHaveBeenCalled();
   });
 
   it('only picks a healthier version that clears declared allergens, in any course', async () => {
