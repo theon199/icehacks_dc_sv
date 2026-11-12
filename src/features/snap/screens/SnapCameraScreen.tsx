@@ -35,13 +35,28 @@ const NO_FOOD_TITLES = {
 
 const resultRoute = (mode: SnapMode) => (mode === 'pantry' ? '/snap/pantry' : '/snap/dish');
 
+export interface SnapCameraScreenProps {
+  /** The mode a link asked for (`snapCameraHref`); the person can still switch afterwards. */
+  requestedMode?: SnapMode | undefined;
+}
+
 /** The Snap camera: pick Pantry or Dish, take or choose a photo, and wait for the reading. */
-export function SnapCameraScreen() {
+export function SnapCameraScreen({ requestedMode }: SnapCameraScreenProps = {}) {
   const theme = useTheme();
   const focused = useIsFocused();
   const appActive = useAppActive();
   const [permission, requestPermission, refreshPermission] = useCameraPermissions();
-  const [mode, setMode] = useState<SnapMode>('pantry');
+  const [mode, setMode] = useState<SnapMode>(requestedMode ?? 'pantry');
+  // The tab stays mounted, so a link that asks for a mode must also switch an open camera. The
+  // param is cleared once applied, so the same link works again after the person switches back.
+  const [applied, setApplied] = useState(requestedMode);
+  if (requestedMode !== applied) {
+    setApplied(requestedMode);
+    if (requestedMode) setMode(requestedMode);
+  }
+  useEffect(() => {
+    if (requestedMode) router.setParams({ mode: undefined });
+  }, [requestedMode]);
   const [flash, setFlash] = useState<SnapFlash>('off');
   const [ready, setReady] = useState(false);
   const [capturing, setCapturing] = useState(false);

@@ -2,10 +2,12 @@ import { act, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { useCameraPermissions } from 'expo-camera';
 import { launchImageLibraryAsync } from 'expo-image-picker';
 import type * as ReactModule from 'react';
+import { useState } from 'react';
 import { AppState, Linking, type AppStateStatus, type View as ViewType } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import type * as AiModule from '@/lib/api/ai';
+import type { SnapMode } from '@/lib/api/ai';
 import { aiApi } from '@/lib/api/ai';
 import { ApiError } from '@/lib/api/errors';
 
@@ -111,6 +113,33 @@ describe('Snap gating', () => {
 });
 
 describe('Snap camera', () => {
+  it('opens on the mode a link asks for and clears the request once applied', async () => {
+    let route: (mode: SnapMode | undefined) => void = () => undefined;
+    function Route() {
+      const [mode, setMode] = useState<SnapMode | undefined>('dish');
+      route = setMode;
+      return <SnapScreen mode={mode} />;
+    }
+    await renderScreen(<Route />);
+    expect(screen.getByRole('tab', { name: 'Dish' })).toBeSelected();
+    expect(screen.getByTestId('snap-hint')).toHaveTextContent(/One plate/);
+    expect(mockRouter.setParams).toHaveBeenCalledWith({ mode: undefined });
+
+    // The router clears the param; the camera keeps the mode it opened on.
+    await act(async () => route(undefined));
+    expect(screen.getByRole('tab', { name: 'Dish' })).toBeSelected();
+
+    // The tab stays mounted, so a later link switches the open camera.
+    await act(async () => route('pantry'));
+    expect(screen.getByRole('tab', { name: 'Pantry' })).toBeSelected();
+  });
+
+  it('opens on Pantry when no mode is asked for', async () => {
+    await renderScreen(<SnapScreen />);
+    expect(screen.getByRole('tab', { name: 'Pantry' })).toBeSelected();
+    expect(mockRouter.setParams).not.toHaveBeenCalled();
+  });
+
   it('asks for camera access, and offers the library meanwhile', async () => {
     permission('ask');
     await renderScreen(<SnapScreen />);
