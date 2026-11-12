@@ -15,7 +15,7 @@ example an "estimated" nutrition label, or no tutorial link) until a real source
 | "May contain" / cross-contact information | Depends on the brand a cook buys | Variable store-bought products are `unknown` for every allergen they do not certainly contain |
 | Added sugars measured per ingredient | USDA FPED reports added sugars per survey food code, which does not map onto the FDC foods the catalog uses | Added sugars are estimated from sweetener ingredients, or taken from the MedlinePlus label when printed |
 | Nutrition for a few ingredients with no USDA food | No FDC entry for ackee, doner kebab meat, banana or pandan leaves, lime or curry leaves, food colouring | Leaves and colourings count as negligible; recipes relying on ackee or doner meat may fall below the coverage threshold and show no nutrition |
-| Nutrition for 19 recipes | Too many of their ingredient weights could not be resolved (below 80 % coverage) | `nutrition_confidence = 'none'`; the app hides the nutrition panel and goal tags that need it |
+| Nutrition for 6 TheMealDB recipes | Too many of their ingredient weights could not be resolved (below 80 % coverage), e.g. "4 Lamb Leg" or "2 parts Yeast" | `nutrition_confidence = 'none'`; the app hides the nutrition panel and goal tags that need it |
 | Verified restaurant menus | No public, licensable dataset of what restaurants serve | Nearby search relies on live place search, not catalog data |
 | Recipe costs and prices | No public price dataset is bundled | Computed at runtime by the app's pricing feature |
 | Additional curated cuisines | Public sources are thin for South Asian (20 recipes), Sub-Saharan African (9) and Central Asian (0) cooking, and 113 TheMealDB recipes carry no country | Those dishes are labelled *International*; more recipes need a new public source |
@@ -36,3 +36,8 @@ example an "estimated" nutrition label, or no tutorial link) until a real source
 Tutorial links are checked during `npm run fetch` (`METHODS.md` §8). Videos YouTube reports as
 missing and pages that return 404/410 or whose host no longer resolves are left out of
 `recipe_tutorials`; the full list is printed by `npm run report -- --full` (`tutorial_dropped`).
+
+In this build 1,273 distinct links were checked: 1,200 answered normally, 30 refused automated
+checks (401/403) and 15 could not be reached at the time — all of those are kept, since a person
+can still open them — and 28 recipe pages were gone (404/410) and were removed, affecting 35
+tutorial rows. Recipes that lost their only source page still credit TheMealDB as their source.

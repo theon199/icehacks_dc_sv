@@ -87,7 +87,8 @@ function parseLine(source: SourceRecipe, index: number, ctx: RecipeContext, issu
   if (measure.unit === null && measure.quantity !== null) {
     const inName = UNIT_IN_NAME.exec(name);
     const unit = inName?.[1] ? UNIT_IN_NAME_MAP[inName[1].toLowerCase().replace(/s$/, '').replace(/ve$/, 'f')] : undefined;
-    if (unit) measure.unit = unit;
+    // Only when the ingredient has its own weight for that unit; generic weights would mislead.
+    if (unit && primary && ctx.units.get(primary.id)?.[unit] !== undefined) measure.unit = unit;
     const size = /^(small|medium|large)\b/i.exec(name)?.[1]?.toLowerCase();
     if (measure.size === null && (size === 'small' || size === 'medium' || size === 'large')) measure.size = size;
   }

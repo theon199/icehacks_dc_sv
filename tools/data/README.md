@@ -14,6 +14,7 @@ npm test           # node:test suites
 npm run typecheck
 ```
 
+`.npmrc` sets `ignore-scripts=true`: every dependency ships prebuilt binaries (no compiler needed).
 `npm run fetch -- --skip-links` skips tutorial link checks; `--only=mealdb,medlineplus,fdc,links`
 runs selected steps. Set `SOURCE_DATE_EPOCH` for a reproducible `built_at`.
 
