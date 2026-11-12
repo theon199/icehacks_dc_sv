@@ -89,7 +89,7 @@ gets `resync: true` and must rebuild from a full pull (see `sync_pull`).
 | --- | --- |
 | `posts` | `kind` cook\|remix\|tip, `recipe_ref` (required unless tip), `title` 1–120, `body` ≤ 2000, `rating` 1–5, `visibility` public\|followers, `status` visible\|hidden\|removed, `parent_post_id` (remix lineage), `like_count`, `comment_count` (trigger-maintained) |
 | `post_media` | `post_id`, `owner_id`, `path` (unique, under `<owner>/`), `width`, `height`, `blurhash`, `position` 0–3 |
-| `comments` | `parent_comment_id` (one level of replies, enforced by trigger), `body` 1–1000, `status` |
+| `comments` | `parent_comment_id` (one level of replies, enforced by trigger; set to null if the parent row is deleted, so replies are never lost), `body` 1–1000 (empty once deleted), `status`, `deleted_at` (author deleted a comment that has replies). `updated_at` changes only when `body` does; on `posts` only when the content columns do, never for counters or moderation |
 | `post_likes`, `post_saves` | per-user rows; read own |
 | `follows` | (`follower_id`, `followee_id`); friends = mutual follows |
 | `friend_invites` | `code` (10 chars, unambiguous alphabet), `inviter_id`, `expires_at` (7 days), `redeemed_by`, `redeemed_at` |
@@ -192,11 +192,12 @@ limit. Ledger rows are purged after two days.
 
 | Signature | Returns | Semantics |
 | --- | --- | --- |
-| `get_feed(p_mode feed_mode = 'new', p_cursor text = null, p_limit int = 20, p_author_id uuid = null)` *invoker* | `{items: post_cards[], next_cursor}` | Modes `new`, `following` (followed authors + self), `popular` (14 days, engagement with time decay, offset cursor), `author` (author's posts; the author also sees held posts), `saved`. Excludes blocked users both ways and non-visible content. ≤ 50 per page. Each mode is a separate statement that walks its own index (`posts_visible_created_idx`, `posts_author_created_idx`, `post_saves_user_created_idx`) in order and stops after one page; keyset cursors are `<epoch µs>_<id>` and exact |
+| `get_feed(p_mode feed_mode = 'new', p_cursor text = null, p_limit int = 20, p_author_id uuid = null)` *invoker* | `{items: post_cards[], next_cursor}` | Modes `new`, `following` (followed authors + self), `popular` (14 days, engagement with time decay, offset cursor), `author` (author's posts; the author also sees held posts), `saved`. Excludes blocked users both ways, non-visible content, and followers-only posts of authors the caller does not follow; these rules are written into each statement, so moderators (whom RLS lets read everything) get the same feed as anyone. ≤ 50 per page. Each mode is a separate statement that walks its own index (`posts_visible_created_idx`, `posts_author_created_idx`, `post_saves_user_created_idx`) in order and stops after one page; keyset cursors are `<epoch µs>_<id>` and exact |
 | `publish_post(p_kind, p_title, p_body = '', p_recipe_ref = null, p_rating = null, p_parent_post_id = null, p_visibility = 'public', p_media jsonb = '[]')` | `posts` row | Member only. Validates lengths, recipe for cook/remix, rating, ≤ 4 photos that already exist in `post-media/<uid>/…`, visible parent. Rate limits: 5 per 10 min, 25 per day (`rate_limited`, PT429). Flagged text → `status = 'hidden'` + review. Attaching a photo removes it from the purge queue; a photo a purge worker claimed in the last 10 minutes fails with `media_unavailable` (409) — upload it again |
 | `toggle_like(p_post_id)` | `{liked, like_count}` | Member only; post must be visible to the caller; 60 likes/min. Toggles from one member are serialised; a duplicate like resolves to `liked: true` instead of an error |
 | `toggle_save(p_post_id)` | `{saved}` | Unsaving always works; saving needs a visible post; idempotent under concurrency like `toggle_like` |
-| `add_comment(p_post_id, p_body, p_parent_comment_id = null)` | `comments` row | Member only; 1–1000 chars; replies one level deep on the same post; 20 per 10 min; flagged text is held |
+| `add_comment(p_post_id, p_body, p_parent_comment_id = null)` | `comments` row | Member only; 1–1000 chars; replies one level deep on the same post, never under a deleted comment; 20 per 10 min; flagged text is held |
+| `delete_comment(p_comment_id)` | `{deleted, kept_for_replies}` | Own comments only (`comment_not_found` otherwise). A comment with replies is blanked (`body` '', `deleted_at` set, no longer counted) so other members' replies stay; otherwise it is deleted, and a blanked parent goes with its last reply. Notifications about it are withdrawn. Members cannot `DELETE` comments directly |
 | `follow_user(p_user_id)` / `unfollow_user(p_user_id)` | void | Not yourself, not across a block; 100 new follows/hour (re-following someone you already follow is free) |
 | `create_friend_invite()` | `{code, expires_at}` | Member only; ≤ 20 open invites and 50 new invites per day |
 | `redeem_friend_invite(p_code)` | `{inviter_id, inviter_handle}` | Case-insensitive, single use, not expired, not your own, not across a block. Creates mutual follows and one `friend_accept` notification |
@@ -247,7 +248,7 @@ limit. Ledger rows are purged after two days.
 | Bucket | Public | Limit | Types | Layout and access |
 | --- | --- | --- | --- | --- |
 | `avatars` | yes | 2 MB | jpeg, png, webp | `<uid>/<file>`; owner writes; public URLs |
-| `post-media` | no | 5 MB | jpeg, png, webp | `<uid>/<file>`; owner writes; members can read files attached to posts they can see (use signed URLs); unattached uploads are queued for purge after 24 h |
+| `post-media` | no | 5 MB | jpeg, png, webp | `<uid>/<file>`; owner uploads (write-once: no updates, so upload under a new name rather than upserting); owners may delete only files not attached to a post; members can read files attached to posts they can see (use signed URLs); unattached uploads are queued for purge after 24 h |
 | `snap-uploads` | no | 5 MB | jpeg, png, webp | `<uid>/<file>`; owner only; queued for purge after 24 h |
 
 **HEIC.** The buckets do not accept HEIC. The app converts camera photos to JPEG before upload

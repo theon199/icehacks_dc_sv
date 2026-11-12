@@ -71,16 +71,18 @@ create policy famara_post_media_insert_own
   for insert to authenticated
   with check (bucket_id = 'post-media' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
-create policy famara_post_media_update_own
-  on storage.objects
-  for update to authenticated
-  using (bucket_id = 'post-media' and (storage.foldername(name))[1] = (select auth.uid())::text)
-  with check (bucket_id = 'post-media' and (storage.foldername(name))[1] = (select auth.uid())::text);
-
-create policy famara_post_media_delete_own
+-- Post photos are write-once: there is no UPDATE policy, so nobody can swap the file behind a
+-- published (or reported) post; upload under a new name instead of upserting. Authors may delete
+-- only photos that are not attached to a post. Attached photos go when their post does, through
+-- the purge queue, so the file moderators review is always the file that was published.
+create policy famara_post_media_delete_unattached
   on storage.objects
   for delete to authenticated
-  using (bucket_id = 'post-media' and (storage.foldername(name))[1] = (select auth.uid())::text);
+  using (
+    bucket_id = 'post-media'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and not exists (select 1 from public.post_media m where m.path = objects.name)
+  );
 
 create policy famara_snap_uploads_owner
   on storage.objects

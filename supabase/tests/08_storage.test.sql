@@ -89,6 +89,41 @@ select lives_ok(
 select tests.login('bbbbbbbb-0000-4000-8000-000000000002');
 select is(tests.visible_objects('post-media'), 1, 'attached media is readable with its post');
 
+-- Published photos cannot be swapped or deleted from under their post.
+select tests.login('aaaaaaaa-0000-4000-8000-000000000001');
+select is(
+  (with changed as (
+     update storage.objects set metadata = '{"swapped": true}'::jsonb
+     where bucket_id = 'post-media' and name = 'aaaaaaaa-0000-4000-8000-000000000001/plate.jpg'
+     returning 1)
+   select count(*)::integer from changed),
+  0,
+  'authors cannot overwrite an attached photo'
+);
+select is(
+  (with removed as (
+     delete from storage.objects
+     where bucket_id = 'post-media' and name = 'aaaaaaaa-0000-4000-8000-000000000001/plate.jpg'
+     returning 1)
+   select count(*)::integer from removed),
+  0,
+  'authors cannot delete an attached photo'
+);
+select lives_ok(
+  $$insert into storage.objects (bucket_id, name, owner)
+    values ('post-media', 'aaaaaaaa-0000-4000-8000-000000000001/draft.jpg', auth.uid())$$,
+  'ana uploads a photo she does not use'
+);
+select is(
+  (with removed as (
+     delete from storage.objects
+     where bucket_id = 'post-media' and name = 'aaaaaaaa-0000-4000-8000-000000000001/draft.jpg'
+     returning 1)
+   select count(*)::integer from removed),
+  1,
+  'authors can delete photos that are not attached'
+);
+
 reset role;
 update public.posts set status = 'hidden' where title = 'Plated';
 set local role authenticated;

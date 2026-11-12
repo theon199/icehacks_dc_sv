@@ -104,7 +104,8 @@ begin
                        order by o.bucket_id, o.name)
       from storage.objects o
       where o.bucket_id in ('avatars', 'post-media', 'snap-uploads')
-        and (storage.foldername(o.name))[1] = v_uid::text
+        -- A prefix match on name can use storage's (bucket_id, name) index; foldername() cannot.
+        and o.name like v_uid::text || '/%'
     ), '[]'::jsonb)
   );
 end;
@@ -135,7 +136,7 @@ begin
     select o.bucket_id, o.name, 'account_deleted'
     from storage.objects o
     where o.bucket_id in ('avatars', 'post-media', 'snap-uploads')
-      and (storage.foldername(o.name))[1] = v_uid::text
+      and o.name like v_uid::text || '/%'
     -- An entry queued earlier for another reason becomes an account deletion, which
     -- reclaim_storage_object and claim_storage_purge never cancel.
     on conflict (bucket_id, object_name) do update set reason = excluded.reason
