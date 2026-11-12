@@ -5,7 +5,7 @@ import { useSessionStore } from '@/features/auth';
 import { renderWithTheme } from '@/test/render';
 import { useAppearanceStore, useToastStore } from '@/ui';
 
-import { resetSettingsDepsForTests, usePreferences } from '../deps';
+import { parsePersistedSettings, resetSettingsDepsForTests, usePreferences } from '../deps';
 import { SettingsScreen } from './SettingsScreen';
 
 const mockPush = jest.fn();
@@ -22,7 +22,7 @@ jest.mock('expo-notifications', () => ({
   requestPermissionsAsync: () => mockNotifications.requestPermissionsAsync(),
 }));
 
-const mockAuth = { signOut: jest.fn(), updateUser: jest.fn() };
+const mockAuth = { signOut: jest.fn(), updateUser: jest.fn(), getUser: jest.fn() };
 jest.mock('@/lib/supabase/client', () => ({
   getSupabase: () => ({ auth: mockAuth, rpc: jest.fn() }),
 }));
@@ -39,9 +39,11 @@ function signIn(userId = 'user-1', age = 30) {
   });
 }
 
-function stored(): Record<string, unknown> {
+function stored(userId = 'user-1'): Record<string, unknown> {
   const raw = Storage.getItemSync(STORE_KEY);
-  return raw ? (JSON.parse(raw) as { state: Record<string, unknown> }).state : {};
+  if (!raw) return {};
+  const { state } = JSON.parse(raw) as { state: { accounts: Record<string, unknown> } };
+  return (state.accounts[userId] ?? {}) as Record<string, unknown>;
 }
 
 beforeEach(() => {
@@ -49,6 +51,7 @@ beforeEach(() => {
   useAppearanceStore.setState({ preference: 'system' });
   useToastStore.getState().clear();
   mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
+  mockAuth.getUser.mockResolvedValue({ data: { user: null }, error: { message: 'offline' } });
   signIn();
 });
 
@@ -59,7 +62,6 @@ describe('SettingsScreen', () => {
 
     expect(screen.getByTestId('settings-small-appetite')).toHaveProp('value', true);
     expect(stored()).toMatchObject({
-      ownerId: 'user-1',
       preferences: expect.objectContaining({ smallAppetite: true }),
     });
   });
@@ -71,6 +73,29 @@ describe('SettingsScreen', () => {
     await waitFor(() =>
       expect(screen.getByTestId('settings-small-appetite')).toHaveProp('value', false),
     );
+  });
+
+  it('keeps the first account’s settings when a second account changes its own', async () => {
+    await renderWithTheme(<SettingsScreen />);
+    await fireEvent(screen.getByTestId('settings-small-appetite'), 'valueChange', true);
+    await act(async () => signIn('user-2'));
+    await fireEvent(screen.getByTestId('settings-notify-social'), 'valueChange', true);
+    await waitFor(() =>
+      expect(stored('user-2')).toMatchObject({
+        notifications: expect.objectContaining({ social: true }),
+      }),
+    );
+
+    await act(async () => signIn('user-1'));
+    expect(screen.getByTestId('settings-small-appetite')).toHaveProp('value', true);
+    expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', false);
+  });
+
+  it('starts every notification switch off', async () => {
+    await renderWithTheme(<SettingsScreen />);
+    for (const key of ['cookTimers', 'social', 'follows']) {
+      expect(screen.getByTestId(`settings-notify-${key}`)).toHaveProp('value', false);
+    }
   });
 
   it('saves the units and appearance choices', async () => {
@@ -144,6 +169,17 @@ describe('preferences slice', () => {
       return null;
     }
     await renderWithTheme(<Probe />);
-    expect(value).toMatchObject({ smallAppetite: false, units: 'us', allergens: [] });
+    expect(value).toMatchObject({ smallAppetite: false, units: 'us', allergens: null });
+  });
+
+  it('drops a damaged account entry without losing the others', () => {
+    const good = { preferences: { units: 'metric' }, notifications: {} };
+    const parsed = parsePersistedSettings({
+      accounts: { 'user-1': good, 'user-2': { preferences: { units: 'imperial' } } },
+    });
+    expect(Object.keys(parsed.accounts)).toEqual(['user-1']);
+    expect(parsed.accounts['user-1']?.preferences.units).toBe('metric');
+    expect(parsePersistedSettings({ ownerId: 'x' })).toEqual({ accounts: {} });
+    expect(parsePersistedSettings(null)).toEqual({ accounts: {} });
   });
 });

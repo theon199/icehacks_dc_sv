@@ -151,8 +151,11 @@ export type Units = 'us' | 'metric';
 export interface UserPreferences {
   cuisines: string[];
   diets: DietId[];
-  /** Declared allergens; empty means the person said they have none. */
-  allergens: AllergenId[];
+  /**
+   * Declared allergens. An empty list means the person confirmed they have none; null means the
+   * question has not been answered on this account, which callers must never read as "none".
+   */
+  allergens: AllergenId[] | null;
   goals: GoalId[];
   /** Minutes on a typical weeknight; null means no limit. */
   timeBudgetMinutes: number | null;
@@ -195,8 +198,9 @@ const preferencesSchema = z.object({
     .transform(uniq),
   allergens: z
     .array(z.enum(ids(ALLERGENS)))
-    .default([])
-    .transform(uniq),
+    .transform(uniq)
+    .nullable()
+    .default(null),
   goals: z
     .array(z.enum(ids(GOALS)))
     .default([])
@@ -208,8 +212,10 @@ const preferencesSchema = z.object({
   units: z.enum(['us', 'metric']).default('us'),
 });
 
+// Everything starts off: a choice only turns on after the system permission prompt has been
+// accepted, so the switches never claim alerts that cannot be delivered.
 const notificationsSchema = z.object({
-  cookTimers: z.boolean().default(true),
+  cookTimers: z.boolean().default(false),
   social: z.boolean().default(false),
   follows: z.boolean().default(false),
 });
@@ -235,82 +241,109 @@ export function parsePersonalDetails(value: unknown): PersonalDetails | null {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Preferences and notification choices
+// Preferences and notification choices, kept per account
 
-interface UserSettingsState {
-  /** Account the stored values belong to, so another sign-in on this device starts fresh. */
-  ownerId: string | null;
+interface AccountSettings {
   preferences: UserPreferences;
   notifications: NotificationChoices;
 }
 
+interface UserSettingsState {
+  /** One entry per account that has used this device, keyed by user id. */
+  accounts: Record<string, AccountSettings>;
+}
+
+const accountSettingsSchema = z.object({
+  preferences: preferencesSchema,
+  notifications: notificationsSchema,
+});
+
+const persistedSettingsSchema = z.object({
+  accounts: z.record(z.string().min(1), z.unknown()),
+});
+
+/**
+ * Validates what was read from storage. A damaged entry for one account is dropped on its own so
+ * it cannot take every other account's choices with it.
+ */
+export function parsePersistedSettings(value: unknown): UserSettingsState {
+  const outer = persistedSettingsSchema.safeParse(value);
+  if (!outer.success) return { accounts: {} };
+  const accounts: Record<string, AccountSettings> = {};
+  for (const [userId, entry] of Object.entries(outer.data.accounts)) {
+    const parsed = accountSettingsSchema.safeParse(entry);
+    if (parsed.success) accounts[userId] = parsed.data;
+    else logger.warn('Dropping stored settings that failed validation');
+  }
+  return { accounts };
+}
+
 const settingsStore = create<UserSettingsState>()(
-  persist(
-    (): UserSettingsState => ({
-      ownerId: null,
-      preferences: DEFAULT_PREFERENCES,
-      notifications: DEFAULT_NOTIFICATIONS,
-    }),
-    {
-      name: 'settings.user',
-      version: 1,
-      storage: persistStorage<UserSettingsState>(),
-      merge: (persisted, current) => {
-        const raw = (persisted ?? {}) as Partial<UserSettingsState>;
-        const preferences = preferencesSchema.safeParse(raw.preferences ?? {});
-        const notifications = notificationsSchema.safeParse(raw.notifications ?? {});
-        return {
-          ...current,
-          ownerId: typeof raw.ownerId === 'string' ? raw.ownerId : null,
-          preferences: preferences.success ? preferences.data : DEFAULT_PREFERENCES,
-          notifications: notifications.success ? notifications.data : DEFAULT_NOTIFICATIONS,
-        };
-      },
-    },
-  ),
+  persist((): UserSettingsState => ({ accounts: {} }), {
+    name: 'settings.user',
+    version: 1,
+    storage: persistStorage<UserSettingsState>(),
+    merge: (persisted, current) => ({ ...current, ...parsePersistedSettings(persisted) }),
+  }),
 );
 
 const currentUserId = () => useSessionStore.getState().userId;
 
-/** Values for the signed-in account, falling back to defaults for anyone else's leftovers. */
-function ownedSlice(state: UserSettingsState, userId: string | null) {
-  return state.ownerId != null && state.ownerId === userId
-    ? state
-    : { preferences: DEFAULT_PREFERENCES, notifications: DEFAULT_NOTIFICATIONS };
+const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
+  preferences: DEFAULT_PREFERENCES,
+  notifications: DEFAULT_NOTIFICATIONS,
+};
+
+function settingsFor(state: UserSettingsState, userId: string | null): AccountSettings {
+  return (userId != null ? state.accounts[userId] : undefined) ?? DEFAULT_ACCOUNT_SETTINGS;
 }
 
 export function usePreferences(): UserPreferences {
   const userId = useSessionStore((s) => s.userId);
-  return settingsStore((s) => ownedSlice(s, userId).preferences);
+  return settingsStore((s) => settingsFor(s, userId).preferences);
 }
 
 export function useNotificationChoices(): NotificationChoices {
   const userId = useSessionStore((s) => s.userId);
-  return settingsStore((s) => ownedSlice(s, userId).notifications);
+  return settingsStore((s) => settingsFor(s, userId).notifications);
 }
 
-function writeSlice(patch: Partial<Pick<UserSettingsState, 'preferences' | 'notifications'>>) {
+/** Applies `change` to the signed-in account's entry, leaving every other account untouched. */
+function editAccount(change: (current: AccountSettings) => AccountSettings): void {
   const userId = currentUserId();
   if (!userId) return;
-  const current = ownedSlice(settingsStore.getState(), userId);
-  settingsStore.setState({
-    ownerId: userId,
-    preferences: current.preferences,
-    notifications: current.notifications,
-    ...patch,
-  });
+  settingsStore.setState((state) => ({
+    accounts: { ...state.accounts, [userId]: change(settingsFor(state, userId)) },
+  }));
 }
 
-export function updatePreferences(patch: Partial<UserPreferences>): void {
-  const userId = currentUserId();
-  const base = ownedSlice(settingsStore.getState(), userId).preferences;
-  writeSlice({ preferences: preferencesSchema.parse({ ...base, ...patch }) });
+type Patch<T> = Partial<T> | ((current: T) => Partial<T>);
+
+const resolvePatch = <T>(patch: Patch<T>, current: T): Partial<T> =>
+  typeof patch === 'function' ? patch(current) : patch;
+
+/**
+ * Saves preference changes. Pass a function to compute the change from the latest stored values,
+ * which matters for anything decided after an await or a confirmation dialog.
+ */
+export function updatePreferences(patch: Patch<UserPreferences>): void {
+  editAccount((current) => ({
+    ...current,
+    preferences: preferencesSchema.parse({
+      ...current.preferences,
+      ...resolvePatch(patch, current.preferences),
+    }),
+  }));
 }
 
-export function updateNotificationChoices(patch: Partial<NotificationChoices>): void {
-  const userId = currentUserId();
-  const base = ownedSlice(settingsStore.getState(), userId).notifications;
-  writeSlice({ notifications: { ...base, ...patch } });
+export function updateNotificationChoices(patch: Patch<NotificationChoices>): void {
+  editAccount((current) => ({
+    ...current,
+    notifications: notificationsSchema.parse({
+      ...current.notifications,
+      ...resolvePatch(patch, current.notifications),
+    }),
+  }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -345,8 +378,7 @@ export async function savePersonalDetails(details: PersonalDetails): Promise<voi
 
 /** Everything this device holds for the signed-in account, for the data export. */
 export async function collectLocalData(): Promise<Record<string, unknown>> {
-  const userId = currentUserId();
-  const slice = ownedSlice(settingsStore.getState(), userId);
+  const slice = settingsFor(settingsStore.getState(), currentUserId());
   return {
     preferences: slice.preferences,
     notifications: slice.notifications,
@@ -356,13 +388,9 @@ export async function collectLocalData(): Promise<Record<string, unknown>> {
 
 /** Removes this device's copy of the account's data after the account has been deleted. */
 export async function clearLocalUserData(userId: string): Promise<void> {
-  if (settingsStore.getState().ownerId === userId) {
-    settingsStore.setState({
-      ownerId: null,
-      preferences: DEFAULT_PREFERENCES,
-      notifications: DEFAULT_NOTIFICATIONS,
-    });
-  }
+  settingsStore.setState((state) => ({
+    accounts: Object.fromEntries(Object.entries(state.accounts).filter(([id]) => id !== userId)),
+  }));
   await SecureStore.deleteItemAsync(personalKey(userId)).catch(() => undefined);
 }
 
@@ -377,9 +405,5 @@ export const HealthConnections: ComponentType | null = null;
 
 /** Test hook: resets the temporary slice between tests. */
 export function resetSettingsDepsForTests(): void {
-  settingsStore.setState({
-    ownerId: null,
-    preferences: DEFAULT_PREFERENCES,
-    notifications: DEFAULT_NOTIFICATIONS,
-  });
+  settingsStore.setState({ accounts: {} });
 }

@@ -1,6 +1,6 @@
 import { Alert } from 'react-native';
 
-import { Card, Screen, Text, Toggle } from '@/ui';
+import { Button, Card, Screen, Text, Toggle } from '@/ui';
 
 import { ChoiceGroup } from '../components/ChoiceGroup';
 import { CuisinePicker } from '../components/CuisinePicker';
@@ -27,6 +27,12 @@ const timeOptions: readonly (readonly [TimeChoice, string])[] = [
 const toggled = <T,>(list: readonly T[], value: T, on: boolean): T[] =>
   on ? [...list.filter((item) => item !== value), value] : list.filter((item) => item !== value);
 
+function allergenHint(allergens: readonly AllergenId[] | null): string {
+  if (allergens == null) return 'Not answered yet. Pick any you need Famara to avoid.';
+  if (allergens.length === 0) return 'None declared. Pick any you need Famara to avoid.';
+  return 'Recipes that might contain these are never shown.';
+}
+
 /**
  * Edits the onboarding answers. Changes save as they are made. Removing a declared allergen asks
  * first, because it lets recipes containing it back into recommendations.
@@ -36,7 +42,7 @@ export function PreferencesScreen() {
 
   const toggleAllergen = (id: AllergenId, on: boolean) => {
     if (on) {
-      updatePreferences({ allergens: toggled(prefs.allergens, id, true) });
+      updatePreferences((latest) => ({ allergens: toggled(latest.allergens ?? [], id, true) }));
       return;
     }
     const label = ALLERGENS.find(([value]) => value === id)?.[1] ?? id;
@@ -48,7 +54,11 @@ export function PreferencesScreen() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => updatePreferences({ allergens: toggled(prefs.allergens, id, false) }),
+          // Read the list again here: other changes may have been saved while the dialog was open.
+          onPress: () =>
+            updatePreferences((latest) => ({
+              allergens: toggled(latest.allergens ?? [], id, false),
+            })),
         },
       ],
     );
@@ -73,28 +83,37 @@ export function PreferencesScreen() {
         hint="Recipes must fit every diet you pick."
         options={DIETS}
         selected={prefs.diets}
-        onToggle={(id, on) => updatePreferences({ diets: toggled(prefs.diets, id, on) })}
+        onToggle={(id, on) =>
+          updatePreferences((latest) => ({ diets: toggled(latest.diets, id, on) }))
+        }
       />
 
       <ChoiceGroup
         testID="prefs-allergen"
         title="Allergies and intolerances"
-        hint={
-          prefs.allergens.length === 0
-            ? 'None declared. Pick any you need Famara to avoid.'
-            : 'Recipes that might contain these are never shown.'
-        }
+        hint={allergenHint(prefs.allergens)}
         options={ALLERGENS}
-        selected={prefs.allergens}
+        selected={prefs.allergens ?? []}
         onToggle={toggleAllergen}
       />
+      {prefs.allergens == null ? (
+        <Button
+          testID="prefs-allergen-none"
+          label="I have no allergies or intolerances"
+          variant="ghost"
+          size="sm"
+          onPress={() => updatePreferences({ allergens: [] })}
+        />
+      ) : null}
 
       <ChoiceGroup
         testID="prefs-goal"
         title="Health goals"
         options={GOALS}
         selected={prefs.goals}
-        onToggle={(id, on) => updatePreferences({ goals: toggled(prefs.goals, id, on) })}
+        onToggle={(id, on) =>
+          updatePreferences((latest) => ({ goals: toggled(latest.goals, id, on) }))
+        }
       />
 
       <ChoiceGroup
