@@ -271,10 +271,11 @@ export async function migrateLegacySettings(userId: string): Promise<LegacyMigra
     usePersonalDetailsStore.getState().update(old.details);
   }
   // The old copies are the only durable record until the server has the merged answers, so they
-  // are deleted only once a push has gone through. Otherwise (offline, a failed push, or sign-out
-  // wiping the device first) the entry is cut down to its allergens and diets: running the merge
-  // again later can then only add safety answers, never undo a newer edit of anything else.
-  if (await pushConfirmed()) {
+  // are deleted only once a push has gone through and the stores still hold them. Otherwise
+  // (offline, a failed push, sign-out wiping the device first, or the server keeping a newer copy)
+  // the entry is cut down to its allergens and diets: running the merge again later can then only
+  // add safety answers, never undo a newer edit of anything else.
+  if (await pushConfirmed(userId, entry)) {
     await discardLegacyAccount(userId);
     logger.info('Moved old Settings answers into the shared stores');
   } else {
@@ -287,10 +288,22 @@ export async function migrateLegacySettings(userId: string): Promise<LegacyMigra
 /** How long the migration waits for its changes to reach the server. */
 const CONFIRM_TIMEOUT_MS = 4000;
 
-async function pushConfirmed(): Promise<boolean> {
+/**
+ * Whether `userId`'s merged answers are safely on the server, so its old copies can go. Sync must
+ * have pushed everything without error, the same account must still be signed in, and merging the
+ * old entry into the stores as they are now must add no allergens or diets. That last check
+ * matters because the server can turn down a write when it holds a newer copy, which sync then
+ * adopts in place of the merged answers.
+ */
+async function pushConfirmed(userId: string, entry: unknown): Promise<boolean> {
   const flushed = await flushSync(CONFIRM_TIMEOUT_MS).catch(() => false);
   const status = useSyncStatusStore.getState();
-  return flushed && status.phase !== 'stopped' && status.pending === 0 && status.lastError == null;
+  const pushed =
+    flushed && status.phase !== 'stopped' && status.pending === 0 && status.lastError == null;
+  if (!pushed || !stillSignedInAs(userId)) return false;
+  if (entry == null) return true;
+  const again = planLegacyMigration(entry, usePreferencesStore.getState().prefs);
+  return again.allergens === undefined && again.preferences.diets === undefined;
 }
 
 /** Reduces one account's old entry to the answers whose loss would be unsafe. */
