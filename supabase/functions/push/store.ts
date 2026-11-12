@@ -11,12 +11,32 @@ import { HttpError } from "../_shared/http.ts";
 
 export type PushPlatform = "ios" | "android";
 
+/** Optional push categories an account can turn off; other kinds are always pushed. */
+export interface PushCategories {
+  /** Likes, comments and replies on the member's posts. */
+  social: boolean;
+  /** New followers and accepted friend invites. */
+  follows: boolean;
+}
+
 export interface PushStore {
   register(userId: string, token: string, platform: PushPlatform): Promise<void>;
   /** Returns how many registrations were removed (0 when the token was not linked to the user). */
   unregister(userId: string, token: string): Promise<number>;
   /** Forgets tokens the push service no longer accepts. Returns how many were removed. */
   forget(tokens: readonly string[]): Promise<number>;
+  /** The account's push categories (defaults filled in). */
+  categories(userId: string): Promise<PushCategories>;
+  /** Changes the given categories, leaving the others as they are, and returns the result. */
+  setCategories(userId: string, change: Partial<PushCategories>): Promise<PushCategories>;
+}
+
+function parseCategories(value: unknown): PushCategories {
+  const record = (typeof value === "string" ? JSON.parse(value) : value) as Record<string, unknown>;
+  if (typeof record?.social !== "boolean" || typeof record?.follows !== "boolean") {
+    throw new Error("Unexpected push category row");
+  }
+  return { social: record.social, follows: record.follows };
 }
 
 type Sql = ReturnType<typeof postgres>;
@@ -69,6 +89,20 @@ export function createPostgresStore(env: EnvReader): PushStore {
       const rows = await sql<{ removed: number }[]>`
         select private.forget_push_tokens(${sql.array([...tokens])}::text[]) as removed`;
       return rows[0]?.removed ?? 0;
+    },
+    async categories(userId) {
+      const sql = connection(env);
+      const rows = await sql<{ value: unknown }[]>`
+        select private.get_notification_preferences(${userId}::uuid) as value`;
+      return parseCategories(rows[0]?.value);
+    },
+    async setCategories(userId, change) {
+      const sql = connection(env);
+      const rows = await sql<{ value: unknown }[]>`
+        select private.set_notification_preferences(
+          ${userId}::uuid, ${change.social ?? null}::boolean, ${change.follows ?? null}::boolean
+        ) as value`;
+      return parseCategories(rows[0]?.value);
     },
   };
 }

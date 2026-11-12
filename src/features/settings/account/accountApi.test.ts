@@ -1,4 +1,13 @@
-import { AccountError, changeEmail, changePassword, fetchAccountUser } from './accountApi';
+import { useSessionStore } from '@/features/auth';
+
+import {
+  AccountError,
+  changeEmail,
+  changePassword,
+  fetchAccountUser,
+  PUSH_UNREGISTER_TIMEOUT_MS,
+  signOutLocally,
+} from './accountApi';
 
 jest.mock('expo-linking', () => ({ createURL: (path: string) => `famara://${path}` }));
 
@@ -6,8 +15,18 @@ const mockAuth = {
   getUser: jest.fn(),
   updateUser: jest.fn(),
   signInWithPassword: jest.fn(),
+  signOut: jest.fn(),
+  getSession: jest.fn(),
 };
 jest.mock('@/lib/supabase/client', () => ({ getSupabase: () => ({ auth: mockAuth }) }));
+
+const mockUnregisterPush = jest.fn((): Promise<void> => Promise.resolve());
+const mockEndSession = jest.fn((): Promise<void> => Promise.resolve());
+jest.mock('../deps', () => ({
+  clearLocalUserData: jest.fn(),
+  unregisterPushDevice: () => mockUnregisterPush(),
+  endAuthSession: () => mockEndSession(),
+}));
 
 describe('fetchAccountUser', () => {
   it('reports whether the account signs in with a password', async () => {
@@ -126,5 +145,92 @@ describe('password detection', () => {
       error: null,
     });
     expect((await fetchAccountUser()).hasPassword).toBe(true);
+  });
+});
+
+describe('signOutLocally', () => {
+  let stored = true;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stored = true;
+    mockAuth.getSession.mockImplementation(async () => ({
+      data: { session: stored ? { access_token: 't' } : null },
+      error: null,
+    }));
+    mockUnregisterPush.mockResolvedValue(undefined);
+    useSessionStore.getState().signedIn({
+      userId: 'user-1',
+      birthYear: 1990,
+      onboardingComplete: true,
+      aiConsent: false,
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('ends the session through the auth feature and reports success once it is gone', async () => {
+    mockEndSession.mockImplementation(async () => {
+      stored = false;
+    });
+    await signOutLocally();
+    expect(mockEndSession).toHaveBeenCalledTimes(1);
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().status).toBe('signedOut');
+  });
+
+  it('falls back to a local sign-out when the session survives', async () => {
+    mockEndSession.mockResolvedValue(undefined);
+    mockAuth.signOut.mockImplementation(async () => {
+      stored = false;
+      return { error: null };
+    });
+    await signOutLocally();
+    expect(mockAuth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(useSessionStore.getState().status).toBe('signedOut');
+  });
+
+  it('treats a thrown failure like a reported one', async () => {
+    mockEndSession.mockRejectedValue(new Error('offline'));
+    mockAuth.signOut.mockImplementation(async () => {
+      stored = false;
+      return { error: new Error('Network request failed') };
+    });
+    await signOutLocally();
+    expect(useSessionStore.getState().status).toBe('signedOut');
+  });
+
+  it('stays signed in and says so when the stored session could not be removed', async () => {
+    mockEndSession.mockResolvedValue(undefined);
+    mockAuth.signOut.mockResolvedValue({ error: new Error('Network request failed') });
+    await expect(signOutLocally()).rejects.toMatchObject({ code: 'sign_out_failed' });
+    expect(useSessionStore.getState().status).toBe('ready');
+  });
+
+  it('unregisters push while the session is still valid', async () => {
+    const order: string[] = [];
+    mockUnregisterPush.mockImplementation(async () => {
+      order.push('unregister');
+    });
+    mockEndSession.mockImplementation(async () => {
+      order.push('signOut');
+      stored = false;
+    });
+    await signOutLocally();
+    expect(order).toEqual(['unregister', 'signOut']);
+  });
+
+  it('does not wait on an unreachable push service', async () => {
+    jest.useFakeTimers();
+    mockUnregisterPush.mockImplementation(() => new Promise<void>(() => undefined));
+    mockEndSession.mockImplementation(async () => {
+      stored = false;
+    });
+    const done = signOutLocally();
+    await jest.advanceTimersByTimeAsync(PUSH_UNREGISTER_TIMEOUT_MS);
+    await done;
+    expect(useSessionStore.getState().status).toBe('signedOut');
   });
 });

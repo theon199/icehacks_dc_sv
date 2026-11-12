@@ -2,10 +2,10 @@ import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet } from 'react-native';
 
-import { Button, ListRow, Screen, Text, space } from '@/ui';
+import { Button, ListRow, Screen, Text, space, toast } from '@/ui';
 
 import { ABOUT_PAGE_LIST } from '../about/pages';
-import { signOutLocally } from '../account/accountApi';
+import { AccountError, signOutLocally } from '../account/accountApi';
 import { useAiConsentSync } from '../aiConsent';
 import { formatAppVersion, readAppVersion } from '../appVersion';
 import { AiConsentSection } from '../components/AiConsentSection';
@@ -24,7 +24,15 @@ export function SettingsScreen() {
 
   const signOut = async () => {
     setSigningOut(true);
-    await signOutLocally();
+    try {
+      await signOutLocally();
+    } catch (error) {
+      setSigningOut(false);
+      toast.show({
+        message: error instanceof AccountError ? error.message : 'Could not sign out. Try again.',
+        tone: 'danger',
+      });
+    }
   };
 
   return (

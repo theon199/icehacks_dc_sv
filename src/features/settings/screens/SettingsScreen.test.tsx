@@ -22,10 +22,33 @@ jest.mock('expo-notifications', () => ({
   requestPermissionsAsync: () => mockNotifications.requestPermissionsAsync(),
 }));
 
-const mockAuth = { signOut: jest.fn(), updateUser: jest.fn(), getUser: jest.fn() };
+const mockAuth = {
+  signOut: jest.fn(),
+  getSession: jest.fn(),
+  updateUser: jest.fn(),
+  getUser: jest.fn(),
+};
 jest.mock('@/lib/supabase/client', () => ({
   getSupabase: () => ({ auth: mockAuth, rpc: jest.fn() }),
 }));
+
+type Categories = { social: boolean; follows: boolean };
+/** Push categories as the server holds them, per account. */
+let serverCategories: Record<string, Categories> = {};
+const mockPushApi = {
+  fetch: jest.fn(),
+  save: jest.fn(),
+  sync: jest.fn(),
+};
+jest.mock('@/features/notifications', () => ({
+  fetchPushCategories: () => mockPushApi.fetch(),
+  savePushCategories: (change: unknown) => mockPushApi.save(change),
+  syncPushRegistration: (userId: string) => mockPushApi.sync(userId),
+  unregisterPushDevice: () => Promise.resolve(),
+}));
+
+const currentCategories = (): Categories =>
+  serverCategories[useSessionStore.getState().userId ?? ''] ?? { social: false, follows: false };
 
 const STORE_KEY = 'famara:settings.user';
 const thisYear = new Date().getFullYear();
@@ -52,6 +75,14 @@ beforeEach(() => {
   useToastStore.getState().clear();
   mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
   mockAuth.getUser.mockResolvedValue({ data: { user: null }, error: { message: 'offline' } });
+  serverCategories = {};
+  mockPushApi.fetch.mockImplementation(async () => currentCategories());
+  mockPushApi.save.mockImplementation(async (change: Partial<Categories>) => {
+    const next = { ...currentCategories(), ...change };
+    serverCategories[useSessionStore.getState().userId ?? ''] = next;
+    return next;
+  });
+  mockPushApi.sync.mockResolvedValue('registered');
   signIn();
 });
 
@@ -131,6 +162,51 @@ describe('SettingsScreen', () => {
     expect(screen.getByTestId('settings-notify-follows')).toHaveProp('value', false);
   });
 
+  it('shows the push categories stored for the account', async () => {
+    serverCategories['user-1'] = { social: true, follows: false };
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', true),
+    );
+    expect(screen.getByTestId('settings-notify-follows')).toHaveProp('value', false);
+  });
+
+  it('saves push categories on the server and registers this device', async () => {
+    await renderWithTheme(<SettingsScreen />);
+    await fireEvent(screen.getByTestId('settings-notify-follows'), 'valueChange', true);
+    await waitFor(() => expect(mockPushApi.save).toHaveBeenCalledWith({ follows: true }));
+    expect(serverCategories['user-1']).toEqual({ social: false, follows: true });
+    await waitFor(() => expect(mockPushApi.sync).toHaveBeenCalledWith('user-1'));
+
+    await fireEvent(screen.getByTestId('settings-notify-follows'), 'valueChange', false);
+    await waitFor(() => expect(mockPushApi.save).toHaveBeenLastCalledWith({ follows: false }));
+    expect(serverCategories['user-1']).toEqual({ social: false, follows: false });
+    expect(screen.getByTestId('settings-notify-follows')).toHaveProp('value', false);
+  });
+
+  it('puts a push switch back when the server cannot save it', async () => {
+    serverCategories['user-1'] = { social: true, follows: false };
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', true),
+    );
+    mockPushApi.save.mockRejectedValueOnce(new Error('offline'));
+    await fireEvent(screen.getByTestId('settings-notify-social'), 'valueChange', false);
+
+    await waitFor(() => expect(useToastStore.getState().queue).toHaveLength(1));
+    expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', true);
+    expect(serverCategories['user-1']).toEqual({ social: true, follows: false });
+  });
+
+  it('keeps cook timer alerts on this device only', async () => {
+    await renderWithTheme(<SettingsScreen />);
+    await fireEvent(screen.getByTestId('settings-notify-cookTimers'), 'valueChange', true);
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true),
+    );
+    expect(mockPushApi.save).not.toHaveBeenCalled();
+  });
+
   it('hides the health row until the health feature provides it', async () => {
     await renderWithTheme(<SettingsScreen />);
     expect(screen.queryByTestId('settings-health')).not.toBeOnTheScreen();
@@ -153,11 +229,29 @@ describe('SettingsScreen', () => {
 
   it('signs out', async () => {
     mockAuth.signOut.mockResolvedValue({ error: null });
+    mockAuth.getSession.mockResolvedValue({ data: { session: null }, error: null });
     const user = userEvent.setup();
     await renderWithTheme(<SettingsScreen />);
     await user.press(screen.getByRole('button', { name: 'Sign out' }));
-    expect(mockAuth.signOut).toHaveBeenCalledWith({ scope: 'local' });
-    expect(useSessionStore.getState().status).toBe('signedOut');
+    await waitFor(() => expect(useSessionStore.getState().status).toBe('signedOut'));
+    expect(mockAuth.signOut).toHaveBeenCalled();
+  });
+
+  it('stays signed in and explains when this device could not sign out', async () => {
+    mockAuth.signOut.mockResolvedValue({ error: new Error('Network request failed') });
+    mockAuth.getSession.mockResolvedValue({
+      data: { session: { access_token: 't' } },
+      error: null,
+    });
+    const user = userEvent.setup();
+    await renderWithTheme(<SettingsScreen />);
+    await user.press(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() =>
+      expect(useToastStore.getState().queue[0]?.message).toBe(
+        'Could not sign out on this device. Try again.',
+      ),
+    );
+    expect(useSessionStore.getState().status).toBe('ready');
   });
 });
 
