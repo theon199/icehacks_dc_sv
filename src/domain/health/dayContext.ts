@@ -42,7 +42,11 @@ export const DAY_CONTEXT_RULES = {
 
 export type ActivityLevel = 'rest' | 'light' | 'active' | 'very_active';
 
-export type DaySuggestion = 'more_protein' | 'refuel_carbs' | 'lighter_dinner' | 'earlier_dinner';
+/**
+ * What the day context tells the person it is doing. Each one that changes ranking has a matching
+ * field in `DayRankingHints`; `earlier_dinner` is a timing note only.
+ */
+export type DaySuggestion = 'more_protein' | 'lighter_dinner' | 'earlier_dinner';
 
 export interface DayContext {
   computedAt: number;
@@ -107,7 +111,6 @@ export function activityLevelFor(load: number): ActivityLevel {
 export function suggestionsFor(activity: ActivityLevel, shortSleep: boolean): DaySuggestion[] {
   const suggestions: DaySuggestion[] = [];
   if (activity === 'active' || activity === 'very_active') suggestions.push('more_protein');
-  if (activity === 'very_active') suggestions.push('refuel_carbs');
   if (shortSleep) suggestions.push('lighter_dinner', 'earlier_dinner');
   return suggestions;
 }

@@ -33,7 +33,7 @@ export function GlucoseInsightsCard({ summary, titles }: GlucoseInsightsCardProp
             <ProgressRing
               progress={summary.pairedDays / needed}
               size={48}
-              accessibilityLabel="Glucose insight progress"
+              accessibilityLabel={copy.progressLabel(summary.pairedDays, needed)}
             />
             <View style={styles.flex}>
               <Text variant="subhead">{copy.collecting(summary.pairedDays, needed)}</Text>

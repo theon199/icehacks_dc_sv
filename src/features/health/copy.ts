@@ -55,7 +55,6 @@ export const healthCopy = {
     shortNight: 'Short night',
     suggestions: {
       more_protein: 'Leaning towards protein-rich dishes to help you recover.',
-      refuel_carbs: 'Including some slower carbs to refuel after a big day.',
       lighter_dinner: 'Suggesting lighter dinners after a short night.',
       earlier_dinner: 'An earlier dinner may feel better tonight.',
     } satisfies Record<DaySuggestion, string>,
@@ -68,6 +67,8 @@ export const healthCopy = {
       'If you wear a glucose sensor that saves to Apple Health, Famara can show how your readings looked in the two hours after dishes you cook.',
     collecting: (days: number, needed: number) =>
       `Collecting: ${days} of ${needed} days with a clear reading after a meal.`,
+    progressLabel: (days: number, needed: number) =>
+      `Glucose insights: ${days} of ${needed} days collected`,
     collectingHint:
       'Meals count when there is a reading right before you eat, steady readings for two hours after, and no other meal or workout in that time.',
     ready: 'Compared with your own typical rise after meals.',

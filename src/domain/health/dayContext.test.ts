@@ -57,7 +57,7 @@ describe('computeDayContext', () => {
     expect(context.workoutMinutes).toBe(60);
     expect(context.activityLoad).toBe(40 + 20 * INTENSITY_WEIGHTS.intervals);
     expect(context.activity).toBe('very_active');
-    expect(context.suggestions).toEqual(['more_protein', 'refuel_carbs']);
+    expect(context.suggestions).toEqual(['more_protein']);
   });
 
   it('only counts the part of a workout inside the last 24 hours', () => {
