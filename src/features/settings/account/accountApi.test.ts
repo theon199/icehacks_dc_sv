@@ -21,9 +21,11 @@ const mockAuth = {
 jest.mock('@/lib/supabase/client', () => ({ getSupabase: () => ({ auth: mockAuth }) }));
 
 const mockUnregisterPush = jest.fn((): Promise<void> => Promise.resolve());
+const mockEndSession = jest.fn((): Promise<void> => Promise.resolve());
 jest.mock('../deps', () => ({
   clearLocalUserData: jest.fn(),
   unregisterPushDevice: () => mockUnregisterPush(),
+  endAuthSession: () => mockEndSession(),
 }));
 
 describe('fetchAccountUser', () => {
@@ -147,24 +149,15 @@ describe('password detection', () => {
 });
 
 describe('signOutLocally', () => {
-  /** A stored session that disappears once `signOut` manages to remove it. */
-  function storedSession(removedOnCall: number | null) {
-    let stored = true;
-    let calls = 0;
+  let stored = true;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stored = true;
     mockAuth.getSession.mockImplementation(async () => ({
       data: { session: stored ? { access_token: 't' } : null },
       error: null,
     }));
-    return (result: unknown) => async () => {
-      calls += 1;
-      if (removedOnCall != null && calls >= removedOnCall) stored = false;
-      if (result instanceof Error) throw result;
-      return result;
-    };
-  }
-
-  beforeEach(() => {
-    jest.clearAllMocks();
     mockUnregisterPush.mockResolvedValue(undefined);
     useSessionStore.getState().signedIn({
       userId: 'user-1',
@@ -178,38 +171,40 @@ describe('signOutLocally', () => {
     jest.useRealTimers();
   });
 
-  it('revokes this device only and reports success once the session is gone', async () => {
-    const respond = storedSession(1);
-    mockAuth.signOut.mockImplementation(respond({ error: null }));
+  it('ends the session through the auth feature and reports success once it is gone', async () => {
+    mockEndSession.mockImplementation(async () => {
+      stored = false;
+    });
     await signOutLocally();
-    expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(mockEndSession).toHaveBeenCalledTimes(1);
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().status).toBe('signedOut');
+  });
+
+  it('falls back to a local sign-out when the session survives', async () => {
+    mockEndSession.mockResolvedValue(undefined);
+    mockAuth.signOut.mockImplementation(async () => {
+      stored = false;
+      return { error: null };
+    });
+    await signOutLocally();
     expect(mockAuth.signOut).toHaveBeenCalledWith({ scope: 'local' });
     expect(useSessionStore.getState().status).toBe('signedOut');
   });
 
-  it('falls back to a local sign-out when revocation reports an error', async () => {
-    const respond = storedSession(2);
-    mockAuth.signOut
-      .mockImplementationOnce(respond({ error: new Error('Network request failed') }))
-      .mockImplementationOnce(respond({ error: null }));
-    await signOutLocally();
-    expect(mockAuth.signOut).toHaveBeenCalledTimes(2);
-    expect(mockAuth.signOut).toHaveBeenLastCalledWith({ scope: 'local' });
-    expect(useSessionStore.getState().status).toBe('signedOut');
-  });
-
   it('treats a thrown failure like a reported one', async () => {
-    const respond = storedSession(2);
-    mockAuth.signOut
-      .mockImplementationOnce(respond(new Error('offline')))
-      .mockImplementationOnce(respond({ error: null }));
+    mockEndSession.mockRejectedValue(new Error('offline'));
+    mockAuth.signOut.mockImplementation(async () => {
+      stored = false;
+      return { error: new Error('Network request failed') };
+    });
     await signOutLocally();
     expect(useSessionStore.getState().status).toBe('signedOut');
   });
 
   it('stays signed in and says so when the stored session could not be removed', async () => {
-    const respond = storedSession(null);
-    mockAuth.signOut.mockImplementation(respond({ error: new Error('Network request failed') }));
+    mockEndSession.mockResolvedValue(undefined);
+    mockAuth.signOut.mockResolvedValue({ error: new Error('Network request failed') });
     await expect(signOutLocally()).rejects.toMatchObject({ code: 'sign_out_failed' });
     expect(useSessionStore.getState().status).toBe('ready');
   });
@@ -219,10 +214,9 @@ describe('signOutLocally', () => {
     mockUnregisterPush.mockImplementation(async () => {
       order.push('unregister');
     });
-    const respond = storedSession(1);
-    mockAuth.signOut.mockImplementation(async () => {
+    mockEndSession.mockImplementation(async () => {
       order.push('signOut');
-      return respond({ error: null })();
+      stored = false;
     });
     await signOutLocally();
     expect(order).toEqual(['unregister', 'signOut']);
@@ -231,8 +225,9 @@ describe('signOutLocally', () => {
   it('does not wait on an unreachable push service', async () => {
     jest.useFakeTimers();
     mockUnregisterPush.mockImplementation(() => new Promise<void>(() => undefined));
-    const respond = storedSession(1);
-    mockAuth.signOut.mockImplementation(respond({ error: null }));
+    mockEndSession.mockImplementation(async () => {
+      stored = false;
+    });
     const done = signOutLocally();
     await jest.advanceTimersByTimeAsync(PUSH_UNREGISTER_TIMEOUT_MS);
     await done;

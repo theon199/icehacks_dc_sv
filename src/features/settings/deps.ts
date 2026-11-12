@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { useSessionStore } from '@/features/auth';
+import { signOut as endAuthSession, useSessionStore } from '@/features/auth';
 import {
   fetchPushCategories,
   savePushCategories,
@@ -393,6 +393,9 @@ export async function savePersonalDetails(details: PersonalDetails): Promise<voi
 
 /** Detaches this device from the account's push notifications; never throws. */
 export { unregisterPushDevice };
+
+/** The auth feature's sign-out: flushes and wipes synced user data, then ends the session. */
+export { endAuthSession };
 
 /** Everything this device holds for the signed-in account, for the data export. */
 export async function collectLocalData(): Promise<Record<string, unknown>> {

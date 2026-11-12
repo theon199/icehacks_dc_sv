@@ -233,8 +233,8 @@ describe('SettingsScreen', () => {
     const user = userEvent.setup();
     await renderWithTheme(<SettingsScreen />);
     await user.press(screen.getByRole('button', { name: 'Sign out' }));
-    expect(mockAuth.signOut).toHaveBeenCalledWith({ scope: 'local' });
-    expect(useSessionStore.getState().status).toBe('signedOut');
+    await waitFor(() => expect(useSessionStore.getState().status).toBe('signedOut'));
+    expect(mockAuth.signOut).toHaveBeenCalled();
   });
 
   it('stays signed in and explains when this device could not sign out', async () => {

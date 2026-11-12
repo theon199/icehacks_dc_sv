@@ -11,7 +11,7 @@ import { describeError, logger } from '@/lib/logger';
 import { queryClient } from '@/lib/query/client';
 import { getSupabase } from '@/lib/supabase/client';
 
-import { clearLocalUserData, unregisterPushDevice } from '../deps';
+import { clearLocalUserData, endAuthSession, unregisterPushDevice } from '../deps';
 
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -165,7 +165,7 @@ export async function deleteAccount(): Promise<void> {
     throw new AccountError('not_deleted', 'Your account could not be deleted. Try again.');
   }
   if (userId) await clearLocalUserData(userId);
-  await finishSignOut();
+  await finishSignOut(signOutHere);
 }
 
 /** How long sign-out waits for the push service before carrying on without it. */
@@ -184,8 +184,8 @@ async function bestEffort(work: () => Promise<unknown>, ms: number): Promise<voi
   }
 }
 
-/** One sign-out call, with a thrown error reported the same way as a returned one. */
-async function signOutOnce(): Promise<unknown> {
+/** A local sign-out, with a thrown error reported the same way as a returned one. */
+async function signOutHere(): Promise<unknown> {
   try {
     const { error } = await getSupabase().auth.signOut({ scope: 'local' });
     return error ?? null;
@@ -205,23 +205,26 @@ async function sessionCleared(): Promise<boolean> {
 }
 
 /**
- * Ends the session on this device. The `local` scope revokes only this device's refresh token on
- * the server, never the person's other devices. That request can fail (offline, server error), and
- * Supabase reports it through `error` rather than by throwing; a second `local` call then removes
- * the stored session, which no longer needs the network once the token is gone. Success is only
- * claimed after checking that no session is left to restore on the next launch.
+ * Runs `end`, then makes sure the session is really gone from this device. Supabase reports a
+ * failed revocation (offline, server error) through `error` rather than by throwing, and the
+ * stored session can survive it; a `local` sign-out then removes it without needing the network.
+ * Success is only claimed after checking that no session is left to restore on the next launch.
  */
-async function clearSession(): Promise<boolean> {
-  const failure = await signOutOnce();
-  if (failure == null && (await sessionCleared())) return true;
-  if (failure != null) logger.warn('Sign-out could not revoke the session', describeError(failure));
-  const retry = await signOutOnce();
+async function clearSession(end: () => Promise<unknown>): Promise<boolean> {
+  try {
+    const error = await end();
+    if (error != null) logger.warn('Sign-out could not revoke the session', describeError(error));
+  } catch (error) {
+    logger.warn('Sign-out could not revoke the session', describeError(error));
+  }
+  if (await sessionCleared()) return true;
+  const retry = await signOutHere();
   if (retry != null) logger.warn('Local sign-out failed', describeError(retry));
   return sessionCleared();
 }
 
-async function finishSignOut(): Promise<void> {
-  if (!(await clearSession())) {
+async function finishSignOut(end: () => Promise<unknown>): Promise<void> {
+  if (!(await clearSession(end))) {
     throw new AccountError('sign_out_failed', 'Could not sign out on this device. Try again.');
   }
   queryClient.removeQueries({ queryKey: [SETTINGS_QUERY_ROOT] });
@@ -229,13 +232,16 @@ async function finishSignOut(): Promise<void> {
 }
 
 /**
- * Signs out on this device and drops the cached account details so the next person starts clean.
+ * Signs out and drops the cached account details so the next person starts clean.
+ *
  * The device's push registration is removed first, while the session can still authorise that
  * request, so the next person on this phone does not get this account's notifications; it is
- * best effort and gives up after a few seconds so sign-out still works offline.
+ * best effort and gives up after a few seconds so sign-out still works offline. The session is
+ * then ended by the auth feature (pending sync is sent and user data on the device is wiped, the
+ * server session is revoked, falling back to this device only), and checked to be gone.
  * Throws an `AccountError` when the stored session could not be removed.
  */
 export async function signOutLocally(): Promise<void> {
   await bestEffort(unregisterPushDevice, PUSH_UNREGISTER_TIMEOUT_MS);
-  await finishSignOut();
+  await finishSignOut(endAuthSession);
 }
