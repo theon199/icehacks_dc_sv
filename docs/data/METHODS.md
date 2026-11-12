@@ -10,8 +10,14 @@ reference for those rules; the code comments repeat the key numbers next to the 
 `1 and 1/2`, unicode fractions such as `½`, word numbers such as `two` or `half`), an optional range
 (`2-3`, `2 to 4` → the midpoint), an optional size word (`small`, `medium`, `large`) and an
 optional unit. Units are normalised (`tbs`, `Tblsp`, capital `T` → `tbsp`; `t` → `tsp`; `tin` →
-`can`; `cl`/`dl` → `ml`). Package sizes are understood (`1 x 400g tin`, `2 (14.5 ounce) cans`), as is
-a trailing alternative measure (`175g/6oz` keeps the first). Phrases such as *to taste*, *for
+`can`; `cl`/`dl` → `ml`). Unicode fractions keep the whole number before them (`1½` and `1 ½` are
+1.5). Package sizes are understood (`1 x 400g tin`, `2 (14.5 ounce) cans`, `1 – 14-ounce can`,
+which is one can rather than a range of 1–14), and a bracketed weight after a count gives the size of
+each item (`1 (12 oz.) stir-fry vegetables` = 12 oz, `2 (6 oz) fillets` = 12 oz). A second, smaller
+mass adds to the first (`1 lb 2 oz`). A weight written after a household measure is preferred to it:
+after a container it is the size of each one (`1 can (28 ounces)`, `2 cans (15 ounces each)`),
+otherwise the line total (`2 cups (about 300g)`). An equal volume (`1 cup (250ml)`) or a trailing
+alternative after a mass (`175g/6oz`) keeps the first measure. Phrases such as *to taste*, *for
 frying*, *garnish*, *as needed* mark a line as unquantified.
 
 **Matching** (`match/`). Text is lower-cased, accent-folded, stripped of punctuation and simply
@@ -22,6 +28,12 @@ searched when that part names nothing. Every ingredient the whole line mentions 
 (*butter or margarine*) and asides (*cooked protein (ham, chicken or tofu)*) — feeds the safety
 roll-ups below. A line with no match keeps `ingredient_id = NULL`.
 
+A synonym that covers a whole "A or B" phrase (*chicken or vegetable bouillon*) decides that line on
+its own, so the build checks every such synonym against each alternative it hides (*chicken*,
+*chicken bouillon*, *vegetable bouillon*): the entry may not claim a diet flag an alternative lacks,
+and must list every allergen an alternative contains unless it is a variable product. A synonym
+that would fail open stops the build.
+
 **Weights** (`derive/ingredients.ts`). Grams come from, in order: a mass unit in the text; the
 ingredient's own table weights (`units`); USDA household portions for the matched FDC food
 (*cup, chopped*, *tbsp*, *large*, *clove*, a portion named after the food itself, …); a cup weight
@@ -29,15 +41,37 @@ derived from a tablespoon/teaspoon portion; a category cup weight (e.g. produce 
 240 g). Spoons are derived from the cup by volume. Small and large items are 0.75× and 1.3× a medium
 one. Container and approximate units fall back to generic weights (can 400 g, bunch 60 g, handful
 30 g, knob 15 g, slice 30 g …). The resolved table is stored per ingredient in `grams_per_unit`.
+When USDA lists several cup portions for one food, a *fluid* cup is preferred and a *whipped* cup is
+used last, because recipes measure cream and similar liquids as poured (heavy cream: 238 g, not
+120 g). Table weights override USDA portions whose labels describe a whole package rather than one
+item (mixed vegetables 100 g per piece, vegetable broth 240 g).
+
+**Concentrates.** Stock cubes and bouillon powders name a ready-to-use stock (`preparedAs`). When
+a line measures 60 ml or more of a concentrate (*250ml vegetable stock cube*), its weight and
+nutrients are those of the prepared stock; the line keeps the concentrate as its ingredient for
+allergens, diets and shopping. Ordinary stock cubes use USDA's regular bouillon foods (about
+24,000–26,000 mg sodium per 100 g); the low-sodium bouillon food is used only for lines that say
+low sodium.
 
 ## 2. Nutrition
 
 Per-100 g nutrients come from the ingredient's FDC food: energy (1008, else 2048/2047, else
 Atwater 4/4/9), protein (1003), fat (1004/1085), carbohydrate (1005/1050), fibre (1079), total
-sugars (2000/1063), saturated fat (1258) and sodium (1093). Missing values count as zero.
+sugars (2000/1063), saturated fat (1258) and sodium (1093). A nutrient USDA does not report for an
+ingredient counts as zero in that ingredient's contribution.
 
 A recipe total is the sum over lines with a known weight. When a line says *salt to taste*, 1.5 g of
 salt is added once per recipe. Plain water and ice add weight to nothing.
+
+**Frying oil.** Oil used as a frying medium mostly stays in the pan, so it does not count in full.
+An oil line is a frying medium when its text says so (*oil for frying*, *2 quarts neutral frying
+oil*, *Fry Oil*) or when it weighs at least 120 g and the method fries anything (*fry*, *fried*,
+*deep-fry*, *shallow-fry*, *deep fat*; *stir-fry* and the noun *frying pan* do not count). All
+frying-medium lines together contribute 15 % of their weight, capped at 15 % of the weight of the
+other food in the recipe, split between them by weight. This absorbed amount — not the measured
+amount — feeds nutrition, the portion weight and the servings estimate, which therefore run after
+this rule. The ingredient row keeps the measured weight. Oil that is part of a batter, dough,
+dressing or cake (no frying in the method) counts in full.
 
 **Coverage** is the share of quantified lines whose weight and nutrients are both known
 (ingredients without FDC data count as known only below 5 g). Nutrition is reported only at
@@ -68,7 +102,9 @@ at or below 55 g. With an unknown weight the estimate is 4. Recipes with estimat
 carry `nutrition_confidence = 'estimated'`.
 
 **Time.** MedlinePlus publishes prep, cook and total time; `total_minutes` is the total (or
-prep + cook) and `active_minutes` the prep time. For TheMealDB: preparation = 5 min + 1.5 min per
+prep + cook) and `active_minutes` the prep time, unless the published prep time is over 60 minutes:
+that figure includes hands-off soaking, chilling or marinating (overnight oats list 12 hours), so
+active time is estimated as for TheMealDB instead. For TheMealDB: preparation = 5 min + 1.5 min per
 ingredient line (max 40); cooking = the sum of step timers, or a per-course default when no step
 names a duration (main/soup/dessert 30, side 20, breakfast 15, snack 10, salad/drink 0); total =
 preparation + cooking; active = preparation + 15 % of cooking (at most +30 min, since proving,
@@ -93,8 +129,9 @@ overnight marinating). 0–1 points → 1, 2–3 → 2, 4+ → 3.
 
 **Course.** Drinks are detected by title first (smoothie, shake, juice, lemonade, cooler …, unless
 the title is clearly food such as *fudge* or *glazed*). MedlinePlus index pages map in priority
-order drinks → soups → salads → desserts → breakfast → dinner/lunch (main) → side dishes/breads
-(side) → snacks/dips (snack). TheMealDB: *Dessert* → dessert; then title words for soup and salad;
+order drinks → dips, salsas and sauces (snack) → soups → salads → desserts → breakfast →
+dinner/lunch (main) → side dishes/breads (side) → snacks (snack). Dips and sauces come early because
+MedlinePlus also files them under meal listings, and a 20 kcal ranch dip is not a main dish. TheMealDB: *Dessert* → dessert; then title words for soup and salad;
 *Breakfast* → breakfast, *Side* → side, *Starter* → snack, sauces in *Miscellaneous* → side;
 everything else → main.
 
@@ -107,7 +144,8 @@ and *International* for TheMealDB. Ingredient names that contain a country word 
 
 **Families.** `family_id` is `fam:` + the sorted set of title words after removing variant words
 (easy, healthy, classic, baked, grilled, slow cooker, recipe …), so *Easy Meatballs* and *Baked
-Meatballs* share a family.
+Meatballs* share a family. Words that change the dish rather than describe a version of it, such as
+*sweet* (sweet potato) and *fried* (fried rice), are kept.
 
 **Slugs** are ASCII, lower-case, hyphenated titles; repeats get `-2`, `-3` … in id order.
 
@@ -134,9 +172,27 @@ or unspecified meat — informational only, not a certification.
 line). Proteins, dairy, nuts and seeds named in the title whose diet or allergen effect is missing
 from the list are added to the roll-ups, unless the title says it is vegan, vegetarian or "…-free".
 
+**Owner decisions** (recorded so they can be revisited deliberately):
+
+- *Peanut and groundnut oil* contain peanut. Highly refined peanut oil is exempt from U.S. allergen
+  labelling, but a recipe line never says the oil is refined, so Famara fails closed.
+- *Vanilla extract* is not marked as alcohol. Its alcohol is a flavouring carrier used in teaspoon
+  amounts and largely evaporates in baking, so recipes using it can still be `no_alcohol` and
+  `halal_friendly`. Wine, beer, spirits, mirin and cooking wines are marked as alcohol.
+- *Parmesan* (and pecorino, grana padano) counts as vegetarian. Traditional versions use animal
+  rennet; Famara follows the common household reading of "vegetarian" (no meat, poultry or fish)
+  and leaves rennet out of scope, as it does for other cheeses.
+- *Store-bought broths* (chicken, beef, vegetable) are not variable products, while stock cubes,
+  bouillon powders and gravy granules are. Plain ready-to-serve broths are usually just stock and
+  salt; concentrates are where wheat, milk, soy and celery fillers appear. The diet effect of the
+  named animal (chicken, beef) always applies.
+- *Lamb and mutton stock* have their own entry (lamb), so they no longer count as beef; *veal stock*
+  stays with beef broth.
+
 ## 6. Goals, gentle and health score
 
-**Goal tags** (per serving; require reported nutrition except `plant_forward`):
+**Goal tags** (per serving; require reported nutrition except `plant_forward`; a tag whose input
+nutrient is unknown is not awarded):
 
 | Tag | Rule | Basis |
 | --- | --- | --- |
@@ -156,12 +212,14 @@ bakes, braises, mashes or blends), no deep-frying or charring, not billed as ver
 protein per 100 kcal (full at 5 g), produce + legume share of food weight (full at 50 %); penalties
 — sodium per 100 kcal (from 50 mg, full at 250 mg), saturated-fat share of energy (from 7 %, full at
 20 %), added-sugar share of energy (from 5 %, full at 25 %). Score = clamp(0.5 + 0.5 × mean(rewards)
-− 0.5 × mean(penalties)), three decimals. Without nutrition: 0.3 + 0.4 × plant reward.
+− 0.5 × mean(penalties)), three decimals. A term whose nutrient is unknown is left out of its mean
+rather than counted as zero. Without nutrition: 0.3 + 0.4 × plant reward.
 
 ## 7. Summary
 
 One or two sentences built only from catalog fields: cuisine, course, up to three key ingredients
-(those the title names first, then the heaviest, skipping aromatics, fats, flours and eggs unless
+(those the title names first — including one made from a food the title names, such as peanut
+butter in a peanut soup — then the heaviest, skipping aromatics, fats, flours and eggs unless
 the title names them), total time, and one standout fact chosen in order: protein (if
 `high_protein`), fibre (`high_fiber`), energy (`lower_calorie`, ≤ 350 kcal), sodium
 (`lower_sodium`), plant-forward, otherwise energy. No health claims.
@@ -172,12 +230,21 @@ TheMealDB `strYoutube` becomes a `video` (canonical `https://www.youtube.com/wat
 and `strSource` a `web` link; MedlinePlus recipes link to their own page. URLs must be valid
 http(s). During `npm run fetch`, videos are checked with YouTube oEmbed (missing → dropped; the
 title is kept when available) and web links with a HEAD request (404/410 or a host that no longer
-resolves → dropped; bot blocks and server errors keep the link).
+resolves → dropped; bot blocks and server errors keep the link). Plain-http web links are also
+requested over https; when that answers with a success or redirect status the catalog stores the
+https address (for tutorials and `source_url`), otherwise the original address is kept.
+
+## 8a. Search
+
+The full-text index holds the title, the cuisine label and, for each matched ingredient, its name
+followed by its synonyms as unique words, so *garbanzo*, *aubergine* or *courgette* find recipes
+whose lines say chickpeas, eggplant or zucchini.
 
 ## 9. Quality gates
 
 `npm run build` fails unless all of these hold: knowledge tables validate; every FDC id exists and
-its description matches; no synonym maps to two ingredients; substitutions reference known
+its description matches; no synonym maps to two ingredients; no "A or B" synonym is less
+restrictive than an alternative it hides; every `preparedAs` names an ingredient; substitutions reference known
 ingredients, are unique and have notes; unique recipe ids and slugs; every recipe has ≥ 1
 ingredient and ≥ 1 step; enums are valid (course, cuisine, region, confidence, goal tags, allergen
 states, diet bits, effort 1–3); servings 1–48; active ≤ total minutes; health score 0–1; nutrient
@@ -185,3 +252,7 @@ values non-negative, saturated fat ≤ fat, sodium ≤ 8,000 mg, protein energy 
 within the ranges above; no `free` allergen or diet flag on a recipe with an unmatched line; every
 `ingredient_id` exists; ≥ 98 % of ingredient lines matched; SQLite `integrity_check` and
 `foreign_key_check` pass; one FTS row per recipe; database < 15 MB.
+
+The database and manifest are written to `*.staging` files next to the assets and moved into place
+only after every gate, including the post-write SQLite checks and the size limit, has passed, so a
+failing build leaves the committed catalog untouched.
