@@ -1,0 +1,95 @@
+import type { AllergenId } from '../types.ts';
+import { ing, type IngredientDef } from './define.ts';
+
+const WHEAT: AllergenId[] = ['wheat', 'gluten'];
+
+/**
+ * Flours, grains, pasta, noodles, breads, pastry and cereals.
+ * Oats are tagged `gluten`: unless a product is certified gluten-free, oats are commonly
+ * cross-contact with wheat, so Famara does not call them gluten-free.
+ */
+export const GRAINS: IngredientDef[] = [
+  // Flours and starches
+  ing('flour', 'grain', { name: 'all-purpose flour', syn: ['all purpose flour', 'all-purpose flour', 'plain flour', 'white flour', 'wheat flour', 'sifted all purpose flour', 'farine', 'tempura flour', 'cake flour', 'pastry flour', '00 flour', 'maida'], allergens: WHEAT, aisle: 'baking', fdc: [168894, 'Wheat flour, white, all-purpose, enriched, bleached'], pantry: true }),
+  ing('bread_flour', 'grain', { syn: ['strong white bread flour', 'strong white flour', 'strong flour', 'bread flour', 'white bread mix'], allergens: WHEAT, aisle: 'baking', fdc: [168896, 'Wheat flour, white, bread, enriched'] }),
+  ing('self_raising_flour', 'grain', { syn: ['self raising flour', 'self-raising flour', 'self rising flour', 'self-rising flour', 'all purpose baking mix'], allergens: WHEAT, aisle: 'baking', fdc: [168895, 'Wheat flour, white, all-purpose, self-rising, enriched'] }),
+  ing('whole_wheat_flour', 'grain', { syn: ['wholemeal flour', 'strong wholemeal flour', 'whole wheat flour', 'whole-wheat flour', 'whole grain flour', 'atta', 'chapati flour', 'whole wheat', 'whole wheat flour or all purpose flour'], allergens: WHEAT, aisle: 'baking', fdc: [168893, 'Wheat flour, whole-grain (Includes foods for USDA\'s Food Distribution Program)'] }),
+  ing('rye_flour', 'grain', { allergens: ['gluten'], aisle: 'baking', fdc: [168885, 'Rye flour, dark'] }),
+  ing('buckwheat_flour', 'grain', { aisle: 'baking', fdc: [170687, 'Buckwheat flour, whole-groat'] }),
+  ing('rice_flour', 'grain', { syn: ['glutinous rice flour', 'sticky rice flour', 'sweet rice flour'], aisle: 'baking', fdc: [169714, 'Rice flour, white, unenriched'] }),
+  ing('cornmeal', 'grain', { syn: ['yellow cornmeal', 'white cornmeal', 'fine yellow cornmeal', 'polenta', 'grits', 'corn grits', 'yellow masarepa', 'masarepa', 'instant corn flour', 'masa harina', 'masa'], aisle: 'baking', fdc: [168867, 'Cornmeal, degermed, enriched, yellow'] }),
+  ing('cornstarch', 'grain', { name: 'cornstarch', syn: ['corn starch', 'cornflour', 'corn flour', 'starch', 'custard powder'], aisle: 'baking', fdc: [169698, 'Cornstarch'], pantry: true }),
+  ing('potato_starch', 'grain', { syn: ['potato flour'], aisle: 'baking', fdc: [169698, 'Cornstarch'] }),
+  ing('tapioca', 'grain', { syn: ['tapioca pearls', 'tapioca starch', 'tapioca flour', 'cassava flour', 'arrowroot'], aisle: 'baking', fdc: [169717, 'Tapioca, pearl, dry'] }),
+  ing('semolina', 'grain', { syn: ['semolina flour', 'durum wheat semolina', 'farina', 'cream of wheat', 'sooji', 'rava'], allergens: WHEAT, aisle: 'baking', fdc: [169715, 'Semolina, enriched'] }),
+  ing('chickpea_flour', 'legume', { syn: ['gram flour', 'besan', 'garbanzo bean flour'], aisle: 'baking', fdc: [174288, 'Chickpea flour (besan)'] }),
+  ing('almond_flour', 'nut_seed', { syn: ['almond meal', 'ground almonds'], allergens: ['tree_nut'], aisle: 'baking', fdc: [2261420, 'Flour, almond'] }),
+  // Grains
+  ing('rice', 'grain', { name: 'white rice', syn: ['white rice', 'long grain rice', 'long-grain rice', 'uncooked rice', 'uncooked white rice', 'uncooked white or brown rice', 'paella rice', 'dessert rice', 'pudding rice', 'calrose rice', 'carolina rice'], aisle: 'grains_pasta', fdc: [168877, 'Rice, white, long-grain, regular, raw, enriched'], pantry: true }),
+  ing('cooked_rice', 'grain', { name: 'cooked rice', syn: ['cooked white rice', 'steamed rice', 'leftover rice', 'day old rice'], fdc: [168878, 'Rice, white, long-grain, regular, enriched, cooked'] }),
+  ing('basmati_rice', 'grain', { syn: ['basmati'], fdc: [168877, 'Rice, white, long-grain, regular, raw, enriched'] }),
+  ing('jasmine_rice', 'grain', { syn: ['thai jasmine rice', 'thai fragrant rice'], fdc: [168877, 'Rice, white, long-grain, regular, raw, enriched'] }),
+  ing('arborio_rice', 'grain', { syn: ['risotto rice', 'arborio', 'carnaroli rice', 'sushi rice', 'short grain rice', 'glutinous rice', 'sticky rice'], fdc: [168931, 'Rice, white, short-grain, raw, unenriched'] }),
+  ing('brown_rice', 'grain', { syn: ['brown basmati rice', 'wholegrain rice'], fdc: [169703, 'Rice, brown, long-grain, raw (Includes foods for USDA\'s Food Distribution Program)'] }),
+  ing('cooked_brown_rice', 'grain', { syn: ['cooked brown rice'], fdc: [169704, 'Rice, brown, long-grain, cooked (Includes foods for USDA\'s Food Distribution Program)'] }),
+  ing('wild_rice', 'grain', { syn: ['cooked wild rice', 'wild rice mix', 'cooked wild rice or wild rice mix'], fdc: [168897, 'Wild rice, cooked'] }),
+  ing('quinoa', 'grain', { syn: ['dry quinoa', 'red quinoa'], fdc: [168874, 'Quinoa, uncooked'] }),
+  ing('couscous', 'grain', { syn: ['khus khus', 'cous cous', 'giant couscous', 'pearl couscous'], allergens: WHEAT, fdc: [169699, 'Couscous, dry'] }),
+  ing('bulgur', 'grain', { syn: ['bulgur wheat', 'bulghur', 'cracked wheat', 'dried bulgur'], allergens: WHEAT, fdc: [170688, 'Bulgur, dry'] }),
+  ing('cooked_bulgur', 'grain', { syn: ['cooked bulgur'], allergens: WHEAT, fdc: [170287, 'Bulgur, cooked'] }),
+  ing('freekeh', 'grain', { syn: ['farro', 'spelt', 'wheat berries', 'mixed grain', 'whole grains'], allergens: WHEAT, fdc: [169745, 'Spelt, uncooked'] }),
+  ing('barley', 'grain', { syn: ['pearl barley', 'pearled barley', 'cooked barley'], allergens: ['gluten'], fdc: [170284, 'Barley, pearled, raw'] }),
+  ing('rye_grain', 'grain', { syn: ['rye', 'rye berries'], allergens: ['gluten'], fdc: [168884, 'Rye grain'] }),
+  ing('buckwheat', 'grain', { syn: ['buckwheat groats', 'kasha'], fdc: [170286, 'Buckwheat'] }),
+  ing('millet', 'grain', { fdc: [169702, 'Millet, raw'] }),
+  ing('oats', 'grain', { syn: ['rolled oats', 'porridge oats', 'old fashioned rolled oats', 'old fashioned oats', 'quick oats', 'quick cooking oats', 'oatmeal', 'ground oats', 'steel cut oats', 'oat', 'oat flakes', 'uncooked old fashioned rolled oats', 'oat bran'], allergens: ['gluten'], aisle: 'grains_pasta', fdc: [173904, 'Cereals, oats, regular and quick, not fortified, dry'] }),
+  // Pasta and noodles
+  ing('pasta', 'grain', { syn: ['dried pasta', 'uncooked pasta', 'penne', 'penne rigate', 'dry penne pasta', 'rigatoni', 'farfalle', 'bowtie pasta', 'fusilli', 'rotini', 'rotini pasta', 'cooked rotini pasta', 'paccheri pasta', 'paccheri', 'conchiglie', 'pasta shells', 'shell pasta', 'orzo', 'dry orzo', 'orzo or tiny pasta', 'ziti', 'tagliatelle', 'pappardelle', 'manicotti shells', 'cannelloni tubes', 'orecchiette', 'gnocchi'], allergens: WHEAT, fdc: [169736, 'Pasta, dry, enriched'] }),
+  ing('spaghetti', 'grain', { syn: ['linguine', 'linguine pasta', 'fettuccine', 'bucatini', 'angel hair pasta', 'vermicelli pasta', 'broken spaghetti', 'capellini'], allergens: WHEAT, fdc: [169736, 'Pasta, dry, enriched'] }),
+  ing('macaroni', 'grain', { syn: ['elbow macaroni', 'dry macaroni', 'uncooked macaroni', 'macaroni pasta'], allergens: WHEAT, fdc: [169736, 'Pasta, dry, enriched'] }),
+  ing('whole_wheat_pasta', 'grain', { syn: ['whole grain pasta', 'whole wheat pasta', 'whole-wheat spaghetti noodles', 'whole wheat spaghetti', 'whole wheat thin spaghetti', 'whole grain noodles', 'wholewheat pasta'], allergens: WHEAT, fdc: [169738, 'Pasta, whole-wheat, dry (Includes foods for USDA\'s Food Distribution Program)'] }),
+  ing('lasagna_sheets', 'grain', { name: 'lasagna noodles', syn: ['lasagne sheets', 'lasagna sheets', 'lasagna noodles', 'uncooked lasagna noodles', 'lasagne noodles', 'fresh pasta'], allergens: ['wheat', 'gluten', 'egg'], variable: true, fdc: [169736, 'Pasta, dry, enriched'], units: { sheet: 20, piece: 20 } }),
+  ing('egg_noodles', 'grain', { syn: ['egg noodle', 'noodles', 'chinese egg noodles', 'chow mein noodles', 'wheat noodles', 'lo mein noodles', 'sevaiiya', 'vermicelli'], allergens: ['wheat', 'gluten', 'egg'], variable: true, fdc: [169731, 'Noodles, egg, dry, enriched'] }),
+  ing('udon_noodles', 'grain', { syn: ['udon', 'udon noodle'], allergens: WHEAT, variable: true, fdc: [168905, 'Noodles, chinese, chow mein'] }),
+  ing('soba_noodles', 'grain', { syn: ['soba'], allergens: WHEAT, variable: true, fdc: [168906, 'Noodles, japanese, soba, dry'] }),
+  ing('ramen_noodles', 'grain', { syn: ['instant noodles', 'ramen', 'chicken flavored ramen noodles', 'soy sauce flavor instant ramen style noodles', 'instant ramen'], allergens: ['wheat', 'gluten', 'soy'], variable: true, fdc: [171177, 'Soup, ramen noodle, any flavor, dry'] }),
+  ing('rice_noodles', 'grain', { syn: ['rice noodle', 'flat rice noodles', 'rice stick noodles', 'rice sticks', 'rice vermicelli', 'vermicelli rice noodles', 'brown rice noodle', 'brown rice noodles', 'pad thai noodles', 'rice vermicelli noodles', 'glass noodles', 'cellophane noodles', 'mung bean noodles'], fdc: [169742, 'Rice noodles, dry'] }),
+  ing('rice_paper', 'grain', { syn: ['rice paper sheets', 'rice paper wrappers', 'spring roll wrappers', 'rice flour pancakes'], aisle: 'international', fdc: [169742, 'Rice noodles, dry'], units: { sheet: 9, piece: 9 } }),
+  ing('wonton_wrappers', 'grain', { syn: ['egg rolls', 'egg roll', 'wonton skin', 'wonton skins', 'egg roll wrappers', 'dumpling wrappers', 'gyoza wrappers'], allergens: ['wheat', 'gluten', 'egg'], variable: true, aisle: 'international', fdc: [172802, 'Wonton wrappers (includes egg roll wrappers)'], units: { piece: 8, sheet: 8 } }),
+  // Breads
+  ing('bread', 'grain', { syn: ['white bread', 'sliced bread', 'crusty bread', 'stale bread', 'bread slices', 'toast', 'sandwich bread', 'bread cubes', 'brioche', 'cuban bread', 'country bread'], allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [325871, 'Bread, white, commercially prepared'], units: { slice: 28, piece: 28, loaf: 450 } }),
+  ing('whole_wheat_bread', 'grain', { syn: ['wholemeal bread', 'whole wheat bread', 'whole-wheat bread', 'wholegrain bread', 'whole grain bread', 'whole-grain bread', 'brown bread', 'multigrain bread', 'try whole grain bread'], allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [172688, 'Bread, whole-wheat, commercially prepared'], units: { slice: 32, piece: 32, loaf: 450 } }),
+  ing('rye_bread', 'grain', { syn: ['pumpernickel', 'dark rye bread'], allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [172684, 'Bread, rye'], units: { slice: 32, piece: 32 } }),
+  ing('baguette', 'grain', { syn: ['french bread', 'ciabatta', 'sourdough bread', 'sourdough', 'french stick', 'italian bread'], allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [172675, 'Bread, french or vienna (includes sourdough)'], units: { slice: 25, piece: 250, loaf: 250 } }),
+  ing('bread_roll', 'grain', { syn: ['bread rolls', 'bun', 'buns', 'burger buns', 'hamburger buns', 'sesame seed burger buns', 'hot dog buns', 'brioche buns', 'dinner rolls', 'rolls'], allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [172796, 'Rolls, hamburger or hotdog, plain'], units: { piece: 50, medium: 50 } }),
+  ing('pita', 'grain', { syn: ['pita bread', 'pitta bread', 'pitta', 'flatbread', 'flatbreads', 'lavash'], allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [174915, 'Bread, pita, white, enriched'], units: { piece: 60, medium: 60 } }),
+  ing('naan', 'grain', { syn: ['naan bread', 'naan breads', 'nan bread'], allergens: ['wheat', 'gluten', 'milk'], variable: true, aisle: 'bakery', fdc: [171845, 'Bread, naan, plain, commercially prepared, refrigerated'], units: { piece: 90 } }),
+  ing('english_muffin', 'grain', { syn: ['english muffins', 'whole wheat english muffins', 'wheat english muffins'], allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [172828, 'English muffins, plain, unenriched, with calcium propionate (includes sourdough)'], units: { piece: 57 } }),
+  ing('flour_tortilla', 'grain', { syn: ['flour tortillas', 'flour tortilla', 'tortillas', 'tortilla', 'wheat tortillas', 'whole wheat tortillas', 'whole-wheat tortillas', 'whole wheat flour tortillas', 'wraps', 'tortilla wraps', 'burrito tortillas'], allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [2758996, 'Tortilla, wheat flour, shelf stable'], units: { piece: 45, medium: 45, large: 70, small: 30 } }),
+  ing('corn_tortilla', 'grain', { syn: ['corn tortillas', 'soft corn tortillas', 'thin corn tortillas', 'whole grain corn tortillas', 'tostadas'], aisle: 'bakery', fdc: [2758997, 'Tortilla, corn, shelf stable'], units: { piece: 26, medium: 26 } }),
+  ing('taco_shells', 'grain', { syn: ['hard taco shells', 'taco shell'], aisle: 'international', fdc: [172800, 'Taco shells, baked'], units: { piece: 13 } }),
+  ing('arepa', 'grain', { syn: ['arepas', 'corn arepa', 'casabe', 'cassava bread'], aisle: 'international', variable: true, fdc: [2758997, 'Tortilla, corn, shelf stable'], units: { piece: 80 } }),
+  ing('breadcrumbs', 'grain', { syn: ['bread crumbs', 'dry bread crumbs', 'plain bread crumbs', 'panko', 'panko breadcrumbs', 'fresh breadcrumbs', 'dried breadcrumbs'], allergens: WHEAT, variable: true, aisle: 'baking', fdc: [174928, 'Bread, crumbs, dry, grated, plain'] }),
+  ing('croutons', 'grain', { allergens: WHEAT, variable: true, aisle: 'bakery', fdc: [172806, 'Bread, crumbs, dry, grated, seasoned'] }),
+  // Pastry and baked goods used as ingredients
+  ing('puff_pastry', 'grain', { syn: ['ready rolled puff pastry', 'puff pastry sheet'], allergens: ['wheat', 'gluten', 'milk'], variable: true, aisle: 'frozen', fdc: [172790, 'Puff pastry, frozen, ready-to-bake'], units: { sheet: 320, packet: 320 } }),
+  ing('shortcrust_pastry', 'grain', { syn: ['shortcrust pastry', 'ready rolled shortcrust pastry', 'pie crust', 'pie crusts', 'pastry', 'pastry case', 'tart case', 'pie dough'], allergens: ['wheat', 'gluten', 'milk'], variable: true, aisle: 'frozen', fdc: [175024, 'Pie crust, standard-type, frozen, ready-to-bake, enriched'], units: { sheet: 320, packet: 320 } }),
+  ing('filo_pastry', 'grain', { syn: ['filo', 'phyllo', 'phyllo dough', 'phyllo pastry', 'filo sheets'], allergens: WHEAT, variable: true, aisle: 'frozen', fdc: [172791, 'Phyllo dough'], units: { sheet: 19, piece: 19 } }),
+  ing('kataifi', 'grain', { syn: ['knafeh', 'kunafa dough', 'shredded filo'], allergens: WHEAT, variable: true, aisle: 'international', fdc: [172791, 'Phyllo dough'] }),
+  ing('digestive_biscuits', 'grain', { syn: ['digestive biscuits', 'graham crackers', 'graham cracker crumbs', 'maria cookies', 'rich tea biscuits', 'biscuits', 'speculoos', 'speculaas biscuits', 'shortbread', 'vanilla wafers'], allergens: ['wheat', 'gluten', 'milk'], variable: true, aisle: 'baking', addedSugar: true, fdc: [174967, 'Cookies, shortbread, commercially prepared, plain'], units: { piece: 15 } }),
+  ing('chocolate_cookies', 'grain', { syn: ['oreo cream biscuits', 'oreos', 'oreo cookies', 'chocolate sandwich cookies'], allergens: ['wheat', 'gluten', 'soy'], variable: true, aisle: 'baking', addedSugar: true, fdc: [172718, 'Cookies, chocolate sandwich, with creme filling, regular'], units: { piece: 11 } }),
+  ing('peanut_cookies', 'grain', { syn: ['peanut butter cookies'], allergens: ['wheat', 'gluten', 'peanut'], variable: true, aisle: 'baking', addedSugar: true, fdc: [174967, 'Cookies, shortbread, commercially prepared, plain'], units: { piece: 15 } }),
+  ing('meringue', 'sweetener', { syn: ['meringue nests', 'meringues'], allergens: ['egg'], aisle: 'baking', fdc: [172183, 'Egg, white, raw, fresh'], units: { piece: 10 } }),
+  ing('sponge_cake', 'grain', { syn: ['ladyfingers', 'savoiardi', 'sponge fingers', 'pound cake', 'cake'], allergens: ['wheat', 'gluten', 'egg', 'milk'], variable: true, aisle: 'bakery', addedSugar: true, fdc: [172706, 'Cake, sponge, commercially prepared'], units: { piece: 12 } }),
+  ing('christmas_pudding', 'grain', { syn: ['christmas pudding', 'plum pudding'], allergens: ['wheat', 'gluten', 'egg', 'milk'], variable: true, meat: 'beef', alcohol: true, aisle: 'bakery', addedSugar: true, fdc: [174939, 'Cake, fruitcake, commercially prepared'] }),
+  // Cereals and snacks
+  ing('corn_flakes', 'grain', { syn: ['cornflakes', 'cereal flakes', 'flake cereal'], allergens: ['gluten'], variable: true, aisle: 'pantry', fdc: [174648, 'Cereals ready-to-eat, RALSTON Corn Flakes'] }),
+  ing('rice_cereal', 'grain', { syn: ['rice krispies', 'rice cereal', 'puffed rice', 'crisped rice cereal', 'rice crispies'], allergens: ['gluten'], variable: true, aisle: 'pantry', fdc: [174648, 'Cereals ready-to-eat, RALSTON Corn Flakes'] }),
+  ing('whole_grain_cereal', 'grain', { syn: ['o type whole grain cereal', 'puff type whole grain cereal', 'square type whole grain cereal', 'grape nut cereal', 'grape nuts', 'bran flakes', 'muesli'], allergens: WHEAT, variable: true, aisle: 'pantry', fdc: [171646, 'Cereals ready-to-eat, granola, homemade'] }),
+  ing('granola', 'grain', { syn: ['low fat granola'], allergens: ['gluten', 'tree_nut'], variable: true, aisle: 'pantry', fdc: [171646, 'Cereals ready-to-eat, granola, homemade'] }),
+  ing('pretzels', 'grain', { syn: ['pretzel', 'pretzel sticks'], allergens: WHEAT, variable: true, aisle: 'pantry', fdc: [167555, 'Snacks, pretzels, hard, plain, salted'] }),
+  ing('crackers', 'grain', { syn: ['saltines', 'saltine crackers', 'cream crackers', 'water crackers', 'crackers'], allergens: WHEAT, variable: true, aisle: 'pantry', fdc: [172746, 'Crackers, saltines (includes oyster, soda, soup)'] }),
+  ing('popcorn', 'grain', { syn: ['toffee popcorn', 'popped popcorn'], allergens: ['milk'], variable: true, aisle: 'pantry', addedSugar: true, fdc: [167550, 'Snacks, popcorn, cakes'] }),
+  ing('falafel', 'legume', { syn: ['falafels'], allergens: ['wheat', 'gluten', 'sesame'], variable: true, aisle: 'international', fdc: [172455, 'Falafel, home-prepared'], units: { piece: 17 } }),
+  ing('fries', 'produce', { syn: ['french fries', 'chips', 'frozen chips', 'oven chips'], variable: true, aisle: 'frozen', fdc: [170118, 'Potatoes, french fried, all types, salt not added in processing, frozen, oven-heated'] }),
+];
