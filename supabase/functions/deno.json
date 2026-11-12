@@ -14,8 +14,8 @@
     "zod": "npm:zod@4.6.7"
   },
   "tasks": {
-    "check": "deno check _shared/",
-    "test": "deno test --allow-env --no-prompt _shared/",
+    "check": "deno check .",
+    "test": "deno test --allow-env --no-prompt",
     "verify": "deno fmt --check && deno lint && deno task check && deno task test"
   },
   "fmt": {
