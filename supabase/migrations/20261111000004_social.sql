@@ -97,7 +97,7 @@ create table public.friend_invites (
   code text primary key constraint friend_invites_code_format check (code ~ '^[A-Z2-9]{10}$'),
   inviter_id uuid not null references public.profiles (id) on delete cascade,
   created_at timestamptz default now() not null,
-  expires_at timestamptz default now() not null + interval '7 days',
+  expires_at timestamptz default now() + interval '7 days' not null,
   redeemed_by uuid references public.profiles (id) on delete set null,
   redeemed_at timestamptz
 );
