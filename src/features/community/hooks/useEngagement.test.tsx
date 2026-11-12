@@ -71,6 +71,8 @@ describe('useToggleLike', () => {
 
     await act(async () => reply.resolve({ liked: true, like_count: 10 }));
     await waitFor(() => expect(feedPost()?.like_count).toBe(10));
+    // Let the mutation settle inside act so its final state update is not reported as stray.
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 
   it('rolls the like back everywhere when the request fails', async () => {
@@ -110,6 +112,7 @@ describe('useToggleLike', () => {
 
     await act(async () => second.resolve({ liked: false, like_count: 3 }));
     await waitFor(() => expect(toggleLikeMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(feedPost()).toMatchObject({ liked_by_me: false, like_count: 3 });
   });
 });
