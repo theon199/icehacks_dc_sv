@@ -3,7 +3,6 @@
  * candidates, without touching the plan until the person accepts it.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { InteractionManager } from 'react-native';
 
 import { autoFillWeek, type AutoFillResult, type IsoDate } from '@/domain/plan';
 import type { RecipeSummary as DomainRecipeSummary } from '@/domain/types';
@@ -11,6 +10,7 @@ import { useRecipes } from '@/lib/catalog';
 import { plannedRecipeIds, usePantryStore, usePreferencesStore, type Preferences } from '@/stores';
 
 import { goalTagsFor, toPantryIds } from '../deps';
+import { whenIdle } from './defer';
 import { plannerActions, useWeekSlots } from './usePlanner';
 import { usePlanningCandidates, type CandidatesState } from './usePlanningCandidates';
 import { byId, toFillCandidates, type Ranked } from '../model/candidates';
@@ -85,11 +85,10 @@ export function useAutoFillPreview(options: FillOptions): {
     if (!ranked || !plannedReady) return;
     const cuisines: Record<string, string> = {};
     for (const r of planned.data ?? []) cuisines[r.id] = r.cuisine;
-    const task = InteractionManager.runAfterInteractions(() => {
+    return whenIdle(() => {
       const result = buildPreview(ranked, prefs, toPantryIds(pantry), week, cuisines, options);
       setPreview({ key, result });
     });
-    return () => task.cancel();
   }, [key, ranked, plannedReady, planned.data, prefs, pantry, week, options]);
 
   const recipes = useMemo(() => byId(ranked ?? []), [ranked]);

@@ -1,10 +1,9 @@
 /**
  * Ranked, safety-screened recipes for "Plan my week" and the two-day plan. The catalog query does
- * the coarse SQL filtering; ranking runs after interactions settle so opening a planner screen
+ * the coarse SQL filtering; ranking waits for the JS thread to go idle so opening a planner screen
  * never stutters.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { InteractionManager } from 'react-native';
 
 import type { RankInput } from '@/domain/recommend';
 import { dietMask, useCandidates, type CandidateFilters } from '@/lib/catalog';
@@ -17,6 +16,7 @@ import {
 } from '@/stores';
 
 import { toDomainFeedback, toDomainPreferences, toPantryIds } from '../deps';
+import { whenIdle } from './defer';
 import { rankForPlanning, type Ranked } from '../model/candidates';
 
 /** Enough variety for a full week and a beam search, small enough to rank in a few ms. */
@@ -55,10 +55,9 @@ export function usePlanningCandidates(): CandidatesState {
       feedback: toDomainFeedback(feedback),
       pantry: toPantryIds(pantry),
     };
-    const task = InteractionManager.runAfterInteractions(() => {
+    return whenIdle(() => {
       setRanked({ source: data, list: rankForPlanning(data, input) });
     });
-    return () => task.cancel();
   }, [data, prefs, pantry, feedback]);
 
   if (needsSafety) return { status: 'needs_safety' };
