@@ -5,7 +5,9 @@
  * themselves go straight into the (synced) chef store.
  *
  * A question that has been sent always runs to the end, even if the Chef screen goes away: the
- * server has already counted it, so its answer is kept rather than thrown away.
+ * server has already counted it, so its answer is kept rather than thrown away. The one exception
+ * is a change of account while it runs: the answer, its suggestions and any allowance news belong
+ * to the account that asked, so they are dropped instead of landing in the next one.
  */
 import { create } from 'zustand';
 
@@ -61,6 +63,12 @@ const INITIAL: ChefSessionState = {
 
 export const useChefSession = create<ChefSessionState>()(() => INITIAL);
 
+/**
+ * Bumped on every reset. A request remembers the value it started under and stops touching the
+ * session (and the chef store) once it differs, so an answer cannot outlive the account it was for.
+ */
+let generation = 0;
+
 const omit = <T>(record: Readonly<Record<string, T>>, key: string) => {
   if (!(key in record)) return record;
   const next = { ...record };
@@ -70,6 +78,7 @@ const omit = <T>(record: Readonly<Record<string, T>>, key: string) => {
 
 /** Forgets everything about the current conversation state (on sign-out, and in tests). */
 export function resetChefSession(): void {
+  generation += 1;
   useChefSession.setState(INITIAL, true);
 }
 
@@ -100,6 +109,10 @@ export function clearFollowUps(threadId: string): void {
 export async function askChef(attempt: ChefAttempt): Promise<void> {
   if (isChefBusy()) return;
   const { threadId } = attempt;
+  const startedIn = generation;
+  const askedBy = useSessionStore.getState().userId;
+  const stillCurrent = () =>
+    generation === startedIn && useSessionStore.getState().userId === askedBy;
   useChefSession.setState((state) => ({
     sendingIn: threadId,
     failures: omit(state.failures, threadId),
@@ -108,8 +121,12 @@ export async function askChef(attempt: ChefAttempt): Promise<void> {
     const prefs = usePreferencesStore.getState().prefs;
     const current = useChefStore.getState().threads[threadId]?.messages ?? [];
     const built = await buildChefRequest(current, prefs, catalog, attempt.photo ?? undefined);
-    if (!built) return;
+    if (!built || !stillCurrent()) return;
     const reply = await aiApi.askChef(built.request);
+    if (!stillCurrent()) {
+      logger.info('Chef: dropped an answer that arrived after the account changed');
+      return;
+    }
     // Preferences may have changed while Chef was thinking; screen against the latest ones.
     const latest = safetyPrefsFrom(usePreferencesStore.getState().prefs);
     const { safe, dropped } = screenSuggestedIds(
@@ -122,7 +139,7 @@ export async function askChef(attempt: ChefAttempt): Promise<void> {
         count: dropped.length,
       });
     }
-    // A thread deleted (or an account signed out) meanwhile simply ignores the answer.
+    // A thread deleted meanwhile simply ignores the answer.
     useChefStore.getState().append(threadId, {
       role: 'assistant',
       text: reply.reply,
@@ -134,6 +151,7 @@ export async function askChef(attempt: ChefAttempt): Promise<void> {
       limitedUntil: reply.quota.remaining === 0 ? limitEnd(reply.quota.reset_at) : null,
     }));
   } catch (error) {
+    if (!stillCurrent()) return;
     const problem = describeAiProblem(error);
     const spent = isAiQuotaExceeded(error);
     useChefSession.setState((state) => ({
@@ -147,7 +165,10 @@ export async function askChef(attempt: ChefAttempt): Promise<void> {
         : {}),
     }));
   } finally {
-    useChefSession.setState({ sendingIn: null });
+    // After an account change `sendingIn` belongs to the new account's own question, if any.
+    if (stillCurrent() && useChefSession.getState().sendingIn === threadId) {
+      useChefSession.setState({ sendingIn: null });
+    }
   }
 }
 

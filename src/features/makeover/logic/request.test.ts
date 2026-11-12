@@ -1,4 +1,11 @@
-import { makeoverAllergenHits } from './request';
+import { ApiError } from '@/lib/api/errors';
+
+import {
+  allergenConflictOf,
+  excusedNoteMentions,
+  makeoverAllergenHits,
+  noteMentionWarning,
+} from './request';
 
 const makeover = (overrides: Partial<Parameters<typeof makeoverAllergenHits>[0]> = {}) => ({
   title: 'Lighter mac and greens',
@@ -51,5 +58,70 @@ describe('makeoverAllergenHits', () => {
       ['milk'],
     );
     expect(describe_(hits)).toEqual(['Swap 1:yogurt']);
+  });
+});
+
+describe('excusedNoteMentions', () => {
+  it('lists note mentions of an ingredient a swap took out, once each', () => {
+    const hits = excusedNoteMentions(
+      makeover({ note: 'Add the butter back at the end, a little butter goes far.' }),
+      ['milk'],
+    );
+    expect(describe_(hits)).toEqual(['Note:butter']);
+    expect(makeoverAllergenHits(makeover({ note: 'Add the butter back.' }), ['milk'])).toEqual([]);
+  });
+
+  it('ignores note mentions that already block saving', () => {
+    expect(excusedNoteMentions(makeover({ note: 'Top with parmesan.' }), ['milk'])).toEqual([]);
+  });
+
+  it('is empty when the note names nothing declared', () => {
+    expect(excusedNoteMentions(makeover({ note: 'Ready in 20 minutes.' }), ['milk'])).toEqual([]);
+    expect(excusedNoteMentions(makeover(), [])).toEqual([]);
+  });
+});
+
+describe('noteMentionWarning', () => {
+  it('names the words and the allergens they carry', () => {
+    expect(
+      noteMentionWarning([
+        { allergen: 'milk', found: 'butter', where: 'Note' },
+        { allergen: 'milk', found: 'cream', where: 'Note' },
+      ]),
+    ).toBe(
+      'The note mentions butter and cream. This version swaps them out to keep it free of milk, so leave them out when you cook.',
+    );
+  });
+
+  it('says nothing when there is nothing to warn about', () => {
+    expect(noteMentionWarning([])).toBeNull();
+  });
+});
+
+describe('allergenConflictOf', () => {
+  const refused = (details?: Record<string, unknown>) =>
+    new ApiError({
+      kind: 'validation',
+      functionName: 'makeover',
+      status: 422,
+      code: 'ai_refused',
+      ...(details ? { details } : {}),
+    });
+
+  it('reads the allergens of an allergen conflict', () => {
+    expect(
+      allergenConflictOf(
+        refused({ reason: 'allergen_conflict', allergens: ['milk', 'kryptonite', 'milk', 'soy'] }),
+      ),
+    ).toEqual(['milk', 'soy']);
+  });
+
+  it('is null for other refusals and other errors', () => {
+    expect(allergenConflictOf(refused())).toBeNull();
+    expect(allergenConflictOf(refused({ reason: 'policy' }))).toBeNull();
+    expect(allergenConflictOf(new ApiError({ kind: 'network', functionName: 'makeover' }))).toBe(
+      null,
+    );
+    expect(allergenConflictOf(new Error('boom'))).toBeNull();
   });
 });

@@ -72,6 +72,26 @@ describe('suggestSubstitutions', () => {
     expect(out.get('butter')).toBeUndefined();
   });
 
+  it('before allergens are answered, drops a verified replacement that contains any allergen', () => {
+    const goalSwaps: Substitution[] = [
+      { fromId: 'butter', toId: 'cashew_cream', ratio: 1, goal: 'high_fiber', note: 'Nutty.' },
+      { fromId: 'butter', toId: 'olive_oil', ratio: 0.75, goal: 'high_fiber', note: 'Plain.' },
+    ];
+    const unanswered = suggestSubstitutions(goalSwaps, ingredients, {
+      allergens: null,
+      diets: null,
+      goals: ['more_fiber'],
+    });
+    expect(unanswered.get('butter')!.map((s) => s.toId)).toEqual(['olive_oil']);
+
+    const answered = suggestSubstitutions(goalSwaps, ingredients, {
+      allergens: [],
+      diets: [],
+      goals: ['more_fiber'],
+    });
+    expect(answered.get('butter')!.map((s) => s.toId)).toEqual(['cashew_cream', 'olive_oil']);
+  });
+
   it('offers a verified swap for an ingredient whose allergens are unverified', () => {
     const out = suggestSubstitutions(subs, ingredients, {
       allergens: ['soy'],

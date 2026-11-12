@@ -1,15 +1,18 @@
 import { callFunction } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
+import { searchRecipes as searchCatalog } from '@/lib/catalog';
 import { supabase } from '@/lib/supabase/client';
 
-import { publishPost, toFtsQuery, type PublishPostInput } from './deps';
+import { publishPost, searchRecipes, type PublishPostInput } from './deps';
+import { makeRecipe } from './testing/fixtures';
 
 jest.mock('@/lib/api/client', () => ({ callFunction: jest.fn() }));
-jest.mock('@/lib/db/catalog', () => ({ catalogQuery: jest.fn() }));
+jest.mock('@/lib/catalog', () => ({ getRecipeSummaries: jest.fn(), searchRecipes: jest.fn() }));
 jest.mock('@/lib/supabase/client', () => ({ supabase: { rpc: jest.fn(), from: jest.fn() } }));
 
 const callMock = jest.mocked(callFunction);
 const rpcMock = jest.mocked(supabase.rpc);
+const searchMock = jest.mocked(searchCatalog);
 
 const minimalTip: PublishPostInput = {
   kind: 'tip',
@@ -45,22 +48,18 @@ const functionAnswer = {
 const functionNotDeployed = () =>
   new ApiError({ kind: 'server', functionName: 'publish', status: 404, code: 'NOT_FOUND' });
 
-describe('toFtsQuery', () => {
-  it('turns words into quoted prefix terms', () => {
-    expect(toFtsQuery('Chick Pea')).toBe('"chick"* "pea"*');
+describe('searchRecipes', () => {
+  it('does not query the catalog for blank text', async () => {
+    await expect(searchRecipes('   ')).resolves.toEqual([]);
+    expect(searchMock).not.toHaveBeenCalled();
   });
 
-  it('drops punctuation that FTS5 would read as syntax', () => {
-    expect(toFtsQuery('mac & "cheese" -bake*')).toBe('"mac"* "cheese"* "bake"*');
-  });
+  it('returns the first page of catalog matches', async () => {
+    const soup = makeRecipe({ id: 'mealdb:7' });
+    searchMock.mockResolvedValueOnce({ items: [soup], nextCursor: 30 });
 
-  it('keeps letters from any language and caps the number of terms', () => {
-    expect(toFtsQuery('crème brûlée')).toBe('"crème"* "brûlée"*');
-    expect(toFtsQuery('a b c d e f g h')).toBe('"a"* "b"* "c"* "d"* "e"* "f"*');
-  });
-
-  it('returns null when nothing searchable is left', () => {
-    expect(toFtsQuery('  -- !! ')).toBeNull();
+    await expect(searchRecipes(' lentil ')).resolves.toEqual([soup]);
+    expect(searchMock).toHaveBeenCalledWith('lentil');
   });
 });
 
@@ -109,28 +108,15 @@ describe('publishPost', () => {
     });
   });
 
-  it('falls back to the RPC when the function is not deployed, accepting a one-row array', async () => {
-    callMock.mockRejectedValueOnce(functionNotDeployed());
-    rpcMock.mockResolvedValueOnce({ data: [savedRow], error: null } as never);
+  it('never writes through the database when the function is unreachable', async () => {
+    const notDeployed = functionNotDeployed();
+    callMock.mockRejectedValueOnce(notDeployed);
 
-    await expect(publishPost(minimalTip)).resolves.toEqual(savedRow);
-
-    expect(rpcMock).toHaveBeenCalledWith('publish_post', {
-      p_kind: 'tip',
-      p_title: 'Rest your dough',
-      p_body: '',
-      p_media: [],
-    });
+    await expect(publishPost(minimalTip)).rejects.toBe(notDeployed);
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it('accepts the RPC row as a plain object too', async () => {
-    callMock.mockRejectedValueOnce(functionNotDeployed());
-    rpcMock.mockResolvedValueOnce({ data: savedRow, error: null } as never);
-
-    await expect(publishPost(minimalTip)).resolves.toEqual(savedRow);
-  });
-
-  it('does not fall back when the function itself answers 404 about a post', async () => {
+  it("passes on the function's own 404 about a post", async () => {
     const missingParent = new ApiError({
       kind: 'server',
       functionName: 'publish',

@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import { ActionSheetIOS, Alert, Platform } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
+import { reportHref } from '@/features/moderation';
 
 import type { Post } from '../api/types';
 import { useBlockUser } from '../hooks/useAuthor';
@@ -84,11 +85,7 @@ export function usePostMenu({ onDeleted, onBlocked }: PostMenuOptions = {}) {
       } else {
         items.push({
           label: 'Report post',
-          run: () =>
-            router.push({
-              pathname: '/moderation/report',
-              params: { target: 'post', id: post.id },
-            }),
+          run: () => router.push(reportHref({ kind: 'post', id: post.id }, post.title)),
         });
         const who = post.author_handle ? `@${post.author_handle}` : post.author_display_name;
         items.push({
@@ -103,7 +100,15 @@ export function usePostMenu({ onDeleted, onBlocked }: PostMenuOptions = {}) {
                 {
                   text: 'Block',
                   style: 'destructive',
-                  onPress: () => blockUser(post.author_id, { onSuccess: () => onBlocked?.() }),
+                  onPress: () =>
+                    blockUser(
+                      {
+                        userId: post.author_id,
+                        displayName: post.author_display_name,
+                        handle: post.author_handle || null,
+                      },
+                      { onSuccess: () => onBlocked?.() },
+                    ),
                 },
               ],
             ),

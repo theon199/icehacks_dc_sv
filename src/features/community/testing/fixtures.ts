@@ -1,4 +1,11 @@
 /** Builders for Community tests. Never imported by app code. */
+import {
+  ALLERGEN_IDS,
+  type AllergenId,
+  type AllergenStatus,
+  type RecipeSummary as CatalogRecipe,
+} from '@/lib/catalog/types';
+
 import type { Comment, FeedPage, Post } from '../api/types';
 
 let counter = 0;
@@ -50,6 +57,41 @@ export function makeComment(overrides: Partial<Comment> = {}): Comment {
     status: 'visible',
     deleted_at: null,
     created_at: '2026-11-10T19:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** A catalog recipe as `@/lib/catalog` returns it: every allergen verified free unless overridden. */
+export function makeRecipe(overrides: Partial<CatalogRecipe> = {}): CatalogRecipe {
+  const allergens = Object.fromEntries(ALLERGEN_IDS.map((id) => [id, 'free'])) as Record<
+    AllergenId,
+    AllergenStatus
+  >;
+  return {
+    id: 'mealdb:1',
+    slug: 'lentil-soup',
+    title: 'Red lentil soup',
+    summary: 'A quick, warming soup.',
+    cuisine: 'turkish',
+    region: 'middle_east',
+    course: 'soup',
+    totalMinutes: 35,
+    activeMinutes: 15,
+    servings: 4,
+    effort: 1,
+    imageUrl: null,
+    imageCredit: null,
+    sourceName: 'Test kitchen',
+    sourceUrl: null,
+    license: 'public domain',
+    nutritionConfidence: 'none',
+    nutrition: null,
+    allergens,
+    dietFlags: 0,
+    goalTags: [],
+    gentle: false,
+    healthScore: 0.5,
+    familyId: 'lentil-soup',
     ...overrides,
   };
 }

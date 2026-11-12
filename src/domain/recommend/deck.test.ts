@@ -1,5 +1,13 @@
 import { RANKING_CONFIG_V1 } from './config';
-import { buildDeck, recentlyPassedIds, type BuildDeckInput, type DeckCard } from './deck';
+import {
+  buildDeck,
+  clampDeckSize,
+  DEFAULT_DECK_SIZE,
+  MAX_DECK_SIZE,
+  recentlyPassedIds,
+  type BuildDeckInput,
+  type DeckCard,
+} from './deck';
 import { CATALOG, recipe } from './fixtures/catalog';
 import { syntheticCatalog } from './fixtures/synthetic';
 import { rankRecipes } from './rank';
@@ -223,5 +231,32 @@ describe('buildDeck', () => {
     const shownCard = repeat.cards.find((c) => c.recipe.id === target.id);
     expect(shownCard!.score).toBeLessThan(fresh!.score);
     expect(shownCard!.fitScore).toBe(fresh!.fitScore);
+  });
+});
+
+describe('clampDeckSize', () => {
+  it.each([
+    [10, 10],
+    [7.9, 7],
+    [0, 0],
+    [-3, 0],
+    [Number.NEGATIVE_INFINITY, 0],
+    [Number.POSITIVE_INFINITY, MAX_DECK_SIZE],
+    [MAX_DECK_SIZE + 500, MAX_DECK_SIZE],
+    [Number.NaN, DEFAULT_DECK_SIZE],
+  ])('turns a requested size of %p into %p', (requested, expected) => {
+    expect(clampDeckSize(requested)).toBe(expected);
+  });
+
+  it('builds a default-size deck for a size that is not a number', () => {
+    const candidates = syntheticCatalog(300, 'nan-size');
+    expect(deck({ candidates, size: Number.NaN }).cards).toHaveLength(DEFAULT_DECK_SIZE);
+  });
+
+  it('caps an unbounded size instead of diversifying the whole pool', () => {
+    const candidates = syntheticCatalog(1500, 'unbounded-size');
+    const result = deck({ candidates, size: Number.POSITIVE_INFINITY });
+    expect(result.cards.length).toBeLessThanOrEqual(MAX_DECK_SIZE);
+    expect(result.cards.length).toBeGreaterThan(DEFAULT_DECK_SIZE);
   });
 });

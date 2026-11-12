@@ -7,7 +7,7 @@
  */
 import { z } from 'zod';
 
-import { catalogQuery } from '@/lib/db/catalog';
+import { getCuisines } from '@/lib/catalog';
 import { getSupabase } from '@/lib/supabase/client';
 
 import { dbError } from './api/errors';
@@ -135,14 +135,11 @@ export async function fetchActiveCooks(limit = 30): Promise<Person[]> {
   return [...people.values()];
 }
 
-const cuisineRow = z.object({ cuisine: z.string() });
-
 /** Every cuisine id in the bundled catalog, alphabetically. */
 export async function listCatalogCuisines(): Promise<string[]> {
-  const rows = await catalogQuery(
-    "SELECT DISTINCT cuisine FROM recipes WHERE cuisine <> '' ORDER BY cuisine",
-    [],
-    cuisineRow,
-  );
-  return rows.map((row) => row.cuisine);
+  const cuisines = await getCuisines();
+  return cuisines
+    .map((info) => info.cuisine)
+    .filter((cuisine) => cuisine.length > 0)
+    .sort((a, b) => a.localeCompare(b));
 }
