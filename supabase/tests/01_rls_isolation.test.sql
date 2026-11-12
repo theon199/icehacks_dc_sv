@@ -160,7 +160,31 @@ select throws_ok(
   $$update public.profiles set avatar_path = 'bbbbbbbb-0000-4000-8000-000000000002/me.jpg' where id = auth.uid()$$,
   '23514', null, 'avatars must live in your own folder'
 );
+select throws_ok(
+  $$update public.profiles set handle = 'Famara_Team' where id = auth.uid()$$,
+  '22023', 'handle_reserved', 'staff-sounding handles are reserved'
+);
+select throws_ok(
+  $$update public.profiles set handle = 'support_1' where id = auth.uid()$$,
+  '22023', 'handle_reserved', 'digits and separators do not get around reserved handles'
+);
+select lives_ok(
+  $$update public.profiles set handle = 'modern_cook' where id = auth.uid()$$,
+  'ordinary handles that merely contain a reserved word are fine'
+);
 reset role;
+
+-- Sign-ups asking for a reserved handle get a generated one instead.
+select tests.create_user('cccccccc-0000-4000-8000-000000000003', 'admin');
+select ok(
+  (select handle::text from public.profiles where id = 'cccccccc-0000-4000-8000-000000000003') ~ '^cook_[0-9a-f]{6}$',
+  'a reserved sign-up handle falls back to a generated one'
+);
+update public.profiles set is_team = true where id = 'cccccccc-0000-4000-8000-000000000003';
+select lives_ok(
+  $$update public.profiles set handle = 'famara' where id = 'cccccccc-0000-4000-8000-000000000003'$$,
+  'the staff-marked team account may use a reserved handle'
+);
 
 select * from finish();
 rollback;

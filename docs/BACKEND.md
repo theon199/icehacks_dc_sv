@@ -62,8 +62,14 @@ the next calendar year (or until a later birth year is entered). It must never d
 on this signal alone.
 
 A profile is created by trigger when an auth user is created; `handle` comes from
-`raw_user_meta_data.handle` when available (else `cook_<hex>`), `display_name` from
+`raw_user_meta_data.handle` when available and not reserved (else `cook_<hex>`), `display_name` from
 `display_name`/`full_name`/`name`.
+
+Reserved handles (`private.is_reserved_handle`, enforced by a trigger on `profiles`) keep members
+from passing for staff: compared on letters only, anything containing `famara`, starting with
+`admin`, `moderator`, `support`, `official` or `staff`, or equal to a short list of system names
+(`team`, `mod`, `help`, `security`, …) is refused with `handle_reserved` (400). Only an account
+marked `is_team` by staff may use one.
 
 ### Sync
 
@@ -356,6 +362,23 @@ Deno.serve(createHandler(async (req) => {
 | `FAMARA_GOOGLE_SIGNIN_CLIENT_ID`, `FAMARA_GOOGLE_SIGNIN_SECRET` | local CLI | Google sign-in |
 
 Never commit `.env` files or keys.
+
+### Native sign-in and `skip_nonce_check`
+
+On iOS the app signs in natively and hands the provider's ID token to
+`supabase.auth.signInWithIdToken`. Apple's flow lets the app choose the nonce, so Apple keeps
+`skip_nonce_check = false` and the app passes the raw nonce (its SHA-256 goes into the Apple
+request). The native Google Sign-In SDK on iOS adds a nonce of its own to the ID token and never
+reveals the raw value, so the app has nothing that Supabase could check it against; with the
+check on, every native Google sign-in on iOS would be refused. `[auth.external.google]` therefore
+sets `skip_nonce_check = true`.
+
+What still protects the token: Supabase verifies Google's signature, the issuer, the expiry (about
+an hour) and that the audience is one of our client ids, and the token only ever travels from the
+Google SDK to Supabase over TLS on the device. What is lost is protection against replaying a
+stolen, still-valid token. Turn the check back on once the app moves to a Google SDK that accepts
+a caller-supplied nonce, and pass the raw nonce the same way as for Apple. The hosted project
+needs the same setting (Authentication → Providers → Google → "Skip nonce checks").
 
 ## Running locally
 

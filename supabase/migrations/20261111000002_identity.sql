@@ -216,6 +216,49 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------------------------
+-- Reserved handles
+-- ---------------------------------------------------------------------------------------------
+
+-- Handles that would let a member pass for Famara staff or a system account. Compared on letters
+-- only, so separators and digits do not get around it (Famara_Team, admin1, s_u_p_p_o_r_t).
+-- Accounts marked is_team (set by staff only) may use them.
+create function private.is_reserved_handle(p_handle text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select
+    v.letters like '%famara%'
+    or v.letters ~ '^(admin|moderator|support|official|staff)'
+    or v.letters in (
+      'root', 'system', 'help', 'helpdesk', 'team', 'mod', 'mods', 'security', 'safety',
+      'trustandsafety', 'abuse', 'legal', 'privacy', 'billing', 'everyone', 'null',
+      'undefined', 'anonymous', 'deleted', 'deleteduser'
+    )
+  from (select regexp_replace(lower(coalesce(p_handle, '')), '[^a-z]', '', 'g') as letters) v;
+$$;
+
+create function private.profiles_guard_handle()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not new.is_team and private.is_reserved_handle(new.handle::text) then
+    raise exception 'handle_reserved' using errcode = '22023',
+      detail = 'That handle is reserved. Pick another one.';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger profiles_guard_handle
+  before insert or update of handle on public.profiles
+  for each row execute function private.profiles_guard_handle();
+
+-- ---------------------------------------------------------------------------------------------
 -- New-user bootstrap
 -- ---------------------------------------------------------------------------------------------
 
@@ -244,7 +287,7 @@ begin
   );
 
   v_base := lower(regexp_replace(coalesce(v_meta ->> 'handle', ''), '[^A-Za-z0-9_]', '', 'g'));
-  if char_length(v_base) < 3 then
+  if char_length(v_base) < 3 or private.is_reserved_handle(v_base) then
     v_base := 'cook';
   end if;
   v_base := left(v_base, 16);
@@ -441,6 +484,8 @@ revoke all on function private.is_moderator() from public;
 revoke all on function private.is_blocked_pair(uuid, uuid) from public;
 revoke all on function private.require_member() from public;
 revoke all on function private.handle_new_user() from public;
+revoke all on function private.is_reserved_handle(text) from public;
+revoke all on function private.profiles_guard_handle() from public;
 
 -- Policies evaluate as the querying role, so it needs EXECUTE on the helpers they call.
 grant execute on function private.is_blocked_pair(uuid, uuid) to authenticated, service_role;

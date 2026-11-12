@@ -99,6 +99,8 @@ client_id = "env(FAMARA_GOOGLE_SIGNIN_CLIENT_ID)"
 secret = "env(FAMARA_GOOGLE_SIGNIN_SECRET)"
 redirect_uri = ""
 url = ""
+# The native iOS Google SDK puts its own nonce in the ID token and never reveals the raw value,
+# so it cannot be verified. See docs/BACKEND.md ("Native sign-in and skip_nonce_check").
 skip_nonce_check = true
 
 [edge_runtime]

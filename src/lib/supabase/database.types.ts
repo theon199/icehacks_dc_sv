@@ -1820,6 +1820,7 @@ export type RpcErrorCode =
   | "user_not_found"
   | "post_not_found"
   | "comment_not_found"
+  | "handle_reserved"
   | "target_not_found"
   | "parent_not_found"
   | "invalid_title"
