@@ -10,7 +10,7 @@ export default function AuthLayout() {
   return (
     <Stack screenOptions={screenOptions}>
       <Stack.Screen name="welcome" options={{ headerShown: false }} />
-      <Stack.Screen name="continue" options={sheetOptions(theme, 'fitToContents')} />
+      <Stack.Screen name="continue" options={sheetOptions(theme, [0.65, 0.95])} />
       <Stack.Screen name="sign-in" options={{ title: 'Sign in' }} />
       <Stack.Screen name="sign-up" options={{ title: 'Create account' }} />
       <Stack.Screen name="check-email" options={{ title: 'Confirm your email' }} />

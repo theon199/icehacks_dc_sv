@@ -155,8 +155,10 @@ function NotYet({ birthYear }: { birthYear: number }) {
 export function NotEligibleScreen() {
   const birthYear = useSessionStore((s) => s.birthYear);
   const band = ageBandFor(birthYear);
-  if (birthYear == null) return null;
-  return band === 'underMinimum' ? <UnderMinimum /> : <NotYet birthYear={birthYear} />;
+  if (band === 'underMinimum') return <UnderMinimum />;
+  if (band === 'notYetEligible' && birthYear != null) return <NotYet birthYear={birthYear} />;
+  // Eligible after all: the setup guard is already moving on.
+  return null;
 }
 
 const styles = StyleSheet.create({

@@ -42,7 +42,7 @@ export function ContinueSheet() {
         fullWidth
         onPress={() => router.replace('/sign-in')}
       />
-      <LegalNote />
+      <LegalNote fromSheet />
     </SheetContent>
   );
 }
