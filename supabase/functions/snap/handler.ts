@@ -197,9 +197,11 @@ export function normalizePantry(items: z.output<typeof PantryReadSchema>["items"
   for (const raw of items) {
     const name = cleanName(raw.name).toLowerCase();
     if (name === "") continue;
-    const quantity = raw.quantity !== null && Number.isFinite(raw.quantity) && raw.quantity > 0
+    const rounded = raw.quantity !== null && Number.isFinite(raw.quantity)
       ? roundTo(Math.min(raw.quantity, 10_000), 2)
-      : null;
+      : 0;
+    // A trace amount that rounds to 0 is reported as unknown: the app only accepts positive ones.
+    const quantity = rounded > 0 ? rounded : null;
     const unit = isUnit(raw.unit) ? raw.unit : null;
     const item: PantryItem = {
       name,
@@ -239,10 +241,14 @@ export function normalizeDish(
     const ingredient = cleanName(entry).toLowerCase();
     if (ingredient !== "" && !ingredients.includes(ingredient)) ingredients.push(ingredient);
   }
-  const nutrition = {} as Record<Nutrient, NutrientRange>;
-  for (const nutrient of Object.keys(NUTRIENTS) as Nutrient[]) {
-    nutrition[nutrient] = normalizeRange(raw.nutrition[nutrient], nutrient);
-  }
+  const nutrition: Record<Nutrient, NutrientRange> = {
+    kcal: normalizeRange(raw.nutrition.kcal, "kcal"),
+    protein_g: normalizeRange(raw.nutrition.protein_g, "protein_g"),
+    carbs_g: normalizeRange(raw.nutrition.carbs_g, "carbs_g"),
+    fat_g: normalizeRange(raw.nutrition.fat_g, "fat_g"),
+    fiber_g: normalizeRange(raw.nutrition.fiber_g, "fiber_g"),
+    sodium_mg: normalizeRange(raw.nutrition.sodium_mg, "sodium_mg"),
+  };
   return {
     name,
     cuisine,

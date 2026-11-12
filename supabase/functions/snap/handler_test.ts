@@ -264,3 +264,13 @@ Deno.test("normalizePantry caps the list", () => {
   assertEquals(result.length, 40);
   assertEquals(result[0]?.name, "item 59");
 });
+
+Deno.test("normalizePantry reports a trace amount that rounds to 0 as unknown", () => {
+  const [item] = normalizePantry([
+    { name: "saffron", quantity: 0.001, unit: "kg", confidence: 0.8 },
+  ]);
+  assertEquals(item, { name: "saffron", quantity: null, unit: null, confidence: 0.8 });
+  const [kept] = normalizePantry([{ name: "rice", quantity: 0.005, unit: "kg", confidence: 0.8 }]);
+  assertEquals(kept?.quantity, 0.01);
+  assertEquals(kept?.unit, "kg");
+});
