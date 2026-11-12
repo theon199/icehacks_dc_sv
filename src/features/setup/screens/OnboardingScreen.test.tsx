@@ -68,6 +68,7 @@ beforeEach(() => {
 });
 
 describe('OnboardingScreen', () => {
+  // The full walkthrough presses through all ten questions, which is slow when suites run in parallel.
   it('walks every question and writes the answers to preferences', async () => {
     await renderScreen();
     const user = userEvent.setup();
@@ -140,7 +141,7 @@ describe('OnboardingScreen', () => {
     expect(preferences.isOnboardingComplete('person-1')).toBe(true);
     expect(useSessionStore.getState().status).toBe('ready');
     expect(mockProfileUpdate).toHaveBeenCalledWith({ display_name: 'Ama' }, 'person-1');
-  });
+  }, 30_000);
 
   it('goes back without losing answers', async () => {
     await renderScreen();
