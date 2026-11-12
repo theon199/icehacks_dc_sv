@@ -19,6 +19,7 @@ const mockAuth = {
   updateUser: jest.fn(),
   signInWithPassword: jest.fn(),
   signOut: jest.fn(),
+  getSession: jest.fn(),
 };
 jest.mock('@/lib/supabase/client', () => ({
   getSupabase: () => ({ auth: mockAuth, rpc: jest.fn() }),
@@ -119,6 +120,7 @@ describe('AccountScreen', () => {
 describe('signing out', () => {
   it('drops cached account details', async () => {
     mockAuth.signOut.mockResolvedValue({ error: null });
+    mockAuth.getSession.mockResolvedValue({ data: { session: null }, error: null });
     appQueryClient.setQueryData(accountUserQueryKey('user-a'), { id: 'user-a' });
     await signOutLocally();
     expect(appQueryClient.getQueryData(accountUserQueryKey('user-a'))).toBeUndefined();

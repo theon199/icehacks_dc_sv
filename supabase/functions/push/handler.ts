@@ -1,7 +1,8 @@
 /**
  * The `push` edge function has two callers:
  *
- *   POST /push            the app, with the member's session: register or unregister this device
+ *   POST /push            the app, with the member's session: register or unregister this device,
+ *                         or read and change the account's push categories
  *   POST /push/dispatch   the database (pg_net), with the shared secret: deliver new notifications
  *
  * Both authenticate inside the function, so it is deployed with `--no-verify-jwt`.
@@ -14,7 +15,7 @@ import { type Handler, HttpError, json } from "../_shared/http.ts";
 import { parseBody } from "../_shared/validate.ts";
 import type { ExpoMessage, SendReport } from "./expo.ts";
 import { buildMessages, DispatchBodySchema } from "./messages.ts";
-import type { PushStore } from "./store.ts";
+import type { PushCategories, PushStore } from "./store.ts";
 
 export const SECRET_HEADER = "x-famara-push-secret";
 const DISPATCH_MAX_BYTES = 4 * 1024 * 1024;
@@ -30,6 +31,12 @@ export const DeviceBodySchema = z.discriminatedUnion("action", [
     platform: z.enum(["ios", "android"]),
   }),
   z.object({ action: z.literal("unregister"), token: TokenSchema }),
+  // Without `social` or `follows` this only reads the current choices.
+  z.object({
+    action: z.literal("categories"),
+    social: z.boolean().optional(),
+    follows: z.boolean().optional(),
+  }),
 ]);
 
 export interface PushSender {
@@ -83,8 +90,18 @@ async function handleDevice(req: Request, deps: PushDeps): Promise<Response> {
     await store.register(userId, body.token, body.platform);
     return json({ registered: true });
   }
-  const removed = await store.unregister(userId, body.token);
-  return json({ registered: false, removed });
+  if (body.action === "unregister") {
+    const removed = await store.unregister(userId, body.token);
+    return json({ registered: false, removed });
+  }
+  const change: Partial<PushCategories> = {
+    ...(body.social === undefined ? {} : { social: body.social }),
+    ...(body.follows === undefined ? {} : { follows: body.follows }),
+  };
+  const categories = Object.keys(change).length === 0
+    ? await store.categories(userId)
+    : await store.setCategories(userId, change);
+  return json({ categories });
 }
 
 async function handleDispatch(req: Request, deps: PushDeps): Promise<Response> {

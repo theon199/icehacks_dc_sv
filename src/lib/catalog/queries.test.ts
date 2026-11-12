@@ -82,6 +82,23 @@ describeCatalogDb('recipe summaries', () => {
     await getRecipeSummaries(['mealdb:52766', 'mealdb:52767', 'mealdb:52768']);
     expect(stats.prepared - before).toBe(1);
   });
+
+  it('keeps cached rows that a full cache evicts while the same batch loads', async () => {
+    const ids = (await listCandidates({ limit: 2000 })).map((c) => c.id);
+    expect(ids.length).toBeGreaterThan(601);
+    await getRecipeSummaries(ids.slice(0, 600));
+    const oldest = ids[0] as string;
+    const fresh = ids[600] as string;
+    const summaries = await getRecipeSummaries([oldest, fresh]);
+    expect(summaries.map((s) => s.id)).toEqual([oldest, fresh]);
+  });
+
+  it('returns every row of a batch larger than the cache', async () => {
+    const ids = (await listCandidates({ limit: 2000 })).map((c) => c.id);
+    expect(ids.length).toBeGreaterThan(600);
+    const summaries = await getRecipeSummaries(ids);
+    expect(summaries.map((s) => s.id)).toEqual(ids);
+  });
 });
 
 describeCatalogDb('recipe detail', () => {
@@ -231,6 +248,19 @@ describeCatalogDb('ingredients and substitutions', () => {
     expect(onion).toMatchObject({ id: 'onion', category: 'produce', pantryStaple: true });
     expect(onion?.gramsPerUnit.cup).toBe(160);
     expect(onion?.allergens).toEqual([]);
+  });
+
+  it('keeps every ingredient of a batch whatever the cache holds', async () => {
+    const candidates = await listCandidates({ limit: 2000 });
+    const ids = [...new Set(candidates.flatMap((c) => c.ingredientIds))];
+    expect(ids.length).toBeGreaterThan(401);
+    await getIngredients(ids.slice(0, 400));
+    const oldest = ids[0] as string;
+    const fresh = ids[400] as string;
+    expect((await getIngredients([oldest, fresh])).map((i) => i.id)).toEqual([oldest, fresh]);
+
+    clearCatalogCaches();
+    expect((await getIngredients(ids)).map((i) => i.id)).toEqual(ids);
   });
 
   it('finds ingredients by name, plural and synonym, exact matches first', async () => {
