@@ -28,7 +28,14 @@
  */
 import { DAY_INDICES, type DayIndex, type IsoDate } from './dates';
 import type { FillAssignment } from './reducer';
-import { cellKey, type CellKey, type MealSlot, type PlannedMeal, type WeekPlan } from './types';
+import {
+  cellKey,
+  MEAL_SLOTS,
+  type CellKey,
+  type MealSlot,
+  type PlannedMeal,
+  type WeekPlan,
+} from './types';
 
 /** Candidate recipe, shaped like the relevant `recipes` columns plus a recommender score. */
 export interface FillCandidate {
@@ -74,9 +81,15 @@ export interface AutoFillInput {
   readonly candidates: readonly FillCandidate[];
   /** The week as currently planned; its cells are kept and count toward variety. */
   readonly plan?: WeekPlan | undefined;
-  /** Slots to fill. Default breakfast, lunch, dinner (plus snack in small appetite mode). */
+  /**
+   * Slots to fill. Default breakfast, lunch, dinner (plus snack in small appetite mode). Filled in
+   * `MEAL_SLOTS` order; duplicates and unknown slots are ignored.
+   */
   readonly slots?: readonly MealSlot[] | undefined;
-  /** Days to fill, e.g. only the remaining days of the current week. Default all seven. */
+  /**
+   * Days to fill, e.g. only the remaining days of the current week. Default all seven. Filled
+   * Monday first; duplicates and values outside `DAY_INDICES` are ignored.
+   */
   readonly days?: readonly DayIndex[] | undefined;
   /**
    * Maximum total minutes for one meal: a single number for every day, or seven numbers starting
@@ -141,13 +154,30 @@ function cuisineFits(
   return true;
 }
 
+interface Prepared {
+  readonly c: FillCandidate;
+  /** Recommender score plus the capped goal bonus. */
+  readonly withGoal: number;
+  /** Pantry share times its weight; fixed for the whole fill. */
+  readonly pantryPart: number;
+  /** Gentle bonus minus the unknown-time penalty, applied last. */
+  readonly gentlePart: number;
+  readonly unknownTime: boolean;
+  /** Distinct non-staple ingredients. */
+  readonly ownCount: number;
+  readonly reasons: readonly FillReason[];
+}
+
 export function autoFillWeek(input: AutoFillInput): AutoFillResult {
   const weights = { ...DEFAULT_FILL_WEIGHTS, ...input.weights };
   const small = input.smallAppetite === true;
-  const slots =
+  // Duplicate or unknown days and slots would yield two assignments for one cell, so drop them.
+  const requestedSlots: readonly MealSlot[] =
     input.slots ??
     (small ? ['breakfast', 'lunch', 'dinner', 'snack'] : ['breakfast', 'lunch', 'dinner']);
-  const days = [...(input.days ?? DAY_INDICES)].sort((a, b) => a - b);
+  const slots = MEAL_SLOTS.filter((slot) => requestedSlots.includes(slot));
+  const requestedDays = input.days ?? DAY_INDICES;
+  const days = DAY_INDICES.filter((day) => requestedDays.includes(day));
   const goals = new Set(input.goals ?? []);
   const pantry = new Set(input.pantryIds ?? []);
   const staples = new Set(input.stapleIds ?? []);
@@ -159,6 +189,50 @@ export function autoFillWeek(input: AutoFillInput): AutoFillResult {
     .filter((c) => c.id.length > 0 && Number.isFinite(c.score))
     .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const byId = new Map(candidates.map((c) => [c.id, c]));
+
+  // Everything about a candidate except ingredient reuse is fixed for the whole fill, so it is
+  // worked out once here rather than for every cell. Reuse is tracked with running counts.
+  const prepared: Prepared[] = [];
+  const reuseCount: number[] = [];
+  const holders = new Map<string, number[]>();
+  for (const c of candidates) {
+    const reasons: FillReason[] = [];
+    let withGoal = c.score;
+    const goalMatches = c.goal_tags.filter((t) => goals.has(t)).length;
+    if (goalMatches > 0) {
+      withGoal += Math.min(weights.goalCap, goalMatches * weights.goalPerMatch);
+      reasons.push('goal');
+    }
+    const own = [...new Set(c.ingredientIds)].filter((id) => !staples.has(id));
+    let pantryPart = 0;
+    if (own.length > 0) {
+      const inPantry = own.filter((id) => pantry.has(id)).length / own.length;
+      pantryPart = inPantry * weights.pantry;
+      if (inPantry >= 0.5) reasons.push('pantry');
+    }
+    let gentlePart = 0;
+    if (small && (c.gentle === true || c.gentle === 1)) {
+      gentlePart = weights.gentle;
+      reasons.push('gentle');
+    }
+    if (c.total_minutes !== null && c.total_minutes <= 30) reasons.push('quick');
+    const index = prepared.length;
+    for (const id of own) {
+      const list = holders.get(id);
+      if (list) list.push(index);
+      else holders.set(id, [index]);
+    }
+    prepared.push({
+      c,
+      withGoal,
+      pantryPart,
+      gentlePart,
+      unknownTime: c.total_minutes === null,
+      ownCount: own.length,
+      reasons,
+    });
+    reuseCount.push(0);
+  }
 
   const used = new Set<string>();
   const cuisineByDay: Map<string, number>[] = DAY_INDICES.map(() => new Map());
@@ -172,7 +246,11 @@ export function autoFillWeek(input: AutoFillInput): AutoFillResult {
       const m = cuisineByDay[day];
       m?.set(cuisine, (m.get(cuisine) ?? 0) + 1);
     }
-    for (const id of c?.ingredientIds ?? []) bought.add(id);
+    for (const id of c?.ingredientIds ?? []) {
+      if (bought.has(id)) continue;
+      bought.add(id);
+      for (const index of holders.get(id) ?? []) reuseCount[index] = (reuseCount[index] ?? 0) + 1;
+    }
   };
   for (const key of Object.keys(cells) as CellKey[]) {
     const meal = cells[key];
@@ -185,28 +263,15 @@ export function autoFillWeek(input: AutoFillInput): AutoFillResult {
   const unfilled: { day: DayIndex; slot: MealSlot }[] = [];
   const relaxed: { day: DayIndex; slot: MealSlot }[] = [];
 
-  const evaluate = (c: FillCandidate) => {
-    const reasons: FillReason[] = [];
-    let score = c.score;
-    const goalMatches = c.goal_tags.filter((t) => goals.has(t)).length;
-    if (goalMatches > 0) {
-      score += Math.min(weights.goalCap, goalMatches * weights.goalPerMatch);
-      reasons.push('goal');
+  const scoreOf = (index: number): number => {
+    const p = prepared[index] as Prepared;
+    let score = p.withGoal;
+    if (p.ownCount > 0) {
+      score += p.pantryPart + ((reuseCount[index] ?? 0) / p.ownCount) * weights.reuse;
     }
-    const own = [...new Set(c.ingredientIds)].filter((id) => !staples.has(id));
-    if (own.length > 0) {
-      const inPantry = own.filter((id) => pantry.has(id)).length / own.length;
-      const reused = own.filter((id) => bought.has(id)).length / own.length;
-      score += inPantry * weights.pantry + reused * weights.reuse;
-      if (inPantry >= 0.5) reasons.push('pantry');
-    }
-    if (small && (c.gentle === true || c.gentle === 1)) {
-      score += weights.gentle;
-      reasons.push('gentle');
-    }
-    if (c.total_minutes === null) score -= weights.unknownTime;
-    else if (c.total_minutes <= 30) reasons.push('quick');
-    return { score, reasons };
+    score += p.gentlePart;
+    if (p.unknownTime) score -= weights.unknownTime;
+    return score;
   };
 
   for (const day of days) {
@@ -214,23 +279,29 @@ export function autoFillWeek(input: AutoFillInput): AutoFillResult {
     for (const slot of slots) {
       if (cells[cellKey(day, slot)] !== undefined) continue;
       const courses = SLOT_COURSES[slot];
-      const eligible = candidates.filter(
-        (c) =>
+      const eligible: number[] = [];
+      prepared.forEach(({ c }, index) => {
+        if (
           !used.has(c.id) &&
           courses.includes(c.course) &&
-          (c.total_minutes === null || c.total_minutes <= budget),
-      );
-      const pick = (pool: readonly FillCandidate[]) => {
-        let best: { c: FillCandidate; score: number; reasons: FillReason[] } | null = null;
-        for (const c of pool) {
-          const e = evaluate(c);
+          (c.total_minutes === null || c.total_minutes <= budget)
+        ) {
+          eligible.push(index);
+        }
+      });
+      const pick = (pool: readonly number[]) => {
+        let best: { index: number; score: number } | null = null;
+        for (const index of pool) {
+          const score = scoreOf(index);
           // The pool is pre-sorted by recommender score, then id, so `>` keeps the earlier one
           // when adjusted scores tie: higher raw score first, then the smaller id.
-          if (best === null || e.score > best.score + 1e-12) best = { c, ...e };
+          if (best === null || score > best.score + 1e-12) best = { index, score };
         }
         return best;
       };
-      let chosen = pick(eligible.filter((c) => cuisineFits(cuisineByDay, day, c.cuisine)));
+      let chosen = pick(
+        eligible.filter((i) => cuisineFits(cuisineByDay, day, (prepared[i] as Prepared).c.cuisine)),
+      );
       if (chosen === null) {
         chosen = pick(eligible);
         if (chosen !== null) relaxed.push({ day, slot });
@@ -239,9 +310,10 @@ export function autoFillWeek(input: AutoFillInput): AutoFillResult {
         unfilled.push({ day, slot });
         continue;
       }
-      const meal: PlannedMeal = { recipeId: chosen.c.id, servings, portion };
-      assignments.push({ day, slot, meal, score: chosen.score, reasons: chosen.reasons });
-      remember(day, chosen.c, chosen.c.id);
+      const { c, reasons } = prepared[chosen.index] as Prepared;
+      const meal: PlannedMeal = { recipeId: c.id, servings, portion };
+      assignments.push({ day, slot, meal, score: chosen.score, reasons: [...reasons] });
+      remember(day, c, c.id);
     }
   }
   return { assignments, unfilled, relaxed };

@@ -273,4 +273,44 @@ describe('autoFillWeek', () => {
       expect(autoFillWeek({ weekStart: WEEK, candidates: shuffled, servings: 2 })).toEqual(base);
     }
   });
+
+  it('ignores duplicate and out-of-range days and slots', () => {
+    const cands = pool();
+    const clean = autoFillWeek({
+      weekStart: WEEK,
+      candidates: cands,
+      servings: 2,
+      days: [0, 2],
+      slots: ['lunch', 'dinner'],
+    });
+    const messy = autoFillWeek({
+      weekStart: WEEK,
+      candidates: cands,
+      servings: 2,
+      days: [2, 0, 0, 9, -1, 2.5] as unknown as DayIndex[],
+      slots: ['dinner', 'lunch', 'dinner', 'brunch'] as unknown as ('lunch' | 'dinner')[],
+    });
+    expect(messy).toEqual(clean);
+    const cellsFilled = messy.assignments.map((a) => cellKey(a.day, a.slot));
+    expect(new Set(cellsFilled).size).toBe(cellsFilled.length);
+    expect(cellsFilled).toEqual(['0:lunch', '0:dinner', '2:lunch', '2:dinner']);
+  });
+
+  it('updates the ingredient reuse bonus as meals are picked', () => {
+    // Two recipes sharing ingredients with the first pick: the reuse bonus must tip the choice.
+    const cands = [
+      candidate('first', { score: 1, ingredientIds: ['a', 'b'] }),
+      candidate('shares', { score: 0.5, cuisine: 'thai', ingredientIds: ['a', 'b'] }),
+      candidate('fresh', { score: 0.52, cuisine: 'greek', ingredientIds: ['c', 'd'] }),
+    ];
+    const result = autoFillWeek({
+      weekStart: WEEK,
+      candidates: cands,
+      servings: 2,
+      days: [0],
+      slots: ['lunch', 'dinner'],
+    });
+    expect(result.assignments.map((a) => a.meal.recipeId)).toEqual(['first', 'shares']);
+    expect(result.assignments[1]?.score).toBeCloseTo(0.5 + 0.05, 12);
+  });
 });
