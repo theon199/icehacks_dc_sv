@@ -4,8 +4,8 @@
  * - Store documents and catalog rows are reshaped into the recommendation engine's types. The
  *   stores and the engine were designed separately, so a few names and encodings differ (goal ids,
  *   ISO timestamps, one reason per stored event); the mapping lives here rather than in either side.
- * - Sibling features that ship separately (Health's day context, the notification badge) are read
- *   through small hooks that return neutral values until those features are available.
+ * - Sibling features (Health's day context, the notification bell) are reached only from here, so
+ *   the rest of the folder depends on one seam rather than on their internals.
  */
 import {
   DEFAULT_PREFERENCES,
@@ -16,6 +16,7 @@ import {
   type RecipeSummary,
   type UserPreferences,
 } from '@/domain';
+import { useDayContext } from '@/features/health';
 import type { RecipeCandidate } from '@/lib/catalog';
 import type {
   FeedbackEvent as StoredFeedbackEvent,
@@ -160,12 +161,9 @@ export interface DayHints {
 
 export const NO_DAY_HINTS: DayHints = Object.freeze({ protein: 0, lighter: 0 });
 
-/**
- * Today's ranking hints from Apple Health. Neutral until the Health feature exposes its day
- * context; swap the body for `useDayContext().hints` from `@/features/health` then.
- */
+/** Today's ranking hints from Apple Health; neutral when Health is off or its signals expired. */
 export function useDayHints(): DayHints {
-  return NO_DAY_HINTS;
+  return useDayContext().hints;
 }
 
 /** Local hour from which "lighter dinner" hints apply. */
@@ -199,10 +197,5 @@ export function dayHintNote(hints: DayHints, hour: number): string | null {
 
 // --- Notifications -----------------------------------------------------------------------------
 
-/**
- * Unread notification count for the bell. Zero until the notifications feature exposes its count;
- * swap the body for its `useUnreadCount()` then.
- */
-export function useUnreadNotifications(): number {
-  return 0;
-}
+/** The header bell with its unread badge. */
+export { NotificationBell } from '@/features/notifications';

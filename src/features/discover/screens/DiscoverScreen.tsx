@@ -12,7 +12,6 @@ import { DiscoverHeader } from '../components/DiscoverHeader';
 import { ModeSwitcher } from '../components/ModeSwitcher';
 import { NotForMeSheet } from '../components/NotForMeSheet';
 import { SwipeDeck } from '../components/SwipeDeck';
-import { useUnreadNotifications } from '../deps';
 import { availableModes } from '../modes';
 import { useDiscoverDeck, type DiscoverDeckOptions } from '../useDiscoverDeck';
 
@@ -27,7 +26,6 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
   const router = useRouter();
   const [requestedMode, setRequestedMode] = useState<DeckMode>('forYou');
   const deck = useDiscoverDeck(requestedMode, deckOptions);
-  const unread = useUnreadNotifications();
   const [declining, setDeclining] = useState<DeckCard | null>(null);
   const modes = useMemo(() => availableModes(deck.smallAppetite), [deck.smallAppetite]);
 
@@ -36,7 +34,6 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
     [router],
   );
   const openPreferences = useCallback(() => router.push('/preferences'), [router]);
-  const openNotifications = useCallback(() => router.push('/notifications'), [router]);
   const openProfile = useCallback(() => router.push('/profile'), [router]);
   const closeSheet = useCallback(() => setDeclining(null), []);
   const { notForMe } = deck;
@@ -54,7 +51,7 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
       edges={['top', 'bottom']}
       style={[styles.flex, { backgroundColor: theme.colors.background }]}
     >
-      <DiscoverHeader unread={unread} onNotifications={openNotifications} onProfile={openProfile} />
+      <DiscoverHeader onProfile={openProfile} />
       <ModeSwitcher modes={modes} value={deck.mode} onChange={setRequestedMode} />
       {deck.dayNote ? (
         <Text variant="footnote" tone="muted" style={styles.note}>
