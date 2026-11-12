@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -15,14 +15,11 @@ export interface CookStepViewProps {
   header?: React.ReactNode;
 }
 
-/** One instruction in large type. Fades in on each new step (instantly with Reduce Motion). */
-export const CookStepView = memo(function CookStepView({
-  step,
-  index,
-  replayKey,
-  children,
-  header,
-}: CookStepViewProps) {
+/**
+ * One instruction in large type. Fades in on each new step (instantly with Reduce Motion).
+ * Not memoised: its header and children are fresh elements on every parent render.
+ */
+export function CookStepView({ step, index, replayKey, children, header }: CookStepViewProps) {
   const theme = useTheme();
   const scroll = useRef<ScrollView>(null);
 
@@ -54,7 +51,7 @@ export const CookStepView = memo(function CookStepView({
       {children}
     </ScrollView>
   );
-});
+}
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
