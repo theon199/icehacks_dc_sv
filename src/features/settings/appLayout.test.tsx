@@ -53,6 +53,7 @@ describe('signed-in layout', () => {
   it.each([
     ['the home tab', '/', 'home tab'],
     ['a deep link', '/pantry', 'pantry screen'],
+    ['the Health screen Settings links to', '/health', 'health'],
   ])('starts launch sync and the session effects when opening %s', async (_case, url, text) => {
     await renderRouter(routes, { initialUrl: url, wrapper: Providers });
     expect(await screen.findByText(text)).toBeOnTheScreen();

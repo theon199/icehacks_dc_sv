@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
 import Storage from 'expo-sqlite/kv-store';
-import { Alert, type AlertButton } from 'react-native';
+import { Alert, type AlertButton, type Text } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import {
@@ -56,6 +56,23 @@ jest.mock('@/features/notifications', () => ({
   unregisterPushDevice: () => Promise.resolve(),
 }));
 
+jest.mock('@/features/health', () => {
+  const { Text: MockText } = jest.requireActual<{ Text: typeof Text }>('react-native');
+  return { HealthConnections: () => <MockText>apple health card</MockText> };
+});
+
+const mockModerator = { isModerator: false };
+jest.mock('@/features/moderation', () => ({
+  blockedPeopleHref: '/moderation/blocked',
+  reviewQueueHref: '/moderation',
+  useIsModerator: () => ({
+    isModerator: mockModerator.isModerator,
+    isLoading: false,
+    error: null,
+    retry: () => undefined,
+  }),
+}));
+
 const currentCategories = (): Categories =>
   serverCategories[useSessionStore.getState().userId ?? ''] ?? { social: false, follows: false };
 
@@ -100,6 +117,7 @@ beforeEach(() => {
     return next;
   });
   mockPushApi.sync.mockResolvedValue('registered');
+  mockModerator.isModerator = false;
   signIn();
 });
 
@@ -213,9 +231,29 @@ describe('SettingsScreen', () => {
     expect(mockPushApi.save).not.toHaveBeenCalled();
   });
 
-  it('hides the health row until the health feature provides it', async () => {
+  it('shows the Apple Health connection and opens the Health screen', async () => {
+    const user = userEvent.setup();
     await renderWithTheme(<SettingsScreen />);
-    expect(screen.queryByTestId('settings-health')).not.toBeOnTheScreen();
+    expect(screen.getByTestId('settings-health')).toBeOnTheScreen();
+    expect(screen.getByText('apple health card')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('settings-health-insights'));
+    expect(mockPush).toHaveBeenCalledWith('/health');
+  });
+
+  it('opens the blocked people list, and hides the review queue from members', async () => {
+    const user = userEvent.setup();
+    await renderWithTheme(<SettingsScreen />);
+    await user.press(screen.getByTestId('settings-blocked-people'));
+    expect(mockPush).toHaveBeenCalledWith('/moderation/blocked');
+    expect(screen.queryByTestId('settings-review-queue')).not.toBeOnTheScreen();
+  });
+
+  it('offers the review queue to moderators', async () => {
+    mockModerator.isModerator = true;
+    const user = userEvent.setup();
+    await renderWithTheme(<SettingsScreen />);
+    await user.press(screen.getByTestId('settings-review-queue'));
+    expect(mockPush).toHaveBeenCalledWith('/moderation');
   });
 
   it('explains the AI age limit instead of offering the switch to under-18s', async () => {
