@@ -193,4 +193,11 @@ describe('aiApi', () => {
       expect(timeout).toBeGreaterThan(20_000);
     }
   });
+
+  it('waits longer for a makeover than the server can spend on one', () => {
+    // MAKEOVER_LIMITS.totalBudgetMs in supabase/functions/makeover/handler.ts: the first call plus
+    // the allergen retry.
+    const makeoverServerBudgetMs = 140_000;
+    expect(AI_TIMEOUTS_MS.makeover).toBeGreaterThan(makeoverServerBudgetMs);
+  });
 });

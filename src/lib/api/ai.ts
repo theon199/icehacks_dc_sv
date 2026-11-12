@@ -11,11 +11,15 @@ import { z } from 'zod';
 import { type CallOptions, callFunction } from './client';
 import { type ApiError, isApiError } from './errors';
 
-/** Client-side timeouts: each is a little longer than the function's own deadline for Claude. */
+/**
+ * Client-side timeouts: each is a little longer than the function's own time budget, so the app
+ * never gives up on an answer the server is still producing. `makeover` can spend up to 140 s
+ * (a first Claude call plus one allergen retry).
+ */
 export const AI_TIMEOUTS_MS = {
   chef: 100_000,
   snap: 70_000,
-  makeover: 110_000,
+  makeover: 150_000,
   nearbyChat: 40_000,
 } as const;
 
