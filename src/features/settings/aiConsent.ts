@@ -6,7 +6,9 @@
  * Withdrawing takes effect on this device even if the server cannot be reached; agreeing needs the
  * server to confirm first, so the record of consent always exists before AI is used. A withdrawal
  * the server has not acknowledged yet is kept on the device and sent again by
- * `reconcileAiConsent`, which also brings a choice made on another device to this one.
+ * `reconcileAiConsent`, which also brings a choice made on another device to this one. A write
+ * that timed out but reaches the server later is followed by the answer this device holds, so a
+ * stale answer never stays on the account while the device shows another.
  */
 import { useEffect } from 'react';
 import { z } from 'zod';
@@ -73,6 +75,24 @@ export const AI_CONSENT_WRITE_TIMEOUT_MS = 15_000;
  */
 let outstandingLateWrites = 0;
 
+/**
+ * Bumped when the module state is reset. A late write only touches the counter above when it was
+ * counted in the current generation, so a write from before a reset cannot drive it below zero.
+ */
+let lateWriteGeneration = 0;
+
+/**
+ * The answer this device currently follows for one account: a withdrawal as soon as it is made,
+ * an agreement once the server has confirmed it, or the account's record when it was adopted from
+ * there. A late write that lands after it is answered by sending this again.
+ */
+interface LatestDecision {
+  readonly userId: string;
+  readonly record: AiConsentRecord;
+}
+
+let latestDecision: LatestDecision | null = null;
+
 async function writeServerRecord(record: AiConsentRecord): Promise<void> {
   const { error } = await getSupabase().auth.updateUser({ data: { ai_consent: record } });
   if (error) throw error;
@@ -80,16 +100,22 @@ async function writeServerRecord(record: AiConsentRecord): Promise<void> {
 
 /**
  * Sends `record`, giving up after the timeout so one stuck request cannot hold every later answer.
- * When a write that gave up finally settles, a withdrawal still kept on the device is sent again,
- * in case the late write replaced it on the server.
+ * When a write that gave up finally settles while the same account is signed in, the account is
+ * brought back in line with this device (`afterLateWrite`), since the late write may have replaced
+ * a newer answer on the server.
  */
 function writeServerRecordWithTimeout(userId: string, record: AiConsentRecord): Promise<void> {
   const write = writeServerRecord(record);
+  const generation = lateWriteGeneration;
   return new Promise<void>((resolve, reject) => {
     let timedOut = false;
+    let counted = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      outstandingLateWrites += 1;
+      if (generation === lateWriteGeneration) {
+        outstandingLateWrites += 1;
+        counted = true;
+      }
       reject(new Error('The account write timed out'));
     }, AI_CONSENT_WRITE_TIMEOUT_MS);
     write.then(
@@ -109,13 +135,37 @@ function writeServerRecordWithTimeout(userId: string, record: AiConsentRecord): 
     void write
       .catch(() => undefined)
       .then(() => {
-        if (!timedOut) return;
+        // A write from before a reset belongs to state that no longer exists.
+        if (!counted || generation !== lateWriteGeneration) return;
         outstandingLateWrites -= 1;
-        if (readUnsent(userId) && useSessionStore.getState().userId === userId) {
-          void reconcileAiConsent();
-        }
+        afterLateWrite(userId);
       });
   });
+}
+
+/**
+ * A timed-out write for `userId` has just settled and may have overwritten a newer answer. While
+ * that account is still signed in, the answer this device follows is sent again; with none known
+ * (after a restart, say) the usual reconcile runs, which resends an unsent withdrawal or adopts
+ * the account record.
+ */
+function afterLateWrite(userId: string): void {
+  if (useSessionStore.getState().userId !== userId) return;
+  const latest = latestDecision;
+  if (latest?.userId === userId) void resendDecision(latest);
+  else void reconcileAiConsent();
+}
+
+/** Sends `decision` again unless a newer one replaces it before its turn in the queue. */
+async function resendDecision(decision: LatestDecision): Promise<void> {
+  const { userId, record } = decision;
+  const stillLatest = () => latestDecision === decision;
+  try {
+    const sent = await sendRecord(userId, record, stillLatest);
+    if (sent && !record.granted && stillLatest() && noLateWrites()) rememberUnsent(userId, null);
+  } catch (error) {
+    logger.warn('Could not resend the AI answer after a late account write', describeError(error));
+  }
 }
 
 /** Whether a sent withdrawal can be forgotten: no earlier write can still land after it. */
@@ -168,11 +218,13 @@ export async function setAiConsent(granted: boolean, now: Date = new Date()): Pr
     if (!(await sendRecord(userId, record))) throw new Error('The account changed before saving');
     // A newer answer given meanwhile owns the device state, including its unsent withdrawal.
     if (!latest()) return;
+    latestDecision = { userId, record };
     rememberUnsent(userId, null);
     useSessionStore.getState().setAiConsent(true);
     return;
   }
 
+  latestDecision = { userId, record };
   useSessionStore.getState().setAiConsent(false);
   rememberUnsent(userId, record);
   try {
@@ -212,6 +264,8 @@ export async function reconcileAiConsent(): Promise<void> {
     if (error || data.user?.id !== userId || !stillCurrent()) return;
     const record = readConsentRecord(data.user.user_metadata);
     if (!record) return;
+    // The account's record is what this device follows from now on, including after late writes.
+    latestDecision = { userId, record };
     const granted = recordGrantsAi(record);
     if (useSessionStore.getState().aiConsent !== granted) {
       useSessionStore.getState().setAiConsent(granted);
@@ -226,6 +280,7 @@ export async function reconcileAiConsent(): Promise<void> {
  * deleted: its unsent withdrawal has no account left to reach.
  */
 export async function forgetAiConsentOnDevice(userId: string): Promise<void> {
+  if (latestDecision?.userId === userId) latestDecision = null;
   try {
     await unsentWithdrawal(userId).remove();
   } catch (error) {
@@ -244,6 +299,8 @@ export function useAiConsentSync(): void {
 /** Test hook. */
 export function resetAiConsentForTests(): void {
   decisionCount = 0;
+  lateWriteGeneration += 1;
   outstandingLateWrites = 0;
+  latestDecision = null;
   writeQueue = Promise.resolve();
 }
