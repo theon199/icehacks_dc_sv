@@ -1,4 +1,5 @@
 import { decideVideoLoad } from './videoNavigation';
+import { VIDEO_PAGE_URL } from './videoPage';
 
 const embed = 'https://www.youtube-nocookie.com/embed/abcdefghijk?playsinline=1';
 
@@ -8,6 +9,33 @@ describe('decideVideoLoad', () => {
       'allow',
     );
     expect(decideVideoLoad({ url: 'about:blank' })).toBe('allow');
+  });
+
+  it('lets the local page through only as its first top-level load', () => {
+    expect(
+      decideVideoLoad({ url: VIDEO_PAGE_URL, isTopFrame: true, navigationType: 'other' }),
+    ).toBe('allow');
+    // Android reports neither field.
+    expect(decideVideoLoad({ url: VIDEO_PAGE_URL })).toBe('allow');
+  });
+
+  it('never fetches the local page base url over the network', () => {
+    // A reload or history step of an HTML-string page re-requests its base URL.
+    for (const navigationType of ['reload', 'backforward', 'formresubmit', 'formsubmit']) {
+      expect(decideVideoLoad({ url: VIDEO_PAGE_URL, isTopFrame: true, navigationType })).toBe(
+        'block',
+      );
+    }
+    // A tap on a link to it is not sent to the browser either.
+    expect(
+      decideVideoLoad({ url: VIDEO_PAGE_URL, isTopFrame: true, navigationType: 'click' }),
+    ).toBe('block');
+    // Nor is it loaded inside a frame, where every other https page would be allowed.
+    for (const navigationType of ['other', 'click']) {
+      expect(decideVideoLoad({ url: VIDEO_PAGE_URL, isTopFrame: false, navigationType })).toBe(
+        'block',
+      );
+    }
   });
 
   it('lets frames inside the player load without leaving cook mode', () => {

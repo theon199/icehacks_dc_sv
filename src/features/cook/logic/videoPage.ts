@@ -8,7 +8,7 @@ import { youtubeEmbedUrl } from './session';
 
 /** The app's bundle id as an https origin. Nothing is ever fetched from it. */
 export const VIDEO_PAGE_ORIGIN = 'https://com.famara.app';
-/** Base URL the page is loaded with; the navigation gate lets exactly this top-level load through. */
+/** Base URL the page is loaded with; the navigation gate lets only its initial top-level load through. */
 export const VIDEO_PAGE_URL = `${VIDEO_PAGE_ORIGIN}/`;
 
 const ENTITIES: Readonly<Record<string, string>> = {

@@ -1,3 +1,4 @@
+import { screen, userEvent } from '@testing-library/react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { Linking } from 'react-native';
 
@@ -59,6 +60,19 @@ describe('TutorialVideo', () => {
     mockWebView.props = null;
     await renderWithTheme(<TutorialVideo video={{ ...video, youtubeId: null }} />);
     expect(mockWebView.props).toBeNull();
+    expect(screen.getByText('This video plays on its own site.')).toBeOnTheScreen();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Watch video' }));
+    expect(WebBrowser.openBrowserAsync).toHaveBeenCalledTimes(1);
+    expect(WebBrowser.openBrowserAsync).toHaveBeenCalledWith(video.url);
+  });
+
+  it('refuses a reload of the local page, which would fetch its base url', async () => {
+    const { decide } = await mountPlayer();
+    expect(
+      decide({ url: 'https://com.famara.app/', isTopFrame: true, navigationType: 'reload' }),
+    ).toBe(false);
+    expect(WebBrowser.openBrowserAsync).not.toHaveBeenCalled();
   });
 
   it('lets every load reach its own navigation gate', async () => {
