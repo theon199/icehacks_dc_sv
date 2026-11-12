@@ -154,7 +154,7 @@ export function CookSession({ recipe }: CookSessionProps) {
                 onRemove={timers.remove}
               />
             ) : null}
-            {timers.permission === 'denied' && timers.timers.length > 0 ? (
+            {timers.notificationsOff && timers.timers.length > 0 ? (
               <Text variant="footnote" tone="muted">
                 Notifications are off, so timers can only alert you while Famara is open.
               </Text>

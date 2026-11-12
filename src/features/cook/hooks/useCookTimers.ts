@@ -256,7 +256,10 @@ export function useCookTimers({
   // Running timers sort by their end time, which does not move, so any moment orders them right.
   const ordered = useMemo(() => orderTimers(timers, now()), [timers, now]);
 
-  return { timers: ordered, byId: timers, permission, ...actions };
+  /** True when a timer that ends in the background will not send a notification. */
+  const notificationsOff = !notificationsEnabled || permission === 'denied';
+
+  return { timers: ordered, byId: timers, permission, notificationsOff, ...actions };
 }
 
 export type CookTimersApi = ReturnType<typeof useCookTimers>;
