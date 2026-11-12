@@ -16,7 +16,7 @@ export {
   type SignedInProfile,
 } from './sessionStore';
 export { useSessionBootstrap } from './useSessionBootstrap';
-export { signOut } from './authActions';
+export { signOut, type SignOutOptions, type SignOutResult, type SignOutScope } from './authActions';
 export {
   useSubmission,
   type Submission,
