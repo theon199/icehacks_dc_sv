@@ -74,7 +74,9 @@ beforeEach(() => {
   resetChefSession();
   usePreferencesStore.setState({ prefs: answeredPrefs({ allergens: ['peanut'] }) });
   askChef.mockReset();
-  jest.mocked(listCandidates).mockResolvedValue(catalog.map((r) => ({ ...r, ingredientIds: [] })));
+  jest
+    .mocked(listCandidates)
+    .mockResolvedValue(catalog.map((r) => ({ ...r, ingredientIds: [], coreIngredientIds: [] })));
   jest.mocked(searchRecipes).mockResolvedValue({ items: catalog, nextCursor: null });
   jest
     .mocked(getRecipeSummaries)

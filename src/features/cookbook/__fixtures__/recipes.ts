@@ -6,10 +6,12 @@ import { ALLERGEN_IDS, type AllergenMap, type RecipeCandidate } from '@/lib/cata
 
 const allFree = Object.fromEntries(ALLERGEN_IDS.map((a) => [a, 'free'])) as AllergenMap;
 
+/** Core ingredients default to the matched ids, as for a dish with no staples or optional lines. */
 export function makeCandidate(
   id: string,
   overrides: Partial<RecipeCandidate> = {},
 ): RecipeCandidate {
+  const ingredientIds = overrides.ingredientIds ?? [`${id}-a`, `${id}-b`];
   return {
     id,
     slug: id,
@@ -45,7 +47,8 @@ export function makeCandidate(
     gentle: false,
     healthScore: 0.6,
     familyId: id,
-    ingredientIds: [`${id}-a`, `${id}-b`],
+    ingredientIds,
+    coreIngredientIds: ingredientIds,
     ...overrides,
   };
 }
