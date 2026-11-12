@@ -8,7 +8,7 @@ import { tokenize, useRecipeSearch } from '@/lib/catalog';
 
 import { useSafetyRules } from './deps';
 import { hasActiveFilters, toSearchFilters } from './filters';
-import { toResultItems, type SearchResultItem } from './resultItems';
+import { resultItemCache, toResultItems, type SearchResultItem } from './resultItems';
 import { useSearchStore } from './searchStore';
 import { useDebouncedValue } from './useDebouncedValue';
 
@@ -21,8 +21,15 @@ export interface SearchResults {
   items: SearchResultItem[];
   /** Whether the person has answered the safety questions; badges cover everything until then. */
   safetyAnswered: boolean;
+  /**
+   * Identifies the search the results belong to (text plus filters). Changes when the person asks
+   * for something new, never when another page of the same search loads.
+   */
+  searchKey: string;
   /** First page not loaded yet (nothing to show). */
   loading: boolean;
+  /** The previous search's results are on screen while the current one loads. */
+  updating: boolean;
   error: unknown;
   hasMore: boolean;
   loadingMore: boolean;
@@ -38,23 +45,28 @@ export function useSearchResults(): SearchResults {
   const search = useRecipeSearch(settledQuery, args);
   const rules = useSafetyRules();
   const pages = search.data?.pages;
-  const items = useMemo(() => toResultItems(pages, rules), [pages, rules]);
+  const itemFor = useMemo(() => resultItemCache(rules), [rules]);
+  const items = useMemo(() => toResultItems(pages, itemFor), [pages, itemFor]);
+  const searchKey = useMemo(() => JSON.stringify([settledQuery, args]), [settledQuery, args]);
 
   const hasFilters = hasActiveFilters(filters);
-  const { hasNextPage, isFetchingNextPage, fetchNextPage, refetch } = search;
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage, refetch } = search;
   return {
     settledQuery,
     active: tokenize(settledQuery).length > 0 || hasFilters,
     hasFilters,
     items,
     safetyAnswered: rules.answered,
+    searchKey,
     loading: search.isPending,
+    updating: search.isPlaceholderData,
     error: search.isError ? search.error : null,
     hasMore: hasNextPage,
     loadingMore: isFetchingNextPage,
     loadMore: () => {
       if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
     },
-    retry: () => void refetch(),
+    // A failed next page is retried on its own; anything else reloads the search.
+    retry: () => void (isFetchNextPageError ? fetchNextPage() : refetch()),
   };
 }

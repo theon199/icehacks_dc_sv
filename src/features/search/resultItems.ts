@@ -48,13 +48,34 @@ export function toResultItem(recipe: RecipeSummary, rules: SafetyRules): SearchR
   };
 }
 
+/** Builds (or recalls) the grid entry for one recipe. */
+export type ResultItemFor = (recipe: RecipeSummary) => SearchResultItem;
+
+/**
+ * Remembers each recipe's entry for one set of safety rules, so loading another page or swapping
+ * placeholder data reuses the entries already on screen and memoised cards skip re-rendering.
+ * Keyed by the recipe object itself: the query cache hands back the same objects for pages it has
+ * already loaded, and entries go away with the pages that held them.
+ */
+export function resultItemCache(rules: SafetyRules): ResultItemFor {
+  const known = new WeakMap<RecipeSummary, SearchResultItem>();
+  return (recipe) => {
+    let item = known.get(recipe);
+    if (!item) {
+      item = toResultItem(recipe, rules);
+      known.set(recipe, item);
+    }
+    return item;
+  };
+}
+
 /**
  * Flattens the loaded pages in order. Offset paging can repeat a recipe across a page boundary;
  * the first occurrence wins so list keys stay unique.
  */
 export function toResultItems(
   pages: readonly SearchPage[] | undefined,
-  rules: SafetyRules,
+  itemFor: ResultItemFor,
 ): SearchResultItem[] {
   if (!pages) return [];
   const seen = new Set<string>();
@@ -63,7 +84,7 @@ export function toResultItems(
     for (const recipe of page.items) {
       if (seen.has(recipe.id)) continue;
       seen.add(recipe.id);
-      items.push(toResultItem(recipe, rules));
+      items.push(itemFor(recipe));
     }
   }
   return items;

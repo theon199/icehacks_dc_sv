@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   configure,
   fireEvent,
   screen,
@@ -54,8 +55,17 @@ const peanutty = searchRecipe('mealdb:2', {
 
 const page = (items: RecipeSummary[]): SearchPage => ({ items, nextCursor: null });
 
+// Unmount, stop fetches still in flight, then empty the cache. Unmounting and settling fetches each
+// schedule long garbage-collection timers; clearing last cancels them so the test worker can exit.
+let client: QueryClient | undefined;
+afterEach(async () => {
+  await cleanup();
+  await client?.cancelQueries();
+  client?.clear();
+});
+
 async function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await renderWithTheme(
     <QueryClientProvider client={client}>
       <SearchScreen />
@@ -142,6 +152,16 @@ describe('SearchScreen', () => {
 
     await fireEvent.changeText(screen.getByTestId('search-input'), '');
     expect(await screen.findByRole('button', { name: 'Search again for soup' })).toBeOnTheScreen();
+  });
+
+  it('keeps the previous results dimmed, with a progress cue, while a new search loads', async () => {
+    await renderScreen();
+    await screen.findByTestId('search-result-mealdb:1');
+    expect(screen.queryByTestId('search-updating')).toBeNull();
+    jest.mocked(searchRecipes).mockReturnValue(new Promise<SearchPage>(() => {}));
+    await fireEvent.changeText(screen.getByTestId('search-input'), 'curry');
+    expect(await screen.findByTestId('search-updating')).toBeOnTheScreen();
+    expect(screen.getByTestId('search-result-mealdb:1')).toBeOnTheScreen();
   });
 
   it('offers ways out when nothing matches', async () => {

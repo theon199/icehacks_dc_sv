@@ -3,7 +3,7 @@ import { DietFlag } from '@/lib/catalog';
 
 import { allFree, searchRecipe } from './__fixtures__/recipes';
 import { toSafetyPrefs } from './deps';
-import { toResultItem, toResultItems } from './resultItems';
+import { resultItemCache, toResultItem, toResultItems } from './resultItems';
 
 const peanutAllergy = compileSafetyRules({ allergens: ['peanut'], diets: [] });
 
@@ -60,7 +60,7 @@ describe('search result safety', () => {
         { items: [fits, unsafe], nextCursor: 2 },
         { items: [unsafe, searchRecipe('3')], nextCursor: null },
       ],
-      peanutAllergy,
+      resultItemCache(peanutAllergy),
     );
     expect(items.map((i) => [i.recipe.id, i.eligible])).toEqual([
       ['1', true],
@@ -70,6 +70,28 @@ describe('search result safety', () => {
   });
 
   it('has nothing to show before the first page arrives', () => {
-    expect(toResultItems(undefined, peanutAllergy)).toEqual([]);
+    expect(toResultItems(undefined, resultItemCache(peanutAllergy))).toEqual([]);
+  });
+
+  it('reuses the entries already built when another page arrives', () => {
+    const itemFor = resultItemCache(peanutAllergy);
+    const first = { items: [searchRecipe('1'), searchRecipe('2')], nextCursor: 2 };
+    const before = toResultItems([first], itemFor);
+    const after = toResultItems([first, { items: [searchRecipe('3')], nextCursor: null }], itemFor);
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+    expect(after).toHaveLength(3);
+  });
+
+  it('rebuilds entries for new safety rules', () => {
+    const page = {
+      items: [searchRecipe('1', { allergens: { ...allFree(), milk: 'contains' } })],
+      nextCursor: null,
+    };
+    const [lenient] = toResultItems([page], resultItemCache(peanutAllergy));
+    const milkAllergy = compileSafetyRules({ allergens: ['milk'], diets: [] });
+    const [strict] = toResultItems([page], resultItemCache(milkAllergy));
+    expect(lenient?.eligible).toBe(true);
+    expect(strict?.eligible).toBe(false);
   });
 });

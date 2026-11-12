@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, screen, userEvent } from '@testing-library/react-native';
+import { act, cleanup, screen, userEvent } from '@testing-library/react-native';
 
 import { getCuisines } from '@/lib/catalog/queries';
 import { renderWithTheme } from '@/test/render';
@@ -18,8 +18,17 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), back: mockBack, canGoBack: () => true }),
 }));
 
+// Unmount, stop fetches still in flight, then empty the cache. Unmounting and settling fetches each
+// schedule long garbage-collection timers; clearing last cancels them so the test worker can exit.
+let client: QueryClient | undefined;
+afterEach(async () => {
+  await cleanup();
+  await client?.cancelQueries();
+  client?.clear();
+});
+
 async function renderSheet() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await renderWithTheme(
     <QueryClientProvider client={client}>
       <SearchFiltersScreen />

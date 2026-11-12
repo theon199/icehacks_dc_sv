@@ -13,6 +13,7 @@ import { NoResults } from './NoResults';
 import { ResultsGrid } from './ResultsGrid';
 import { ResultsSkeleton } from './ResultsSkeleton';
 import { SafetyNotice } from './SafetyNotice';
+import { SearchErrorBanner } from './SearchErrorBanner';
 import { SearchField } from './SearchField';
 import { useAiAccess, useLovedCuisines, useSearchOwnerId } from '../deps';
 import { activeFilterChips, toggleValue, type ActiveFilterChip } from '../filters';
@@ -68,13 +69,24 @@ export function SearchPane() {
     [filters],
   );
 
+  const setUpSafety = () => router.push('/preferences');
+  // Results already on screen stay usable when a later load fails; the banner says what is missing.
+  const errorBanner =
+    results.error && results.items.length > 0 ? (
+      <SearchErrorBanner error={results.error} onRetry={results.retry} />
+    ) : null;
+  const safetyNotice = results.safetyAnswered ? null : <SafetyNotice onSetUp={setUpSafety} />;
+
   const header = results.active ? (
-    results.safetyAnswered ? null : (
-      <SafetyNotice onSetUp={() => router.push('/preferences')} />
-    )
+    errorBanner || safetyNotice ? (
+      <View>
+        {errorBanner}
+        {safetyNotice}
+      </View>
+    ) : null
   ) : (
     <View style={styles.idle}>
-      {results.safetyAnswered ? null : <SafetyNotice onSetUp={() => router.push('/preferences')} />}
+      {safetyNotice}
       <IdlePanel
         recentTerms={recentTerms}
         lovedCuisines={lovedCuisines}
@@ -129,6 +141,8 @@ export function SearchPane() {
       </View>
       <ResultsGrid
         items={results.items}
+        searchKey={results.searchKey}
+        updating={results.updating}
         onOpen={openRecipe}
         onEndReached={results.loadMore}
         loadingMore={results.loadingMore}
