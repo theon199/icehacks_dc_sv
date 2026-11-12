@@ -12,8 +12,14 @@ import type { z } from 'zod';
 import type { PersistOptions, PersistStorage, StorageValue } from 'zustand/middleware';
 
 import { logger } from '@/lib/logger';
-import { persistStorage } from '@/lib/storage/kv';
+import { persistStorage, throttleWrites } from '@/lib/storage/kv';
 import { createChunkedSecureStorage } from '@/lib/supabase/secureStorage';
+
+/**
+ * Write window for stores that change many times a minute (a swipe session, a chat): one disk
+ * write per second at most instead of one per change.
+ */
+export const BURST_WRITE_WINDOW_MS = 1000;
 
 /** Upgrades stored state from version `n` (its key) to `n + 1`. */
 export type Migration = (state: unknown) => unknown;
@@ -27,6 +33,12 @@ export interface VersionedPersistConfig<S, P> {
   partialize: (state: S) => P;
   migrations?: Readonly<Record<number, Migration>>;
   storage?: PersistOptions<S, P>['storage'];
+  /**
+   * Coalesces writes: at most one per `throttleMs`, with the latest state written at the end of
+   * the window, on app background, and before sync saves its ledger. For large stores on hot
+   * paths; anything else should keep writing straight away.
+   */
+  throttleMs?: number;
 }
 
 /** Runs the migration chain; returns undefined when there is no path to the current version. */
@@ -47,10 +59,11 @@ export function runMigrations(
 
 export function versionedPersist<S, P>(config: VersionedPersistConfig<S, P>): PersistOptions<S, P> {
   const migrations = config.migrations ?? {};
+  const storage = config.storage ?? persistStorage<P>();
   return {
     name: config.name,
     version: config.version,
-    storage: config.storage ?? persistStorage<P>(),
+    storage: config.throttleMs ? throttleWrites(storage, config.throttleMs) : storage,
     partialize: config.partialize,
     migrate: (persisted, fromVersion) => {
       const migrated = runMigrations(persisted, fromVersion, config.version, migrations);

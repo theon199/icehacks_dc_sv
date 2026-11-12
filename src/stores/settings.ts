@@ -108,6 +108,7 @@ const asDocs = singletonRecord<Settings>('main');
 
 export const settingsSync = createCollectionAdapter({
   collection: 'settings',
+  priority: true,
   store: useSettingsStore,
   select: (state) => asDocs(state.settings),
   schema: settingsSchema,

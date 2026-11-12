@@ -1,8 +1,9 @@
 /**
- * The set of per-account stores: what sync mirrors, and what is wiped when the person signs out
- * or deletes their account.
+ * The set of per-account stores. Importing `@/stores` registers every one of them with sync, so
+ * sync mirrors them all from its first start and wipes them all when the person signs out or
+ * deletes their account, whichever screens have been opened.
  */
-import { registerSyncedStore } from '@/lib/sync/registry';
+import { isSyncRunning, registerSyncedStore } from '@/lib/sync/registry';
 import type { SyncCollectionAdapter } from '@/lib/sync/types';
 
 import { useChefStore, chefSync } from './chef';
@@ -15,6 +16,7 @@ import { usePreferencesStore, preferencesSync } from './preferences';
 import { useSavedStore, savedSync } from './saved';
 import { useSettingsStore, settingsSync } from './settings';
 import { useShoppingStore, shoppingSync } from './shopping';
+import { useVariantStore, variantsSync } from './variants';
 
 interface ResettableStore {
   getState(): { reset(): void };
@@ -26,6 +28,7 @@ const userStores: readonly (readonly [ResettableStore, SyncCollectionAdapter])[]
   [usePersonalDetailsStore, personalDetailsSync],
   [usePantryStore, pantrySync],
   [useSavedStore, savedSync],
+  [useVariantStore, variantsSync],
   [useMealPlanStore, mealPlanSync],
   [useFeedbackStore, feedbackSync],
   [useCookLogStore, cookLogSync],
@@ -34,25 +37,25 @@ const userStores: readonly (readonly [ResettableStore, SyncCollectionAdapter])[]
   [useSettingsStore, settingsSync],
 ];
 
-/** Every synced collection, one adapter per store. */
-export const userSyncCollections: readonly SyncCollectionAdapter[] = userStores.map(
-  ([, adapter]) => adapter,
-);
-
+/** Defaults in memory, persisted copy removed (the Keychain copy of personal details included). */
 function resetStore(store: ResettableStore): void {
   store.getState().reset();
   store.persist.clearStorage();
 }
 
 /**
- * Resets every user store to its defaults and removes their persisted copies (the Keychain copy
- * of personal details included). Stop sync first, or the reset would be synced as deletions.
+ * Resets every user store, for tests and tools. The app resets through the sync session
+ * (sign-out, account deletion), which stops the engine first; resetting under a running engine
+ * would be pushed as deleting all of the account's data, so that is refused.
  */
 export function resetUserStores(): void {
+  if (isSyncRunning()) {
+    throw new Error('resetUserStores() cannot run while sync is running; sign out instead.');
+  }
   for (const [store] of userStores) resetStore(store);
 }
 
-// Sync mirrors these stores and clears them on sign-out; it learns about them only from here.
+// Sync learns about the user stores only from here.
 for (const [store, adapter] of userStores) {
   registerSyncedStore({ adapter, reset: () => resetStore(store) });
 }

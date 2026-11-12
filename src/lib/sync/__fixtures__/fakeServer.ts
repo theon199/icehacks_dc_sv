@@ -1,10 +1,11 @@
 /**
  * Test-only, in-memory model of `user_documents` with the semantics of `sync_push` and
  * `sync_pull` from docs/BACKEND.md: strict (updated_at, device_id) last-write-wins, stale-write
- * rejections carrying the server copy, revision cursors, paging, and tombstone compaction that
- * forces devices with an older cursor to resync.
+ * rejections carrying the server copy, revision cursors, paging, tombstone compaction that
+ * forces devices with an older cursor to resync, and the live-document and live-byte quotas (a
+ * push that leaves the account over a limit and raises that total fails as a whole).
  */
-import { stableStringify } from '../fingerprint';
+import { stableStringify, utf8Bytes } from '../fingerprint';
 import { timestampMs } from '../ledger';
 import {
   SyncError,
@@ -36,6 +37,10 @@ export class FakeSyncServer {
   pageSize: number | null = null;
   /** Called with each push before it is applied (lets a test inject a concurrent write). */
   beforePush: ((docs: OutgoingDoc[]) => void) | null = null;
+  /** Most live (not deleted) documents the account may hold; null for no limit. */
+  maxLiveDocs: number | null = null;
+  /** Most bytes of live document JSON the account may hold; null for no limit. */
+  maxLiveBytes: number | null = null;
 
   private key(collection: string, docId: string) {
     return `${collection}/${docId}`;
@@ -63,8 +68,46 @@ export class FakeSyncServer {
     }
   }
 
+  /** Documents that are not tombstones. */
+  liveCount(): number {
+    let count = 0;
+    for (const row of this.rows.values()) if (row.deleted_at == null) count += 1;
+    return count;
+  }
+
+  /** Bytes of live document JSON, as the server's usage counters measure them. */
+  liveBytes(): number {
+    let total = 0;
+    for (const row of this.rows.values()) {
+      if (row.deleted_at == null) total += utf8Bytes(stableStringify(row.data));
+    }
+    return total;
+  }
+
   push(docs: OutgoingDoc[]): PushResult {
     this.beforePush?.(docs);
+    const rowsBefore = new Map(this.rows);
+    const revisionBefore = this.revision;
+    const liveBefore = this.liveCount();
+    const bytesBefore = this.maxLiveBytes == null ? 0 : this.liveBytes();
+    const result = this.apply(docs);
+    const liveAfter = this.liveCount();
+    const bytesAfter = this.maxLiveBytes == null ? 0 : this.liveBytes();
+    const overCount =
+      this.maxLiveDocs != null && liveAfter > this.maxLiveDocs && liveAfter > liveBefore;
+    const overBytes =
+      this.maxLiveBytes != null && bytesAfter > this.maxLiveBytes && bytesAfter > bytesBefore;
+    if (overCount || overBytes) {
+      // The whole push is rolled back, as the RPC's transaction is.
+      this.rows.clear();
+      for (const [key, row] of rowsBefore) this.rows.set(key, row);
+      this.revision = revisionBefore;
+      throw new SyncError('quota', 'over the account limit');
+    }
+    return result;
+  }
+
+  private apply(docs: OutgoingDoc[]): PushResult {
     const result: PushResult = { applied: [], rejected: [] };
     for (const doc of docs) {
       const key = this.key(doc.collection, doc.doc_id);
