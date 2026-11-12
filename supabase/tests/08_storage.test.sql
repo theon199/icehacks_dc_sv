@@ -71,6 +71,8 @@ as $fn$
 declare
   v_rows integer;
 begin
+  -- The Storage API sets this before it deletes; plain SQL deletes are refused without it.
+  perform set_config('storage.allow_delete_query', 'true', true);
   delete from storage.objects where bucket_id = p_bucket and name = p_name;
   get diagnostics v_rows = row_count;
   return v_rows;
