@@ -86,17 +86,14 @@ async function renderScreen() {
 const feedback = () => selectFeedbackEvents(useFeedbackStore.getState());
 const topLabel = () => screen.getByTestId('discover-top-card').props.accessibilityLabel as string;
 
-// The first deck of a suite waits on cold module loading and an idle slot; on a busy machine running
-// every suite in parallel that can take several seconds.
-jest.setTimeout(20_000);
-
 async function untilCards() {
-  await waitFor(() => expect(screen.getByTestId('discover-top-card')).toBeTruthy(), {
-    timeout: 10_000,
-  });
+  await waitFor(() => expect(screen.getByTestId('discover-top-card')).toBeTruthy());
 }
 
 beforeEach(() => {
+  // Fake time: waitFor steps the clock past the deferred ranking's idle backstop, so the tests do
+  // not depend on how busy the machine is.
+  jest.useFakeTimers();
   mockPush.mockReset();
   jest.mocked(listCandidates).mockImplementation(fakeQuery);
   usePreferencesStore.getState().reset();
@@ -108,6 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
+  jest.useRealTimers();
 });
 
 describe('DiscoverScreen', () => {
