@@ -4,13 +4,7 @@ import { create } from 'zustand';
 import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
 
 import { logger } from '../logger';
-import {
-  defineKvKey,
-  flushPendingWrites,
-  persistStorage,
-  storageKey,
-  throttleWrites,
-} from './kv';
+import { defineKvKey, flushPendingWrites, persistStorage, storageKey, throttleWrites } from './kv';
 
 const units = defineKvKey('settings.units', z.enum(['us', 'metric']));
 

@@ -15,7 +15,7 @@ import {
 
 import { FakeSyncServer } from './__fixtures__/fakeServer';
 import { memoryAdapter } from './__fixtures__/memoryAdapter';
-import { createSyncEngine, type SyncEngine } from './engine';
+import { createSyncEngine } from './engine';
 import type * as EngineModule from './engine';
 import { LEDGER_HEADER_KEY, ledgerBucketKey } from './ledger';
 import { registerSyncedStore } from './registry';
@@ -32,6 +32,10 @@ jest.mock('./engine', () => {
   const actual = jest.requireActual<typeof EngineModule>('./engine');
   return { ...actual, createSyncEngine: jest.fn(actual.createSyncEngine) };
 });
+
+/** The engine the session created most recently. */
+const lastEngine = () =>
+  jest.mocked(createSyncEngine).mock.results.at(-1)?.value as EngineModule.SyncEngine;
 
 let mockServer: FakeSyncServer;
 jest.mock('./transport', () => ({
@@ -198,7 +202,7 @@ describe('sync session', () => {
     };
     jest.mocked(createSupabaseTransport).mockImplementationOnce(() => refusing);
     await startSync('user-1');
-    const engine = jest.mocked(createSyncEngine).mock.results.at(-1)?.value as SyncEngine;
+    const engine = lastEngine();
     await waitFor(() => expect(engine.isStopped()).toBe(true));
     usePantryStore.getState().add({ name: 'left behind' });
     expect(() => resetUserStores()).not.toThrow();
@@ -251,7 +255,7 @@ describe('sync session', () => {
     };
     jest.mocked(createSupabaseTransport).mockImplementationOnce(() => refusing);
     await startSync('user-1');
-    const first = jest.mocked(createSyncEngine).mock.results.at(-1)?.value as SyncEngine;
+    const first = lastEngine();
     await waitFor(() => expect(first.isStopped()).toBe(true));
     const engines = jest.mocked(createSyncEngine).mock.calls.length;
 
