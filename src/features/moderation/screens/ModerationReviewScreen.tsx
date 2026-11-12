@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import { formatRelativeTime } from '@/lib/format';
-import { Card, Chip, EmptyState, ErrorState, Screen, Text, toast } from '@/ui';
+import { Button, Card, Chip, EmptyState, ErrorState, Screen, Text, toast } from '@/ui';
 import { space } from '@/ui/tokens';
 
 import { availableActions } from '../actions';
@@ -12,6 +12,7 @@ import { AuditRow } from '../components/AuditRow';
 import { ModerateForm } from '../components/ModerateForm';
 import { ModeratorGate } from '../components/ModeratorGate';
 import { TargetPreview } from '../components/TargetPreview';
+import { reviewQueueHref } from '../links';
 import { parseTargetRef, type TargetRef } from '../model';
 import { useAuditLog, useModerate, useReviewTarget, useTargetReports } from '../queries';
 import { reasonLabel, targetNoun } from '../reasons';
@@ -30,17 +31,56 @@ function missingText(review: ReviewTarget): string {
   return `This ${noun} no longer exists.`;
 }
 
-function ReportList({ reports, now }: { reports: readonly TargetReport[]; now: number }) {
-  const open = reports.filter((report) => report.status === 'open').length;
+/** The open count heading: the server's count when known, else what is loaded so far. */
+export function reportHeading(reports: readonly TargetReport[], openCount: number | null): string {
+  const open = openCount ?? reports.filter((report) => report.status === 'open').length;
+  if (open > 0) return `${open} open report${open === 1 ? '' : 's'}`;
+  return reports.length > 0 ? 'No open reports' : 'No reports';
+}
+
+interface ShowOlderProps {
+  hasMore: boolean;
+  loading: boolean;
+  onPress: () => void;
+  label: string;
+}
+
+function ShowOlder({ hasMore, loading, onPress, label }: ShowOlderProps) {
+  if (!hasMore) return null;
+  return (
+    <Button
+      label={label}
+      variant="ghost"
+      size="sm"
+      loading={loading}
+      disabled={loading}
+      onPress={onPress}
+    />
+  );
+}
+
+/** Leaves the review after a decision; opened from a link with no history, it lands on the queue. */
+export function leaveReview(
+  router: Pick<ReturnType<typeof useRouter>, 'canGoBack' | 'back' | 'replace'>,
+) {
+  if (router.canGoBack()) router.back();
+  else router.replace(reviewQueueHref);
+}
+
+function ReportList({
+  reports,
+  openCount,
+  now,
+  older,
+}: {
+  reports: readonly TargetReport[];
+  openCount: number | null;
+  now: number;
+  older: Omit<ShowOlderProps, 'label'>;
+}) {
   return (
     <View style={styles.section}>
-      <Text variant="title3">
-        {open > 0
-          ? `${open} open report${open === 1 ? '' : 's'}`
-          : reports.length > 0
-            ? 'No open reports'
-            : 'No reports'}
-      </Text>
+      <Text variant="title3">{reportHeading(reports, openCount)}</Text>
       {reports.map((report) => (
         <Card key={report.id} variant="outlined" padding="md">
           <View style={styles.report}>
@@ -59,6 +99,7 @@ function ReportList({ reports, now }: { reports: readonly TargetReport[]; now: n
           </View>
         </Card>
       ))}
+      <ShowOlder {...older} label="Show older reports" />
     </View>
   );
 }
@@ -75,6 +116,11 @@ function Review({ target }: { target: TargetRef }) {
     () => audit.data?.pages.flatMap((page) => page.items) ?? [],
     [audit.data],
   );
+  const reportItems = useMemo(
+    () => reports.data?.pages.flatMap((page) => page.items) ?? null,
+    [reports.data],
+  );
+  const openCount = reports.data?.pages[0]?.openCount ?? null;
   const now = Math.max(review.dataUpdatedAt, reports.dataUpdatedAt, audit.dataUpdatedAt);
 
   const data = review.data;
@@ -124,8 +170,17 @@ function Review({ target }: { target: TargetRef }) {
           title="Reports didn't load"
           onRetry={() => void reports.refetch()}
         />
-      ) : reports.data ? (
-        <ReportList reports={reports.data} now={now} />
+      ) : reportItems ? (
+        <ReportList
+          reports={reportItems}
+          openCount={openCount}
+          now={now}
+          older={{
+            hasMore: reports.hasNextPage,
+            loading: reports.isFetchingNextPage,
+            onPress: () => void reports.fetchNextPage(),
+          }}
+        />
       ) : null}
 
       {ownTarget ? (
@@ -147,7 +202,7 @@ function Review({ target }: { target: TargetRef }) {
               {
                 onSuccess: () => {
                   toast.success('Decision recorded.');
-                  router.back();
+                  leaveReview(router);
                 },
               },
             )
@@ -159,13 +214,24 @@ function Review({ target }: { target: TargetRef }) {
         <Text variant="title3">History</Text>
         {history.length === 0 ? (
           <Text variant="callout" tone="muted">
-            {audit.isPending ? 'Loading…' : 'No earlier decisions on this target.'}
+            {audit.isPending
+              ? 'Loading…'
+              : target.kind === 'user'
+                ? 'No earlier decisions about this member or their posts.'
+                : 'No earlier decisions on this target.'}
           </Text>
         ) : (
           history.map((entry) => (
-            <AuditRow key={entry.id} entry={entry} now={now} showTarget={false} />
+            // A member's history also lists what was done to their posts and comments.
+            <AuditRow key={entry.id} entry={entry} now={now} showTarget={target.kind === 'user'} />
           ))
         )}
+        <ShowOlder
+          hasMore={audit.hasNextPage}
+          loading={audit.isFetchingNextPage}
+          onPress={() => void audit.fetchNextPage()}
+          label="Show older"
+        />
       </View>
     </Screen>
   );

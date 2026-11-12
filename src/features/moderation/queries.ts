@@ -22,7 +22,7 @@ import {
 } from './api';
 import { useBlockedDirectory, type BlockedPerson } from './blockedDirectory';
 import { targetKey, type TargetRef } from './model';
-import { fetchReviewTarget, fetchTargetReports } from './reviewTarget';
+import { fetchReviewTarget, fetchTargetReports, type ReportCursor } from './reviewTarget';
 
 type ReportStatus = Enums<'report_status'>;
 
@@ -114,7 +114,20 @@ export interface BlockTarget extends BlockedPerson {
   userId: string;
 }
 
-export function useBlockUser() {
+export interface BlockUserOptions {
+  /**
+   * Runs once the block is confirmed, before cached social data is refreshed: the place for a
+   * feature to drop the person's content from its own caches straight away.
+   */
+  onBlocked?: (target: BlockTarget) => void;
+  onError?: (error: Error, target: BlockTarget) => void;
+}
+
+/**
+ * Blocks a member and remembers their name on this device, so they appear by name in the blocked
+ * list (which cannot look them up once the block hides their profile).
+ */
+export function useBlockUser({ onBlocked, onError }: BlockUserOptions = {}) {
   const userId = useReadyUserId();
   const remember = useBlockedDirectory((s) => s.remember);
   const refresh = useRefreshAfterBlockChange();
@@ -124,8 +137,10 @@ export function useBlockUser() {
       if (userId) {
         remember(userId, target.userId, { displayName: target.displayName, handle: target.handle });
       }
+      onBlocked?.(target);
       return refresh();
     },
+    ...(onError ? { onError } : {}),
   });
 }
 
@@ -197,9 +212,11 @@ export function useReviewTarget(target: TargetRef, enabled: boolean) {
 }
 
 export function useTargetReports(target: TargetRef, enabled: boolean) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: moderationKeys.targetReports(target),
-    queryFn: () => fetchTargetReports(target),
+    queryFn: ({ pageParam }) => fetchTargetReports(target, pageParam),
+    initialPageParam: null as ReportCursor | null,
+    getNextPageParam: (last) => last.next,
     enabled,
   });
 }
