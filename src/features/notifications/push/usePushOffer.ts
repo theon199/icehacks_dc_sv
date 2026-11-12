@@ -7,13 +7,13 @@ import { describeError, logger } from '@/lib/logger';
 import { toast } from '@/ui';
 
 import { setPushEnabled, usePushEnabled } from '../deps';
+import { savePushCategories } from './pushCategories';
 import {
   readPushPermission,
   requestPushPermission,
   syncPushRegistration,
   type PermissionSnapshot,
 } from './pushDevice';
-import { savePushCategories } from './pushCategories';
 import { recordDismissal, shouldOfferPush } from './pushPolicy';
 import { usePushState } from './pushState';
 

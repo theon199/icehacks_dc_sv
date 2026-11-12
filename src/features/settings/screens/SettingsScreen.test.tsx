@@ -239,7 +239,10 @@ describe('SettingsScreen', () => {
 
   it('stays signed in and explains when this device could not sign out', async () => {
     mockAuth.signOut.mockResolvedValue({ error: new Error('Network request failed') });
-    mockAuth.getSession.mockResolvedValue({ data: { session: { access_token: 't' } }, error: null });
+    mockAuth.getSession.mockResolvedValue({
+      data: { session: { access_token: 't' } },
+      error: null,
+    });
     const user = userEvent.setup();
     await renderWithTheme(<SettingsScreen />);
     await user.press(screen.getByRole('button', { name: 'Sign out' }));

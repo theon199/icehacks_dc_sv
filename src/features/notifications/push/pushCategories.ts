@@ -23,18 +23,12 @@ const CategoriesResponse = z.object({
 
 /** The account's current choices; both are off until the person turns them on. */
 export async function fetchPushCategories(): Promise<PushCategories> {
-  const { categories } = await callFunction(
-    'push',
-    { action: 'categories' },
-    CategoriesResponse,
-  );
+  const { categories } = await callFunction('push', { action: 'categories' }, CategoriesResponse);
   return categories;
 }
 
 /** Changes the given categories, leaving the others as they are, and returns the result. */
-export async function savePushCategories(
-  change: Partial<PushCategories>,
-): Promise<PushCategories> {
+export async function savePushCategories(change: Partial<PushCategories>): Promise<PushCategories> {
   const { categories } = await callFunction(
     'push',
     { action: 'categories', ...change },
