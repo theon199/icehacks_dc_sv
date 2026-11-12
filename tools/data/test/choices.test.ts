@@ -1,0 +1,169 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { rollupAllergens, rollupDiet, type MatchedLine } from '../src/derive/rollup.ts';
+import type { IngredientDef } from '../src/knowledge/define.ts';
+import { INGREDIENT_BY_ID, INGREDIENTS } from '../src/knowledge/index.ts';
+import { IngredientMatcher } from '../src/match/matcher.ts';
+import { parseMeasure } from '../src/parse/measure.ts';
+import { buildRecipe, type RecipeContext } from '../src/pipeline/recipes.ts';
+import type { BuildIssue } from '../src/pipeline/types.ts';
+import { ALLERGEN_IDS, type AllergenId, type SourceRecipe } from '../src/types.ts';
+
+const matcher = new IngredientMatcher(INGREDIENTS);
+const match = (text: string) => matcher.matchLine(parseMeasure(text).rest);
+const def = (id: string): IngredientDef => {
+  const found = INGREDIENT_BY_ID.get(id);
+  assert.ok(found, `missing ingredient ${id}`);
+  return found;
+};
+/** Matches a line the way the pipeline does, including any unidentified choice. */
+const matchedLine = (text: string): MatchedLine => {
+  const result = match(text);
+  if (result.id === null) return null;
+  const defs = result.all.map(def);
+  return result.unresolved.length > 0 ? { defs, unresolved: result.unresolved } : defs;
+};
+const statesOf = (lines: MatchedLine[], state: string): AllergenId[] => {
+  const allergens = rollupAllergens(lines);
+  return ALLERGEN_IDS.filter((a) => allergens[a] === state);
+};
+
+describe('a choice the knowledge base cannot identify', () => {
+  it('keeps the known choice for nutrition and reports the other as unresolved', () => {
+    for (const text of ['2 tbsp peanut butter or halva spread', '2 tbsp peanut butter (or halva spread)', '2 tbsp peanut butter, or halva spread']) {
+      const result = match(text);
+      assert.equal(result.id, 'peanut_butter', text);
+      assert.deepEqual(result.unresolved, ['halva spread'], text);
+    }
+  });
+
+  it('makes every allergen the known choice does not contain unknown, never free', () => {
+    const lines = [matchedLine('2 tbsp peanut butter or halva spread'), matchedLine('2 cups white rice')];
+    assert.deepEqual(statesOf(lines, 'contains'), ['peanut']);
+    assert.deepEqual(statesOf(lines, 'free'), []);
+    assert.ok(statesOf(lines, 'unknown').includes('tree_nut'));
+    assert.ok(statesOf(lines, 'unknown').includes('milk'));
+  });
+
+  it('clears every diet flag', () => {
+    const lines = [matchedLine('2 tbsp peanut butter or halva spread')];
+    assert.equal(rollupDiet(lines, rollupAllergens(lines)), 0);
+  });
+
+  it('applies when the unidentified choice comes first', () => {
+    const result = match('2 tbsp halva spread or peanut butter');
+    assert.equal(result.id, 'peanut_butter');
+    assert.deepEqual(result.unresolved, ['halva spread']);
+  });
+
+  it('applies to an unidentified item listed with a known one', () => {
+    const result = match('1 cup white rice and furikake');
+    assert.equal(result.id, 'rice');
+    assert.deepEqual(result.unresolved, ['furikake']);
+  });
+});
+
+describe('choices that are all identified', () => {
+  it('contains the union of both choices and leaves the rest free', () => {
+    const lines = [matchedLine('50g butter or margarine spread')];
+    assert.deepEqual(statesOf(lines, 'contains'), ['milk', 'soy']);
+    assert.deepEqual(statesOf(lines, 'unknown'), []);
+    const milks = [matchedLine('1 cup soy milk or almond milk')];
+    assert.deepEqual(statesOf(milks, 'contains'), ['tree_nut', 'soy']);
+    assert.deepEqual(statesOf(milks, 'unknown'), []);
+  });
+
+  it('reads a shared word as part of each choice', () => {
+    const stock = match('1 litre chicken or vegetable stock');
+    assert.equal(stock.id, 'chicken_stock');
+    assert.ok(stock.all.includes('vegetable_stock'));
+    assert.deepEqual(stock.unresolved, []);
+    assert.equal(match('1 litre chicken/vegetable stock').id, 'chicken_stock');
+    assert.equal(match('500g beef or chicken mince').id, 'ground_beef');
+    const thighs = match('4 chicken thighs or 2 breasts');
+    assert.equal(thighs.id, 'chicken_thigh');
+    assert.ok(thighs.all.includes('chicken_breast'));
+    assert.deepEqual(thighs.unresolved, []);
+  });
+
+  it('keeps a plain choice when the other choice only extends it', () => {
+    const result = match('1 cup cream or cream cheese');
+    assert.equal(result.id, 'heavy_cream');
+    assert.ok(result.all.includes('cream_cheese'));
+  });
+});
+
+describe('choices that are comments or descriptions, not ingredients', () => {
+  it('does not treat amounts, serving notes or descriptions as unidentified', () => {
+    for (const text of [
+      'salt or to taste',
+      'salt, or to taste',
+      '1 tsp chilli flakes (or to taste)',
+      '2 tbsp olive oil or as needed',
+      '1 cup heavy cream or more',
+      '1 cup heavy cream (or more if needed)',
+      '2 cups fresh or frozen peas',
+      '2 tbsp olive oil, plus extra for greasing',
+      '1 tbsp honey (or 2 tsp sugar)',
+      '1 tsp dried oregano (or 1 tbsp fresh)',
+      'salt and freshly ground black pepper',
+      '1/2 cup canned pineapple tidbits or chunks (drained)',
+      '2/3 cup low-fat vanilla yogurt or 1 container (6 ounces)',
+      '5 cups thinly sliced cabbage (about 1 1/2 pounds or 1/2 small head - try a mix of red and green)',
+    ]) {
+      const result = match(text);
+      assert.notEqual(result.id, null, text);
+      assert.deepEqual(result.unresolved, [], text);
+    }
+  });
+
+  it('leaves allergens free when the only other choice is a comment', () => {
+    const lines = [matchedLine('salt or to taste'), matchedLine('2 tbsp olive oil or as needed'), matchedLine('2 cups white rice')];
+    assert.deepEqual(statesOf(lines, 'free'), [...ALLERGEN_IDS]);
+  });
+});
+
+describe('recipe roll-up with an unidentified choice', () => {
+  const ctx: RecipeContext = { matcher, defs: INGREDIENT_BY_ID, profiles: new Map(), units: new Map(), links: new Map() };
+  const source = (lines: string[]): SourceRecipe => ({
+    id: 'test:1',
+    source: 'mealdb',
+    sourceId: '1',
+    title: 'Banana Toast',
+    categories: ['Breakfast'],
+    area: null,
+    tags: [],
+    lines: lines.map((text) => ({ text })),
+    instructions: ['Toast the bread.', 'Spread and top with banana.'],
+    servings: 2,
+    prepMinutes: null,
+    cookMinutes: null,
+    totalMinutes: null,
+    imageUrl: null,
+    imageCredit: null,
+    sourceName: 'Test',
+    sourceUrl: null,
+    license: 'test',
+    tutorials: [],
+    publishedNutrition: null,
+  });
+
+  it('never reports an allergen as free and records a build note', () => {
+    const issues: BuildIssue[] = [];
+    const recipe = buildRecipe(source(['2 bananas', '2 tbsp peanut butter or halva spread']), ctx, issues);
+    assert.ok(recipe);
+    assert.equal(recipe.allergens.peanut, 'contains');
+    assert.ok(ALLERGEN_IDS.every((a) => recipe.allergens[a] !== 'free'));
+    assert.equal(recipe.diet_flags, 0);
+    assert.equal(recipe.partial_lines, 1);
+    assert.equal(recipe.ingredients[1]?.ingredient_id, 'peanut_butter');
+    assert.ok(issues.some((i) => i.kind === 'unresolved_choice'));
+  });
+
+  it('keeps a fully identified recipe free of what it does not contain', () => {
+    const recipe = buildRecipe(source(['2 bananas', '2 tbsp peanut butter or to taste']), ctx, []);
+    assert.ok(recipe);
+    assert.equal(recipe.partial_lines, 0);
+    assert.equal(recipe.allergens.milk, 'free');
+  });
+});

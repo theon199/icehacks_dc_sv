@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ingredientDietFlags } from '../src/derive/ingredients.ts';
 import { estimateServings, isGentle, type GentleInputs } from '../src/derive/recipe.ts';
-import { rollupAllergens, rollupDiet, type MatchedLine } from '../src/derive/rollup.ts';
+import { rollupAllergens, rollupDiet } from '../src/derive/rollup.ts';
 import type { IngredientDef } from '../src/knowledge/define.ts';
 import { INGREDIENTS, INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
 import { SEARCH_ALIASES } from '../src/knowledge/searchAliases.ts';
@@ -19,7 +19,7 @@ const def = (id: string): IngredientDef => {
   return found;
 };
 const matchId = (text: string): string | null => matcher.matchLine(parseMeasure(text).rest).id;
-const matchedLine = (text: string): MatchedLine => {
+const matchedLine = (text: string): IngredientDef[] | null => {
   const result = matcher.matchLine(parseMeasure(text).rest);
   return result.id === null ? null : result.all.map(def);
 };

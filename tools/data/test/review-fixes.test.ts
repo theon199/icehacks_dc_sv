@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { gramsPerUnit, ingredientAllergens, ingredientDietFlags } from '../src/derive/ingredients.ts';
 import { familyKey, goalTags, mapCourse } from '../src/derive/recipe.ts';
-import { rollupAllergens, rollupDiet, type MatchedLine } from '../src/derive/rollup.ts';
+import { rollupAllergens, rollupDiet } from '../src/derive/rollup.ts';
 import { ing, type IngredientDef } from '../src/knowledge/define.ts';
 import { INGREDIENTS, INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
 import { alternativesOf, compoundAliasGaps } from '../src/match/audit.ts';
@@ -27,7 +27,7 @@ const def = (id: string): IngredientDef => {
   return found;
 };
 /** Matches a full ingredient line the way the pipeline does and returns every matched entry. */
-const matchedLine = (text: string): MatchedLine => {
+const matchedLine = (text: string): IngredientDef[] | null => {
   const result = matcher.matchLine(parseMeasure(text).rest);
   return result.id === null ? null : result.all.map(def);
 };
@@ -199,6 +199,7 @@ describe('frying oil absorption', () => {
       row: { position, ingredient_id: id, text, quantity: null, unit: null, grams, section: null, optional: 0 },
       measure: parseMeasure(text),
       matched: [d],
+      unresolved: [],
       primary: d,
       nutritionDef: d,
       eatenGrams: grams,

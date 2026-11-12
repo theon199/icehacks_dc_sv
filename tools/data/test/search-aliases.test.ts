@@ -2,7 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import Database from 'better-sqlite3';
-import type { MatchedLine } from '../src/derive/rollup.ts';
 import type { IngredientDef } from '../src/knowledge/define.ts';
 import { INGREDIENTS, INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
 import { ALIAS_DESCRIPTORS, SEARCH_ALIASES } from '../src/knowledge/searchAliases.ts';
@@ -17,7 +16,7 @@ const def = (id: string): IngredientDef => {
   assert.ok(found, `missing ingredient ${id}`);
   return found;
 };
-const matchedLine = (text: string): MatchedLine => {
+const matchedLine = (text: string): IngredientDef[] | null => {
   const result = matcher.matchLine(parseMeasure(text).rest);
   return result.id === null ? null : result.all.map(def);
 };

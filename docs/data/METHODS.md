@@ -29,6 +29,16 @@ searched when that part names nothing. Every ingredient the whole line mentions 
 (*butter or margarine*) and asides (*cooked protein (ham, chicken or tofu)*) — feeds the safety
 roll-ups below. A line with no match keeps `ingredient_id = NULL`.
 
+**Choices and listed items.** A line that offers choices or lists items (*peanut butter or
+halva spread*, *salt and pepper*, *(or 2 tsp sugar)*, *, or to taste*) is split at *or*, *and*, *plus*
+and slashes, and each choice is resolved on its own. A word shared between choices is read as part
+of each one: *chicken or vegetable stock* offers chicken stock, *chicken thighs or 2 breasts* offers
+chicken breasts, and the amount belongs to the first choice, so the line's ingredient is chicken
+stock. A choice made only of amounts, comments and descriptions (*or to taste*, *or more if
+needed*, *fresh or frozen*, *tidbits or chunks*) adds nothing. A choice that names no known
+ingredient (*halva spread*) is recorded as an `unresolved_choice` build note: the line keeps its known
+ingredient for weights and nutrition, but its allergens and diets fail closed (section 5).
+
 A synonym that covers a whole "A or B" phrase (*chicken or vegetable bouillon*) decides that line on
 its own, so the build checks every such synonym against each alternative it hides (*chicken*,
 *chicken bouillon*, *vegetable bouillon*): the entry may not claim a diet flag an alternative lacks,
@@ -166,10 +176,12 @@ sauce, chocolate …) are `allergen_status = 'unknown'`: their listed allergens 
 other allergen is unknown.
 
 A recipe allergen is `contains` if any matched ingredient contains it, otherwise `unknown` if any
-line is unmatched or any ingredient is `unknown`, otherwise `free`.
+line is unmatched, offers a choice that names no known ingredient, or any ingredient is `unknown`,
+otherwise `free`. When every choice is known, the recipe contains the union of their allergens
+(*butter or margarine spread* contains milk and soy).
 
-Diet flags are the intersection of every named ingredient's flags; an unmatched line clears all of
-them. Flags read the ingredient list only: a serving suggestion in the method (*top with prawns or
+Diet flags are the intersection of every named ingredient's flags; an unmatched line, or one with
+an unidentified choice, clears all of them. Flags read the ingredient list only: a serving suggestion in the method (*top with prawns or
 salmon*) is optional and does not change them, so a recipe can be vegetarian as written while a
 step mentions a non-vegetarian variation. Vegan is never claimed for variable products; *no pork* / *no beef* / *halal-friendly* are
 never claimed with gelatin or unspecified meat; gluten-free and dairy-free also require the
@@ -287,7 +299,8 @@ ingredients, are unique and have notes; unique recipe ids and slugs; every recip
 ingredient and ≥ 1 step; enums are valid (course, cuisine, region, confidence, goal tags, allergen
 states, diet bits, effort 1–3); servings 1–48; active ≤ total minutes; health score 0–1; nutrient
 values non-negative, saturated fat ≤ fat, sodium ≤ 8,000 mg, protein energy ≤ total energy, energy
-within the ranges above; no `free` allergen or diet flag on a recipe with an unmatched line; every
+within the ranges above; no `free` allergen or diet flag on a recipe with an unmatched line or an
+unidentified choice; every
 `ingredient_id` exists; ≥ 98 % of ingredient lines matched; SQLite `integrity_check` and
 `foreign_key_check` pass; one FTS row per recipe; database < 15 MB.
 
