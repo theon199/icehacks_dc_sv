@@ -1,5 +1,5 @@
-import { AboutScreen } from '@/features/about/screens/AboutScreen';
+import { AboutPageScreen } from '@/features/settings/screens/AboutPageScreen';
 
 export default function LimitationsAboutRoute() {
-  return <AboutScreen page="limitations" />;
+  return <AboutPageScreen page="limitations" />;
 }
