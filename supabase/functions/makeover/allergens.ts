@@ -32,6 +32,32 @@ export const ALLERGEN_IDS = [
 ] as const;
 export type AllergenId = (typeof ALLERGEN_IDS)[number];
 
+/**
+ * How each allergen is named in prompts. Shared by every AI function (chef, makeover,
+ * nearby-chat) so the model hears the same definition everywhere, including what Famara counts
+ * as gluten.
+ */
+export const ALLERGEN_LABELS: Readonly<Record<AllergenId, string>> = {
+  milk: "milk and dairy",
+  egg: "egg",
+  fish: "fish",
+  shellfish: "shellfish (crustaceans and molluscs)",
+  tree_nut: "tree nuts",
+  peanut: "peanut",
+  wheat: "wheat",
+  soy: "soy",
+  sesame: "sesame",
+  gluten: "gluten (wheat, barley, rye and oats)",
+};
+
+const isAllergenId = (value: string): value is AllergenId =>
+  (ALLERGEN_IDS as readonly string[]).includes(value);
+
+/** The prompt label for an allergen id; an unknown id is spelled out as words. */
+export function allergenLabel(id: string): string {
+  return isAllergenId(id) ? ALLERGEN_LABELS[id] : id.replace(/_/g, " ");
+}
+
 interface AllergenRule {
   /**
    * Ingredient words and phrases. "-s", "-es" and "-ed" endings, and "-ies" / "-ied" for words

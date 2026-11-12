@@ -1,5 +1,7 @@
 /** Prompt text for recipe makeovers. The system prompt is byte-stable so it stays cached. */
 
+import { type AllergenId, allergenLabel } from "./allergens.ts";
+
 export const MAKEOVER_SYSTEM_PROMPT =
   `You adapt home recipes for Famara, a cooking app that helps people eat a little healthier while keeping the dishes they love recognisable. You receive one recipe plus the person's goals, diet and allergens, and you return an adapted version as JSON.
 
@@ -11,8 +13,9 @@ export const MAKEOVER_SYSTEM_PROMPT =
 
 ## Allergens and diet are strict
 - Remove or replace every ingredient that contains one of the declared allergens, including hidden sources (for example butter, cheese and cream for milk; mayonnaise for egg; soy sauce for wheat, gluten and soy; pesto for tree nuts; fish sauce and Worcestershire sauce for fish).
-- In the adapted ingredients, steps and swap targets, never write an allergen ingredient, not even to say "leave out" or "optional". Describe the replacement only.
-- Name replacements by what they are made of rather than only "allergen-free": write "rice noodles", "chickpea pasta", "corn tortillas", "olive oil", "oat milk", "flax eggs", "sunflower seeds", "coconut aminos".
+- In the title, adapted ingredients, steps, swap targets and note, never write an allergen ingredient, not even to say "leave out", "optional" or "instead of". Describe the replacement only. Only the swap "from" and "why" fields may name what was removed.
+- Famara counts all oats as gluten, including oat milk, oat flour, oat cream and rolled oats, and "gluten-free" labels do not change that. When gluten is declared, never use oats; pick rice, quinoa, buckwheat, millet or soy instead (unless soy is declared too).
+- Name replacements by what they are made of rather than only "allergen-free": write "rice noodles", "chickpea pasta", "corn tortillas", "olive oil", "oat milk" (only when gluten is allowed), "flax eggs", "sunflower seeds", "coconut aminos".
 - Follow the person's diet (for example vegetarian, vegan, pescatarian, halal-friendly, no pork) in every ingredient.
 - If the dish cannot be made safely without losing its identity, still return the closest safe version and explain the trade-off in the note.
 
@@ -35,21 +38,8 @@ export interface MakeoverPromptInput {
   request?: string | undefined;
 }
 
-export const ALLERGEN_LABELS: Readonly<Record<string, string>> = {
-  milk: "milk and dairy",
-  egg: "egg",
-  fish: "fish",
-  shellfish: "shellfish (crustaceans and molluscs)",
-  tree_nut: "tree nuts",
-  peanut: "peanut",
-  wheat: "wheat",
-  soy: "soy",
-  sesame: "sesame",
-  gluten: "gluten (wheat, barley, rye and regular oats)",
-};
-
 export function buildMakeoverPrompt(input: MakeoverPromptInput): string {
-  const allergens = input.allergens.map((id) => ALLERGEN_LABELS[id] ?? words(id));
+  const allergens = input.allergens.map(allergenLabel);
   const lines = [
     "Adapt this recipe.",
     "",
@@ -70,4 +60,20 @@ export function buildMakeoverPrompt(input: MakeoverPromptInput): string {
     "</recipe>",
   );
   return lines.join("\n");
+}
+
+/**
+ * The follow-up turn after the allergen guard found declared allergens in a makeover. Only words
+ * from Famara's own vocabulary are quoted back, never recipe text.
+ */
+export function buildAllergenRetryPrompt(
+  conflicts: readonly { allergen: AllergenId; term: string }[],
+): string {
+  const found = conflicts.map((conflict) =>
+    `"${conflict.term}" (${allergenLabel(conflict.allergen)})`
+  );
+  return [
+    `That makeover still names a declared allergen: ${found.join(", ")}.`,
+    'Return the complete makeover again with every such ingredient replaced. Do not name it anywhere in the title, ingredients, steps, swap targets or note, not even to say it was removed; only the swap "from" and "why" fields may mention it.',
+  ].join("\n");
 }

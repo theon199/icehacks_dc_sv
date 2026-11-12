@@ -8,7 +8,10 @@ const ENV: Record<string, string> = {
   ANTHROPIC_API_KEY: "test-key",
 };
 
-function harness(options: { adult?: boolean; quotaAllowed?: boolean; replies?: Response[] } = {}) {
+function harness(
+  options: { adult?: boolean; quotaAllowed?: boolean; replies?: Response[]; now?: () => number } =
+    {},
+) {
   const { adult = true, quotaAllowed = true } = options;
   const replies = [...(options.replies ?? [])];
   const rpcCalls: { fn: string; args: Record<string, unknown> }[] = [];
@@ -36,7 +39,12 @@ function harness(options: { adult?: boolean; quotaAllowed?: boolean; replies?: R
   const handler = createMakeoverHandler({
     env: (name) => ENV[name],
     auth: { createClient: fakeCreateClient as unknown as typeof createClient },
-    anthropic: { fetch: fakeFetch as typeof fetch, sleep: () => Promise.resolve(), maxRetries: 0 },
+    anthropic: {
+      fetch: fakeFetch as typeof fetch,
+      sleep: () => Promise.resolve(),
+      maxRetries: 0,
+    },
+    ...(options.now ? { now: options.now } : {}),
   });
   const quotaCalls = () => rpcCalls.filter((call) => call.fn === "consume_ai_quota");
   return { handler, claudeCalls, quotaCalls };
@@ -178,40 +186,86 @@ Deno.test("makeover returns the cleaned adapted recipe", async () => {
   assertEquals((request["output_config"] as { effort: string }).effort, "medium");
 });
 
-Deno.test("makeover refuses output that still contains a declared allergen", async () => {
-  const leaky = {
-    ...SAFE_MAKEOVER,
-    ingredients: [...SAFE_MAKEOVER.ingredients, "2 tbsp Greek yogurt, to finish"],
-  };
-  const { handler } = harness({ replies: [claudeJson(leaky)] });
+const LEAKY = {
+  ...SAFE_MAKEOVER,
+  ingredients: [...SAFE_MAKEOVER.ingredients, "2 tbsp Greek yogurt, to finish"],
+};
+
+/** The text of the last user turn Claude was sent. */
+const lastUserText = (request: Record<string, unknown>) => {
+  const messages = request["messages"] as { role: string; content: unknown }[];
+  return String(messages[messages.length - 1]?.content);
+};
+
+Deno.test("an allergen in the answer gets one retry that names the words found", async () => {
+  const { handler, claudeCalls, quotaCalls } = harness({
+    replies: [claudeJson(LEAKY), claudeJson(SAFE_MAKEOVER)],
+  });
+  const res = await silenced(() => handler(post(INPUT)));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).title, "Lighter Chicken Makhani");
+  assertEquals(claudeCalls.length, 2);
+  assertEquals(quotaCalls().length, 1);
+
+  const retry = claudeCalls[1]!;
+  const messages = retry["messages"] as { role: string; content: unknown }[];
+  assertEquals(messages.map((message) => message.role), ["user", "assistant", "user"]);
+  assertEquals(messages[0], (claudeCalls[0]!["messages"] as unknown[])[0]);
+  assertEquals(messages[1]?.content, [{ type: "text", text: JSON.stringify(LEAKY) }]);
+  assertStringIncludes(lastUserText(retry), '"yogurt" (milk and dairy)');
+  assertEquals(retry["system"], claudeCalls[0]!["system"]);
+});
+
+Deno.test("makeover refuses output that still contains a declared allergen after the retry", async () => {
+  const { handler, claudeCalls } = harness({ replies: [claudeJson(LEAKY), claudeJson(LEAKY)] });
   const res = await silenced(() => handler(post(INPUT)));
   assertEquals(res.status, 422);
   const body = await res.json();
   assertEquals(body.error.code, "ai_refused");
   assertEquals(body.error.details, { reason: "allergen_conflict", allergens: ["milk"] });
+  assertEquals(claudeCalls.length, 2);
 });
 
-Deno.test("the allergen guard checks steps and swap targets but not what was removed", async () => {
-  const inSteps = {
-    ...SAFE_MAKEOVER,
-    steps: ["Melt the ghee.", ...SAFE_MAKEOVER.steps],
-  };
-  const stepsRes = await silenced(() =>
-    harness({ replies: [claudeJson(inSteps)] }).handler(post(INPUT))
-  );
-  assertEquals(stepsRes.status, 422);
+Deno.test("the allergen retry is skipped when the time budget is nearly spent", async () => {
+  // The first Claude call "takes" 120 s of the 140 s budget, leaving too little for a retry.
+  const { handler, claudeCalls } = harness({
+    replies: [claudeJson(LEAKY)],
+    now: () => (claudeCalls.length > 0 ? 120_000 : 0),
+  });
+  const res = await silenced(() => handler(post(INPUT)));
+  assertEquals(res.status, 422);
+  assertEquals(claudeCalls.length, 1);
+});
 
-  const inSwapTarget = {
-    ...SAFE_MAKEOVER,
-    swaps: [{ from: "double cream", to: "half the cream plus stock", why: "Lighter." }],
-  };
-  const swapRes = await silenced(() =>
-    harness({ replies: [claudeJson(inSwapTarget)] }).handler(post(INPUT))
-  );
-  assertEquals(swapRes.status, 422);
+Deno.test("the allergen guard checks title, steps, swap targets and note but not what was removed", async () => {
+  const leaks = [
+    { ...SAFE_MAKEOVER, steps: ["Melt the ghee.", ...SAFE_MAKEOVER.steps] },
+    {
+      ...SAFE_MAKEOVER,
+      swaps: [{ from: "double cream", to: "half the cream plus stock", why: "Lighter." }],
+    },
+    { ...SAFE_MAKEOVER, title: "Lighter Butter Chicken" },
+    { ...SAFE_MAKEOVER, note: "Finish with a spoon of yogurt if you like." },
+  ];
+  for (const leaky of leaks) {
+    const res = await silenced(() =>
+      harness({ replies: [claudeJson(leaky), claudeJson(leaky)] }).handler(post(INPUT))
+    );
+    assertEquals(res.status, 422);
+  }
 
+  const removedOnly = {
+    ...SAFE_MAKEOVER,
+    swaps: [{ from: "butter", to: "olive oil", why: "Less saturated fat than butter." }],
+  };
+  const okRes = await silenced(() =>
+    harness({ replies: [claudeJson(removedOnly)] }).handler(post(INPUT))
+  );
+  assertEquals(okRes.status, 200);
+
+  const egg = { ...SAFE_MAKEOVER, steps: ["Whisk in an egg."] };
   const multi = await silenced(() =>
-    harness({ replies: [claudeJson({ ...SAFE_MAKEOVER, steps: ["Whisk in an egg."] })] })
+    harness({ replies: [claudeJson(egg), claudeJson(egg)] })
       .handler(post({ ...INPUT, allergens: ["milk", "egg", "peanut"] }))
   );
   assertEquals(multi.status, 422);
