@@ -79,7 +79,3 @@ export async function takePendingInvite(now: number = Date.now()): Promise<strin
     taking = false;
   }
 }
-
-export async function clearPendingInvite(): Promise<void> {
-  await pendingInviteKey.remove();
-}

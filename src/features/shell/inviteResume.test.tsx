@@ -11,16 +11,34 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useSessionStore } from '@/features/auth';
 import { ThemeProvider } from '@/ui/ThemeProvider';
 
-import { clearPendingInvite, savePendingInvite, takePendingInvite } from './pendingInvite';
+import { savePendingInvite, takePendingInvite } from './pendingInvite';
 import { RootNavigator } from './RootNavigator';
 import { SignedInEffects } from './SignedInEffects';
 
-let mockUrl: string | null = null;
-// The router listens for links through expo-linking too, so only the hook is replaced.
+type UrlListener = (event: { url: string }) => void;
+
+/** The link that launched the app, as the OS reports it. */
+let mockInitialUrl: string | null = null;
+const mockUrlListeners = new Set<UrlListener>();
+// Links reach the app as OS events: the launch link, then one event per link opened while running.
 jest.mock('expo-linking', () => ({
   ...jest.requireActual<object>('expo-linking'),
-  useURL: () => mockUrl,
+  createURL: (path: string) => `famara://${path}`,
+  resolveScheme: () => 'famara',
+  getInitialURL: () => Promise.resolve(mockInitialUrl),
+  addEventListener: (_type: 'url', listener: UrlListener) => {
+    mockUrlListeners.add(listener);
+    return { remove: () => mockUrlListeners.delete(listener) };
+  },
 }));
+
+/** The OS hands Famara a link while it is running. */
+async function openLink(url: string) {
+  await act(async () => {
+    for (const listener of [...mockUrlListeners]) listener({ url });
+  });
+}
+
 // The notification plumbing and the cook queue have their own tests; here they only need to mount.
 jest.mock('@/features/notifications', () => ({ NotificationBridge: () => null }));
 jest.mock('@/features/cook', () => ({ useFlushPendingCooks: () => undefined }));
@@ -95,14 +113,15 @@ async function parkedInvite(): Promise<string | null> {
 
 beforeEach(async () => {
   useSessionStore.setState(initial, true);
-  mockUrl = null;
-  await clearPendingInvite();
+  mockInitialUrl = null;
+  // Taking always clears, so it doubles as a reset between tests.
+  await takePendingInvite();
 });
 
 describe('invite links before the app is available', () => {
   it('opens an invite tapped while signed out once the person signs in', async () => {
     useSessionStore.getState().signedOut();
-    mockUrl = `famara://invite/${CODE}`;
+    mockInitialUrl = `famara://invite/${CODE}`;
     await renderRouter(routes, { initialUrl: `/invite/${CODE}`, wrapper: Providers });
     expect(await screen.findByText('welcome screen')).toBeOnTheScreen();
     expect(await parkedInvite()).toBe(CODE);
@@ -115,7 +134,7 @@ describe('invite links before the app is available', () => {
 
   it('keeps the invite through setup and opens it when setup finishes', async () => {
     signIn(false);
-    mockUrl = `famara://invite/${CODE.toLowerCase()}`;
+    mockInitialUrl = `famara://invite/${CODE.toLowerCase()}`;
     await renderRouter(routes, { initialUrl: '/', wrapper: Providers });
     expect(await screen.findByText('onboarding screen')).toBeOnTheScreen();
     expect(await parkedInvite()).toBe(CODE);
@@ -126,7 +145,7 @@ describe('invite links before the app is available', () => {
 
   it('ignores a link with an invalid code', async () => {
     useSessionStore.getState().signedOut();
-    mockUrl = 'famara://invite/NOT-A-CODE';
+    mockInitialUrl = 'famara://invite/NOT-A-CODE';
     await renderRouter(routes, { initialUrl: '/', wrapper: Providers });
     expect(await screen.findByText('welcome screen')).toBeOnTheScreen();
 
@@ -138,7 +157,7 @@ describe('invite links before the app is available', () => {
 
   it('leaves a link alone when the app is already open', async () => {
     signIn(true);
-    mockUrl = `famara://invite/${CODE}`;
+    mockInitialUrl = `famara://invite/${CODE}`;
     await renderRouter(routes, { initialUrl: `/invite/${CODE}`, wrapper: Providers });
     expect(await screen.findByText(`invite ${CODE}`)).toBeOnTheScreen();
 
@@ -146,5 +165,48 @@ describe('invite links before the app is available', () => {
     await act(async () => useSessionStore.getState().signedOut());
     expect(await screen.findByText('welcome screen')).toBeOnTheScreen();
     expect(await takePendingInvite()).toBeNull();
+  });
+
+  it('parks the same invite again when it is tapped again after signing out', async () => {
+    signIn(true);
+    mockInitialUrl = `famara://invite/${CODE}`;
+    await renderRouter(routes, { initialUrl: `/invite/${CODE}`, wrapper: Providers });
+    expect(await screen.findByText(`invite ${CODE}`)).toBeOnTheScreen();
+
+    await act(async () => useSessionStore.getState().signedOut());
+    expect(await screen.findByText('welcome screen')).toBeOnTheScreen();
+    await openLink(`famara://invite/${CODE}`);
+    expect(await parkedInvite()).toBe(CODE);
+
+    await act(async () => signIn(true));
+    expect(await screen.findByText(`invite ${CODE}`)).toBeOnTheScreen();
+  });
+
+  it('parks an invite tapped while the app is running signed out', async () => {
+    useSessionStore.getState().signedOut();
+    await renderRouter(routes, { initialUrl: '/', wrapper: Providers });
+    expect(await screen.findByText('welcome screen')).toBeOnTheScreen();
+    await openLink(`https://famara.app/invite/${CODE}`);
+    expect(await parkedInvite()).toBe(CODE);
+  });
+
+  it('waits for the stored session before deciding about the launch link', async () => {
+    mockInitialUrl = `famara://invite/${CODE}`;
+    await renderRouter(routes, { initialUrl: '/', wrapper: Providers });
+    await act(async () => undefined);
+    expect(await parkedInvite()).toBeNull();
+
+    // The session turns out to be signed out: the link is parked now.
+    await act(async () => useSessionStore.getState().signedOut());
+    expect(await parkedInvite()).toBe(CODE);
+  });
+
+  it('drops the launch link when the stored session turns out to be ready', async () => {
+    mockInitialUrl = `famara://invite/${CODE}`;
+    await renderRouter(routes, { initialUrl: '/', wrapper: Providers });
+    await act(async () => undefined);
+    await act(async () => signIn(true));
+    await act(async () => useSessionStore.getState().signedOut());
+    expect(await parkedInvite()).toBeNull();
   });
 });

@@ -1,6 +1,5 @@
 import {
   PENDING_INVITE_TTL_MS,
-  clearPendingInvite,
   inviteCodeFromUrl,
   savePendingInvite,
   takePendingInvite,
@@ -38,7 +37,8 @@ describe('inviteCodeFromUrl', () => {
 describe('pending invite storage', () => {
   const now = Date.parse('2026-11-12T10:00:00Z');
 
-  beforeEach(() => clearPendingInvite());
+  // Taking always clears, so it doubles as a reset between tests.
+  beforeEach(() => takePendingInvite());
 
   it('returns a parked invite once, then forgets it', async () => {
     await savePendingInvite(CODE, now);
