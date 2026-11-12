@@ -6,6 +6,7 @@ import { queryClient } from '@/lib/query/client';
 import { storageKey } from '@/lib/storage/kv';
 import { FakeSyncServer } from '@/lib/sync/__fixtures__/fakeServer';
 import { accountDeletedCleanup, startSync, stopSync } from '@/lib/sync/session';
+import { useSyncStatusStore } from '@/lib/sync/status';
 import {
   defaultPreferences,
   selectAiConsentHint,
@@ -363,6 +364,8 @@ describe('signOut', () => {
     mockAuth.rpc.mockResolvedValue(serverAge(30));
     await renderHook(() => useSessionBootstrap());
     await waitFor(() => expect(Storage.getItemSync(OWNER_KEY)).toBe('user-1'));
+    // Sync has finished its first round, so the edits below are pending pushes.
+    await waitFor(() => expect(useSyncStatusStore.getState().phase).toBe('idle'));
     await act(async () => {
       finishOnboarding(['sesame']);
       fillUserStores();
