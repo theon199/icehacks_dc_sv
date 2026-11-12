@@ -1,0 +1,31 @@
+{
+  "name": "@famara/data",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Builds Famara's bundled recipe catalog (SQLite) from public sources.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "fetch": "tsx src/cli/fetch.ts",
+    "build": "tsx src/cli/build.ts",
+    "report": "tsx src/cli/report.ts",
+    "fdc:lookup": "tsx src/cli/fdcLookup.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.1.1",
+    "csv-parse": "^7.0.3",
+    "fflate": "^0.8.3",
+    "node-html-parser": "^9.0.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
