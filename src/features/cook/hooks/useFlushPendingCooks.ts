@@ -20,12 +20,14 @@ export function useFlushPendingCooks() {
   useEffect(() => {
     if (!userId || !hasPending) return;
     flushPendingCookEvents(userId, {
-      recordCookEvent,
+      // Stats are refreshed per accepted cook, including one the server accepts after the flush
+      // stopped waiting for it.
+      recordCookEvent: async (request) => {
+        const response = await recordCookEvent(request);
+        refreshProfileStats(userId);
+        return response;
+      },
       classifyFailure: classifyCookEventError,
-    })
-      .then((delivered) => {
-        if (delivered > 0) refreshProfileStats(userId);
-      })
-      .catch((error: unknown) => logger.warn('Could not send queued cooks', describeError(error)));
+    }).catch((error: unknown) => logger.warn('Could not send queued cooks', describeError(error)));
   }, [hasPending, userId]);
 }

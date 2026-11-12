@@ -144,7 +144,11 @@ async function runFlush(ownerId: string, deps: FlushDeps): Promise<number> {
     // Signing out during the run forgets the rest of the queue; never send what was forgotten.
     if (!isQueued(id)) continue;
     try {
-      await withTimeout(deps.recordCookEvent(event.request), timeoutMs);
+      const send = deps.recordCookEvent(event.request);
+      // A send can still succeed after this run stopped waiting for it; the queued copy is then
+      // done with, so it is not sent again on the next flush.
+      send.then(() => usePendingCookEvents.getState().remove(id)).catch(() => undefined);
+      await withTimeout(send, timeoutMs);
       usePendingCookEvents.getState().remove(id);
       delivered += 1;
     } catch (error) {
@@ -161,6 +165,9 @@ async function runFlush(ownerId: string, deps: FlushDeps): Promise<number> {
 
 // A queue only ever serves the account that is signed in. Leaving an account (signing out, which
 // also follows account deletion) forgets everything; signing in forgets other accounts' leftovers.
+// This subscription exists from the moment the module is first imported, so a sign-out before then
+// leaves the queue on disk until the next sign-in, which keeps only that account's events. Nothing
+// is cleared at load while signed out: the session is still restoring then, and userId is null.
 useSessionStore.subscribe((state, previous) => {
   if (state.userId !== previous.userId) usePendingCookEvents.getState().keepOnly(state.userId);
 });

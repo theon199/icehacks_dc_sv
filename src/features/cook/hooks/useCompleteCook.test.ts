@@ -1,8 +1,9 @@
+import { useSessionStore } from '@/features/auth';
 import { profileKeys } from '@/features/profile';
 import { queryClient } from '@/lib/query/client';
 
 import { completionDeps } from './useCompleteCook';
-import type { CookEventRequest } from '../logic/completion';
+import { reportCook, type CookEventRequest } from '../logic/completion';
 import { recordCookEvent } from '../services/cookEvents';
 import { usePendingCookEvents } from '../services/pendingCookEvents';
 
@@ -20,7 +21,11 @@ const request: CookEventRequest = {
   clientEventId: 'evt-1',
 };
 
+const signIn = (userId: string) =>
+  useSessionStore.getState().signedIn({ userId, birthYear: 1990, onboardingComplete: true });
+
 beforeEach(() => {
+  useSessionStore.getState().signedOut();
   usePendingCookEvents.getState().reset();
   jest.mocked(recordCookEvent).mockReset();
 });
@@ -35,6 +40,7 @@ describe('completionDeps', () => {
           answer = () => resolve({ eventId: 'server-1', newBadges: [] });
         }),
     );
+    signIn('user-1');
     const deps = completionDeps('user-1');
 
     const sending = deps.recordCookEvent(request);
@@ -54,5 +60,23 @@ describe('completionDeps', () => {
     await expect(deps.recordCookEvent(request)).rejects.toThrow('signed out');
     expect(deps.enqueue(request)).toBe(false);
     expect(recordCookEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not queue a slow cook under an account that signed out while Save was waiting', async () => {
+    jest.mocked(recordCookEvent).mockImplementation(() => new Promise(() => undefined));
+    signIn('user-1');
+    const deps = completionDeps('user-1');
+
+    const saving = reportCook(request, deps, 20);
+    useSessionStore.getState().signedOut();
+
+    await expect(saving).resolves.toEqual({ status: 'local_only' });
+    expect(usePendingCookEvents.getState().events).toEqual([]);
+  });
+
+  it('does not queue under the previous account after switching to another one', () => {
+    signIn('user-2');
+    expect(completionDeps('user-1').enqueue(request)).toBe(false);
+    expect(usePendingCookEvents.getState().events).toEqual([]);
   });
 });

@@ -26,6 +26,8 @@ import { usePendingCookEvents } from '../services/pendingCookEvents';
 /**
  * Sends the cook to the server. Whenever the server accepts it, even after Save stopped waiting
  * and queued it, the queued copy is no longer needed and the profile stats are out of date.
+ * Badges in an answer that arrives after Save already queued the cook are not announced: the
+ * person has usually left the screen by then, and the refreshed profile shows the badges anyway.
  */
 async function sendCookEvent(userId: string, request: CookEventRequest) {
   const response = await recordCookEvent(request);
@@ -41,9 +43,12 @@ export function completionDeps(userId: string | null): CompletionDeps {
     recordCookEvent: (request) =>
       userId ? sendCookEvent(userId, request) : Promise.reject(new Error('signed out')),
     classifyFailure: classifyCookEventError,
-    // Signed out there is no account to deliver to later: the cook stays local only.
+    // Signed out there is no account to deliver to later: the cook stays local only. Save can
+    // reach this only after waiting for the server, so the account is checked again here: a
+    // sign-out (or a switch to another account) in the meantime must not queue the cook under the
+    // account that has left.
     enqueue: (request) => {
-      if (!userId) return false;
+      if (!userId || useSessionStore.getState().userId !== userId) return false;
       usePendingCookEvents.getState().add(userId, request);
       return true;
     },

@@ -66,6 +66,31 @@ describe('flushPendingCookEvents', () => {
     expect(queuedIds()).toEqual(['stalled', 'next']);
   });
 
+  it('removes the queued copy when a send that timed out is accepted later', async () => {
+    usePendingCookEvents.getState().add('user-1', request('late'));
+    let answer: () => void = () => undefined;
+    const rpc = jest.fn(
+      () =>
+        new Promise<{ eventId: string; newBadges: string[] }>((resolve) => {
+          answer = () => resolve({ eventId: 'x', newBadges: [] });
+        }),
+    );
+
+    const delivered = await flushPendingCookEvents('user-1', {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+      timeoutMs: 5,
+    });
+    expect(delivered).toBe(0);
+    expect(queuedIds()).toEqual(['late']);
+
+    answer();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(queuedIds()).toEqual([]);
+  });
+
   it('stops sending once the person signs out during the run', async () => {
     signIn('user-1');
     const queue = usePendingCookEvents.getState();
