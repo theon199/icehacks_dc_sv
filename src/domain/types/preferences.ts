@@ -3,9 +3,10 @@
  * and synced, so the schema tolerates partial or older documents by filling defaults.
  *
  * Safety-critical answers are the exception. `allergens` and `diets` default to `null`, meaning
- * "not answered yet", never to an empty list: a document that lost the field (an older client, a
- * partial write, a sync bug) must not read as "no allergies". The safety filter treats `null` as
- * unanswered and admits no recipe until the person answers (see `compileSafetyRules`).
+ * "not answered yet", never to an empty list: a document missing the field (written before the
+ * question existed, a partial write, a sync bug) must not read as "no allergies". The safety
+ * filter treats `null` as unanswered and admits no recipe until the person answers (see
+ * `compileSafetyRules`).
  *
  * Parsing is strict about vocabulary: one allergen or diet id this build does not know (for example
  * written by a newer client) fails the whole parse. Callers must surface that failure or keep the
