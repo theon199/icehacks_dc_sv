@@ -6,7 +6,15 @@
  *
  * Notification permission is asked for the first time a timer starts, never on screen entry.
  */
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import {
@@ -94,7 +102,10 @@ export function useCookTimers({
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
 
   const live = useRef({ timers, onFinish, notifier, notificationsEnabled, recipeId, recipeTitle });
-  live.current = { timers, onFinish, notifier, notificationsEnabled, recipeId, recipeTitle };
+  // Callbacks run from intervals and app-state events read the latest render's values here.
+  useLayoutEffect(() => {
+    live.current = { timers, onFinish, notifier, notificationsEnabled, recipeId, recipeTitle };
+  });
   const scheduled = useRef(new Map<string, Promise<string | null>>());
   const asked = useRef(false);
   /** `id@endsAt` of timers already reported, so a tick racing a re-render cannot report twice. */

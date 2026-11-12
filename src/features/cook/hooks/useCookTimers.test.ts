@@ -1,9 +1,9 @@
 import { act, renderHook } from '@testing-library/react-native';
 import type { AppStateStatus } from 'react-native';
 
+import { useCookTimers, type AppStateSource } from './useCookTimers';
 import { stepTimerId } from '../logic/timers';
 import type { NotificationPermission, TimerNotifier } from '../services/timerNotifier';
-import { useCookTimers, type AppStateSource } from './useCookTimers';
 
 jest.mock('expo-notifications', () => ({}));
 

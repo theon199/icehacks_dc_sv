@@ -1,8 +1,6 @@
 import { RANKING_CONFIG_V1 } from '@/domain/recommend/config';
 import { selectCookEntries, useCookLogStore, useFeedbackStore } from '@/stores';
 
-import { classifyCookEventError, CookEventError } from '../services/cookEvents';
-import { flushPendingCookEvents, usePendingCookEvents } from '../services/pendingCookEvents';
 import {
   badgeMessage,
   buildCookEventRequest,
@@ -11,6 +9,8 @@ import {
   type CookCompletion,
 } from './completion';
 import { localDateString } from './session';
+import { classifyCookEventError, CookEventError } from '../services/cookEvents';
+import { flushPendingCookEvents, usePendingCookEvents } from '../services/pendingCookEvents';
 
 jest.mock('expo-crypto', () => {
   let n = 0;
@@ -73,7 +73,7 @@ describe('completeCook', () => {
     const events = Object.values(useFeedbackStore.getState().events);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ recipeId: 'mealdb:52772', kind: 'cooked' });
-    expect(RANKING_CONFIG_V1.taste.signal[events[0]!.kind]).toBe(2);
+    expect(events[0]?.kind === 'cooked' && RANKING_CONFIG_V1.taste.signal.cooked).toBe(2);
 
     expect(rpc).toHaveBeenCalledWith({
       recipeRef: 'mealdb:52772',
