@@ -190,19 +190,47 @@ describe('healthier version', () => {
     nutrition: { ...makeRecipe().nutrition, kcal: 520, proteinG: 38, sodiumMg: 2400, fiberG: 4 },
   });
 
-  it('flags nutrients the goals care about that get clearly worse', () => {
+  const fewerFibres = makeRecipe({
+    id: 'r:low-fibre',
+    title: 'Chicken tikka masala with white rice',
+    goalTags: ['lower_calorie'],
+    healthScore: 0.6,
+    nutrition: { ...makeRecipe().nutrition, kcal: 600, proteinG: 38, sodiumMg: 1500, fiberG: 1 },
+  });
+
+  it('flags clearly worse nutrients, general ones always and goal ones when set', () => {
     expect(setbacksFor(lighterButSaltier, dish.nutrition, ['lower_sodium'])).toEqual(['sodium_mg']);
-    expect(setbacksFor(lighterButSaltier, dish.nutrition, ['more_protein'])).toEqual([]);
+    expect(setbacksFor(lighterButSaltier, dish.nutrition, ['more_protein'])).toEqual(['sodium_mg']);
     expect(setbacksFor(lighterButSaltier, dish.nutrition, [])).toEqual(['sodium_mg']);
     expect(setbacksFor(lighter, dish.nutrition, ['heart_friendly', 'steady_energy'])).toEqual([]);
+    expect(setbacksFor(fewerFibres, dish.nutrition, [])).toEqual([]);
+    expect(setbacksFor(fewerFibres, dish.nutrition, ['more_fiber'])).toEqual(['fiber_g']);
   });
 
   it('never offers a recipe that is clearly worse on a goal nutrient', () => {
     const closest = [{ recipe: lighterButSaltier, closeness: 0.9 }];
     expect(pickHealthierVersion(closest, dish.nutrition, ['lower_sodium'])).toBeNull();
     expect(pickHealthierVersion(closest, dish.nutrition, ['heart_friendly'])).toBeNull();
-    expect(pickHealthierVersion(closest, dish.nutrition, ['lighter_meals'])?.recipe.id).toBe(
-      'r:salty',
-    );
+  });
+
+  it('never offers a heavier, saltier plate just because it fits a goal', () => {
+    const richer = makeRecipe({
+      id: 'r:rich',
+      title: 'Double chicken tikka masala',
+      goalTags: ['high_protein'],
+      healthScore: 0.5,
+      nutrition: {
+        ...makeRecipe().nutrition,
+        kcal: 1420,
+        proteinG: 80,
+        fatG: 40,
+        sodiumMg: 3600,
+        fiberG: 4,
+      },
+    });
+    const closest = [{ recipe: richer, closeness: 0.9 }];
+    expect(setbacksFor(richer, dish.nutrition, ['more_protein'])).toEqual(['kcal', 'sodium_mg']);
+    expect(pickHealthierVersion(closest, dish.nutrition, ['more_protein'])).toBeNull();
+    expect(pickHealthierVersion(closest, dish.nutrition, ['lighter_meals'])).toBeNull();
   });
 });

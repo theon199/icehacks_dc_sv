@@ -204,7 +204,10 @@ const GOAL_NUTRIENTS: Readonly<Record<Goal, readonly TrackedNutrient[]>> = {
   steady_energy: ['fiber_g', 'protein_g'],
 };
 
-/** Watched when the person has set no goals: a "healthier" pick should not be heavier overall. */
+/**
+ * Always watched, goals or not: whatever someone is aiming for, a "healthier" pick should not be
+ * clearly heavier, saltier or fattier than the plate they photographed.
+ */
 const DEFAULT_WATCHED: readonly TrackedNutrient[] = ['kcal', 'sodium_mg', 'fat_g'];
 
 /**
@@ -237,15 +240,16 @@ function recipeValue(n: RecipeSummary['nutrition'], nutrient: TrackedNutrient): 
 }
 
 /**
- * Nutrients tied to the person's goals (or a general set without goals) on which the recipe is
- * clearly worse than the estimated plate. Unknown recipe values are not counted against it.
+ * Nutrients on which the recipe is clearly worse than the estimated plate: the general set that
+ * always applies, plus those tied to the person's goals. Unknown recipe values are not counted
+ * against it.
  */
 export function setbacksFor(
   recipe: Pick<RecipeSummary, 'nutrition'>,
   estimate: SnapDish['nutrition'],
   goals: readonly Goal[],
 ): TrackedNutrient[] {
-  const watched = goals.length === 0 ? DEFAULT_WATCHED : goals.flatMap((g) => GOAL_NUTRIENTS[g]);
+  const watched = [...DEFAULT_WATCHED, ...goals.flatMap((g) => GOAL_NUTRIENTS[g])];
   const setbacks: TrackedNutrient[] = [];
   for (const nutrient of new Set(watched)) {
     const value = recipeValue(recipe.nutrition, nutrient);
@@ -283,8 +287,7 @@ export const MIN_HEALTHIER_CLOSENESS = 0.25;
 
 /**
  * The close recipe that best serves the person's goals while clearly improving on the estimate and
- * not going clearly the wrong way on any nutrient those goals (or, without goals, overall health)
- * care about.
+ * not going clearly the wrong way on overall health or on any nutrient those goals care about.
  * `closest` must already be safety-screened (as `rankCloseRecipes` returns it). Null when no close
  * recipe is meaningfully healthier.
  */
