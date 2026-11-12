@@ -92,13 +92,14 @@ export type CookSessionPlacement =
   /** The session, or its finish screen, is what the person is looking at. */
   | 'onScreen'
   /**
-   * The session is the nearest cook session below the focused screen, so going back to it closes
-   * only the screens above it and no other recipe's session.
+   * The session is below the focused screen and no other cook screen is in the way, so going back
+   * to it closes only screens outside the cook flow.
    */
   | 'underneath'
   /**
-   * The session is open further down, but another recipe's session sits between it and the
-   * focused screen. Going back would close that other session, so a new screen is opened instead.
+   * The session is open further down, but another cook screen is showing or sits between it and
+   * the focused screen: another recipe's session or finish screen, or any finish screen. Going back
+   * would close or rewrite that screen, so a new session screen is opened instead.
    */
   | 'behindAnotherSession'
   /** No screen for this session is open. */
@@ -106,6 +107,10 @@ export type CookSessionPlacement =
 
 const SESSION_ROUTE = /^cook\/\[id\](?:\/index)?$/;
 const FINISH_ROUTE = /^cook\/\[id\]\/done$/;
+
+function isCookRoute(route: NavRouteLike): boolean {
+  return SESSION_ROUTE.test(route.name) || FINISH_ROUTE.test(route.name);
+}
 
 function isRouteFor(route: NavRouteLike, pattern: RegExp, recipeId: string): boolean {
   if (!pattern.test(route.name)) return false;
@@ -115,38 +120,54 @@ function isRouteFor(route: NavRouteLike, pattern: RegExp, recipeId: string): boo
 }
 
 /**
- * Finds the cook session for `recipeId` along the focused path of `state`. Only screens below the
- * focused one count: a session in another tab or a dismissed screen does not.
+ * Finds the cook session for `recipeId` along the focused path of `state`. Only the focused screen
+ * and the screens below it count: a session in another tab or a dismissed screen does not.
  *
- * Going back to a session pops to the nearest screen with the session's route name, whatever its
- * recipe. So `underneath` is reported only when the nearest session below the focus (deeper
- * navigators are nearer) is this recipe's; that is the screen a pop lands on, and no other
- * recipe's session is closed on the way.
+ * Going back to a session pops to the focused screen when it has the session's route name, or else
+ * to the nearest screen below with that name, whatever its recipe, and then rewrites that screen's
+ * recipe. So every cook screen that is not this recipe's session is a barrier: another recipe's
+ * session would be rewritten or closed, and a finish screen holds a cook that is not saved yet.
+ * `underneath` is reported only when the nearest cook screen below a focused non-cook screen
+ * (deeper navigators are nearer) is this recipe's session.
  */
 export function findCookSession(
   state: NavStateLike | undefined,
   recipeId: string,
 ): CookSessionPlacement {
-  let nearestSession: NavRouteLike | null = null;
-  let seen = false;
+  // Screens below the focus, one list per navigator from the outermost in, each bottom to top.
+  const below: (readonly NavRouteLike[])[] = [];
+  let focusedLeaf: NavRouteLike | null = null;
   let current = state;
   while (current && current.routes.length > 0) {
     const focusedIndex = current.index ?? current.routes.length - 1;
     const focused = current.routes[focusedIndex];
     if (!focused) break;
-    for (const route of current.routes.slice(0, focusedIndex)) {
-      if (!SESSION_ROUTE.test(route.name)) continue;
-      nearestSession = route;
-      if (isRouteFor(route, SESSION_ROUTE, recipeId)) seen = true;
-    }
+    below.push(current.routes.slice(0, focusedIndex));
     if (!focused.state) {
-      const onScreen =
-        isRouteFor(focused, SESSION_ROUTE, recipeId) || isRouteFor(focused, FINISH_ROUTE, recipeId);
-      if (onScreen) return 'onScreen';
+      focusedLeaf = focused;
       break;
     }
     current = focused.state;
   }
-  if (nearestSession && isRouteFor(nearestSession, SESSION_ROUTE, recipeId)) return 'underneath';
-  return seen ? 'behindAnotherSession' : 'absent';
+
+  let blocked = false;
+  if (focusedLeaf && isCookRoute(focusedLeaf)) {
+    const ownFlow =
+      isRouteFor(focusedLeaf, SESSION_ROUTE, recipeId) ||
+      isRouteFor(focusedLeaf, FINISH_ROUTE, recipeId);
+    if (ownFlow) return 'onScreen';
+    blocked = true;
+  }
+  for (let level = below.length - 1; level >= 0; level -= 1) {
+    const routes = below[level] ?? [];
+    for (let i = routes.length - 1; i >= 0; i -= 1) {
+      const route = routes[i];
+      if (!route || !isCookRoute(route)) continue;
+      if (isRouteFor(route, SESSION_ROUTE, recipeId)) {
+        return blocked ? 'behindAnotherSession' : 'underneath';
+      }
+      blocked = true;
+    }
+  }
+  return 'absent';
 }
