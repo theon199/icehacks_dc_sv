@@ -191,6 +191,73 @@ export function improvementsOver(
   return out;
 }
 
+type TrackedNutrient = Improvement['nutrient'];
+
+/** The nutrients each goal cares about. A suggestion must not go clearly the wrong way on these. */
+const GOAL_NUTRIENTS: Readonly<Record<Goal, readonly TrackedNutrient[]>> = {
+  more_protein: ['protein_g'],
+  more_fiber: ['fiber_g'],
+  lower_sodium: ['sodium_mg'],
+  heart_friendly: ['sodium_mg', 'fat_g'],
+  lighter_meals: ['kcal'],
+  plant_forward: [],
+  steady_energy: ['fiber_g', 'protein_g'],
+};
+
+/** Watched when the person has set no goals: a "healthier" pick should not be heavier overall. */
+const DEFAULT_WATCHED: readonly TrackedNutrient[] = ['kcal', 'sodium_mg', 'fat_g'];
+
+/**
+ * How far a recipe may drift the wrong way before it counts as clearly worse: a share of the
+ * estimate and a floor in the nutrient's own unit, both of which must be exceeded.
+ */
+const WORSE_BY: Readonly<
+  Record<TrackedNutrient, { share: number; floor: number; better: 'less' | 'more' }>
+> = {
+  kcal: { share: 0.15, floor: 60, better: 'less' },
+  sodium_mg: { share: 0.15, floor: 150, better: 'less' },
+  fat_g: { share: 0.2, floor: 6, better: 'less' },
+  fiber_g: { share: 0.25, floor: 2, better: 'more' },
+  protein_g: { share: 0.2, floor: 5, better: 'more' },
+};
+
+function recipeValue(n: RecipeSummary['nutrition'], nutrient: TrackedNutrient): number | null {
+  switch (nutrient) {
+    case 'kcal':
+      return n.kcal;
+    case 'sodium_mg':
+      return n.sodiumMg;
+    case 'fat_g':
+      return n.fatG;
+    case 'fiber_g':
+      return n.fiberG;
+    case 'protein_g':
+      return n.proteinG;
+  }
+}
+
+/**
+ * Nutrients tied to the person's goals (or a general set without goals) on which the recipe is
+ * clearly worse than the estimated plate. Unknown recipe values are not counted against it.
+ */
+export function setbacksFor(
+  recipe: Pick<RecipeSummary, 'nutrition'>,
+  estimate: SnapDish['nutrition'],
+  goals: readonly Goal[],
+): TrackedNutrient[] {
+  const watched = goals.length === 0 ? DEFAULT_WATCHED : goals.flatMap((g) => GOAL_NUTRIENTS[g]);
+  const setbacks: TrackedNutrient[] = [];
+  for (const nutrient of new Set(watched)) {
+    const value = recipeValue(recipe.nutrition, nutrient);
+    const plate = estimate[nutrient].estimate;
+    if (value == null || plate <= 0) continue;
+    const { share, floor, better } = WORSE_BY[nutrient];
+    const drift = better === 'less' ? value - plate : plate - value;
+    if (drift > floor && drift > plate * share) setbacks.push(nutrient);
+  }
+  return setbacks;
+}
+
 /** Share of the person's goals a recipe serves; the health score when no goals are set. */
 export function goalFit(
   recipe: Pick<RecipeSummary, 'goalTags' | 'healthScore'>,
@@ -215,7 +282,9 @@ export interface HealthierVersion {
 export const MIN_HEALTHIER_CLOSENESS = 0.25;
 
 /**
- * The close recipe that best serves the person's goals while clearly improving on the estimate.
+ * The close recipe that best serves the person's goals while clearly improving on the estimate and
+ * not going clearly the wrong way on any nutrient those goals (or, without goals, overall health)
+ * care about.
  * `closest` must already be safety-screened (as `rankCloseRecipes` returns it). Null when no close
  * recipe is meaningfully healthier.
  */
@@ -229,6 +298,8 @@ export function pickHealthierVersion(
     if (closeness < MIN_HEALTHIER_CLOSENESS || recipe.nutritionConfidence === 'none') continue;
     const improvements = improvementsOver(recipe, estimate);
     if (improvements.length === 0) continue;
+    // Better on one count but clearly worse on something the person is watching is not healthier.
+    if (setbacksFor(recipe, estimate, goals).length > 0) continue;
     const score =
       0.45 * closeness +
       0.35 * goalFit(recipe, goals) +

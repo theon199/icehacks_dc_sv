@@ -7,6 +7,7 @@ import {
   dishSearchQueries,
   goalFit,
   improvementsOver,
+  setbacksFor,
   mergeDishHits,
   pickHealthierVersion,
   rankCloseRecipes,
@@ -179,5 +180,31 @@ describe('healthier version', () => {
     expect(
       pickHealthierVersion([{ recipe: lighter, closeness: 0.1 }], dish.nutrition, []),
     ).toBeNull();
+  });
+
+  const lighterButSaltier = makeRecipe({
+    id: 'r:salty',
+    title: 'Light chicken tikka masala',
+    goalTags: ['lower_calorie'],
+    healthScore: 0.7,
+    nutrition: { ...makeRecipe().nutrition, kcal: 520, proteinG: 38, sodiumMg: 2400, fiberG: 4 },
+  });
+
+  it('flags nutrients the goals care about that get clearly worse', () => {
+    expect(setbacksFor(lighterButSaltier, dish.nutrition, ['lower_sodium'])).toEqual([
+      'sodium_mg',
+    ]);
+    expect(setbacksFor(lighterButSaltier, dish.nutrition, ['more_protein'])).toEqual([]);
+    expect(setbacksFor(lighterButSaltier, dish.nutrition, [])).toEqual(['sodium_mg']);
+    expect(setbacksFor(lighter, dish.nutrition, ['heart_friendly', 'steady_energy'])).toEqual([]);
+  });
+
+  it('never offers a recipe that is clearly worse on a goal nutrient', () => {
+    const closest = [{ recipe: lighterButSaltier, closeness: 0.9 }];
+    expect(pickHealthierVersion(closest, dish.nutrition, ['lower_sodium'])).toBeNull();
+    expect(pickHealthierVersion(closest, dish.nutrition, ['heart_friendly'])).toBeNull();
+    expect(pickHealthierVersion(closest, dish.nutrition, ['lighter_meals'])?.recipe.id).toBe(
+      'r:salty',
+    );
   });
 });
