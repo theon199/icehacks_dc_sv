@@ -165,7 +165,10 @@ export function PlanTab({ header, today }: PlanTabProps) {
           </View>
         </GestureDetector>
       ) : null}
-      {costRecipes.length > 0 ? <CostSummary recipes={costRecipes} /> : null}
+      {costRecipes.length > 0 ? (
+        // An archived week is read-only, so it shows what it cost but offers no shopping.
+        <CostSummary recipes={costRecipes} hideWalmart={archived} />
+      ) : null}
       <View>
         <ListRow
           title="Shopping list"

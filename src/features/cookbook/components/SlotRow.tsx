@@ -32,13 +32,18 @@ const FILLED_ACTIONS = [
   { name: 'clear', label: 'Remove from plan' },
 ] as const;
 
-/** "2 servings", "2 half-size servings" or "1 serving at 1.5× size". */
-export function servingsText(servings: number, portion: number): string {
+/**
+ * "2 servings", "2 half-size servings" or "1 serving at 1.5× size". Spoken, the last reads
+ * "1 serving at 1.5 times the usual size", since screen readers say the × sign inconsistently.
+ */
+export function servingsText(servings: number, portion: number, spoken = false): string {
   const noun = servings === 1 ? 'serving' : 'servings';
   if (portion === 1) return `${servings} ${noun}`;
   if (portion === 0.5) return `${servings} half-size ${noun}`;
   const size = Number.isInteger(portion * 100) ? String(portion) : portion.toFixed(2);
-  return `${servings} ${noun} at ${size}× size`;
+  return spoken
+    ? `${servings} ${noun} at ${size} times the usual size`
+    : `${servings} ${noun} at ${size}× size`;
 }
 
 /** One meal slot of a day: the planned recipe with its actions, or an add button. */
@@ -93,12 +98,11 @@ export const SlotRow = memo(function SlotRow({
   }
 
   const title = recipe?.title ?? 'Recipe unavailable';
-  const meta = [
-    servingsText(entry.servings, portion),
-    recipe?.totalMinutes != null ? formatMinutes(recipe.totalMinutes) : null,
-  ]
+  const minutes = recipe?.totalMinutes != null ? formatMinutes(recipe.totalMinutes) : null;
+  const meta = [servingsText(entry.servings, portion), minutes].filter(Boolean).join(' · ');
+  const spokenMeta = [servingsText(entry.servings, portion, true), minutes]
     .filter(Boolean)
-    .join(' · ');
+    .join(', ');
   const onA11yAction = (event: AccessibilityActionEvent) => {
     const name = event.nativeEvent.actionName;
     if (name === 'activate') onOpen(entry.recipeId);
@@ -117,7 +121,7 @@ export const SlotRow = memo(function SlotRow({
         accessibilityRole="button"
         accessibilityLabel={[
           `${label}: ${title}`,
-          meta,
+          spokenMeta,
           unsafe ? 'Check allergens: does not fit your allergens or diet' : '',
         ]
           .filter(Boolean)

@@ -22,10 +22,16 @@ jest.mock('@/features/grocery', () => {
   const { createElement } = jest.requireActual<{ createElement: typeof CreateElementFn }>('react');
   const { Text } = jest.requireActual<{ Text: ComponentType<TextProps> }>('react-native');
   return {
-    CostSummary: ({ recipes }: { recipes: readonly { recipeId: string; servings?: number }[] }) =>
+    CostSummary: ({
+      recipes,
+      hideWalmart = false,
+    }: {
+      recipes: readonly { recipeId: string; servings?: number }[];
+      hideWalmart?: boolean;
+    }) =>
       createElement(
         Text,
-        { testID: 'week-cost' },
+        { testID: 'week-cost', accessibilityHint: hideWalmart ? 'no shopping' : 'shopping' },
         recipes.map((r) => `${r.recipeId}×${r.servings}`).join(' '),
       ),
   };
@@ -224,6 +230,19 @@ describe('PlanTab', () => {
 
     await user.press(screen.getByTestId('restore-week'));
     expect(await screen.findByTestId('slot-more-dinner')).toBeOnTheScreen();
+  });
+
+  it('costs an archived week without offering to shop for it', async () => {
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm1', 2);
+    plannerActions.archive(WEEK);
+    await renderPlan();
+    expect(await screen.findByLabelText(/^Dinner: Dish m1/)).toBeOnTheScreen();
+    expect(screen.getByTestId('week-cost')).toHaveProp('accessibilityHint', 'no shopping');
+
+    await act(async () => {
+      plannerActions.restore(WEEK);
+    });
+    expect(screen.getByTestId('week-cost')).toHaveProp('accessibilityHint', 'shopping');
   });
 
   it('costs the week from its planned meals, servings and portions', async () => {
