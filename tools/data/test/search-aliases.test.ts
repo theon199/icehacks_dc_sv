@@ -2,24 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import Database from 'better-sqlite3';
-import type { IngredientDef } from '../src/knowledge/define.ts';
-import { INGREDIENTS, INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
+import { INGREDIENTS } from '../src/knowledge/index.ts';
 import { ALIAS_DESCRIPTORS, SEARCH_ALIASES } from '../src/knowledge/searchAliases.ts';
-import { IngredientMatcher } from '../src/match/matcher.ts';
 import { parseMeasure } from '../src/parse/measure.ts';
 import { DB_PATH } from '../src/paths.ts';
 import { aliasIndexWords, aliasIndexWordsById, aliasTokenViolations, cuisineWordKeys, foodWordKeys, SearchIndexer } from '../src/pipeline/search.ts';
+import { defsOf, matchedLine } from './support/lines.ts';
 
-const matcher = new IngredientMatcher(INGREDIENTS);
-const def = (id: string): IngredientDef => {
-  const found = INGREDIENT_BY_ID.get(id);
-  assert.ok(found, `missing ingredient ${id}`);
-  return found;
-};
-const matchedLine = (text: string): IngredientDef[] | null => {
-  const result = matcher.matchLine(parseMeasure(text).rest);
-  return result.id === null ? null : result.all.map(def);
-};
 
 /** Descriptor words that once leaked into the index from multi-word aliases. */
 const LEAKED_DESCRIPTORS = [
@@ -78,7 +67,7 @@ describe('search index words per line', () => {
     const name = parseMeasure(text).rest;
     const line = matchedLine(text);
     assert.ok(line, `unmatched ${text}`);
-    return line.flatMap((d) => indexer.lineWords(d, name));
+    return defsOf(line).flatMap((d) => indexer.lineWords(d, name));
   };
   const lacks = (text: string, ...absent: string[]) => {
     const words = wordsFor(text);
