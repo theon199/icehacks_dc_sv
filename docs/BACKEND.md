@@ -404,3 +404,157 @@ migrations, runs pgTAP and the linter, regenerates the types and fails if the co
 
 Granting a moderator (service role or SQL editor):
 `insert into public.user_roles (user_id, role) values ('<uuid>', 'moderator');`
+
+## Commerce, places and publishing functions
+
+Four edge functions built on `_shared` (error envelope, quotas, Claude client). Each folder has
+a `handler.ts` (logic behind injectable dependencies, Deno-tested with a mocked `fetch`) and an
+`index.ts` that wires the production dependencies. App wrappers: `src/lib/api/commerce.ts` and
+`src/lib/api/community.ts`.
+
+Migration `20261112090000_commerce_and_review_hold` adds:
+
+| Object | Purpose |
+| --- | --- |
+| `ingredient_price_cache.status` (`priced`\|`not_found`\|`retry_later`), `package_qty` | Remember "no listing found" and "the lookup failed, retry later" (price, unit and source are then null) and the package size a price refers to. A listed price must have a `source_url`. Keys are `us:<ingredient id>:<first 16 hex of sha256(lowercased plain name)>`; rows under the earlier `us:<id>` keys are deleted by the migration |
+| `private.usage_budgets` + `reserve_usage(p_bucket, p_period, p_units, p_limit) → int`, `release_usage(p_bucket, p_period, p_units)` | Per-UTC-day or per-month allowances. `reserve_usage` grants up to `p_units` atomically (row lock per bucket) and returns what it granted |
+| `private.fill_leases` + `claim_fill_leases(p_keys, p_holder, p_ttl_seconds = 120) → setof text`, `release_fill_leases(p_keys, p_holder) → int` | Single-flight cache fills: a key is claimed only when free, expired or already held by the same holder |
+| `walmart_item_map` (`ingredient_id` → `item_id`, `approved`, `note`) | Curated by staff with the service role; members read approved rows |
+| `walmart_item_cache` (`item_id`, `payload`, `expires_at`) | Item lookups, 24 h; service role only |
+| `private.review_verdicts` + `record_text_review(p_user_id, p_target, p_title, p_body, p_verdict, p_category, p_ttl_seconds = 120) → bigint` | The publish function's review verdict for one member and one exact text (sha256 of the text the RPC checks). An `allow` is a single-use clearance that expires after `p_ttl_seconds` (10–600); a `hold` carries its category into the automated report. Service role only |
+| `private.needs_review`, `private.hold_for_review` (replaced) | Fail closed: hold unless the caller holds an unspent, unexpired `allow` for exactly this text (spent on use), and still hold allowed text that matches a review term or several links. The automated report's `reason` follows the review category (`spam`, `harassment`, ...; `medical_misinformation` → `misinformation`, `dangerous_activity` → `unsafe_food`, others → `other`) and its `details` say why it was held |
+| `private.job_purge_commerce_state()` | Hourly at :13 (`famara-purge-commerce-state`): expired item cache rows, stale leases, budgets older than 100 days, review verdicts a day past expiry |
+
+The usage, lease and review-verdict RPCs are granted to `service_role` only.
+
+### `prices`
+
+`POST { items: [{ id, name }] }` (1–40 catalog ingredients, names up to 80 characters) returns
+`{ prices, pending, retry_after_seconds, notice }`. Each entry has `status` `priced`,
+`not_found`, `pending` or `unavailable`, plus `price_cents` (whole package), `package_qty`,
+`unit`, `retailer` and `url`.
+
+- Names are tidied per item (NFKC, curly apostrophes straightened, symbols such as `®` dropped,
+  spaces collapsed). A name with no letters left is `unavailable` on its own; it never fails the
+  request.
+- An entry is keyed by the ingredient id and a digest of the tidied, lowercased name, so a request
+  that pairs an id with another name only reads and writes its own entry. There is no server-side
+  catalog to check names against.
+- Fresh rows of `ingredient_price_cache` are read as the caller (RLS). Priced rows live 14 days,
+  not-found rows 3 days, `retry_later` markers 10 minutes (shown as `unavailable`).
+- Misses are filled after the response (`EdgeRuntime.waitUntil`). Claude (fast tier, low effort)
+  searches with the `web_search` server tool restricted to the retailer domains and reports
+  through a strict `report_price` tool. A price is cached only if its URL is https, on an allowed
+  domain and one of the search results; otherwise the ingredient is cached as `not_found`. An API
+  failure, or a web search error other than `max_uses_exceeded` with no price found, writes a
+  `retry_later` marker instead, so polls do not retry (and spend) on every request.
+- Guards, in order: fills for adults only (`notice: "not_eligible"`); at most
+  `FAMARA_PRICES_FILLS_PER_REQUEST` fills per request; a lease per entry (concurrent requests see
+  `pending`); a cache re-check after the claim; the per-member request quota
+  (`AI_QUOTAS.prices`), charged only by a request that starts lookups, so cached reads and polls
+  are free; the member's daily allowance (`notice: "daily_limit"`); the global monthly allowance
+  (`notice: "budget"`, the member's units are given back).
+- Items past the batch stay `pending` for the next poll, unless an allowance or the request quota
+  refused this batch: then they are `unavailable` too and polling ends.
+- Each background lookup renews its lease (240 s) and re-checks the cache right before it runs; if
+  another request took the lease or filled the entry meanwhile, it skips and gives its units back.
+- The app polls while `pending > 0`, every `retry_after_seconds`.
+
+### `walmart`
+
+`POST { action: "status" | "prices" | "cart", ... }`. Without the Walmart credentials every
+action returns `{ configured: false }` with HTTP 200, and the app hides its Walmart button.
+
+- `prices { ingredient_ids }` (≤ 25): approved mappings, then item lookups from
+  `walmart_item_cache`, the rest from the affiliate product API (≤ 20 ids per call), cached for
+  24 h (items the API does not return are cached as `{ found: false }`). Each entry has `status`
+  `found`, `not_found` or `unmapped`.
+- `cart { items: [{ ingredient_id, quantity 1–12 }] }` (≤ 25): an
+  `https://affil.walmart.com/cart/addToCart?items=<id>|<qty>,...` link for the mapped items
+  (quantities of ingredients that share an item add up), passed through
+  `WALMART_AFFILIATE_LINK_PREFIX` as `u` when set. Unmapped ingredients are listed in `skipped`.
+- The integration is all or nothing: although building a cart link needs no signature, `cart`
+  also answers `{ configured: false }` until all three signing credentials are set, so the app
+  never offers a cart for items whose prices it cannot show.
+- Requests are signed with `WM_CONSUMER.ID`, `WM_CONSUMER.INTIMESTAMP` (ms),
+  `WM_SEC.KEY_VERSION` and `WM_SEC.AUTH_SIGNATURE`, the base64 RSA-SHA256 (PKCS #1 v1.5)
+  signature of `consumerId\ntimestamp\nkeyVersion\n`. The key may be PKCS #8 or PKCS #1 PEM
+  (literal `\n` escapes are accepted) or base64 PKCS #8 DER.
+- Errors: 401/403 from Walmart or an unreadable key → 500 `misconfigured`; 429, 5xx or a network
+  failure → 503 `upstream_unavailable`; a timeout (10 s) → 504; anything else → 502.
+- Rate limit: `consume_ai_quota` feature `walmart`, per hour.
+
+### `places`
+
+`POST { dish, dish_key, lat, lng, radius_m = 5000 (500–8000), limit = 10 (1–10) }` returns
+`{ configured, places, cached, fetched_at, notice }`.
+
+- Google Places API (New) Text Search for `"<dish> restaurant"`, `pageSize` 10, with the field
+  mask `places.id, displayName, location, rating, userRatingCount, priceLevel,
+  currentOpeningHours.openNow, formattedAddress, primaryType`. The search is biased to a circle
+  around the centre of the caller's geohash-6 cell (about 1.2 × 0.6 km). Its radius is the
+  requested radius rounded up to a whole kilometre plus the cell's half-diagonal (capped at
+  9 km), so a caller anywhere in the cell has their whole radius covered.
+- `places_cache` key: `v1:<geohash6>:<radius band>:<normalised query>`, kept 6 hours. Only the
+  cell centre rounded to 0.01° is stored. Concurrent misses share one call through a lease; the
+  others wait up to 3 s, then get 503 with `Retry-After: 2`.
+- Ranking (`places/rank.ts`): places farther than `radius_m` from the caller are dropped;
+  `score = 1/(1 + km) × 2 × (yes + 1)/(yes + no + 2)` using `dish_confirmation_summary`; ties go
+  to the review-weighted rating, then distance.
+- Guards: a per-member daily limit (`consume_ai_quota` feature `places`) and a global monthly
+  search budget (`notice: "budget"` with an empty list). Without `GOOGLE_PLACES_API_KEY` the
+  response is `{ configured: false, places: [] }`.
+- Google's terms require attribution wherever these results are shown.
+- Owner decision pending: the 6-hour `places_cache` of Google content was asked for to cut cost
+  and latency, but Google's Places terms restrict caching of most returned fields (place ids
+  may be stored). Shorten the TTL or cache only place ids before launch if the terms require it.
+
+### `publish`
+
+`POST { type: "post", kind, title, body?, recipe_ref?, rating?, parent_post_id?, visibility?,
+media? }` or `{ type: "comment", post_id, body, parent_comment_id? }` returns 201
+`{ post | comment, held }`.
+
+1. Input is validated with the same limits as the RPCs.
+2. Every photo path must be `<caller id>/<file>` (no sub-folders, no `..`) and exist in
+   `post-media` (checked as the caller); otherwise 403 `media_not_owned` or 400
+   `media_not_uploaded`.
+3. The text is reviewed by Claude (fast tier, structured output
+   `{ verdict: allow | hide, category }`). Only `allow` can publish visibly. `hide`, a refusal, an
+   API error, an exhausted daily review allowance (`AI_QUOTAS.text_review`) or a missing API key
+   all hold the content.
+4. The verdict is recorded with `record_text_review` (service role): an allow becomes a
+   single-use clearance for this member and this exact text, valid for 120 s; a hold records its
+   category or reason (`review_unavailable`, `review_limit`, `review_declined`). If an allow
+   cannot be recorded the request fails with 503 so the member can retry.
+5. `publish_post` / `add_comment` run as the caller, so the author is always the caller and the
+   RPCs enforce the age gate, suspensions and rate limits.
+
+The database fails closed: `publish_post` and `add_comment` store a post or comment visibly only
+when they can spend a matching allow. A direct RPC call (no verdict), a spent or expired verdict,
+a verdict for other text or for another member, or a hold all store the content hidden from the
+start, with an automated report (reason and details from the review) and a moderation notice the
+author can appeal. The review runs before the RPC's membership, suspension and rate-limit checks,
+so a refused attempt still uses one unit of the `text_review` allowance.
+
+### Environment variables (commerce, places and publishing)
+
+| Name | Default | Purpose |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | none | Price lookups and text review (shared with the other AI functions) |
+| `FAMARA_PRICES_FILL` | `on` | `off` serves cached prices only |
+| `FAMARA_PRICES_USER_DAILY_FILLS` | `60` | Price lookups one member can start per UTC day |
+| `FAMARA_PRICES_MONTHLY_FILLS` | `2000` | Price lookups across all members per UTC month |
+| `FAMARA_PRICES_FILLS_PER_REQUEST` | `12` | Lookups started by one request (1–40) |
+| `FAMARA_PRICES_MAX_SEARCHES` | `2` | Web searches per lookup (1–5) |
+| `FAMARA_PRICES_RETAILER_DOMAINS` | 18 large US grocers | Comma-separated allow-list for searches and citations |
+| `WALMART_CONSUMER_ID`, `WALMART_KEY_VERSION`, `WALMART_PRIVATE_KEY` | none | Walmart affiliate API credentials (secret); all three turn the integration on |
+| `WALMART_PUBLISHER_ID` | none | Affiliate publisher id sent with item lookups |
+| `WALMART_AFFILIATE_LINK_PREFIX` | none | https tracking URL on a walmart.com host that wraps cart links |
+| `FAMARA_WALMART_USER_HOURLY_LIMIT` | `60` | Walmart requests per member per hour |
+| `GOOGLE_PLACES_API_KEY` | none | Places API (New) key (secret) |
+| `FAMARA_PLACES_USER_DAILY_LIMIT` | `60` | Nearby searches per member per day |
+| `FAMARA_PLACES_MONTHLY_SEARCHES` | `900` | Uncached Text Search calls per UTC month |
+| `FAMARA_PUBLISH_AI_REVIEW` | `on` | `off` skips the AI review (SQL review terms still apply). Honoured only when `SUPABASE_URL` points at a local stack (`localhost`, `127.0.0.1`, `kong`, `host.docker.internal`); ignored with a warning anywhere else |
+
+Invalid numeric values are logged and replaced by the default, so a typo never removes a limit.
