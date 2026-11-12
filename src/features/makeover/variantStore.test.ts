@@ -51,4 +51,21 @@ describe('variant store', () => {
     entry?.reset();
     expect(useVariantStore.getState().groups).toEqual({});
   });
+
+  it('drops variants left behind by another account', () => {
+    const store = useVariantStore.getState();
+    store.claim('person-a');
+    store.save(variant('v1', 'r:dal'));
+    useVariantStore.getState().claim('person-a');
+    expect(Object.keys(useVariantStore.getState().groups)).toEqual(['r:dal']);
+    useVariantStore.getState().claim('person-b');
+    expect(useVariantStore.getState().groups).toEqual({});
+    expect(useVariantStore.getState().owner).toBe('person-b');
+  });
+
+  it('adopts variants saved before any account claimed them', () => {
+    useVariantStore.getState().save(variant('v1', 'r:dal'));
+    useVariantStore.getState().claim('person-a');
+    expect(Object.keys(useVariantStore.getState().groups)).toEqual(['r:dal']);
+  });
 });

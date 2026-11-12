@@ -4,7 +4,10 @@
  *
  * The collection belongs next to the saved recipes in `src/stores`; until it moves there it lives
  * here and registers itself with sync like every other per-account store, so it is mirrored to
- * the account and wiped on sign-out. Reach it only through `deps.ts`.
+ * the account and wiped on sign-out. Because that registration only happens once this module is
+ * loaded, the store also remembers which account its variants belong to (`owner`): `deps.ts`
+ * claims it for the signed-in account, and a copy left behind by another account is dropped
+ * before it can be shown or synced. Reach it only through `deps.ts`.
  */
 import { z } from 'zod';
 import { create } from 'zustand';
@@ -27,6 +30,10 @@ const EMPTY: VariantGroups = Object.freeze({});
 
 export interface VariantState {
   groups: VariantGroups;
+  /** Account the variants belong to; null until one claims them. */
+  owner: string | null;
+  /** Marks the variants as this account's, dropping any that belong to another account. */
+  claim: (userId: string) => void;
   save: (variant: RecipeVariant) => void;
   remove: (baseRecipeId: string, variantId: string, at?: string) => void;
   reset: () => void;
@@ -40,17 +47,26 @@ export const useVariantStore = create<VariantState>()(
       };
       return {
         groups: EMPTY,
+        owner: null,
+        claim: (userId) => {
+          const { owner } = get();
+          if (owner === userId) return;
+          set(owner == null ? { owner: userId } : { owner: userId, groups: EMPTY });
+        },
         save: (variant) => commit(addVariant(get().groups, variant)),
         remove: (baseRecipeId, variantId, at = new Date().toISOString()) =>
           commit(removeVariant(get().groups, baseRecipeId, variantId, at)),
-        reset: () => set({ groups: EMPTY }),
+        reset: () => set({ groups: EMPTY, owner: null }),
       };
     },
     versionedPersist({
       name: 'user.variants',
       version: 1,
-      schema: z.object({ groups: z.record(z.string(), variantGroupSchema) }),
-      partialize: (state) => ({ groups: state.groups }),
+      schema: z.object({
+        groups: z.record(z.string(), variantGroupSchema),
+        owner: z.string().nullable().default(null),
+      }),
+      partialize: (state) => ({ groups: state.groups, owner: state.owner }),
     }),
   ),
 );

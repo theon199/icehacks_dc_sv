@@ -7,12 +7,26 @@
  */
 import { useCallback } from 'react';
 
+import { useSessionStore } from '@/features/auth';
+
 import type { RecipeVariant, VariantGroups } from './logic/variants';
 import { selectVariantGroups, useVariantStore } from './variantStore';
 
 export { AiGate, describeAiProblem, type AiProblem } from '@/features/chef';
 export { aiApi } from '@/lib/api/ai';
 export { useRecipe } from '@/lib/catalog';
+
+/** Ties the stored variants to the signed-in account (see `variantStore.ts`). */
+function claimVariants(): void {
+  const { userId } = useSessionStore.getState();
+  if (userId) useVariantStore.getState().claim(userId);
+}
+
+useSessionStore.subscribe((state, previous) => {
+  if (state.userId !== previous.userId) claimVariants();
+});
+if (useVariantStore.persist.hasHydrated()) claimVariants();
+else useVariantStore.persist.onFinishHydration(claimVariants);
 
 /** Variant groups of the signed-in person, keyed by base recipe id. */
 export function useVariantGroups(): VariantGroups {
