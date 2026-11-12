@@ -10,60 +10,44 @@
 import { z } from 'zod';
 import { create } from 'zustand';
 
+import {
+  ALLERGEN_IDS as DOMAIN_ALLERGEN_IDS,
+  DIET_FLAG_NAMES,
+  GOAL_IDS as DOMAIN_GOAL_IDS,
+  MAX_LOVED_CUISINES,
+  allergenIdSchema,
+  dietFlagNameSchema,
+  goalIdSchema,
+  type AllergenId as DomainAllergenId,
+  type DietFlagName,
+  type Goal,
+} from '@/domain/types';
 import { logger } from '@/lib/logger';
 import { defineKvKey, type KvKey } from '@/lib/storage/kv';
 
-export const ALLERGEN_IDS = [
-  'milk',
-  'egg',
-  'fish',
-  'shellfish',
-  'tree_nut',
-  'peanut',
-  'wheat',
-  'soy',
-  'sesame',
-  'gluten',
-] as const;
-export type AllergenId = (typeof ALLERGEN_IDS)[number];
+/** Allergen, diet and goal vocabularies come from the shared domain types (docs/DATA.md). */
+export const ALLERGEN_IDS = DOMAIN_ALLERGEN_IDS;
+export type AllergenId = DomainAllergenId;
 
-export const DIET_IDS = [
-  'vegetarian',
-  'vegan',
-  'pescatarian',
-  'no_pork',
-  'no_beef',
-  'no_alcohol',
-  'halal_friendly',
-  'gluten_free',
-  'dairy_free',
-] as const;
-export type DietId = (typeof DIET_IDS)[number];
+export const DIET_IDS = DIET_FLAG_NAMES;
+export type DietId = DietFlagName;
 
-export const GOAL_IDS = [
-  'more_protein',
-  'more_fiber',
-  'lower_sodium',
-  'heart_friendly',
-  'lighter_meals',
-  'plant_forward',
-  'steady_energy',
-] as const;
-export type GoalId = (typeof GOAL_IDS)[number];
+export const GOAL_IDS = DOMAIN_GOAL_IDS;
+export type GoalId = Goal;
 
 export const EFFORT_LEVELS = ['easy', 'moderate', 'involved'] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
-export const MAX_CUISINES = 5;
+export const MAX_CUISINES = MAX_LOVED_CUISINES;
 export const MAX_HOUSEHOLD = 12;
 
 const answersSchema = z.object({
   displayName: z.string().trim().min(1).max(50).nullable(),
   cuisines: z.array(z.string().min(1)).max(MAX_CUISINES),
-  diets: z.array(z.enum(DIET_IDS)),
+  diets: z.array(dietFlagNameSchema),
   /** An empty list is an explicit "no allergies", given on its own screen. */
-  allergens: z.array(z.enum(ALLERGEN_IDS)),
-  goals: z.array(z.enum(GOAL_IDS)),
+  allergens: z.array(allergenIdSchema),
+  goals: z.array(goalIdSchema),
   /** Longest a typical weekday cook should take, in minutes; null for no limit. */
   maxMinutes: z.number().int().positive().nullable(),
   effort: z.enum(EFFORT_LEVELS).nullable(),
