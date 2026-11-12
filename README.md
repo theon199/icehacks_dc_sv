@@ -88,5 +88,5 @@ assets/         icons, splash, fonts and the bundled recipe catalog
 ### Bundle budget
 
 CI fails when the main iOS JS bundle grows past `ios.maxBytes` in
-[`tools/bundle-budget.json`](tools/bundle-budget.json). The budget is the measured baseline plus
-35% headroom; raising it requires a PR that explains the growth.
+[`tools/bundle-budget.json`](tools/bundle-budget.json). The budget is the baseline measured in CI plus the
+`headroom` fraction stored next to it; raising it requires a PR that explains the growth.

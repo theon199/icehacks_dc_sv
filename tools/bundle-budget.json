@@ -1,8 +1,8 @@
 {
-  "$comment": "Maximum size of the main iOS JS bundle produced by `expo export --platform ios`. The budget is the measured baseline plus the headroom fraction. Re-baselined once the pantry and shopping list features landed (feature code only, no new dependencies). Raise it only in a PR that explains the growth.",
+  "$comment": "Maximum size of the main iOS JS bundle produced by `expo export --platform ios`. The budget is the baseline measured in CI plus the headroom fraction. Raise it only in a PR that explains the growth.",
   "ios": {
-    "baselineBytes": 7566213,
-    "headroom": 0.2,
-    "maxBytes": 9079456
+    "baselineBytes": 7510000,
+    "headroom": 0.15,
+    "maxBytes": 8636500
   }
 }
