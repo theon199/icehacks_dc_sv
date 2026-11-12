@@ -254,7 +254,6 @@ declare
   v_alphabet constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   v_bytes bytea := extensions.gen_random_bytes(10);
   v_code text := '';
-  i integer;
 begin
   for i in 0..9 loop
     v_code := v_code || substr(v_alphabet, (get_byte(v_bytes, i) % 31) + 1, 1);

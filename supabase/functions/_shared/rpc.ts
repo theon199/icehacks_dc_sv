@@ -34,7 +34,8 @@ const STATUS_BY_SQLSTATE: Record<string, ErrorCode> = {
 
 /** Maps a PostgREST error to an HttpError, keeping the SQL error code as `details.reason`. */
 export function rpcErrorToHttp(error: PostgrestLikeError): HttpError {
-  const code = (error.code && STATUS_BY_SQLSTATE[error.code]) ?? "upstream_error";
+  const code: ErrorCode = (error.code ? STATUS_BY_SQLSTATE[error.code] : undefined) ??
+    "upstream_error";
   const message = code === "upstream_error"
     ? "The database request failed."
     : error.details ?? "The request could not be completed.";

@@ -122,7 +122,7 @@ begin
     on conflict do nothing
     returning badge_id
   )
-  select coalesce(array_agg(i.badge_id order by i.badge_id), '{}') into v_new from inserted i;
+  select coalesce(array_agg(i.badge_id order by i.badge_id), '{}'::text[]) into v_new from inserted i;
 
   foreach v_badge in array v_new loop
     perform private.notify(p_user, null, 'badge', null, null, jsonb_build_object('badge_id', v_badge));
@@ -241,7 +241,7 @@ declare
   v_cooked_at timestamptz := coalesce(p_cooked_at, now());
   v_event_id uuid;
   v_badges_before text[];
-  v_new_badges text[] := '{}';
+  v_new_badges text[] := '{}'::text[];
 begin
   if p_recipe_ref is null or char_length(p_recipe_ref) not between 1 and 128 then
     raise exception 'invalid_recipe' using errcode = '22023', detail = 'recipe_ref is required.';
@@ -274,7 +274,7 @@ begin
        where e.user_id = v_uid and e.created_at > now() - interval '24 hours'),
       30, 'That is a lot of cooking for one day. Try again tomorrow.');
 
-    select coalesce(array_agg(a.badge_id), '{}') into v_badges_before
+    select coalesce(array_agg(a.badge_id), '{}'::text[]) into v_badges_before
     from public.badge_awards a where a.user_id = v_uid;
 
     insert into public.cook_events (user_id, recipe_ref, cuisine, cooked_at, local_date, rating, client_event_id)
@@ -287,7 +287,7 @@ begin
       from public.cook_events e
       where e.user_id = v_uid and e.client_event_id = p_client_event_id;
     else
-      select coalesce(array_agg(a.badge_id order by a.badge_id), '{}') into v_new_badges
+      select coalesce(array_agg(a.badge_id order by a.badge_id), '{}'::text[]) into v_new_badges
       from public.badge_awards a
       where a.user_id = v_uid and a.badge_id <> all (v_badges_before);
     end if;
