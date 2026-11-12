@@ -28,7 +28,8 @@ export function ChefScreen({ threadId }: ChefScreenProps) {
       feature="Chef"
       purpose="Chef suggests dishes from Famara's recipes that fit your diet and goals, adapts recipes and answers cooking questions."
     >
-      <ChefChat initialThreadId={threadId ?? null} />
+      {/* A link to another thread starts a fresh view of it. */}
+      <ChefChat key={threadId ?? 'latest'} initialThreadId={threadId ?? null} />
     </AiGate>
   );
 }
