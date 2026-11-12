@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { Share } from 'react-native';
 
 import { describeError, logger } from '@/lib/logger';
-import { MAX_PANTRY_ITEMS, usePantryStore } from '@/stores/pantry';
+import { usePantryStore } from '@/stores/pantry';
 import { selectUnits, useSettingsStore } from '@/stores/settings';
 import { useShoppingStore } from '@/stores/shopping';
 import { toast } from '@/ui';
@@ -16,6 +16,7 @@ import { useCurrentUserId } from './deps';
 import { extraKey, selectExtrasFor, useShoppingExtrasStore, type ExtraItem } from './extrasStore';
 import {
   fitIntoPantry,
+  markBoughtMessage,
   pantryInputsForExtras,
   pantryInputsForItems,
   type BoughtLine,
@@ -82,23 +83,28 @@ export function useShoppingActions({
 
   const markBought = useCallback(() => {
     const ingredientsById = list?.ingredientsById ?? new Map();
+    const pantryItems = usePantryStore.getState().items;
+    const pantry = Object.values(pantryItems);
     const extraIdByKey = new Map<string, string>();
     const lines: BoughtLine[] = [];
     for (const item of list?.items ?? []) {
       if (checked[item.key]) {
-        lines.push({ key: item.key, inputs: pantryInputsForItems([item], ingredientsById) });
+        lines.push({
+          key: item.key,
+          inputs: pantryInputsForItems([item], ingredientsById, pantry),
+        });
       }
     }
     for (const extra of extras) {
       const key = extraKey(extra.id);
       if (!checked[key]) continue;
       extraIdByKey.set(key, extra.id);
-      lines.push({ key, inputs: pantryInputsForExtras([extra]) });
+      lines.push({ key, inputs: pantryInputsForExtras([extra]), leavesList: true });
     }
     if (lines.length === 0) return;
 
     const at = new Date().toISOString();
-    const { fits, left } = fitIntoPantry(usePantryStore.getState().items, lines, at);
+    const { fits, unchanged, left } = fitIntoPantry(pantryItems, lines, at);
     if (fits.length > 0) {
       // Only what made it into the pantry leaves the list; the rest stays ticked.
       usePantryStore.getState().addMany(
@@ -110,19 +116,7 @@ export function useShoppingActions({
         .getState()
         .removeMany(fits.flatMap((line) => extraIdByKey.get(line.key) ?? []));
     }
-
-    const added = `${fits.length} ${fits.length === 1 ? 'item' : 'items'}`;
-    if (left.length === 0) {
-      toast.show({ message: `Added ${added} to your pantry`, tone: 'success' });
-    } else {
-      toast.show({
-        message:
-          fits.length > 0
-            ? `Added ${added}. Your pantry is full (${MAX_PANTRY_ITEMS} items), so ${left.length} stayed on your list.`
-            : `Your pantry is full (${MAX_PANTRY_ITEMS} items). Remove a few things to add more.`,
-        tone: 'danger',
-      });
-    }
+    toast.show(markBoughtMessage(fits.length, unchanged.length, left.length));
   }, [list, extras, checked]);
 
   const clearTicks = useCallback(() => useShoppingStore.getState().clear(), []);

@@ -3,7 +3,12 @@ import { MAX_PANTRY_ITEMS, addPantryItem, type PantryItem } from '@/stores/pantr
 
 import { INGREDIENTS, RECIPES, ingredient, line } from './__fixtures__/catalog';
 import { buildPlannedList } from './buildList';
-import { fitIntoPantry, pantryInputsForExtras, pantryInputsForItems } from './markBought';
+import {
+  fitIntoPantry,
+  markBoughtMessage,
+  pantryInputsForExtras,
+  pantryInputsForItems,
+} from './markBought';
 
 const at = '2026-11-11T10:00:00.000Z';
 const meals = [
@@ -61,14 +66,104 @@ describe('mark bought → pantry', () => {
     const before = listFor([]);
     const pantry = pantryFrom(pantryInputsForItems(before.items, before.ingredientsById));
     const after = listFor(pantry);
-    // Every catalog-matched item is now covered; only the free-text line cannot be matched.
-    expect(after.items.map((i) => i.key)).toEqual(['t:fresh coriander']);
-    expect(after.inPantry.map((i) => i.key).sort()).toEqual(
-      before.items
-        .filter((i) => i.ingredientId !== null)
-        .map((i) => i.key)
-        .sort(),
+    // The free-text line is matched to its pantry entry by name.
+    expect(after.items).toEqual([]);
+    expect(after.inPantry.map((i) => i.key).sort()).toEqual(before.items.map((i) => i.key).sort());
+  });
+
+  it('clears a "to taste" line when the pantry had exactly the measured count', () => {
+    const input = {
+      meals: [{ date: '2026-11-12', meal: 'dinner', recipeId: 'test:bake', servings: 1 }],
+      recipes: new Map([
+        [
+          'test:bake',
+          {
+            id: 'test:bake',
+            servings: 1,
+            ingredients: [line(1, 'egg', 3, null), line(2, 'egg', null, null, 'egg to glaze')],
+          },
+        ],
+      ]),
+      ingredients: INGREDIENTS,
+      portion: 1,
+    } as const;
+    let items: Readonly<Record<string, PantryItem>> = addPantryItem(
+      {},
+      { ingredientId: 'egg', name: 'egg', qty: 3, unit: null, category: 'dairy' },
+      { id: 'eggs', at },
     );
+    const before = buildPlannedList({ ...input, pantry: Object.values(items) });
+    expect(before.items).toEqual([
+      expect.objectContaining({ key: 'i:egg', amounts: [], asNeeded: true, pantry: 'partial' }),
+    ]);
+    const inputs = pantryInputsForItems(before.items, before.ingredientsById, Object.values(items));
+    // One more egg on the counted entry, not a "have some" that would leave it as it was.
+    expect(inputs).toEqual([expect.objectContaining({ ingredientId: 'egg', qty: 1, unit: null })]);
+    const { fits, unchanged } = fitIntoPantry(items, [{ key: 'i:egg', inputs }], at);
+    expect(fits.map((l) => l.key)).toEqual(['i:egg']);
+    expect(unchanged).toEqual([]);
+    for (const next of inputs) items = addPantryItem(items, next, { id: 'new', at });
+    expect(Object.values(items)).toEqual([expect.objectContaining({ id: 'eggs', qty: 4 })]);
+    expect(buildPlannedList({ ...input, pantry: Object.values(items) }).items).toEqual([]);
+  });
+
+  it('tops up a used-up weighed entry by a tenth, at least 1 g', () => {
+    const list = {
+      key: 'i:salt',
+      ingredientId: 'salt',
+      name: 'salt',
+      plural: null,
+      aisle: 'spices',
+      amounts: [],
+      asNeeded: true,
+      recipeIds: ['r'],
+      optional: false,
+      staple: true,
+      pantry: 'partial',
+    } as const;
+    const pantryWith = (qty: number): PantryItem[] => [
+      {
+        id: 's',
+        ingredientId: 'salt',
+        name: 'salt',
+        qty,
+        unit: 'g',
+        category: 'spice',
+        addedAt: at,
+        expiresAt: null,
+      },
+    ];
+    const qtyFor = (qty: number) =>
+      pantryInputsForItems([list], new Map(), pantryWith(qty))[0]?.qty;
+    expect(qtyFor(200)).toBe(20);
+    expect(qtyFor(4)).toBe(1);
+  });
+
+  it('keeps a planned line ticked when buying it would not change the pantry', () => {
+    const items = addPantryItem({}, { name: 'fresh coriander' }, { id: 'c', at });
+    const lines = [
+      { key: 't:fresh coriander', inputs: [{ name: 'fresh coriander' }] },
+      { key: 'x:soap', inputs: [{ name: 'fresh coriander' }], leavesList: true },
+    ];
+    const { fits, unchanged, left } = fitIntoPantry(items, lines, at);
+    expect(unchanged.map((l) => l.key)).toEqual(['t:fresh coriander']);
+    // A hand-added extra leaves the list anyway: nothing rebuilds it.
+    expect(fits.map((l) => l.key)).toEqual(['x:soap']);
+    expect(left).toEqual([]);
+  });
+
+  it('never reports adding zero items', () => {
+    expect(markBoughtMessage(2, 0, 0)).toEqual({
+      message: 'Added 2 items to your pantry',
+      tone: 'success',
+    });
+    expect(markBoughtMessage(1, 3, 0).message).toBe('Added 1 item to your pantry');
+    expect(markBoughtMessage(0, 1, 0)).toEqual({
+      message: expect.not.stringMatching(/Added/),
+      tone: 'neutral',
+    });
+    expect(markBoughtMessage(0, 0, 2).message).toMatch(/^Your pantry is full/);
+    expect(markBoughtMessage(1, 0, 2).message).toMatch(/^Added 1 item\. Your pantry is full/);
   });
 
   it('rounds bought amounts up, so no rounding crumb stays on the list', () => {
@@ -147,8 +242,8 @@ describe('mark bought → pantry', () => {
     );
     const lines = [
       { key: 'i:rice', inputs: [{ ingredientId: 'rice', name: 'rice', qty: 200, unit: 'g' }] },
-      { key: 'x:a', inputs: [{ name: 'Candles' }] },
-      { key: 'x:b', inputs: [{ name: 'thing 3' }] },
+      { key: 'x:a', inputs: [{ name: 'Candles' }], leavesList: true },
+      { key: 'x:b', inputs: [{ name: 'thing 3' }], leavesList: true },
     ];
     const { fits, left } = fitIntoPantry(items, lines, at);
     expect(fits.map((line) => line.key)).toEqual(['i:rice', 'x:b']);

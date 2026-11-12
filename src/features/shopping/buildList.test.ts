@@ -99,6 +99,22 @@ describe('subtracting the pantry', () => {
       [3, 'each'],
     ]);
   });
+
+  it('matches unmatched lines to free-text pantry items by name and unit word', () => {
+    const key = 't:fresh coriander';
+    const loose = (qty: number | null, unit: string | null, name = 'Fresh  Coriander') => ({
+      ...pantryItem('c', null, qty, unit),
+      name,
+    });
+    // Same name, any spacing or case, with no quantity: covered.
+    expect(build({ pantry: [loose(null, null)] }).inPantry.map((i) => i.key)).toContain(key);
+    // Same unit word: subtracted.
+    expect(build({ pantry: [loose(1, 'Handful')] }).inPantry.map((i) => i.key)).toContain(key);
+    // A different unit word cannot be compared, and a different name is something else.
+    const other = build({ pantry: [loose(2, 'bunch'), loose(5, null, 'coriander seeds')] });
+    expect(other.items.find((i) => i.key === key)).toMatchObject({ pantry: 'none' });
+    expect(amountsOf(other, key)).toEqual([[1, 'handful']]);
+  });
 });
 
 describe('aisle grouping', () => {

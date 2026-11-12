@@ -108,7 +108,8 @@ describeDb('ShoppingScreen', () => {
     await user.press(screen.getByTestId('shopping-mark-bought'));
     expect(await screen.findByText('You have everything')).toBeOnTheScreen();
     expect(screen.getByTestId('shopping-pantry-toggle')).toBeOnTheScreen();
-  });
+    // Ticks every line one press at a time, which is slow when the whole suite runs at once.
+  }, 20_000);
 
   it('explains when every planned recipe is unavailable', async () => {
     const today = localIsoDate(new Date());

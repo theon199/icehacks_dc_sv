@@ -16,6 +16,7 @@ import type { Ingredient, RecipeIngredientLine } from '@/lib/catalog';
 import type { PantryItem } from '@/stores/pantry';
 
 import { arrangeAisles } from './aisles';
+import { subtractFreeTextPantry } from './freeText';
 import type { PlannedMealRef } from './planRange';
 
 /** The parts of a catalog recipe the list needs. */
@@ -62,7 +63,10 @@ function toShoppingIngredient(ingredient: Ingredient): ShoppingIngredient {
   };
 }
 
-/** Pantry items matched to a catalog ingredient; free-text items cannot be subtracted. */
+/**
+ * Pantry items matched to a catalog ingredient, for the domain. Free-text items are subtracted
+ * from unmatched lines by name afterwards (`subtractFreeTextPantry`).
+ */
 export function pantryEntries(items: readonly PantryItem[]): PantryEntry[] {
   const out: PantryEntry[] = [];
   for (const item of items) {
@@ -104,7 +108,10 @@ export function buildPlannedList(input: PlannedListInput): PlannedList {
     ingredientsById.set(ingredient.id, ingredient);
   }
 
-  const list = buildShoppingList({ recipes, ingredients, pantry: pantryEntries(input.pantry) });
+  const list = subtractFreeTextPantry(
+    buildShoppingList({ recipes, ingredients, pantry: pantryEntries(input.pantry) }),
+    input.pantry,
+  );
   return {
     groups: arrangeAisles(groupByAisle(list.items)),
     items: list.items,

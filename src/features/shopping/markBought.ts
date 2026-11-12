@@ -12,8 +12,8 @@ import {
 } from '@/stores/pantry';
 
 import type { ExtraItem } from './extrasStore';
+import { pantryUnitWord, sameName } from './freeText';
 
-const MAX_UNIT_LENGTH = 24;
 /** The pantry's name limit; a long free-text line is cut rather than refused. */
 const MAX_NAME_LENGTH = 80;
 
@@ -24,17 +24,6 @@ const MAX_NAME_LENGTH = 80;
  */
 function tidy(quantity: number): number {
   return Math.ceil(quantity * 10 - 1e-9) / 10;
-}
-
-/**
- * The pantry unit for a bought amount. Whole items carry no unit (a bare count is how the pantry
- * and the list both read "3 eggs"); an unrecognised unit word is kept as written.
- */
-function pantryUnit(amount: Amount): string | null {
-  if (amount.unit === 'each') return null;
-  if (amount.unit !== null) return amount.unit;
-  const label = amount.label?.trim();
-  return label ? label.slice(0, MAX_UNIT_LENGTH) : null;
 }
 
 /**
@@ -50,13 +39,38 @@ function withTasteMargin(amount: Amount, quantity: number): number {
 }
 
 /**
- * Pantry entries for bought list items: one per amount still to buy, or a single "have some"
- * entry when the list had no measurable amount ("salt, as needed"). An item that is also used
- * "to taste" gets a margin on its first amount, so the pantry covers that use too.
+ * The pantry entry an amount-less list line would top up: one for the same thing that has a
+ * quantity, which the plan used up exactly (an entry without a quantity would already cover the
+ * line). Catalog items match by ingredient id, unmatched lines by name, as the list subtracts them.
+ */
+function usedUpEntry(pantry: readonly PantryItem[], item: ShoppingItem): PantryItem | undefined {
+  return pantry.find(
+    (entry) =>
+      entry.qty != null &&
+      (item.ingredientId
+        ? entry.ingredientId === item.ingredientId
+        : entry.ingredientId == null && sameName(entry.name, item.name)),
+  );
+}
+
+/** A little more of a used-up entry, in its own unit, so something is left for "to taste". */
+function topUpFor(entry: PantryItem): number {
+  if (entry.unit === 'g' || entry.unit === 'ml') return tidy(Math.max((entry.qty ?? 0) * 0.1, 1));
+  return 1;
+}
+
+/**
+ * Pantry entries for bought list items: one per amount still to buy. When the list had no
+ * measurable amount ("salt, as needed"), the entry is a single "have some", or a small top-up of
+ * a pantry entry the plan used up exactly ("3 eggs" in the pantry for 3 eggs plus "egg to
+ * glaze"); a "have some" next to a counted entry would not change what the list sees. An item
+ * that is also used "to taste" gets a margin on its first amount, so the pantry covers that use
+ * too.
  */
 export function pantryInputsForItems(
   items: readonly ShoppingItem[],
   ingredients: ReadonlyMap<string, Pick<Ingredient, 'category'>>,
+  pantry: readonly PantryItem[] = [],
 ): NewPantryItem[] {
   const out: NewPantryItem[] = [];
   for (const item of items) {
@@ -68,7 +82,12 @@ export function pantryInputsForItems(
     } as const;
     const measured = item.amounts.filter((amount) => tidy(amount.quantity) > 0);
     if (measured.length === 0) {
-      out.push({ ...base, qty: null, unit: null });
+      const usedUp = usedUpEntry(pantry, item);
+      out.push(
+        usedUp
+          ? { ...base, qty: topUpFor(usedUp), unit: usedUp.unit }
+          : { ...base, qty: null, unit: null },
+      );
       continue;
     }
     measured.forEach((amount, index) => {
@@ -76,15 +95,12 @@ export function pantryInputsForItems(
       out.push({
         ...base,
         qty: item.asNeeded && index === 0 ? withTasteMargin(amount, qty) : qty,
-        unit: pantryUnit(amount),
+        unit: pantryUnitWord(amount),
       });
     });
   }
   return out;
 }
-
-const sameText = (a: string, b: string) =>
-  a.trim().toLowerCase().replace(/\s+/g, ' ') === b.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /** Whether the pantry already has an entry this input would top up (same thing, same unit). */
 function alreadyThere(items: Readonly<Record<string, PantryItem>>, input: NewPantryItem): boolean {
@@ -94,7 +110,7 @@ function alreadyThere(items: Readonly<Record<string, PantryItem>>, input: NewPan
       (item.unit ?? null) === unit &&
       (input.ingredientId && item.ingredientId
         ? item.ingredientId === input.ingredientId
-        : sameText(item.name, input.name)),
+        : sameName(item.name, input.name)),
   );
 }
 
@@ -103,19 +119,36 @@ export interface BoughtLine {
   /** Its check-off key. */
   readonly key: string;
   readonly inputs: readonly NewPantryItem[];
+  /**
+   * The line is gone for good once bought (a hand-added extra), so it leaves the list even when
+   * the pantry already had it. A planned line is rebuilt from the plan and the pantry instead.
+   */
+  readonly leavesList?: boolean;
+}
+
+export interface PantryFit {
+  /** Lines that go into the pantry and leave the list. */
+  readonly fits: readonly BoughtLine[];
+  /**
+   * Planned lines that would leave the pantry exactly as it is. They stay ticked: clearing them
+   * would only bring them straight back, unticked.
+   */
+  readonly unchanged: readonly BoughtLine[];
+  /** Lines the full pantry (`MAX_PANTRY_ITEMS`) has no room for. They stay ticked. */
+  readonly left: readonly BoughtLine[];
 }
 
 /**
- * Splits bought lines into those the pantry can take and those it cannot because it is full
- * (`MAX_PANTRY_ITEMS`). A line moves only if all of its entries fit; topping up an item that is
- * already there always fits. Lines that do not fit stay ticked on the list.
+ * Splits bought lines by what the pantry can do with them. A line moves only if all of its
+ * entries fit; topping up an item that is already there always fits.
  */
 export function fitIntoPantry(
   items: Readonly<Record<string, PantryItem>>,
   lines: readonly BoughtLine[],
   at: string,
-): { readonly fits: readonly BoughtLine[]; readonly left: readonly BoughtLine[] } {
+): PantryFit {
   const fits: BoughtLine[] = [];
+  const unchanged: BoughtLine[] = [];
   const left: BoughtLine[] = [];
   let current = items;
   let probe = 0;
@@ -133,15 +166,43 @@ export function fitIntoPantry(
       }
       next = after;
     }
-    if (ok) {
+    if (!ok) left.push(line);
+    else if (next === current && !line.leavesList) unchanged.push(line);
+    else {
       current = next;
       fits.push(line);
-    } else left.push(line);
+    }
   }
-  return { fits, left };
+  return { fits, unchanged, left };
 }
 
-/** Hand-added extras go on the "Other" shelf with no quantity. */
+/** The toast after "Add to pantry", from how many lines moved, changed nothing or did not fit. */
+export function markBoughtMessage(
+  moved: number,
+  unchanged: number,
+  left: number,
+): { readonly message: string; readonly tone: 'success' | 'neutral' | 'danger' } {
+  const added = `${moved} ${moved === 1 ? 'item' : 'items'}`;
+  if (left > 0) {
+    return {
+      message:
+        moved > 0
+          ? `Added ${added}. Your pantry is full (${MAX_PANTRY_ITEMS} items), so ${left} stayed on your list.`
+          : `Your pantry is full (${MAX_PANTRY_ITEMS} items). Remove a few things to add more.`,
+      tone: 'danger',
+    };
+  }
+  if (moved > 0) return { message: `Added ${added} to your pantry`, tone: 'success' };
+  return {
+    message:
+      unchanged === 1
+        ? 'Your pantry already lists that item, so nothing changed. Edit its amount in the pantry.'
+        : 'Your pantry already lists those items, so nothing changed. Edit their amounts in the pantry.',
+    tone: 'neutral',
+  };
+}
+
+/** Hand-added extras go on the "Other" shelf with no quantity. Their lines use `leavesList`. */
 export function pantryInputsForExtras(extras: readonly ExtraItem[]): NewPantryItem[] {
   return extras.map((extra) => ({ name: extra.name, qty: null, unit: null, category: 'other' }));
 }
