@@ -283,7 +283,10 @@ describe('an account write that never answers', () => {
     );
 
   beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    mockAuth.getUser.mockReset();
+  });
 
   it('gives up on a stuck yes so later answers are not held behind it', async () => {
     signIn('user-t1', false);
@@ -401,38 +404,86 @@ describe('an account write that never answers', () => {
     expect(useSessionStore.getState().aiConsent).toBe(true);
   });
 
-  it('leaves a stuck withdrawal to a yes that is still being saved', async () => {
-    signIn('user-t12', true);
-    let releaseNo: () => void = () => undefined;
-    let releaseYes: () => void = () => undefined;
+  /**
+   * A server that holds every write until the test decides when it is applied and when it
+   * answers, and keeps the account record those writes produce, in the order they were applied.
+   */
+  function modelledServer(userId: string) {
+    let account: unknown;
+    const held: { granted: boolean; apply: () => void; respond: () => void }[] = [];
+    mockAuth.getUser.mockImplementation(() =>
+      Promise.resolve({
+        data: { user: { id: userId, user_metadata: { ai_consent: account } } },
+        error: null,
+      }),
+    );
     mockAuth.updateUser.mockReset();
-    mockAuth.updateUser
-      .mockImplementationOnce(
-        () => new Promise((resolve) => (releaseNo = () => resolve({ data: {}, error: null }))),
-      )
-      .mockImplementationOnce(
-        () => new Promise((resolve) => (releaseYes = () => resolve({ data: {}, error: null }))),
-      )
-      .mockResolvedValue({ data: {}, error: null });
+    mockAuth.updateUser.mockImplementation(
+      (update: { data: { ai_consent: { granted: boolean } } }) =>
+        new Promise((resolve) => {
+          held.push({
+            granted: update.data.ai_consent.granted,
+            apply: () => (account = update.data.ai_consent),
+            respond: () => resolve({ data: {}, error: null }),
+          });
+        }),
+    );
+    return {
+      account: () => account as { granted: boolean } | undefined,
+      take: () => held.splice(0),
+      /** Applies and answers every later write, in order, until nothing more is sent. */
+      settleRest: async () => {
+        for (let round = 0; round < 5; round += 1) {
+          await jest.advanceTimersByTimeAsync(0);
+          for (const write of held.splice(0)) {
+            write.apply();
+            write.respond();
+          }
+        }
+      },
+    };
+  }
 
-    // The withdrawal hangs and times out; a yes then starts and is held by the server.
-    const withdraw = setAiConsent(false);
-    await jest.advanceTimersByTimeAsync(AI_CONSENT_WRITE_TIMEOUT_MS);
-    await withdraw;
-    const agree = setAiConsent(true);
-    await jest.advanceTimersByTimeAsync(0);
-    expect(sentAnswers()).toEqual([false, true]);
+  it.each([
+    ['after', true],
+    ['before', false],
+  ])(
+    'ends with the account and device agreeing when a stuck withdrawal is applied %s a newer yes',
+    async (_order, withdrawalLast) => {
+      signIn('user-t12', true);
+      const server = modelledServer('user-t12');
 
-    // The stuck withdrawal lands while the yes is still on its way, then the yes is confirmed.
-    releaseNo();
-    await jest.advanceTimersByTimeAsync(0);
-    releaseYes();
-    await agree;
-    await jest.advanceTimersByTimeAsync(0);
+      // The withdrawal hangs and times out; a yes then starts and is held by the server.
+      const withdraw = setAiConsent(false, at('2026-11-06T10:00:00Z'));
+      await jest.advanceTimersByTimeAsync(AI_CONSENT_WRITE_TIMEOUT_MS);
+      await withdraw;
+      const agree = setAiConsent(true, at('2026-11-06T10:01:00Z'));
+      await jest.advanceTimersByTimeAsync(0);
+      const [no, yes] = server.take();
+      expect([no?.granted, yes?.granted]).toEqual([false, true]);
+      if (!no || !yes) return;
 
-    expect(sentAnswers().at(-1)).toBe(true);
-    expect(useSessionStore.getState().aiConsent).toBe(true);
-  });
+      // The server applies both in the order under test. The stuck withdrawal answers while the
+      // yes is still on its way, then the yes is confirmed.
+      if (withdrawalLast) {
+        yes.apply();
+        no.apply();
+      } else {
+        no.apply();
+        yes.apply();
+      }
+      no.respond();
+      await jest.advanceTimersByTimeAsync(0);
+      yes.respond();
+      await agree;
+      await server.settleRest();
+
+      expect(useSessionStore.getState().aiConsent).toBe(true);
+      expect(server.account()?.granted).toBe(useSessionStore.getState().aiConsent);
+      // The yes is only sent again when the account lost it.
+      expect(sentAnswers()).toEqual(withdrawalLast ? [false, true, true] : [false, true]);
+    },
+  );
 
   it('keeps the account and device in step when a stuck yes lands after a withdrawal', async () => {
     signIn('user-t4', false);

@@ -83,6 +83,13 @@ let outstandingLateWrites = 0;
 let lateWriteGeneration = 0;
 
 /**
+ * How many timed-out writes have settled while their account was signed in. An agreement notes
+ * this before it is sent; if it changed by the time the server confirms, a stale write may have
+ * landed after the agreement, so the account is checked once the agreement is confirmed.
+ */
+let lateSettles = 0;
+
+/**
  * The answer this device currently follows for one account: a withdrawal as soon as it is made,
  * an agreement once the server has confirmed it, or the account's record when it was adopted from
  * there. A late write that settles after it is answered by sending this again. `seq` is the
@@ -155,11 +162,13 @@ function writeServerRecordWithTimeout(userId: string, record: AiConsentRecord): 
  * may have overwritten a newer answer: a failed request can still have been applied when only the
  * response was lost. While that account is still signed in, the answer this device follows is
  * sent again; with none known (after a restart, say) the usual reconcile runs, which resends an
- * unsent withdrawal or adopts the account record. When a newer answer is already on its way,
- * nothing is resent: that answer's own write settles the account.
+ * unsent withdrawal or adopts the account record. When a newer agreement is still on its way, the
+ * check is deferred to it: the stale write may be applied before or after that agreement, so
+ * `setAiConsent` checks the account once the agreement is confirmed (see `lateSettles`).
  */
 function afterLateWrite(userId: string): void {
   if (useSessionStore.getState().userId !== userId) return;
+  lateSettles += 1;
   const latest = latestDecision;
   if (latest?.userId !== userId) {
     void reconcileAiConsent();
@@ -274,12 +283,17 @@ export async function setAiConsent(granted: boolean, now: Date = new Date()): Pr
   const latest = () => decisionCount === decision && useSessionStore.getState().userId === userId;
 
   if (granted) {
+    const settlesBefore = lateSettles;
     if (!(await sendRecord(userId, record))) throw new Error('The account changed before saving');
     // A newer answer given meanwhile owns the device state, including its unsent withdrawal.
     if (!latest()) return;
-    latestDecision = { userId, record, seq: decision };
+    const confirmed: LatestDecision = { userId, record, seq: decision };
+    latestDecision = confirmed;
     rememberUnsent(userId, null);
     useSessionStore.getState().setAiConsent(true);
+    // A stale write settled while this agreement was on its way and may have reached the server
+    // after it. The account is read first, so nothing is sent when it already holds this answer.
+    if (lateSettles !== settlesBefore) void resendDecision(confirmed);
     return;
   }
 
