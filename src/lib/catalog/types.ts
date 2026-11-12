@@ -144,14 +144,21 @@ export interface RecipeSummary {
   familyId: string;
 }
 
-/** A summary plus the matched ingredient ids, for pantry matching and diversity in ranking. */
+/**
+ * A summary plus the matched ingredient ids, for pantry matching and diversity in ranking.
+ *
+ * Both id lists come out in recipe (line position) order, but only because SQLite walks a recipe's
+ * lines through the `(recipe_id, position)` primary key while aggregating: `json_group_array` has no
+ * ORDER BY of its own. Callers should treat the order as a convenience, not a contract; nothing in
+ * ranking or pantry matching depends on it.
+ */
 export interface RecipeCandidate extends RecipeSummary {
-  /** Every matched ingredient id, once each, in recipe order (staples and optional lines included). */
+  /** Every matched ingredient id, once each (staples and optional lines included). */
   ingredientIds: readonly string[];
   /**
    * The ingredients that define the dish: matched, required (not optional) and not a pantry staple
-   * such as salt or oil. Once each, in recipe order. Pantry matching, taste learning and dish
-   * similarity count these, so a jar of salt never makes a recipe look "almost ready".
+   * such as salt or oil, once each. Pantry matching, taste learning and dish similarity count these,
+   * so a jar of salt never makes a recipe look "almost ready".
    */
   coreIngredientIds: readonly string[];
 }

@@ -147,7 +147,7 @@ describeCatalogDb('core ingredients against the catalog', () => {
       prefs: { ...DEFAULT_PREFERENCES, allergens: [], diets: [] },
       now: Date.UTC(2026, 10, 12),
     });
-    expect(ranked.length).toBeGreaterThan(0);
+    expect(ranked).not.toHaveLength(0);
     const summary = await getRecipeSummary(candidates[0]!.id);
     expect(toDomainRecipe(summary!).id).toBe(candidates[0]!.id);
   });

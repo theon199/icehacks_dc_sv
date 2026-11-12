@@ -122,51 +122,57 @@ describeCatalogDb('recipe detail', () => {
 describeCatalogDb('listCandidates', () => {
   it('requires every diet bit in the mask', async () => {
     const mask = dietMask(['vegetarian', 'dairy_free']);
-    const candidates = await listCandidates({ dietMask: mask, limit: 500 });
-    expect(candidates.length).toBeGreaterThan(0);
-    for (const c of candidates) expect(satisfiesDiets(c.dietFlags, mask)).toBe(true);
     expect(mask).toBe(DietFlag.vegetarian | DietFlag.dairy_free);
+    const found = await listCandidates({ dietMask: mask, limit: 500 });
+    expect(found).not.toHaveLength(0);
+    const misfits = found.filter((recipe) => !satisfiesDiets(recipe.dietFlags, mask));
+    expect(misfits).toEqual([]);
   });
 
   it('keeps only recipes that are explicitly free of avoided allergens', async () => {
-    const candidates = await listCandidates({ avoidAllergens: ['milk', 'egg'], limit: 2000 });
-    expect(candidates.length).toBeGreaterThan(0);
-    for (const c of candidates) {
-      expect(c.allergens.milk).toBe('free');
-      expect(c.allergens.egg).toBe('free');
-    }
-    const ids = new Set(candidates.map((c) => c.id));
-    // Unknown egg status: excluded even though it does not "contain" egg.
-    expect(ids.has('mealdb:52765')).toBe(false);
+    const found = await listCandidates({ avoidAllergens: ['milk', 'egg'], limit: 2000 });
+    expect(found).not.toHaveLength(0);
+    const statuses = new Set(
+      found.flatMap((recipe) => [recipe.allergens.milk, recipe.allergens.egg]),
+    );
+    expect([...statuses]).toEqual(['free']);
+    // This recipe has no egg line but its egg status is unknown, so fail-closed leaves it out.
+    expect(found.some((recipe) => recipe.id === 'mealdb:52765')).toBe(false);
   });
 
   it('filters by cuisine, course, time and gentle, and orders by health score', async () => {
-    const candidates = await listCandidates({
+    const found = await listCandidates({
       cuisines: ['italian', 'greek'],
       course: ['main', 'soup'],
       maxMinutes: 60,
       limit: 100,
     });
-    expect(candidates.length).toBeGreaterThan(0);
-    for (const c of candidates) {
-      expect(['italian', 'greek']).toContain(c.cuisine);
-      expect(['main', 'soup']).toContain(c.course);
-      expect(c.totalMinutes).not.toBeNull();
-      expect(c.totalMinutes ?? Infinity).toBeLessThanOrEqual(60);
-    }
-    const scores = candidates.map((c) => c.healthScore);
-    expect(scores).toEqual([...scores].sort((a, b) => b - a));
+    expect(found).not.toHaveLength(0);
+    expect(
+      found.every((recipe) => recipe.cuisine === 'italian' || recipe.cuisine === 'greek'),
+    ).toBe(true);
+    expect(found.every((recipe) => recipe.course === 'main' || recipe.course === 'soup')).toBe(
+      true,
+    );
+    // An unknown total time never passes a time limit.
+    expect(found.every((recipe) => recipe.totalMinutes !== null && recipe.totalMinutes <= 60)).toBe(
+      true,
+    );
+    const scores = found.map((recipe) => recipe.healthScore);
+    const climbs = scores.filter((score, i) => i > 0 && score > (scores[i - 1] ?? Infinity));
+    expect(climbs).toEqual([]);
 
     const gentle = await listCandidates({ gentle: true, limit: 50 });
-    for (const c of gentle) expect(c.gentle).toBe(true);
+    expect(gentle.filter((recipe) => !recipe.gentle)).toEqual([]);
   });
 
   it('includes matched ingredient ids and honours limit and exclusions', async () => {
-    const [first] = await listCandidates({ limit: 1 });
-    expect(first?.ingredientIds.length).toBeGreaterThan(0);
-    const next = await listCandidates({ limit: 5, excludeIds: [first?.id ?? ''] });
-    expect(next).toHaveLength(5);
-    expect(next.map((c) => c.id)).not.toContain(first?.id);
+    const [top] = await listCandidates({ limit: 1 });
+    expect(top).toBeDefined();
+    expect(top?.ingredientIds).not.toHaveLength(0);
+    const rest = await listCandidates({ limit: 5, excludeIds: [top?.id ?? ''] });
+    expect(rest).toHaveLength(5);
+    expect(rest.some((recipe) => recipe.id === top?.id)).toBe(false);
   });
 });
 
@@ -218,7 +224,7 @@ describeCatalogDb('getPantryStaples', () => {
     const ids = staples.map((s) => s.id);
     expect(ids).toEqual(expect.arrayContaining(['salt', 'olive_oil']));
     expect(ids).not.toContain('chickpea');
-    expect(new Set(ids).size).toBe(ids.length);
+    expect([...new Set(ids)]).toEqual(ids);
     const categories = staples.map((s) => s.category);
     expect(categories).toEqual([...categories].sort());
   });

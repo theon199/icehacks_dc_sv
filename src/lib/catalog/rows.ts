@@ -307,7 +307,7 @@ export function toCatalogMeta(rows: readonly z.infer<typeof metaRowSchema>[]): C
   const values = new Map(rows.map((row) => [row.key, row.value]));
   const int = (key: string) => {
     const parsed = Number.parseInt(values.get(key) ?? '', 10);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isNaN(parsed) ? 0 : parsed;
   };
   return {
     schemaVersion: int('schema_version'),

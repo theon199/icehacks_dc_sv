@@ -198,6 +198,8 @@ export async function getRecipeSummary(id: string): Promise<RecipeSummary | null
 const CORE_INGREDIENT_WHERE = `ri.ingredient_id IS NOT NULL AND ri.optional = 0
         AND ri.ingredient_id NOT IN (SELECT id FROM ingredients WHERE pantry_staple = 1)`;
 
+// The id lists follow line position only because each subquery walks the (recipe_id, position)
+// primary key; see `RecipeCandidate` for why no caller relies on that order.
 const CANDIDATES_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS},
     (SELECT json_group_array(ri.ingredient_id) FROM recipe_ingredients ri
       WHERE ri.recipe_id = r.id AND ri.ingredient_id IS NOT NULL) AS ingredient_ids,
