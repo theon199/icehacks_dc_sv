@@ -50,6 +50,32 @@ describe('availableActions', () => {
     expect(actions({ kind: 'recipe', hasOwner: false })).toEqual(['remove', 'dismiss']);
   });
 
+  it('offers every content action when the status could not be read', () => {
+    expect(actions({ snapshot: { status: 'visible' }, statusKnown: false })).toEqual([
+      'hide',
+      'remove',
+      'restore',
+      'warn',
+      'suspend',
+      'dismiss',
+    ]);
+  });
+
+  it('offers both suspend and lift when the owner suspension is unknown', () => {
+    expect(actions({ kind: 'user', snapshot: null, suspensionKnown: false })).toEqual([
+      'warn',
+      'unsuspend',
+      'suspend',
+      'dismiss',
+    ]);
+  });
+
+  it('lifts a suspension of the author of a post', () => {
+    expect(
+      actions({ snapshot: { status: 'visible', suspended_until: '2027-01-01T00:00:00Z' } }),
+    ).toEqual(['hide', 'remove', 'warn', 'unsuspend', 'dismiss']);
+  });
+
   it('marks suspensions as needing a length', () => {
     const suspend = availableActions({ kind: 'user', hasOwner: true, snapshot: {} }).find(
       (option) => option.action === 'suspend',

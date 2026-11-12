@@ -22,6 +22,7 @@ import {
 } from './api';
 import { useBlockedDirectory, type BlockedPerson } from './blockedDirectory';
 import { targetKey, type TargetRef } from './model';
+import { fetchReviewTarget, fetchTargetReports } from './reviewTarget';
 
 type ReportStatus = Enums<'report_status'>;
 
@@ -34,6 +35,8 @@ export const moderationKeys = {
   appeals: ['moderation', 'appeals'] as const,
   audit: (target: TargetRef | null) =>
     ['moderation', 'audit', target ? targetKey(target) : 'all'] as const,
+  target: (target: TargetRef) => ['moderation', 'target', targetKey(target)] as const,
+  targetReports: (target: TargetRef) => ['moderation', 'reports', targetKey(target)] as const,
 };
 
 function useReadyUserId(): string | null {
@@ -49,6 +52,9 @@ export interface ModeratorStatus {
   isModerator: boolean;
   /** True until the roles are known; gate content on this to avoid flashing a "no access" screen. */
   isLoading: boolean;
+  /** Set when the roles could not be read; the member is treated as not a moderator. */
+  error: Error | null;
+  retry: () => void;
 }
 
 /**
@@ -57,13 +63,18 @@ export interface ModeratorStatus {
  */
 export function useIsModerator(): ModeratorStatus {
   const userId = useReadyUserId();
-  const { data, isPending } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: moderationKeys.roles(userId),
     queryFn: fetchMyRoles,
     enabled: userId != null,
     staleTime: 5 * 60_000,
   });
-  return { isModerator: hasModeratorRole(data), isLoading: userId != null && isPending };
+  return {
+    isModerator: hasModeratorRole(data),
+    isLoading: userId != null && isPending && error == null,
+    error,
+    retry: () => void refetch(),
+  };
 }
 
 // Members -------------------------------------------------------------------------------------
@@ -169,6 +180,26 @@ export function useAuditLog(target: TargetRef | null, enabled: boolean) {
     queryFn: ({ pageParam }) => fetchAuditPage(pageParam, target ?? undefined),
     initialPageParam: null as AuditPage['next'],
     getNextPageParam: (last) => last.next,
+    enabled,
+  });
+}
+
+/** The target as it is now (status, owner, photos), independent of the open queue. */
+export function useReviewTarget(target: TargetRef, enabled: boolean) {
+  return useQuery({
+    queryKey: moderationKeys.target(target),
+    queryFn: () => fetchReviewTarget(target),
+    enabled,
+    // Photo links are signed for an hour; refetching well before that keeps them valid.
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+  });
+}
+
+export function useTargetReports(target: TargetRef, enabled: boolean) {
+  return useQuery({
+    queryKey: moderationKeys.targetReports(target),
+    queryFn: () => fetchTargetReports(target),
     enabled,
   });
 }

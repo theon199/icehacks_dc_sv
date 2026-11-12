@@ -15,3 +15,8 @@ export function reportHref(target: TargetRef, label?: string): Href {
 
 export const blockedPeopleHref: Href = '/moderation/blocked';
 export const reviewQueueHref: Href = '/moderation';
+
+/** The moderator review of one target: what it is now, its reports, history and the decision. */
+export function reviewHref(target: TargetRef): Href {
+  return { pathname: '/moderation/review', params: { kind: target.kind, id: target.id } };
+}

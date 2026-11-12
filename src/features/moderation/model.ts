@@ -177,8 +177,11 @@ const RECIPE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 export function parseTargetRef(kind: string | undefined, id: string | undefined): TargetRef | null {
   const parsedKind = TargetKindSchema.safeParse(kind);
   if (!parsedKind.success || !id) return null;
-  const valid = parsedKind.data === 'recipe' ? RECIPE_ID.test(id) : UUID.test(id);
-  return valid ? { kind: parsedKind.data, id } : null;
+  if (parsedKind.data === 'recipe') {
+    return RECIPE_ID.test(id) ? { kind: 'recipe', id } : null;
+  }
+  // The database stores uuid targets in canonical lower-case text.
+  return UUID.test(id) ? { kind: parsedKind.data, id: id.toLowerCase() } : null;
 }
 
 export function targetKey(target: TargetRef): string {

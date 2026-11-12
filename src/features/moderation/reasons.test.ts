@@ -53,6 +53,10 @@ describe('parseTargetRef', () => {
     });
   });
 
+  it('stores uuids in the canonical lower-case form the database uses', () => {
+    expect(parseTargetRef('comment', uuid.toUpperCase())).toEqual({ kind: 'comment', id: uuid });
+  });
+
   it('rejects unknown kinds and malformed ids', () => {
     expect(parseTargetRef('playlist', uuid)).toBeNull();
     expect(parseTargetRef('user', 'not-a-uuid')).toBeNull();

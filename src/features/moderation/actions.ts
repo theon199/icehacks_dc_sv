@@ -23,13 +23,30 @@ export interface ActionContext {
   kind: ReportTarget;
   hasOwner: boolean;
   snapshot: TargetSnapshot;
+  /**
+   * False when the content status could not be read. Hide, remove and restore are then all
+   * offered and the server refuses the ones that do not apply.
+   */
+  statusKnown?: boolean;
+  /**
+   * Whether `snapshot.suspended_until` reflects the owner's suspension. When false both Suspend
+   * and Lift suspension are offered.
+   */
+  suspensionKnown?: boolean;
 }
 
-export function availableActions({ kind, hasOwner, snapshot }: ActionContext): ActionOption[] {
+export function availableActions({
+  kind,
+  hasOwner,
+  snapshot,
+  statusKnown = true,
+  suspensionKnown = true,
+}: ActionContext): ActionOption[] {
   const options: ActionOption[] = [];
-  const status = snapshot?.status;
+  const status = statusKnown ? snapshot?.status : undefined;
+  const offerAll = !statusKnown;
   if (kind === 'post' || kind === 'comment') {
-    if (status !== 'hidden' && status !== 'removed') {
+    if (offerAll || (status !== 'hidden' && status !== 'removed')) {
       options.push({
         action: 'hide',
         label: 'Hide',
@@ -38,7 +55,7 @@ export function availableActions({ kind, hasOwner, snapshot }: ActionContext): A
         needsDays: false,
       });
     }
-    if (status !== 'removed') {
+    if (offerAll || status !== 'removed') {
       options.push({
         action: 'remove',
         label: 'Remove',
@@ -47,7 +64,7 @@ export function availableActions({ kind, hasOwner, snapshot }: ActionContext): A
         needsDays: false,
       });
     }
-    if (status === 'hidden' || status === 'removed') {
+    if (offerAll || status === 'hidden' || status === 'removed') {
       options.push({
         action: 'restore',
         label: 'Restore',
@@ -74,8 +91,8 @@ export function availableActions({ kind, hasOwner, snapshot }: ActionContext): A
       destructive: false,
       needsDays: false,
     });
-    const suspended = kind === 'user' && Boolean(snapshot?.suspended_until);
-    if (suspended) {
+    const suspended = suspensionKnown && Boolean(snapshot?.suspended_until);
+    if (!suspensionKnown || suspended) {
       options.push({
         action: 'unsuspend',
         label: 'Lift suspension',
@@ -83,7 +100,8 @@ export function availableActions({ kind, hasOwner, snapshot }: ActionContext): A
         destructive: false,
         needsDays: false,
       });
-    } else {
+    }
+    if (!suspensionKnown || !suspended) {
       options.push({
         action: 'suspend',
         label: 'Suspend',

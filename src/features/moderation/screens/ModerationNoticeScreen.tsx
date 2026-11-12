@@ -40,8 +40,8 @@ function AppealForm({ decision }: { decision: Decision }) {
       <View style={styles.section}>
         <Text variant="title3">Ask for another look</Text>
         <Text variant="callout" tone="muted">
-          If you think this was a mistake, tell us why. A different moderator reviews appeals, and
-          you can appeal each decision once within 30 days.
+          If you think this was a mistake, tell us why. A moderator looks at the decision again and
+          replies here. You can appeal each decision once within 30 days.
         </Text>
         <TextField
           label="Your appeal"

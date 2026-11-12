@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 
 import { useSessionStore } from '@/features/auth';
@@ -63,10 +63,15 @@ describe('ModeratorGate', () => {
     expect(screen.queryByText('Review tools')).toBeNull();
   });
 
-  it('fails closed when the roles cannot be read', async () => {
-    mockSelect.mockResolvedValue({ data: null, error: { code: 'PT401', message: 'nope' } });
+  it('fails closed with a retry when the roles cannot be read', async () => {
+    mockSelect.mockResolvedValueOnce({ data: null, error: { code: '', message: 'offline' } });
     await renderGate(<ModeratorGate>{tools}</ModeratorGate>);
-    await waitFor(() => expect(screen.getByTestId('moderator-gate-denied')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('moderator-gate-error')).toBeTruthy());
     expect(screen.queryByText('Review tools')).toBeNull();
+    expect(screen.queryByTestId('moderator-gate-denied')).toBeNull();
+
+    mockSelect.mockResolvedValueOnce({ data: [{ role: 'admin' }], error: null });
+    await fireEvent.press(screen.getByText('Try again'));
+    expect(await screen.findByText('Review tools')).toBeTruthy();
   });
 });

@@ -18,7 +18,8 @@ import { AppealReviewCard } from '../components/AppealReviewCard';
 import { AuditRow } from '../components/AuditRow';
 import { ModeratorGate } from '../components/ModeratorGate';
 import { QueueItemCard } from '../components/QueueItemCard';
-import type { QueueItem } from '../model';
+import { reviewHref } from '../links';
+import type { AuditEntry, QueueItem } from '../model';
 import { useAppealQueue, useAuditLog, useQueue } from '../queries';
 
 type Tab = 'reports' | 'appeals' | 'history';
@@ -46,11 +47,7 @@ function ReportsTab() {
   const items = useMemo(() => queue.data?.pages.flatMap((p) => p.items) ?? [], [queue.data]);
   const now = queue.dataUpdatedAt;
   const open = useCallback(
-    (item: QueueItem) =>
-      router.push({
-        pathname: '/moderation/review',
-        params: { kind: item.target_kind, id: item.target_id },
-      }),
+    (item: QueueItem) => router.push(reviewHref({ kind: item.target_kind, id: item.target_id })),
     [router],
   );
 
@@ -113,16 +110,22 @@ function AppealsTab() {
 
 function HistoryTab() {
   const theme = useTheme();
+  const router = useRouter();
   const audit = useAuditLog(null, true);
   const entries = useMemo(() => audit.data?.pages.flatMap((p) => p.items) ?? [], [audit.data]);
   const now = audit.dataUpdatedAt;
+  const open = useCallback(
+    (entry: AuditEntry) =>
+      router.push(reviewHref({ kind: entry.target_kind, id: entry.target_id })),
+    [router],
+  );
   if (audit.isPending) return <Loading />;
   if (audit.isError) return <ErrorState error={audit.error} onRetry={() => void audit.refetch()} />;
   return (
     <FlashList
       data={entries}
       keyExtractor={(entry) => entry.id}
-      renderItem={({ item }) => <AuditRow entry={item} now={now} />}
+      renderItem={({ item }) => <AuditRow entry={item} now={now} onOpen={open} />}
       contentContainerStyle={styles.padded}
       ListEmptyComponent={<EmptyState icon="clock" title="No decisions yet" />}
       onEndReached={() => {
