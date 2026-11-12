@@ -1,4 +1,4 @@
-import { SearchScreen } from '@/features/search/screens/SearchScreen';
+import { SearchScreen } from '@/features/search';
 
 export default function AppTabsSearchRoute() {
   return <SearchScreen />;
