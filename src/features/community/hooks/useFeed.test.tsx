@@ -35,7 +35,9 @@ describe('useFeed', () => {
     });
 
     expect(feedMock).toHaveBeenLastCalledWith({ mode: 'popular', cursor: '2' });
-    expect(result.current.posts.map((post) => post.id)).toEqual([a.id, b.id, c.id]);
+    await waitFor(() =>
+      expect(result.current.posts.map((post) => post.id)).toEqual([a.id, b.id, c.id]),
+    );
     expect(result.current.hasNextPage).toBe(false);
   });
 });
