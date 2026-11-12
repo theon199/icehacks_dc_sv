@@ -51,9 +51,9 @@ describe('check-off persistence', () => {
 
   it('ticks follow the item when the list is rebuilt with a different pantry', () => {
     const meals = [
-      { date: '2026-11-12', meal: 'dinner', recipeId: 'test:curry', servings: 2 },
+      { date: '2026-11-12', meal: 'dinner', recipeId: 'test:curry', servings: 2, portion: 1 },
     ] as const;
-    const base = { meals, recipes: RECIPES, ingredients: INGREDIENTS, portion: 1 };
+    const base = { meals, recipes: RECIPES, ingredients: INGREDIENTS };
     const before = buildPlannedList({ ...base, pantry: [] });
     const rice = before.items.find((item) => item.ingredientId === 'rice');
     useShoppingStore.getState().toggle(rice?.key ?? '', at);

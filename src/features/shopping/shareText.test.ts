@@ -9,13 +9,12 @@ import { shoppingShareText, toCheckState } from './shareText';
 const at = '2026-11-11T10:00:00.000Z';
 const list = buildPlannedList({
   meals: [
-    { date: '2026-11-12', meal: 'dinner', recipeId: 'test:curry', servings: 2 },
-    { date: '2026-11-13', meal: 'dinner', recipeId: 'test:fried-rice', servings: 4 },
+    { date: '2026-11-12', meal: 'dinner', recipeId: 'test:curry', servings: 2, portion: 1 },
+    { date: '2026-11-13', meal: 'dinner', recipeId: 'test:fried-rice', servings: 4, portion: 1 },
   ],
   recipes: RECIPES,
   ingredients: INGREDIENTS,
   pantry: [pantryItem('p', 'egg', 12)],
-  portion: 1,
 });
 const extras = [
   { id: 'a', name: 'Dish soap', addedAt: at },
