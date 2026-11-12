@@ -154,6 +154,7 @@ export type Database = {
           author_id: string;
           body: string;
           created_at: string;
+          deleted_at: string | null;
           id: string;
           parent_comment_id: string | null;
           post_id: string;
@@ -165,6 +166,7 @@ export type Database = {
           author_id: string;
           body: string;
           created_at?: string;
+          deleted_at?: string | null;
           id?: string;
           parent_comment_id?: string | null;
           post_id: string;
@@ -175,6 +177,7 @@ export type Database = {
           author_id?: string;
           body?: string;
           created_at?: string;
+          deleted_at?: string | null;
           id?: string;
           parent_comment_id?: string | null;
           post_id?: string;
@@ -1028,6 +1031,7 @@ export type Database = {
           author_id: string;
           body: string;
           created_at: string;
+          deleted_at: string | null;
           id: string;
           parent_comment_id: string | null;
           post_id: string;
@@ -1193,6 +1197,7 @@ export type Database = {
           author_id: string;
           body: string;
           created_at: string;
+          deleted_at: string | null;
           id: string;
           parent_comment_id: string | null;
           post_id: string;
@@ -1243,6 +1248,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      delete_comment: { Args: { p_comment_id: string }; Returns: Json };
       delete_my_account: { Args: Record<PropertyKey, never>; Returns: Json };
       dish_confirmation_summary: {
         Args: {
@@ -1721,6 +1727,12 @@ export interface DishConfirmationTally {
   yes_count: number;
   no_count: number;
   my_answer: boolean;
+}
+
+/** `delete_comment` result. `kept_for_replies`: the comment was blanked to keep its replies. */
+export interface CommentDeletion {
+  deleted: true;
+  kept_for_replies: boolean;
 }
 
 /** `delete_my_account` result. */

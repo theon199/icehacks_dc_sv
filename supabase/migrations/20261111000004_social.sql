@@ -57,11 +57,19 @@ create table public.comments (
   id uuid default gen_random_uuid() primary key,
   post_id uuid not null references public.posts (id) on delete cascade,
   author_id uuid not null references public.profiles (id) on delete cascade,
-  parent_comment_id uuid references public.comments (id) on delete cascade,
-  body text not null constraint comments_body_length check (char_length(btrim(body)) between 1 and 1000),
+  -- A reply outlives its parent: deleting your own comment that has replies only blanks it (see
+  -- delete_comment), and if the parent row does go (its author's account is deleted) the
+  -- replies stay on the post as top-level comments.
+  parent_comment_id uuid references public.comments (id) on delete set null,
+  body text not null,
   status public.content_status not null default 'visible',
+  -- Set when the author deleted a comment that still has replies; body is then empty.
+  deleted_at timestamptz,
   created_at timestamptz default now() not null,
-  updated_at timestamptz default now() not null
+  updated_at timestamptz default now() not null,
+  constraint comments_body_length check (
+    (deleted_at is not null and body = '') or char_length(btrim(body)) between 1 and 1000
+  )
 );
 create index comments_post_created_idx on public.comments (post_id, created_at, id);
 create index comments_author_created_idx on public.comments (author_id, created_at desc);
@@ -135,12 +143,13 @@ create table private.review_terms (
   created_at timestamptz default now() not null
 );
 
+-- updated_at means "edited": counter, status and moderation updates leave it alone.
 create trigger posts_touch_updated_at
-  before update on public.posts
+  before update of kind, recipe_ref, title, body, rating, visibility, parent_post_id on public.posts
   for each row execute function private.touch_updated_at();
 
 create trigger comments_touch_updated_at
-  before update on public.comments
+  before update of body on public.comments
   for each row execute function private.touch_updated_at();
 
 -- ---------------------------------------------------------------------------------------------
@@ -322,17 +331,18 @@ declare
   v_parent_author uuid;
   v_delta integer := 0;
 begin
+  -- comment_count counts comments that are visible and not deleted by their author.
   if tg_op = 'INSERT' then
-    if new.status = 'visible' then
+    if new.status = 'visible' and new.deleted_at is null then
       v_delta := 1;
     end if;
   elsif tg_op = 'DELETE' then
-    if old.status = 'visible' then
+    if old.status = 'visible' and old.deleted_at is null then
       v_delta := -1;
     end if;
-  elsif old.status is distinct from new.status then
-    v_delta := (case when new.status = 'visible' then 1 else 0 end)
-             - (case when old.status = 'visible' then 1 else 0 end);
+  else
+    v_delta := (case when new.status = 'visible' and new.deleted_at is null then 1 else 0 end)
+             - (case when old.status = 'visible' and old.deleted_at is null then 1 else 0 end);
   end if;
 
   if v_delta <> 0 then
@@ -366,7 +376,7 @@ create trigger comments_after_delete
   after delete on public.comments
   for each row execute function private.comments_after_change();
 create trigger comments_after_status_update
-  after update of status on public.comments
+  after update of status, deleted_at on public.comments
   for each row execute function private.comments_after_change();
 
 create function private.follows_after_insert()
@@ -473,6 +483,7 @@ select
   a.avatar_path as author_avatar_path,
   c.body,
   c.status,
+  c.deleted_at,
   c.created_at
 from public.comments c
 join public.profiles a on a.id = c.author_id;
@@ -556,7 +567,9 @@ begin
 
   -- Each mode is its own statement so every one gets a plan that walks a matching index in
   -- order and stops after v_limit + 1 rows. Row-level security on posts still applies (this
-  -- function runs as the caller); the explicit status and block filters keep the plans sargable.
+  -- function runs as the caller), but every statement also states the status, block and
+  -- visibility rules itself: RLS lets moderators read everything, and a moderator's own feed
+  -- must still look like any member's.
   if p_mode = 'new' then
     select array_agg(t.id order by t.created_at desc, t.id desc),
            array_agg(t.created_at order by t.created_at desc, t.id desc)
@@ -567,6 +580,7 @@ begin
       where p.status = 'visible'
         and (p.created_at, p.id) < (v_before_ts, v_before_id)
         and not private.is_blocked_pair(v_uid, p.author_id)
+        and (p.visibility = 'public' or p.author_id = v_uid or private.is_following(v_uid, p.author_id))
       order by p.created_at desc, p.id desc
       limit v_limit + 1
     ) t;
@@ -616,6 +630,7 @@ begin
         and p.status = 'visible'
         and (p.created_at, p.id) < (v_before_ts, v_before_id)
         and not private.is_blocked_pair(v_uid, p.author_id)
+        and (p.visibility = 'public' or private.is_following(v_uid, p.author_id))
       order by p.created_at desc, p.id desc
       limit v_limit + 1
     ) t;
@@ -632,6 +647,7 @@ begin
         and (s.created_at, s.post_id) < (v_before_ts, v_before_id)
         and p.status = 'visible'
         and not private.is_blocked_pair(v_uid, p.author_id)
+        and (p.visibility = 'public' or p.author_id = v_uid or private.is_following(v_uid, p.author_id))
       order by s.created_at desc, s.post_id desc
       limit v_limit + 1
     ) t;
@@ -649,6 +665,7 @@ begin
       where p.status = 'visible'
         and p.created_at > now() - interval '14 days'
         and not private.is_blocked_pair(v_uid, p.author_id)
+        and (p.visibility = 'public' or p.author_id = v_uid or private.is_following(v_uid, p.author_id))
       order by score desc, p.id
       offset v_offset
       limit v_limit + 1
@@ -868,6 +885,7 @@ begin
   if p_parent_comment_id is not null then
     select * into v_parent from public.comments c where c.id = p_parent_comment_id;
     if not found or v_parent.post_id <> p_post_id or v_parent.status <> 'visible'
+       or v_parent.deleted_at is not null
        or private.is_blocked_pair(v_uid, v_parent.author_id) then
       raise exception 'comment_not_found' using errcode = 'PT404', detail = 'That comment is not available.';
     end if;
@@ -891,6 +909,51 @@ begin
   end if;
 
   return v_comment;
+end;
+$$;
+
+-- Deletes one of the caller's comments. A comment that has replies is blanked instead (body
+-- emptied, deleted_at set) so other members' replies keep their place in the thread; it is
+-- removed for good once its last reply goes. Notifications about the comment are withdrawn.
+-- Returns { "deleted": true, "kept_for_replies": boolean }.
+create function public.delete_comment(p_comment_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := private.require_uid();
+  v_comment public.comments%rowtype;
+  v_keep boolean;
+begin
+  select * into v_comment
+  from public.comments c
+  where c.id = p_comment_id and c.author_id = v_uid and c.deleted_at is null
+  for update;
+  if not found then
+    raise exception 'comment_not_found' using errcode = 'PT404', detail = 'That comment is not available.';
+  end if;
+
+  delete from public.notifications n where n.comment_id = v_comment.id;
+
+  v_keep := exists (select 1 from public.comments r where r.parent_comment_id = v_comment.id);
+  if v_keep then
+    update public.comments
+    set body = '', deleted_at = now()
+    where id = v_comment.id;
+  else
+    delete from public.comments where id = v_comment.id;
+    -- The last reply under a blanked parent takes the parent with it.
+    if v_comment.parent_comment_id is not null then
+      delete from public.comments p
+      where p.id = v_comment.parent_comment_id
+        and p.deleted_at is not null
+        and not exists (select 1 from public.comments r where r.parent_comment_id = p.id);
+    end if;
+  end if;
+
+  return jsonb_build_object('deleted', true, 'kept_for_replies', v_keep);
 end;
 $$;
 
@@ -1113,11 +1176,6 @@ create policy comments_select_visible
     )
   );
 
-create policy comments_delete_own
-  on public.comments
-  for delete to authenticated
-  using (author_id = (select auth.uid()));
-
 create policy post_likes_select_own
   on public.post_likes
   for select to authenticated
@@ -1166,7 +1224,8 @@ create policy notifications_delete_own
 
 grant select, delete on public.posts to authenticated;
 grant select on public.post_media to authenticated;
-grant select, delete on public.comments to authenticated;
+-- Members delete comments through delete_comment(), which keeps other members' replies.
+grant select on public.comments to authenticated;
 grant select on public.post_likes, public.post_saves, public.follows to authenticated;
 grant select, delete on public.friend_invites to authenticated;
 grant select, delete on public.notifications to authenticated;
@@ -1198,6 +1257,7 @@ grant execute on function public.publish_post(public.post_kind, text, text, text
 grant execute on function public.toggle_like(uuid) to authenticated;
 grant execute on function public.toggle_save(uuid) to authenticated;
 grant execute on function public.add_comment(uuid, text, uuid) to authenticated;
+grant execute on function public.delete_comment(uuid) to authenticated;
 grant execute on function public.follow_user(uuid) to authenticated;
 grant execute on function public.unfollow_user(uuid) to authenticated;
 grant execute on function public.create_friend_invite() to authenticated;

@@ -57,8 +57,16 @@ insert into public.badges (id, name, description, metric, threshold, sort_order)
 -- ---------------------------------------------------------------------------------------------
 
 -- Current and longest streak of consecutive local days with at least one cook event.
--- The current streak counts only if it reaches p_today or the day before. With p_live_only, only
--- cooks logged within two days of happening count, so back-filled history cannot mint badges.
+-- The current streak counts only if it reaches p_today or the day before.
+--
+-- p_live_only is the stricter count used for badges. Only cooks logged within two days of
+-- happening count, and the days must have been logged over real time: local dates and cooked_at
+-- are both client-supplied (a local date may sit a day either side of cooked_at's UTC date), so
+-- on its own a run of dates proves nothing. Someone cooking on three consecutive local days, each
+-- logged on the day, logs the third day more than 24 hours after the first (the first day ended
+-- before the third began), so a day whose first log came less than 24 hours after the first log
+-- two days earlier breaks the streak. Three cooks logged in one sitting count as a two-day
+-- streak at most.
 create function private.streaks(p_user uuid, p_today date, p_live_only boolean default false)
 returns table (current_streak integer, longest_streak integer)
 language sql
@@ -66,15 +74,35 @@ stable
 set search_path = ''
 as $$
   with days as (
-    select distinct e.local_date as d
+    select e.local_date as d, min(e.created_at) as first_logged
     from public.cook_events e
     where e.user_id = p_user
       and (not p_live_only or e.created_at - e.cooked_at <= interval '2 days')
+    group by e.local_date
+  ),
+  marked as (
+    select
+      d,
+      case
+        when lag(d) over w = d - 1
+          and (
+            not p_live_only
+            or lag(d, 2) over w is distinct from d - 2
+            or first_logged - lag(first_logged, 2) over w > interval '24 hours'
+          )
+        then 0
+        else 1
+      end as starts_run
+    from days
+    window w as (order by d)
+  ),
+  runs as (
+    select d, sum(starts_run) over (order by d) as run_id from marked
   ),
   islands as (
     select max(d) as last_day, count(*)::integer as len
-    from (select d, d - (row_number() over (order by d))::integer as grp from days) g
-    group by grp
+    from runs
+    group by run_id
   )
   select
     coalesce(max(len) filter (where last_day >= p_today - 1), 0)::integer,

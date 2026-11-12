@@ -122,7 +122,10 @@ as a privacy setting. Blocking is the way to keep a specific person out.
   (`cook_count`, `streak_days`, `cuisine_count`, `post_count`) and `threshold`.
 - `badge_awards`: awarded by triggers on `cook_events` and `posts`; a `badge` notification is sent.
   Cook-based badges only count cooks logged within two days of `cooked_at`, so back-filled history
-  (allowed for up to 30 days, for offline devices) shows in stats but cannot mint badges.
+  (allowed for up to 30 days, for offline devices) shows in stats but cannot mint badges. Streak
+  badges also need the days to have been logged over real time: a day whose first log came less
+  than 24 hours after the first log two days earlier starts a new streak, so cooks logged in one
+  sitting never reach `streak_3` (stats still show the client's streak).
 
 ### Moderation
 
