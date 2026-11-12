@@ -1,6 +1,7 @@
 /**
  * Turns published instructions into clean cook-mode steps and detects timers.
  */
+import { parseNumber, replaceUnicodeFractions } from './measure.ts';
 
 const MAX_STEP_CHARS = 420;
 const MIN_STEP_CHARS = 12;
@@ -133,7 +134,7 @@ const WORD_NUMBERS: Record<string, number> = {
   'half a': 0.5,
 };
 
-const NUM = String.raw`(?:\d+(?:\.\d+)?(?:\s+\d\/\d)?|\d\/\d|½|¼|¾|a couple of|a few|half an|half a|forty-five|an|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|sixty)`;
+const NUM = String.raw`(?:\d+(?:\.\d+)?(?:\s+\d\/\d)?|\d\/\d|a couple of|a few|half an|half a|forty-five|an|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|sixty)`;
 const UNIT = String.raw`(hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b`;
 const DURATION = new RegExp(
   String.raw`(?:(\b(?:within|every|than|up to|for up to|last|first|over)\s+(?:the\s+)?(?:about\s+|another\s+)?)?)\b(${NUM})(?:\s*(?:-|–|to|or)\s*(${NUM}))?\s*-?\s*${UNIT}(?:\s*(?:and\s*)?(\d+)\s*(minutes?|mins?)\b)?`,
@@ -143,15 +144,7 @@ const DURATION = new RegExp(
 function toNumber(token: string): number | null {
   const t = token.toLowerCase().trim();
   if (t in WORD_NUMBERS) return WORD_NUMBERS[t] ?? null;
-  if (t === '½') return 0.5;
-  if (t === '¼') return 0.25;
-  if (t === '¾') return 0.75;
-  const mixed = /^(\d+)\s+(\d)\/(\d)$/.exec(t);
-  if (mixed) return Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
-  const frac = /^(\d)\/(\d)$/.exec(t);
-  if (frac) return Number(frac[1]) / Number(frac[2]);
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
+  return parseNumber(t);
 }
 
 function unitSeconds(unit: string): number | null {
@@ -175,7 +168,8 @@ const COMPOUND_NUMBER = /\b(twenty|thirty|forty|fifty)[- ](one|two|three|four|fi
  */
 export function detectTimerSeconds(step: string): number | null {
   let best: number | null = null;
-  const text = step.replace(COMPOUND_NUMBER, (_, tens: string, ones: string) => String((TENS[tens.toLowerCase()] ?? 0) + (WORD_NUMBERS[ones.toLowerCase()] ?? 0)));
+  // Unicode fractions become decimals first, so "1½ hours" and "1 ½ hours" both read as 1.5.
+  const text = replaceUnicodeFractions(step).replace(COMPOUND_NUMBER, (_, tens: string, ones: string) => String((TENS[tens.toLowerCase()] ?? 0) + (WORD_NUMBERS[ones.toLowerCase()] ?? 0)));
   for (const match of text.matchAll(DURATION)) {
     const [, excluded, lowText, , unitText, extraMinutes] = match;
     if (excluded) continue;

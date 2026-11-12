@@ -288,14 +288,21 @@ const SIZE_WORDS: Record<string, SizeWord> = {
   jumbo: 'large',
 };
 
+/**
+ * Rewrites unicode fractions as decimals, keeping a whole number written before them:
+ * "1½" and "1 ½" -> "1.5", "½" -> "0.5". Also turns the fraction slash into "/".
+ */
+export function replaceUnicodeFractions(input: string): string {
+  return input
+    .replace(/(\d+)?[ \u00a0]*([½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/g, (_, whole: string | undefined, frac: string) => {
+      const value = (whole ? Number(whole) : 0) + (UNICODE_FRACTIONS[frac] ?? 0);
+      return ` ${Number(value.toFixed(4))} `;
+    })
+    .replace(/⁄/g, '/');
+}
+
 function normaliseText(input: string): string {
-  let text = input.replace(/\u00a0/g, ' ');
-  // "1½" -> "1 1/2"; "½" -> "1/2" (written as decimals to keep later parsing simple)
-  text = text.replace(/(\d)?\s*([½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/g, (_, whole: string | undefined, frac: string) => {
-    const value = (whole ? Number(whole) : 0) + (UNICODE_FRACTIONS[frac] ?? 0);
-    return ` ${Number(value.toFixed(4))} `;
-  });
-  text = text.replace(/⁄/g, '/');
+  const text = replaceUnicodeFractions(input.replace(/\u00a0/g, ' '));
   return text.replace(/\s+/g, ' ').trim();
 }
 
@@ -367,8 +374,18 @@ export function parseMeasure(input: string): Measure {
   if (numberMatch?.[1]) {
     const low = parseNumber(numberMatch[1]);
     const high = numberMatch[2] ? parseNumber(numberMatch[2]) : null;
-    quantity = low !== null && high !== null && high > low ? (low + high) / 2 : low;
-    text = text.slice(numberMatch[0].length).trim();
+    const afterRange = text.slice(numberMatch[0].length);
+    if (high !== null && startsWithPackageSize(afterRange)) {
+      // "1 – 14-ounce can": the second number is the can size, not the top of a range.
+      quantity = low;
+      text = text
+        .slice(numberMatch[1].length)
+        .replace(/^\s*(?:-|–)\s*/, '')
+        .trim();
+    } else {
+      quantity = low !== null && high !== null && high > low ? (low + high) / 2 : low;
+      text = afterRange.trim();
+    }
   } else {
     const word = /^(a|an|one|two|three|four|five|six|seven|eight|nine|ten|twelve|half|quarter|dozen)\b\s*(?:of\s+)?/i.exec(text);
     if (word?.[1]) {
@@ -384,28 +401,23 @@ export function parseMeasure(input: string): Measure {
   if (times) text = text.slice(times[0].length).trim();
 
   // Package size in parentheses or inline: "(14.5 ounce) can", "400g can", "400g/14oz tin".
-  let packageGrams: number | null = null;
   const pkg = new RegExp(`^\\(?\\s*(${NUMBER})\\s*-?\\s*(${unitAlternation})\\.?\\s*\\)?\\s*(?:\\/\\s*${NUMBER}\\s*[a-z]+\\s*)?`, 'i').exec(text);
   if (pkg?.[1] && pkg[2]) {
     const size = parseNumber(pkg[1]);
     const unit = readUnit(pkg[2]);
     const after = text.slice(pkg[0].length).trim();
     const container = after ? readUnit(after) : null;
-    if (size !== null && unit && container && ['can', 'jar', 'packet', 'bag', 'box', 'bottle', 'sachet', 'block'].includes(container.unit)) {
-      const g = massGrams(size, unit.unit) ?? (unit.unit in VOLUME_ML ? size * VOLUME_ML[unit.unit as VolumeUnit] : null);
-      if (g !== null) {
-        packageGrams = g * unit.scale;
-        text = after.slice(container.length).trim();
-        const count = quantity ?? 1;
-        return finish({ quantity: count, unit: container.unit, grams: packageGrams * count, size: null, unquantified: false, rest: text });
-      }
+    const packageGrams = size !== null && unit ? sizeGrams(size * unit.scale, unit.unit) : null;
+    if (packageGrams !== null && container && CONTAINER_UNITS.has(container.unit)) {
+      const count = quantity ?? 1;
+      const rest = stripAltMeasure(after.slice(container.length).trim());
+      return finish({ quantity: count, unit: container.unit, grams: packageGrams * count, size: null, unquantified: false, rest });
     }
-    if (quantity === null && size !== null && unit) {
-      // "(8 ounce)" with no container: treat as the amount itself.
-      quantity = size * unit.scale;
-      text = after;
-      const grams = massGrams(quantity, unit.unit);
-      return finish({ quantity, unit: unit.unit, grams, size: null, unquantified: false, rest: stripAltMeasure(text) });
+    if (size !== null && unit && (quantity === null || packageGrams !== null)) {
+      // "(8 ounce) cream cheese" is the amount itself. "1 (12 oz.) stir-fry vegetables" and
+      // "2 (6 oz) fillets" give the size of each item, so the amount is count x size.
+      const amount = size * unit.scale * (quantity ?? 1);
+      return finish({ quantity: amount, unit: unit.unit, grams: massGrams(amount, unit.unit), size: null, unquantified: false, rest: stripAltMeasure(after) });
     }
   }
 
@@ -425,6 +437,17 @@ export function parseMeasure(input: string): Measure {
     text = text.replace(/^of\s+/i, '');
     if (quantity === null) quantity = 1;
   }
+  // "1 lb 2 oz", "1 kg 200 g": a second, smaller mass adds to the first.
+  let extraGrams = 0;
+  if (unit !== null && quantity !== null && unit in MASS_UNITS) {
+    const second = new RegExp(`^(${NUMBER})\\s*(oz|ounces?|g|grams?)(?![a-z])\\.?\\s*`, 'i').exec(text);
+    const secondUnit = second?.[2] ? readUnit(second[2]) : null;
+    const secondQty = second?.[1] ? parseNumber(second[1]) : null;
+    if (second && secondUnit && secondQty !== null) {
+      extraGrams = massGrams(secondQty, secondUnit.unit) ?? 0;
+      text = text.slice(second[0].length).trim();
+    }
+  }
   if (!size) {
     const lateSize = /^(extra large|x-large|small|medium|med|large|big|jumbo)\b\.?\s*/i.exec(text);
     if (lateSize?.[1]) {
@@ -433,9 +456,51 @@ export function parseMeasure(input: string): Measure {
     }
   }
 
-  text = stripAltMeasure(text);
-  const grams = quantity !== null && unit ? massGrams(quantity, unit) : null;
+  // A stated weight after the amount ("1 can (28 ounces)", "2 cups (about 300g)") is more precise
+  // than a household measure: for containers it is the size of each one, otherwise the total.
+  let grams = quantity !== null && unit ? massGrams(quantity, unit) : null;
+  if (grams !== null) grams += extraGrams;
+  const alt = readAltMeasure(text);
+  if (alt) {
+    text = text.slice(alt.length).trim();
+    if (quantity !== null && unit !== null && !(unit in MASS_UNITS) && alt.grams !== null) {
+      if (CONTAINER_UNITS.has(unit)) grams = alt.grams * quantity;
+      else if (alt.unit in MASS_UNITS) grams = alt.grams;
+    }
+  }
   return finish({ quantity, unit, grams, size, unquantified: false, rest: text });
+}
+
+const CONTAINER_UNITS: ReadonlySet<Unit> = new Set<Unit>(['can', 'jar', 'packet', 'bag', 'box', 'bottle', 'sachet', 'block']);
+
+/** Weight of a mass or volume amount; volumes count at the density of water, as labels do. */
+function sizeGrams(amount: number, unit: Unit): number | null {
+  return massGrams(amount, unit) ?? (unit in VOLUME_ML ? amount * VOLUME_ML[unit as VolumeUnit] : null);
+}
+
+/** True when the text right after a number reads as a package size ("-ounce can", "g tin"). */
+function startsWithPackageSize(after: string): boolean {
+  const match = new RegExp(`^\\s*(-)?\\s*(${unitAlternation})(?![a-z])\\.?\\s*`, 'i').exec(after);
+  const unit = match?.[2] ? readUnit(match[2]) : null;
+  if (!match || !unit || !(unit.unit in MASS_UNITS || unit.unit in VOLUME_ML)) return false;
+  if (match[1]) return true;
+  const container = readUnit(after.slice(match[0].length));
+  return container !== null && CONTAINER_UNITS.has(container.unit);
+}
+
+/** Reads an alternative measure right after the amount: "/ 6oz", "(250ml)", "(about 300 g)". */
+function readAltMeasure(text: string): { unit: Unit; grams: number | null; length: number } | null {
+  const slash = new RegExp(`^\\/\\s*(${NUMBER})\\s*(${unitAlternation})(?![a-z])\\.?\\s*`, 'i').exec(text);
+  const paren = new RegExp(
+    `^\\(\\s*(?:about|approx\\.?|approximately|around|roughly|~)?\\s*(${NUMBER})\\s*-?\\s*(${unitAlternation})(?![a-z])\\.?\\s*(?:each\\s*)?\\)\\s*`,
+    'i',
+  ).exec(text);
+  const match = slash ?? paren;
+  if (!match?.[1] || !match[2]) return null;
+  const amount = parseNumber(match[1]);
+  const unit = readUnit(match[2]);
+  if (amount === null || !unit) return null;
+  return { unit: unit.unit, grams: sizeGrams(amount * unit.scale, unit.unit), length: match[0].length };
 }
 
 /** Drops a trailing alternative measure such as "/ 6oz" or "(250ml)" right after the amount. */
