@@ -181,6 +181,7 @@ const asDocs = singletonRecord<Preferences>('main');
 
 export const preferencesSync = createCollectionAdapter({
   collection: 'preferences',
+  priority: true,
   store: usePreferencesStore,
   select: (state) => asDocs(state.prefs),
   schema: preferencesSchema,

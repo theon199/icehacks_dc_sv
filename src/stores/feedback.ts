@@ -10,7 +10,7 @@ import { persist } from 'zustand/middleware';
 import { newId } from '@/lib/id';
 
 import { createSelector } from './memo';
-import { versionedPersist } from './persistence';
+import { BURST_WRITE_WINDOW_MS, versionedPersist } from './persistence';
 import { applyToRecord, createCollectionAdapter } from './syncAdapter';
 
 export const MAX_FEEDBACK_EVENTS = 2000;
@@ -107,6 +107,7 @@ export const useFeedbackStore = create<FeedbackState>()(
     versionedPersist({
       name: 'user.feedback',
       version: 1,
+      throttleMs: BURST_WRITE_WINDOW_MS,
       schema: z.object({ events: z.record(z.string(), feedbackEventSchema) }),
       partialize: (state) => ({ events: state.events }),
     }),
@@ -123,6 +124,8 @@ export const selectFeedbackCount = (state: FeedbackState) => Object.keys(state.e
 
 export const feedbackSync = createCollectionAdapter({
   collection: 'feedback',
+  // Ids come from newId() and are never reused.
+  uniqueIds: true,
   store: useFeedbackStore,
   select: (state) => state.events,
   schema: feedbackEventSchema,

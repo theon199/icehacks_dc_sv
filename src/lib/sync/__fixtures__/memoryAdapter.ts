@@ -6,6 +6,8 @@ import type { ApplyResult, RemoteChanges, SyncCollectionAdapter, SyncData } from
 
 export class MemoryCollection implements SyncCollectionAdapter {
   readonly docs = new Map<string, SyncData>();
+  priority = false;
+  uniqueIds = false;
   /** Remote upserts for which this returns false are reported back as rejected. */
   validate: (data: unknown) => boolean = () => true;
   /** When set, a remote apply trims the collection to this many documents, oldest insert first. */

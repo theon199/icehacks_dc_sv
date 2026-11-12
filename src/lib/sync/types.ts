@@ -24,6 +24,17 @@ export interface ApplyResult {
 export interface SyncCollectionAdapter {
   /** Collection name on the server: `^[a-z][a-z0-9_]{0,39}$`. */
   readonly collection: string;
+  /**
+   * Small documents the person expects to follow them everywhere (preferences, settings): pushed
+   * before every other collection, so they still go out when the account is over its quota.
+   */
+  readonly priority?: boolean;
+  /**
+   * Document ids are generated and never reused after a deletion (event logs, threads). The
+   * engine then forgets a deletion as soon as the server has it instead of keeping the tombstone
+   * for months, which keeps the ledger of a store that evicts old entries on every insert small.
+   */
+  readonly uniqueIds?: boolean;
   /** Resolves once the local copy is loaded from disk. */
   ready(): Promise<void>;
   /**
