@@ -24,6 +24,7 @@ import {
   PEANUT_DISH,
   UNVERIFIED_PEANUT_DISH,
 } from './__fixtures__/catalog';
+import { REFILL_BELOW } from './deckQueue';
 import { UNDO_WINDOW_MS, useDiscoverDeck, type DiscoverDeck } from './useDiscoverDeck';
 
 jest.mock('@/lib/catalog/queries', () => ({
@@ -397,21 +398,37 @@ describe('useDiscoverDeck', () => {
     expect(feedback()).toEqual([]);
   });
 
-  it('re-ranks when the day tilt really changes', async () => {
+  it('keeps the queued cards when the day tilt changes and steers only the next fill', async () => {
     mockHints = { protein: 0.6, lighter: 0 };
     const view = await renderDeck('forYou', eveningOptions);
     await untilReady(view.result);
-    const swiped = view.result.current.cards[0]!;
-    await act(async () => view.result.current.pass(swiped));
+    const firstBatch = new Set(ids(view.result.current));
+    await act(async () => view.result.current.pass(view.result.current.cards[0]!));
+    const before = ids(view.result.current);
+    const held = view.result.current.lastDecision;
 
     mockHints = { protein: 0, lighter: 0 };
     await view.rerender({ deckMode: 'forYou' });
-    await untilReady(view.result);
     expect(view.result.current.dayNote).toBeNull();
-    // The fresh deck wrote the held swipe and no longer explains cards by the protein goal.
-    expect(view.result.current.lastDecision).toBeNull();
-    expect(feedback()).toMatchObject([{ recipeId: swiped.recipe.id, kind: 'pass' }]);
-    expect(reasonTexts(view.result.current)).not.toContain('High in protein for your goal');
+    // Nothing on screen moves and the held swipe can still be undone.
+    expect(ids(view.result.current)).toEqual(before);
+    expect(view.result.current.lastDecision).toBe(held);
+    expect(feedback()).toEqual([]);
+
+    // Swipe down to the refill threshold: the cards that arrive are ranked without the tilt.
+    while (view.result.current.cards.length >= REFILL_BELOW) {
+      const top = view.result.current.cards[0]!;
+      await act(async () => view.result.current.pass(top));
+    }
+    await waitFor(() =>
+      expect(ids(view.result.current).some((id) => !firstBatch.has(id))).toBe(true),
+    );
+    const refill = view.result.current.cards.filter((card) => !firstBatch.has(card.recipe.id));
+    for (const card of refill) {
+      expect(card.reasons.map((reason) => reason.text)).not.toContain(
+        'High in protein for your goal',
+      );
+    }
   });
 
   it('keeps a refill varied where it meets the cards still queued', async () => {

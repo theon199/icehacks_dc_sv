@@ -41,8 +41,13 @@ export interface DeckInputs {
   readonly pantry: ReadonlySet<string>;
   readonly smallAppetite: boolean;
   readonly dayNote: string | null;
-  /** Changes whenever preferences, the day tilt or pantry change. */
+  /** Changes whenever the person's own preferences or pantry change (starts a fresh deck). */
   readonly version: string;
+  /**
+   * Names today's tilt. It only steers the next fill: cards already queued stay put, so a tilt
+   * that flips mid-session (the hour reaching dinner, say) never yanks the deck away.
+   */
+  readonly tilt: string;
   /** Moves with every change to the feedback history (including past the store's size cap). */
   readonly feedbackVersion: number;
 }
@@ -63,7 +68,7 @@ export function useDeckInputs(clock?: () => number): DeckInputs {
   const feedback = useMemo(() => toRankFeedback(events), [events]);
   const dayNote = dayTiltNote({ protein, lighter });
 
-  const prefsVersion = useIdentityVersion(prefs);
+  const prefsVersion = useIdentityVersion(base);
   const pantryVersion = useIdentityVersion(pantry);
   const feedbackVersion = useIdentityVersion(events);
 
@@ -75,6 +80,7 @@ export function useDeckInputs(clock?: () => number): DeckInputs {
     smallAppetite: stored.smallAppetite,
     dayNote,
     version: `p${prefsVersion}.k${pantryVersion}`,
+    tilt: `${protein ? 'P' : '-'}${lighter ? 'L' : '-'}`,
     feedbackVersion,
   };
 }
