@@ -4,11 +4,12 @@ import type { ReactNode } from 'react';
 
 import {
   getRecipeDetail,
+  getRecipesByFamily,
   getSubstitutions,
   listCandidates,
-  type CandidateFilters,
-  type RecipeCandidate,
+  type FamilyFilters,
   type RecipeDetail,
+  type RecipeSummary,
 } from '@/lib/catalog';
 import { usePreferencesStore } from '@/stores';
 import { renderWithTheme } from '@/test/render';
@@ -39,6 +40,7 @@ jest.mock('@/lib/catalog/queries', () => ({
   getIngredients: jest.fn(),
   getSubstitutions: jest.fn(),
   listCandidates: jest.fn(),
+  getRecipesByFamily: jest.fn(),
   searchRecipes: jest.fn(),
   searchIngredients: jest.fn(),
   getCuisines: jest.fn(),
@@ -100,12 +102,12 @@ const satay = makeDetail({
 });
 const ALL = [rich, lean, solo, nutty, satay];
 
-/** Applies the allergen part of the candidate filters the way the catalog query does. */
-function candidatesFor(filters: CandidateFilters): RecipeCandidate[] {
+/** One dish's versions, with the allergen part of the filters applied the way the catalog does. */
+function familyFor(familyId: string, filters: FamilyFilters): RecipeSummary[] {
   const avoid = filters.avoidAllergens ?? [];
-  return ALL.filter((r: RecipeDetail) => avoid.every((a) => r.allergens[a] === 'free')).map(
-    (r) => ({ ...r, ingredientIds: [], coreIngredientIds: [] }) as RecipeCandidate,
-  );
+  return ALL.filter(
+    (r: RecipeDetail) => r.familyId === familyId && avoid.every((a) => r.allergens[a] === 'free'),
+  ).sort((a, b) => b.healthScore - a.healthScore);
 }
 
 /** Several chained catalog reads resolve before the screen settles; allow for a busy CI box. */
@@ -124,7 +126,9 @@ beforeEach(() => {
   usePreferencesStore.setState({ prefs: prefs({ allergens: ['peanut'] }) });
   const byId = new Map(ALL.map((r) => [r.id, r]));
   jest.mocked(getRecipeDetail).mockImplementation(async (id) => byId.get(id) ?? null);
-  jest.mocked(listCandidates).mockImplementation(async (filters) => candidatesFor(filters));
+  jest
+    .mocked(getRecipesByFamily)
+    .mockImplementation(async (familyId, filters = {}) => familyFor(familyId, filters));
   jest.mocked(getSubstitutions).mockResolvedValue([
     {
       fromId: 'heavy_cream',
@@ -161,7 +165,7 @@ describe('CompareScreen', () => {
       </Providers>,
     );
     expect(await screen.findByText('Lonely stew', {}, SLOW)).toBeTruthy();
-    expect(listCandidates).not.toHaveBeenCalled();
+    expect(getRecipesByFamily).not.toHaveBeenCalled();
   });
 
   it('offers to make a healthier version when the dish has only one', async () => {
@@ -181,9 +185,11 @@ describe('CompareScreen', () => {
       </Providers>,
     );
     expect(await screen.findByText('No healthier version yet', {}, SLOW)).toBeTruthy();
-    const filters = jest.mocked(listCandidates).mock.calls[0]![0];
-    expect(filters.avoidAllergens).toEqual(['peanut']);
-    expect(filters.course).toBeUndefined();
+    const [familyId, filters] = jest.mocked(getRecipesByFamily).mock.calls[0]!;
+    expect(familyId).toBe('fam:stew');
+    expect(filters?.avoidAllergens).toEqual(['peanut']);
+    // Only the dish's own versions are read, never a scan of the whole catalog.
+    expect(listCandidates).not.toHaveBeenCalled();
     expect(screen.queryByText('Peanut stew')).toBeNull();
     expect(screen.queryByText('Satay stew')).toBeNull();
   });
@@ -235,7 +241,7 @@ describe('CompareScreen', () => {
     expect(screen.getByText('Check before you cook')).toBeTruthy();
     expect(screen.getByText(/May contain peanuts/)).toBeTruthy();
     expect(getRecipeDetail).not.toHaveBeenCalledWith('mine');
-    expect(listCandidates).not.toHaveBeenCalled();
+    expect(getRecipesByFamily).not.toHaveBeenCalled();
   });
 
   it('does not warn when the linked version clears every declared allergen', async () => {

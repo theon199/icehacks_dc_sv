@@ -12,14 +12,14 @@
 import { useMemo } from 'react';
 
 import type { SafetyVerdict } from '@/domain';
-import { useCandidates, useRecipe, useSubstitutions, type RecipeDetail } from '@/lib/catalog';
+import { useRecipe, useRecipeFamily, useSubstitutions, type RecipeDetail } from '@/lib/catalog';
 
 import { useDomainPreferences } from './usePersonalContext';
 import { usePersonalVariant } from '../deps';
 import {
   adaptedSafety,
   diffIngredients,
-  familyCandidateFilters,
+  familySafetyFilters,
   nutritionDeltas,
   pairFamily,
   sideFromRecipe,
@@ -57,8 +57,9 @@ export function useComparison(fromId: string | undefined, toId: string | undefin
   const prefs = useDomainPreferences();
   const allergens = prefs.allergens;
   const diets = prefs.diets;
-  const filters = useMemo(() => familyCandidateFilters({ allergens, diets }), [allergens, diets]);
-  const family = useCandidates(filters, { enabled: needFamily });
+  const filters = useMemo(() => familySafetyFilters({ allergens, diets }), [allergens, diets]);
+  // Only this dish's versions are read, already screened by the catalog's fail-closed filters.
+  const family = useRecipeFamily(from.data?.familyId, filters, { enabled: needFamily });
   const pair = useMemo(
     () => (needFamily && from.data && family.data ? pairFamily(from.data, family.data) : null),
     [needFamily, from.data, family.data],
