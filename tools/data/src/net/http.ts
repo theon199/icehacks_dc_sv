@@ -21,11 +21,13 @@ async function waitForSlot(): Promise<void> {
 }
 
 export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    readonly url: string,
-  ) {
+  readonly status: number;
+  readonly url: string;
+
+  constructor(status: number, url: string) {
     super(`HTTP ${status} for ${url}`);
+    this.status = status;
+    this.url = url;
   }
 }
 

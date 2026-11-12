@@ -5,16 +5,16 @@
   "description": "Builds Famara's bundled recipe catalog (SQLite) from public sources.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "scripts": {
-    "fetch": "tsx src/cli/fetch.ts",
-    "build": "tsx src/cli/build.ts",
-    "report": "tsx src/cli/report.ts",
-    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "fetch": "node --disable-warning=ExperimentalWarning src/cli/fetch.ts",
+    "build": "node --disable-warning=ExperimentalWarning src/cli/build.ts",
+    "report": "node --disable-warning=ExperimentalWarning src/cli/report.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "fdc:lookup": "tsx src/cli/fdcLookup.ts",
-    "fdc:pin": "tsx src/cli/fdcPin.ts"
+    "fdc:lookup": "node --disable-warning=ExperimentalWarning src/cli/fdcLookup.ts",
+    "fdc:pin": "node --disable-warning=ExperimentalWarning src/cli/fdcPin.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.1.1",
@@ -26,7 +26,6 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.20.5",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }
