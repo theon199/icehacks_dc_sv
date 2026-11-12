@@ -7,6 +7,7 @@ import { Avatar, initialsFor } from './Avatar';
 import { Badge, badgeText } from './Badge';
 import { EmptyState } from './EmptyState';
 import { ErrorState, errorMessageFor } from './ErrorState';
+import { ListRow } from './ListRow';
 import { clampProgress, ProgressRing } from './ProgressRing';
 import { Text } from './Text';
 
@@ -100,5 +101,35 @@ describe('ErrorState', () => {
       'Please try again in a moment.',
     );
     expect(errorMessageFor(new Error('x'), 'Custom')).toBe('Custom');
+  });
+});
+
+describe('ListRow', () => {
+  it('reads a static row as one element', async () => {
+    await renderWithTheme(<ListRow title="Units" subtitle="For recipes" value="Metric" />);
+    expect(screen.getByLabelText('Units, For recipes, Metric')).toBeOnTheScreen();
+  });
+
+  it('leaves a row with a custom accessory ungrouped so the control stays reachable', async () => {
+    await renderWithTheme(
+      <ListRow title="Reminders" accessory={<Text accessibilityRole="switch">On</Text>} />,
+    );
+    expect(screen.queryByLabelText('Reminders')).toBeNull();
+    expect(screen.getByRole('switch')).toBeOnTheScreen();
+  });
+
+  it('is a single button with a hint when pressable', async () => {
+    const opened: string[] = [];
+    await renderWithTheme(
+      <ListRow
+        title="Account"
+        accessibilityHint="Opens account settings"
+        onPress={() => opened.push('account')}
+      />,
+    );
+    const row = screen.getByRole('button', { name: 'Account' });
+    expect(row.props.accessibilityHint).toBe('Opens account settings');
+    await userEvent.setup().press(row);
+    expect(opened).toEqual(['account']);
   });
 });

@@ -5,6 +5,16 @@ import { haptics } from '@/lib/haptics';
 import { PressableScale } from './PressableScale';
 import { Text } from './Text';
 import { useTheme } from './ThemeProvider';
+import { minTouchTarget } from './tokens';
+
+/** Inset between the track and the selected pill. */
+const TRACK_INSET = 3;
+/**
+ * Each segment fills the track's inner height and its hit area extends over the inset, so the
+ * touch target is the full track height: the 44 pt minimum.
+ */
+const SEGMENT_HEIGHT = minTouchTarget - TRACK_INSET * 2;
+const segmentSlop = { top: TRACK_INSET, bottom: TRACK_INSET, left: 0, right: 0 };
 
 export interface Segment<T extends string> {
   value: T;
@@ -51,6 +61,7 @@ export function SegmentedControl<T extends string>({
             accessibilityLabel={segment.label}
             accessibilityState={{ selected }}
             pressedScale={1}
+            hitSlop={segmentSlop}
             onPress={() => {
               if (selected) return;
               haptics.selection();
@@ -82,10 +93,10 @@ export function SegmentedControl<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  track: { flexDirection: 'row', padding: 3 },
+  track: { flexDirection: 'row', padding: TRACK_INSET },
   segment: {
     flex: 1,
-    minHeight: 38,
+    minHeight: SEGMENT_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,

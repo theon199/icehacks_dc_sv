@@ -1,5 +1,6 @@
 import { fireEvent, screen, userEvent } from '@testing-library/react-native';
 import { useState } from 'react';
+import { StyleSheet } from 'react-native';
 
 import { renderWithTheme } from '@/test/render';
 
@@ -8,6 +9,7 @@ import { IconButton } from './IconButton';
 import { SegmentedControl } from './SegmentedControl';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
+import { minTouchTarget } from './tokens';
 
 describe('IconButton', () => {
   it('exposes its label and fires onPress', async () => {
@@ -102,6 +104,22 @@ describe('SegmentedControl', () => {
     );
     await userEvent.setup().press(screen.getByRole('tab', { name: 'Recipes' }));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('gives every segment a touch target of at least 44 pt', async () => {
+    await renderWithTheme(
+      <SegmentedControl
+        accessibilityLabel="Search mode"
+        segments={segments}
+        value="recipes"
+        onChange={() => undefined}
+      />,
+    );
+    for (const tab of screen.getAllByRole('tab')) {
+      const { minHeight } = StyleSheet.flatten(tab.props.style) as { minHeight: number };
+      const slop = tab.props.hitSlop as { top: number; bottom: number };
+      expect(minHeight + slop.top + slop.bottom).toBeGreaterThanOrEqual(minTouchTarget);
+    }
   });
 });
 

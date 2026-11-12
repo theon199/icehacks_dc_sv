@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type AccessibilityProps } from 'react-native';
 
 import { Icon, type IconName } from './Icon';
 import { PressableScale } from './PressableScale';
@@ -76,17 +76,16 @@ export function ListRow({
     </>
   );
 
-  const rowStyle = [
-    styles.row,
-    divider && {
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: theme.colors.border,
-    },
-  ];
+  const rowStyle = [styles.row, divider && [styles.divider, { borderColor: theme.colors.border }]];
+  const a11y: AccessibilityProps = { accessibilityLabel: label };
+  if (accessibilityHint) a11y.accessibilityHint = accessibilityHint;
 
   if (!onPress) {
+    // Read static rows as one VoiceOver stop. A custom accessory may be interactive (a toggle), so
+    // those rows stay ungrouped to keep the control reachable.
+    const grouped = accessory == null;
     return (
-      <View testID={testID} style={rowStyle}>
+      <View testID={testID} style={rowStyle} accessible={grouped} {...(grouped ? a11y : {})}>
         {content}
       </View>
     );
@@ -95,11 +94,11 @@ export function ListRow({
     <PressableScale
       testID={testID}
       accessibilityRole="button"
-      accessibilityLabel={label}
-      {...(accessibilityHint ? { accessibilityHint } : {})}
+      {...a11y}
       pressedScale={0.99}
+      pressedOpacity={0.7}
       onPress={onPress}
-      style={({ pressed }) => [rowStyle, pressed && { opacity: 0.7 }]}
+      style={rowStyle}
     >
       {content}
     </PressableScale>
@@ -114,6 +113,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingVertical: space.sm,
   },
+  divider: { borderBottomWidth: StyleSheet.hairlineWidth },
   iconWell: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: 2 },
 });

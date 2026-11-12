@@ -3,54 +3,59 @@ import * as Haptics from 'expo-haptics';
 
 import { renderWithTheme } from '@/test/render';
 
-import { Button } from './Button';
+import { Button, type ButtonProps } from './Button';
+
+const impact = jest.mocked(Haptics.impactAsync);
+
+/** Renders one button, taps it once and reports how many presses and haptics came through. */
+async function tapOnce(props: Omit<ButtonProps, 'onPress'>) {
+  const presses: number[] = [];
+  await renderWithTheme(<Button {...props} onPress={() => presses.push(Date.now())} />);
+  const button = screen.getByRole('button', { name: props.label });
+  await userEvent.setup().press(button);
+  return { button, presses: presses.length, haptics: impact.mock.calls.length };
+}
 
 describe('Button', () => {
-  it('calls onPress and plays a light haptic', async () => {
-    const onPress = jest.fn();
-    await renderWithTheme(<Button label="Save recipe" onPress={onPress} />);
-    await userEvent.setup().press(screen.getByRole('button', { name: 'Save recipe' }));
-    expect(onPress).toHaveBeenCalledTimes(1);
-    expect(Haptics.impactAsync).toHaveBeenCalled();
+  it('fires once with a light haptic on tap', async () => {
+    const outcome = await tapOnce({ label: 'Save recipe' });
+    expect([outcome.presses, outcome.haptics > 0]).toEqual([1, true]);
   });
 
-  it('does not fire or vibrate when haptics are turned off for it', async () => {
-    const onPress = jest.fn();
-    await renderWithTheme(<Button label="Skip" onPress={onPress} haptic={false} />);
-    await userEvent.setup().press(screen.getByRole('button', { name: 'Skip' }));
-    expect(onPress).toHaveBeenCalledTimes(1);
-    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+  it('can opt out of haptics and still fire', async () => {
+    const outcome = await tapOnce({ label: 'Skip', haptic: false });
+    expect([outcome.presses, outcome.haptics]).toEqual([1, 0]);
   });
 
-  it('is disabled and ignores presses when disabled', async () => {
-    const onPress = jest.fn();
-    await renderWithTheme(<Button label="Continue" onPress={onPress} disabled />);
-    const button = screen.getByRole('button', { name: 'Continue' });
-    expect(button).toBeDisabled();
-    await userEvent.setup().press(button);
-    expect(onPress).not.toHaveBeenCalled();
+  it('ignores taps while disabled', async () => {
+    const outcome = await tapOnce({ label: 'Continue', disabled: true });
+    expect(outcome.button).toBeDisabled();
+    expect(outcome.presses).toBe(0);
   });
 
-  it('reports busy and blocks presses while loading', async () => {
-    const onPress = jest.fn();
-    await renderWithTheme(<Button label="Sign in" onPress={onPress} loading />);
-    const button = screen.getByRole('button', { name: 'Sign in' });
-    expect(button).toBeBusy();
-    expect(button).toBeDisabled();
-    await userEvent.setup().press(button);
-    expect(onPress).not.toHaveBeenCalled();
+  it('announces busy and ignores taps while loading', async () => {
+    const outcome = await tapOnce({ label: 'Sign in', loading: true });
+    expect(outcome.button).toBeBusy();
+    expect(outcome.button).toBeDisabled();
+    expect(outcome.presses).toBe(0);
   });
 
-  it('renders in dark mode for every variant', async () => {
+  it('renders every variant on the dark palette', async () => {
+    const noop = () => undefined;
     await renderWithTheme(
       <>
-        <Button label="Primary" onPress={jest.fn()} />
-        <Button label="Secondary" variant="secondary" onPress={jest.fn()} />
-        <Button label="Ghost" variant="ghost" onPress={jest.fn()} />
-        <Button label="Delete" variant="destructive" onPress={jest.fn()} />
+        <Button label="Primary" onPress={noop} />
+        <Button label="Secondary" variant="secondary" onPress={noop} />
+        <Button label="Ghost" variant="ghost" onPress={noop} />
+        <Button label="Delete" variant="destructive" onPress={noop} />
       </>,
       { scheme: 'dark' },
     );
-    expect(screen.getAllByRole('button')).toHaveLength(4);
+    expect(screen.getAllByRole('button').map((node) => node.props.accessibilityLabel)).toEqual([
+      'Primary',
+      'Secondary',
+      'Ghost',
+      'Delete',
+    ]);
   });
 });
