@@ -122,4 +122,32 @@ describe('mealPlanSync', () => {
     expect(result.rejected).toEqual(['2026-11-16']);
     expect(useMealPlanStore.getState().weeks).toEqual({});
   });
+
+  it('caps the archive when remote weeks arrive', () => {
+    const archived = (start: string): PlanWeek => ({
+      weekStart: start,
+      slots: { '0-lunch': { recipeId: 'r', servings: 1, addedAt: at } },
+      archivedAt: at,
+    });
+    // This device already holds a full year of archived weeks...
+    const local: Record<string, PlanWeek> = {};
+    for (let i = 1; i <= MAX_ARCHIVED_WEEKS; i += 1) {
+      const start = shiftWeek(W, -i);
+      local[start] = archived(start);
+    }
+    useMealPlanStore.setState({ weeks: local });
+    // ...and another device archived two older weeks plus a more recent one.
+    const oldest = shiftWeek(W, -(MAX_ARCHIVED_WEEKS + 2));
+    const older = shiftWeek(W, -(MAX_ARCHIVED_WEEKS + 1));
+    mealPlanSync.applyRemote({
+      upserts: [oldest, older].map((start) => ({ docId: start, data: archived(start) })),
+      deletes: [],
+    });
+
+    const weeks = useMealPlanStore.getState().weeks;
+    expect(Object.keys(weeks)).toHaveLength(MAX_ARCHIVED_WEEKS);
+    expect(weeks[oldest]).toBeUndefined();
+    expect(weeks[older]).toBeUndefined();
+    expect(weeks[shiftWeek(W, -1)]).toBeDefined();
+  });
 });
