@@ -6,6 +6,7 @@ import { renderWithTheme } from '@/test/render';
 import { TutorialVideo } from './TutorialVideo';
 
 interface CapturedWebViewProps {
+  source?: { uri?: string; html?: string; baseUrl?: string };
   originWhitelist?: string[];
   onShouldStartLoadWithRequest?: (request: {
     url: string;
@@ -40,6 +41,26 @@ async function mountPlayer() {
 }
 
 describe('TutorialVideo', () => {
+  it('plays the embed inside a local page with an https base, so YouTube gets a referrer', async () => {
+    const { props, decide } = await mountPlayer();
+    expect(props.source?.uri).toBeUndefined();
+    expect(props.source?.baseUrl).toBe('https://com.famara.app/');
+    expect(props.source?.html).toContain(
+      'src="https://www.youtube-nocookie.com/embed/abcdefghijk?',
+    );
+    // The page itself must get past the navigation gate.
+    expect(
+      decide({ url: 'https://com.famara.app/', isTopFrame: true, navigationType: 'other' }),
+    ).toBe(true);
+    expect(WebBrowser.openBrowserAsync).not.toHaveBeenCalled();
+  });
+
+  it('offers the video on its own site when there is no YouTube id', async () => {
+    mockWebView.props = null;
+    await renderWithTheme(<TutorialVideo video={{ ...video, youtubeId: null }} />);
+    expect(mockWebView.props).toBeNull();
+  });
+
   it('lets every load reach its own navigation gate', async () => {
     const { props } = await mountPlayer();
     // A narrower list would make the WebView open rejected urls in the OS before the gate runs.

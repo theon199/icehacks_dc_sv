@@ -153,7 +153,7 @@ describe('flushPendingCookEvents account binding', () => {
     queue.add('user-1', request('first'));
     queue.add('user-1', request('second'));
     queue.add('user-1', request('third'));
-    const rpc = jest.fn(async () => {
+    const rpc = jest.fn(async (_sent: CookEventRequest) => {
       // The session moves on before the queue is told to forget the old account.
       signedIn = 'user-2';
       return ok;

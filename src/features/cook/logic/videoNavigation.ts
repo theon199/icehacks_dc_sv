@@ -1,8 +1,9 @@
 /**
- * What the inline tutorial player does with each page load it is asked about. The embed page itself
- * plays in place; a link the cook deliberately taps goes to the system browser; nothing else is
- * allowed to pull them out of cook mode.
+ * What the inline tutorial player does with each page load it is asked about. The local player page
+ * and the embed inside it play in place; a link the cook deliberately taps goes to the system
+ * browser; nothing else is allowed to pull them out of cook mode.
  */
+import { VIDEO_PAGE_URL } from './videoPage';
 
 export type VideoLoadDecision = 'allow' | 'external' | 'block';
 
@@ -30,7 +31,8 @@ export function decideVideoLoad(
   request: VideoLoadRequest,
   embedHost: string = VIDEO_EMBED_HOST,
 ): VideoLoadDecision {
-  if (request.url === 'about:blank') return 'allow';
+  // The local player page (loaded from HTML with this base URL) and empty frames.
+  if (request.url === 'about:blank' || request.url === VIDEO_PAGE_URL) return 'allow';
   let target: URL;
   try {
     target = new URL(request.url);
