@@ -4,7 +4,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 
 import type { DayIndex, IsoDate, MealSlot } from '@/domain/plan';
 import type { RecipeSummary } from '@/lib/catalog';
-import { slotKey, type PlanWeek } from '@/stores';
+import { entryPortion, slotKey, type PlanWeek } from '@/stores';
 import { IconButton, space, Text, toast } from '@/ui';
 
 import { ActionSheet } from './ActionSheet';
@@ -22,15 +22,20 @@ export interface DayMealsProps {
   slots: PlanWeek['slots'];
   recipes: ReadonlyMap<string, RecipeSummary>;
   readOnly: boolean;
-  smallPortions: boolean;
+  /** The small-appetite setting, which sizes meals planned without a portion of their own. */
+  smallAppetite: boolean;
   /** Weeks a meal can be moved to. */
   moveWeeks: readonly IsoDate[];
   /** The person's current allergen and diet rules; meals planned before a change may now fail them. */
   isSafe: (recipe: RecipeSummary) => boolean;
 }
 
-function openRecipe(id: string) {
-  router.push({ pathname: '/recipe/[id]', params: { id } });
+/**
+ * Opens a planned meal's recipe. The meal's portion travels with it (`portion`, the size of each
+ * serving relative to a standard one) so the recipe can be sized the way it was planned.
+ */
+function openRecipe(id: string, portion: number) {
+  router.push({ pathname: '/recipe/[id]', params: { id, portion: String(portion) } });
 }
 
 /** The meal slots of one day, with add, move and remove flows. */
@@ -41,7 +46,7 @@ export function DayMeals({
   slots,
   recipes,
   readOnly,
-  smallPortions,
+  smallAppetite,
   moveWeeks,
   isSafe,
 }: DayMealsProps) {
@@ -69,7 +74,7 @@ export function DayMeals({
         action: {
           label: 'Undo',
           onPress: () => {
-            if (!plannerActions.restoreIfEmpty(ref(slot), entry.recipeId, entry.servings)) {
+            if (!plannerActions.restoreIfEmpty(ref(slot), entry)) {
               toast.show({ message: `${SLOT_LABELS[slot]} already has a meal again` });
             }
           },
@@ -117,7 +122,7 @@ export function DayMeals({
             recipe={recipe}
             unsafe={recipe !== undefined && !isSafe(recipe)}
             readOnly={readOnly}
-            smallPortions={smallPortions}
+            portion={meal.entry ? entryPortion(meal.entry, meal.slot, smallAppetite) : 1}
             onAdd={setAdding}
             onOpen={openRecipe}
             onActions={setActionsFor}

@@ -1,4 +1,6 @@
 import { act, screen, userEvent } from '@testing-library/react-native';
+import { useState } from 'react';
+import { AccessibilityInfo } from 'react-native';
 
 import { renderWithTheme } from '@/test/render';
 
@@ -77,6 +79,45 @@ describe('Composer', () => {
       });
       expect(screen.getByTestId('chef-limit-note')).toHaveTextContent(/Chef is back at/);
       expect(screen.getByTestId('chef-limit-note')).not.toHaveTextContent(/tomorrow/);
+    });
+  });
+
+  describe('limit announcement', () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    beforeEach(() => announce.mockClear());
+
+    it('reads the limit note out once when the limit starts', async () => {
+      const limitedUntil = Date.now() + 60 * 60 * 1000;
+      let update: (next: { busy: boolean; limitedUntil: number | null }) => void = () => undefined;
+      function Harness() {
+        const [props, setProps] = useState({ busy: false, limitedUntil: null as number | null });
+        update = setProps;
+        return <Composer {...props} onSend={jest.fn()} />;
+      }
+      await renderWithTheme(<Harness />);
+      expect(announce).not.toHaveBeenCalled();
+
+      await act(async () => update({ busy: false, limitedUntil }));
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(limitResetNote(limitedUntil));
+
+      // Unrelated re-renders while limited stay quiet.
+      await act(async () => update({ busy: true, limitedUntil }));
+      expect(announce).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads the note out on mount when Chef is already limited', async () => {
+      const limitedUntil = Date.now() + 60 * 60 * 1000;
+      await renderWithTheme(
+        <Composer busy={false} limitedUntil={limitedUntil} onSend={jest.fn()} />,
+      );
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(limitResetNote(limitedUntil));
+    });
+
+    it('stays quiet while Chef is not limited', async () => {
+      await renderWithTheme(<Composer busy={false} onSend={jest.fn()} />);
+      expect(announce).not.toHaveBeenCalled();
     });
   });
 });

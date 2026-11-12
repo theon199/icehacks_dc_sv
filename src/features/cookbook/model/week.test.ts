@@ -8,8 +8,10 @@ import {
   mealsPerDay,
   remainingDays,
   resolveWeekParam,
+  storedPortion,
   toSlotWrites,
   toWeekPlan,
+  weekCostRecipes,
   weekDays,
   weekOffset,
   weekRangeLabel,
@@ -87,16 +89,56 @@ describe('store and planner shapes', () => {
     expect(toWeekPlan(undefined, WEEK).cells).toEqual({});
   });
 
-  it('turns planner assignments into whole-serving slot writes', () => {
+  it('keeps the portion a meal was planned at when reading a week', () => {
+    const planned: PlanWeek = {
+      ...week,
+      slots: { '1-dinner': { recipeId: 'd', servings: 2, addedAt: 'x', portion: 0.5 } },
+    };
+    expect(toWeekPlan(planned, WEEK, 1).cells['1:dinner']?.portion).toBe(0.5);
+  });
+
+  it('turns planner assignments into whole-serving slot writes with their portion', () => {
     expect(
       toSlotWrites([
         { day: 3, slot: 'lunch', meal: { recipeId: 'r', servings: 2.4, portion: 1 } },
         { day: 6, slot: 'snack', meal: { recipeId: 's', servings: 0.5, portion: 0.5 } },
       ]),
     ).toEqual([
-      { slot: '3-lunch', recipeId: 'r', servings: 2 },
-      { slot: '6-snack', recipeId: 's', servings: 1 },
+      { slot: '3-lunch', recipeId: 'r', servings: 2, portion: 1 },
+      { slot: '6-snack', recipeId: 's', servings: 1, portion: 0.5 },
     ]);
+  });
+
+  it('keeps stored portions within the range the planner store accepts', () => {
+    expect(storedPortion(0.5)).toBe(0.5);
+    expect(storedPortion(1 / 3)).toBe(0.33);
+    expect(storedPortion(0.1)).toBe(0.25);
+    expect(storedPortion(9)).toBe(2);
+    expect(storedPortion(Number.NaN)).toBe(1);
+    expect(storedPortion(0)).toBe(1);
+  });
+
+  it('costs every meal of the week at its servings times its portion', () => {
+    const slots: PlanWeek['slots'] = {
+      '2-dinner': { recipeId: 'a', servings: 2, addedAt: 'x', portion: 0.5 },
+      '0-lunch': { recipeId: 'a', servings: 3, addedAt: 'x' },
+      '0-snack': { recipeId: 's', servings: 2, addedAt: 'x' },
+      '0-breakfast': { recipeId: 'b', servings: 4, addedAt: 'x', portion: 1 },
+    };
+    expect(weekCostRecipes(slots, false)).toEqual([
+      { recipeId: 'b', servings: 4 },
+      { recipeId: 'a', servings: 3 },
+      { recipeId: 's', servings: 2 },
+      { recipeId: 'a', servings: 1 },
+    ]);
+    // Meals planned without a portion follow small appetite mode; snacks and chosen portions don't.
+    expect(weekCostRecipes(slots, true)).toEqual([
+      { recipeId: 'b', servings: 4 },
+      { recipeId: 'a', servings: 1.5 },
+      { recipeId: 's', servings: 2 },
+      { recipeId: 'a', servings: 1 },
+    ]);
+    expect(weekCostRecipes({}, false)).toEqual([]);
   });
 
   it('lists a day in slot order and counts meals per day', () => {

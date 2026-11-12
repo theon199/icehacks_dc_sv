@@ -21,12 +21,31 @@ export const MAX_ARCHIVED_WEEKS = 52;
 const SLOT_PATTERN = /^[0-6]-(breakfast|lunch|dinner|snack)$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Portion sizes a slot can hold, relative to a standard serving. */
+export const MIN_PORTION = 0.25;
+export const MAX_PORTION = 2;
+/** The portion small appetite mode plans main meals at. */
+export const SMALL_APPETITE_PORTION = 0.5;
+
 export const planEntrySchema = z.object({
   recipeId: z.string().min(1).max(128),
   servings: z.number().int().min(1).max(20),
   addedAt: z.string(),
+  /**
+   * Size of each serving relative to a standard one (0.5 for a small meal), fixed when a planner
+   * chose it. Optional so weeks written without it stay valid; an out-of-range value is dropped
+   * rather than rejecting the whole week. See `entryPortion` for what an absent value means.
+   */
+  portion: z.number().min(MIN_PORTION).max(MAX_PORTION).optional().catch(undefined),
 });
 export type PlanEntry = z.infer<typeof planEntrySchema>;
+
+/** What a write puts in a slot; `addedAt` is stamped by the store. */
+export interface PlanEntryInput {
+  readonly recipeId: string;
+  readonly servings: number;
+  readonly portion?: number | undefined;
+}
 
 export const planWeekSchema = z.object({
   weekStart: z.string().regex(DATE_PATTERN),
@@ -64,19 +83,42 @@ function withWeek(weeks: Weeks, week: PlanWeek): Weeks {
   return { ...weeks, [week.weekStart]: week };
 }
 
+/**
+ * The portion a planned meal is cooked at. A planner that chose one stored it with the meal; a meal
+ * without one (added by hand, or saved before portions were stored) follows the small-appetite
+ * setting, which makes breakfast, lunch and dinner half portions and leaves snacks whole.
+ */
+export function entryPortion(
+  entry: Pick<PlanEntry, 'portion'>,
+  meal: Meal,
+  smallAppetite: boolean,
+): number {
+  if (entry.portion !== undefined) return entry.portion;
+  return smallAppetite && meal !== 'snack' ? SMALL_APPETITE_PORTION : 1;
+}
+
 export function setSlot(
   weeks: Weeks,
   weekStart: string,
   slot: SlotKey,
-  entry: { recipeId: string; servings: number },
+  entry: PlanEntryInput,
   at: string,
 ): Weeks {
   if (!DATE_PATTERN.test(weekStart) || !SLOT_PATTERN.test(slot)) return weeks;
-  const parsed = planEntrySchema.safeParse({ ...entry, addedAt: at });
+  const input = { recipeId: entry.recipeId, servings: entry.servings, addedAt: at };
+  // A portion outside the stored range is refused here rather than silently dropped by the schema.
+  const portion = entry.portion;
+  if (portion !== undefined && !(portion >= MIN_PORTION && portion <= MAX_PORTION)) return weeks;
+  const parsed = planEntrySchema.safeParse(portion === undefined ? input : { ...input, portion });
   if (!parsed.success) return weeks;
   const week = weeks[weekStart] ?? emptyWeek(weekStart);
   const current = week.slots[slot];
-  if (current && current.recipeId === entry.recipeId && current.servings === entry.servings) {
+  if (
+    current &&
+    current.recipeId === entry.recipeId &&
+    current.servings === entry.servings &&
+    current.portion === portion
+  ) {
     return weeks;
   }
   return withWeek(weeks, { ...week, slots: { ...week.slots, [slot]: parsed.data } });
@@ -152,12 +194,7 @@ export function rolloverWeeks(weeks: Weeks, currentWeekStart: string, at: string
 
 export interface MealPlanState {
   weeks: Weeks;
-  setSlot: (
-    weekStart: string,
-    slot: SlotKey,
-    entry: { recipeId: string; servings: number },
-    at?: string,
-  ) => void;
+  setSlot: (weekStart: string, slot: SlotKey, entry: PlanEntryInput, at?: string) => void;
   clearSlot: (weekStart: string, slot: SlotKey) => void;
   moveSlot: (
     from: { weekStart: string; slot: SlotKey },

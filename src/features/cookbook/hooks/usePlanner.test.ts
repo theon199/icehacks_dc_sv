@@ -90,9 +90,34 @@ describe('planner actions', () => {
   });
 
   it('restores a removed meal only into a slot that is still empty', () => {
-    expect(plannerActions.restoreIfEmpty(cell(2, 'lunch'), 'first', 2)).toBe(true);
-    expect(plannerActions.restoreIfEmpty(cell(2, 'lunch'), 'second', 2)).toBe(false);
+    const first = { recipeId: 'first', servings: 2 };
+    expect(plannerActions.restoreIfEmpty(cell(2, 'lunch'), first)).toBe(true);
+    expect(plannerActions.restoreIfEmpty(cell(2, 'lunch'), { ...first, recipeId: 'second' })).toBe(
+      false,
+    );
     expect(slots()['2-lunch']?.recipeId).toBe('first');
+  });
+
+  it('restores a removed meal at the portion it was planned at', () => {
+    plannerActions.restoreIfEmpty(cell(4, 'dinner'), {
+      recipeId: 'small',
+      servings: 2,
+      portion: 0.5,
+    });
+    expect(slots()['4-dinner']).toMatchObject({ recipeId: 'small', servings: 2, portion: 0.5 });
+  });
+
+  it('saves the portion a planner chose with each meal it writes', () => {
+    expect(
+      plannerActions.applyWrites(WEEK, [
+        { slot: '3-lunch', recipeId: 'half', servings: 2, portion: 0.5 },
+        { slot: '3-dinner', recipeId: 'whole', servings: 2, portion: 1 },
+        { slot: '3-snack', recipeId: 'plain', servings: 2 },
+      ]),
+    ).toBe(3);
+    expect(slots()['3-lunch']?.portion).toBe(0.5);
+    expect(slots()['3-dinner']?.portion).toBe(1);
+    expect(slots()['3-snack']).not.toHaveProperty('portion');
   });
 
   it('archives past weeks, restores and deletes them', () => {

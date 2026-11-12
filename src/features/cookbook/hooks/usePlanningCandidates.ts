@@ -9,9 +9,11 @@ import type { RankInput } from '@/domain/recommend';
 import { dietMask, useCandidates, type CandidateFilters } from '@/lib/catalog';
 import {
   selectFeedbackEvents,
+  selectUnits,
   useFeedbackStore,
   usePantryStore,
   usePreferencesStore,
+  useSettingsStore,
   type Preferences,
 } from '@/stores';
 
@@ -31,7 +33,7 @@ export type CandidatesState =
 
 export function candidateFilters(prefs: Preferences): CandidateFilters {
   return {
-    excludeDietMask: dietMask(prefs.diets),
+    dietMask: dietMask(prefs.diets),
     avoidAllergens: prefs.allergens,
     limit: PLANNING_POOL,
   };
@@ -39,6 +41,7 @@ export function candidateFilters(prefs: Preferences): CandidateFilters {
 
 export function usePlanningCandidates(): CandidatesState {
   const prefs = usePreferencesStore((s) => s.prefs);
+  const units = useSettingsStore(selectUnits);
   const pantry = usePantryStore((s) => s.items);
   const feedback = useFeedbackStore(selectFeedbackEvents);
   const filters = useMemo(() => candidateFilters(prefs), [prefs]);
@@ -50,7 +53,7 @@ export function usePlanningCandidates(): CandidatesState {
   useEffect(() => {
     if (!data) return;
     const input: RankInput = {
-      prefs: toDomainPreferences(prefs),
+      prefs: toDomainPreferences(prefs, units),
       now: Date.now(),
       feedback: toDomainFeedback(feedback),
       pantry: toPantryIds(pantry),
@@ -58,7 +61,7 @@ export function usePlanningCandidates(): CandidatesState {
     return whenIdle(() => {
       setRanked({ source: data, list: rankForPlanning(data, input) });
     });
-  }, [data, prefs, pantry, feedback]);
+  }, [data, prefs, units, pantry, feedback]);
 
   if (needsSafety) return { status: 'needs_safety' };
   if (query.isError) {

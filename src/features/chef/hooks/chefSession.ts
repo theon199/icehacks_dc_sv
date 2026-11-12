@@ -23,8 +23,9 @@ import {
   useSessionStore,
 } from '../deps';
 import { describeAiProblem, remainingNote, type AiProblem } from '../logic/problems';
+import { settleReply } from '../logic/replySafety';
 import { buildChefRequest, type CatalogAccess } from '../logic/request';
-import { finderFor, screenSuggestedIds } from '../logic/screening';
+import { finderFor } from '../logic/screening';
 
 const catalog: CatalogAccess = { listCandidates, searchRecipes };
 
@@ -119,6 +120,7 @@ export async function askChef(attempt: ChefAttempt): Promise<void> {
   }));
   try {
     const prefs = usePreferencesStore.getState().prefs;
+    const askedWith = safetyPrefsFrom(prefs);
     const current = useChefStore.getState().threads[threadId]?.messages ?? [];
     const built = await buildChefRequest(current, prefs, catalog, attempt.photo ?? undefined);
     if (!built || !stillCurrent()) return;
@@ -127,26 +129,30 @@ export async function askChef(attempt: ChefAttempt): Promise<void> {
       logger.info('Chef: dropped an answer that arrived after the account changed');
       return;
     }
-    // Preferences may have changed while Chef was thinking; screen against the latest ones.
-    const latest = safetyPrefsFrom(usePreferencesStore.getState().prefs);
-    const { safe, dropped } = screenSuggestedIds(
-      reply.recipe_ids,
-      finderFor(built.offered),
-      latest,
-    );
-    if (dropped.length > 0) {
-      logger.info('Chef: dropped recipes that did not pass the safety check', {
-        count: dropped.length,
+    // Preferences may have changed while Chef was thinking: the cards are re-checked against the
+    // latest answers, and wording written for the old ones is not kept when it could be unsafe now.
+    const settled = settleReply({
+      text: reply.reply,
+      recipeIds: reply.recipe_ids,
+      find: finderFor(built.offered),
+      askedWith,
+      current: safetyPrefsFrom(usePreferencesStore.getState().prefs),
+    });
+    if (settled.dropped.length > 0 || settled.replaced) {
+      logger.info('Chef: an answer did not pass the safety check as written', {
+        droppedCount: settled.dropped.length,
+        replaced: settled.replaced,
       });
     }
     // A thread deleted meanwhile simply ignores the answer.
     useChefStore.getState().append(threadId, {
       role: 'assistant',
-      text: reply.reply,
-      recipeIds: safe.map((recipe) => recipe.id),
+      text: settled.text,
+      recipeIds: settled.recipes.map((recipe) => recipe.id),
     });
     useChefSession.setState((state) => ({
-      followUps: { ...state.followUps, [threadId]: reply.follow_ups },
+      // Suggestions written for the old answers could point back at what was just removed.
+      followUps: { ...state.followUps, [threadId]: settled.replaced ? [] : reply.follow_ups },
       quotaNote: remainingNote(reply.quota.remaining),
       limitedUntil: reply.quota.remaining === 0 ? limitEnd(reply.quota.reset_at) : null,
     }));

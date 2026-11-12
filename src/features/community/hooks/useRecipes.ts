@@ -2,14 +2,15 @@
 import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
-import { isRecipeSafe, type SafetyRules } from '@/domain/safety';
+import { compileSafetyRules, isRecipeSafe, type SafetyRules } from '@/domain/safety';
+import { usePreferencesStore } from '@/stores';
+import { toSafetyPrefs } from '@/stores/domainBridge';
 
 import { fetchWeeklyTopDishes } from '../api/communityApi';
 import {
   getRecipeSummaries,
   searchRecipes,
   useCookedRecipeIds,
-  useSafetyRules,
   useSavedRecipeIds,
   type CatalogRecipe,
   type RecipeSummary,
@@ -150,13 +151,27 @@ export function safeTopDishes(ranked: readonly RankedDish[], rules: SafetyRules)
 }
 
 /**
+ * The person's allergen and diet rules, read through the app-wide bridge so the strip applies the
+ * same answered/unanswered rule as every other screen. Only the safety answers are subscribed to.
+ */
+function useStripSafetyRules(): SafetyRules {
+  const allergens = usePreferencesStore((state) => state.prefs.allergens);
+  const diets = usePreferencesStore((state) => state.prefs.diets);
+  const allergensAnswered = usePreferencesStore((state) => state.prefs.allergensAnswered);
+  return useMemo(
+    () => compileSafetyRules(toSafetyPrefs({ allergens, diets, allergensAnswered })),
+    [allergens, diets, allergensAnswered],
+  );
+}
+
+/**
  * This week's most-cooked dishes that exist in the bundled catalog and are safe for the person.
  * Same fail-closed rule as everywhere else: a dish whose allergen status is not verified free for
  * a declared allergen is left out, and nothing is shown until the allergen question is answered.
  */
 export function useWeeklyTopDishes(): WeeklyTopDish[] {
   const viewer = useViewer();
-  const rules = useSafetyRules();
+  const rules = useStripSafetyRules();
   const query = useQuery({
     queryKey: communityKeys.weeklyTop(viewer),
     queryFn: async (): Promise<RankedDish[]> => {

@@ -97,7 +97,7 @@ function TwoDayPlan({
       </View>
       <Toggle
         label="Plan small meals"
-        description="Balances each day around lighter meals and two snacks"
+        description="Half-size main meals with snacks between them. Your planner keeps one snack a day."
         value={smallAppetite}
         onValueChange={onSmallAppetiteChange}
         testID="two-day-small"

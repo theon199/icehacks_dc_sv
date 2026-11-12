@@ -111,7 +111,11 @@ export interface FlushDeps {
   now?: () => number;
   /** How long one send may take before the run gives up until next time. */
   timeoutMs?: number;
+  /** The account signed in right now; defaults to the session store. */
+  currentUserId?: () => string | null;
 }
+
+const signedInUserId = () => useSessionStore.getState().userId;
 
 /** Runs in progress, one per account, so a second account never piggybacks on the first. */
 const inFlight = new Map<string, Promise<number>>();
@@ -121,6 +125,10 @@ const inFlight = new Map<string, Promise<number>>();
  * likely down, or a send stalled) and drops events the server refuses. Events too old to be
  * accepted are dropped for every account, so a queue left behind by someone else cannot linger.
  * Returns how many were delivered. Concurrent calls for the same account share one run.
+ *
+ * The run is bound to `ownerId`: the server records a cook for whoever is signed in when it is
+ * sent, so before every send the run checks that `ownerId` is still the signed-in account, and
+ * stops for good as soon as it is not (or never was).
  */
 export function flushPendingCookEvents(ownerId: string, deps: FlushDeps): Promise<number> {
   const running = inFlight.get(ownerId);
@@ -133,6 +141,7 @@ export function flushPendingCookEvents(ownerId: string, deps: FlushDeps): Promis
 async function runFlush(ownerId: string, deps: FlushDeps): Promise<number> {
   const now = (deps.now ?? Date.now)();
   const timeoutMs = deps.timeoutMs ?? COOK_EVENT_TIMEOUT_MS;
+  const currentUserId = deps.currentUserId ?? signedInUserId;
   usePendingCookEvents.setState((state) => {
     const fresh = state.events.filter((event) => isFresh(event, now));
     return fresh.length === state.events.length ? state : { events: fresh };
@@ -140,6 +149,11 @@ async function runFlush(ownerId: string, deps: FlushDeps): Promise<number> {
   let delivered = 0;
   for (const event of usePendingCookEvents.getState().events) {
     if (event.ownerId !== ownerId) continue;
+    // Another account (or nobody) is signed in now: sending would record this cook for them.
+    if (currentUserId() !== ownerId) {
+      logger.info('Stopped sending queued cooks: the signed-in account changed');
+      break;
+    }
     const id = event.request.clientEventId;
     // Signing out during the run forgets the rest of the queue; never send what was forgotten.
     if (!isQueued(id)) continue;

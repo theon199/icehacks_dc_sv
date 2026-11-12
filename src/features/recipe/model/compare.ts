@@ -16,7 +16,7 @@ import {
 } from '@/domain';
 import { TARGET_KIND, type NutrientKey } from '@/domain/nutrition';
 import type {
-  CandidateFilters,
+  FamilyFilters,
   NutritionConfidence,
   RecipeDetail,
   RecipeIngredientLine,
@@ -90,19 +90,16 @@ export function adaptedSafety(side: CompareSide, prefs: SafetyPrefs): SafetyVerd
   return checkRecipe(side.safety ?? ALL_UNKNOWN, prefs);
 }
 
-/** Enough to cover every recipe in the bundled catalog when looking for other versions. */
-const FAMILY_SCAN_LIMIT = 2000;
-
 /**
- * Catalog filters for finding another version of a dish to compare against. Every course is
- * searched, since versions of one dish can sit in different courses. Only versions that clear the
- * person's allergens (verified free, so `unknown` is out) and diets are considered; before the
- * person has answered the allergen questions, only versions free of every allergen are.
+ * Safety filters for reading the other versions of a dish to compare against. Versions of one dish
+ * can sit in different courses, so no course is set. Only versions that clear the person's
+ * allergens (verified free, so `unknown` is out) and diets are read; before the person has answered
+ * the allergen questions, only versions free of every allergen are.
  */
-export function familyCandidateFilters(prefs: SafetyPrefs): CandidateFilters {
+export function familySafetyFilters(prefs: SafetyPrefs): FamilyFilters {
   const rules = compileSafetyRules(prefs);
-  if (!rules.answered) return { avoidAllergens: ALLERGEN_IDS, limit: FAMILY_SCAN_LIMIT };
-  const filters: CandidateFilters = { limit: FAMILY_SCAN_LIMIT };
+  if (!rules.answered) return { avoidAllergens: ALLERGEN_IDS };
+  const filters: FamilyFilters = {};
   if (rules.mustBeFree.length > 0) filters.avoidAllergens = [...rules.mustBeFree].sort();
   if (rules.requiredDiets > 0) filters.dietMask = rules.requiredDiets;
   return filters;

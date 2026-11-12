@@ -17,10 +17,11 @@ export interface SlotRowProps {
   /** The planned recipe no longer passes the person's allergen and diet rules. */
   unsafe: boolean;
   readOnly: boolean;
-  /** Small appetite mode: meals are planned as half portions. */
-  smallPortions: boolean;
+  /** Size of each serving relative to a standard one (0.5 for a small meal); 1 when empty. */
+  portion: number;
   onAdd: (slot: MealSlot) => void;
-  onOpen: (recipeId: string) => void;
+  /** Opens the planned recipe, with the portion this meal is planned at. */
+  onOpen: (recipeId: string, portion: number) => void;
   onActions: (slot: MealSlot) => void;
   onMove: (slot: MealSlot) => void;
   onClear: (slot: MealSlot) => void;
@@ -32,9 +33,18 @@ const FILLED_ACTIONS = [
   { name: 'clear', label: 'Remove from plan' },
 ] as const;
 
-export function servingsText(servings: number, smallPortions: boolean): string {
-  const base = servings === 1 ? '1 serving' : `${servings} servings`;
-  return smallPortions ? `${base}, small portions` : base;
+/**
+ * "2 servings", "2 half-size servings" or "1 serving at 1.5× size". Spoken, the last reads
+ * "1 serving at 1.5 times the usual size", since screen readers say the × sign inconsistently.
+ */
+export function servingsText(servings: number, portion: number, spoken = false): string {
+  const noun = servings === 1 ? 'serving' : 'servings';
+  if (portion === 1) return `${servings} ${noun}`;
+  if (portion === 0.5) return `${servings} half-size ${noun}`;
+  const size = Number.isInteger(portion * 100) ? String(portion) : portion.toFixed(2);
+  return spoken
+    ? `${servings} ${noun} at ${size} times the usual size`
+    : `${servings} ${noun} at ${size}× size`;
 }
 
 /** One meal slot of a day: the planned recipe with its actions, or an add button. */
@@ -44,7 +54,7 @@ export const SlotRow = memo(function SlotRow({
   recipe,
   unsafe,
   readOnly,
-  smallPortions,
+  portion,
   onAdd,
   onOpen,
   onActions,
@@ -89,15 +99,14 @@ export const SlotRow = memo(function SlotRow({
   }
 
   const title = recipe?.title ?? 'Recipe unavailable';
-  const meta = [
-    servingsText(entry.servings, smallPortions),
-    recipe?.totalMinutes != null ? formatMinutes(recipe.totalMinutes) : null,
-  ]
+  const minutes = recipe?.totalMinutes != null ? formatMinutes(recipe.totalMinutes) : null;
+  const meta = [servingsText(entry.servings, portion), minutes].filter(Boolean).join(' · ');
+  const spokenMeta = [servingsText(entry.servings, portion, true), minutes]
     .filter(Boolean)
-    .join(' · ');
+    .join(', ');
   const onA11yAction = (event: AccessibilityActionEvent) => {
     const name = event.nativeEvent.actionName;
-    if (name === 'activate') onOpen(entry.recipeId);
+    if (name === 'activate') onOpen(entry.recipeId, portion);
     else if (name === 'move' && !readOnly) onMove(slot);
     else if (name === 'clear' && !readOnly) onClear(slot);
   };
@@ -113,14 +122,14 @@ export const SlotRow = memo(function SlotRow({
         accessibilityRole="button"
         accessibilityLabel={[
           `${label}: ${title}`,
-          meta,
+          spokenMeta,
           unsafe ? 'Check allergens: does not fit your allergens or diet' : '',
         ]
           .filter(Boolean)
           .join(', ')}
         accessibilityActions={readOnly ? [{ name: 'activate' }] : FILLED_ACTIONS}
         onAccessibilityAction={onA11yAction}
-        onPress={() => onOpen(entry.recipeId)}
+        onPress={() => onOpen(entry.recipeId, portion)}
         onLongPress={readOnly ? undefined : () => onActions(slot)}
         pressedOpacity={0.8}
         pressedScale={1}

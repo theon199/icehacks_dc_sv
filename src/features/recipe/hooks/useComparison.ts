@@ -12,14 +12,14 @@
 import { useMemo } from 'react';
 
 import type { SafetyVerdict } from '@/domain';
-import { useCandidates, useRecipe, useSubstitutions, type RecipeDetail } from '@/lib/catalog';
+import { useRecipe, useRecipeFamily, useSubstitutions, type RecipeDetail } from '@/lib/catalog';
 
 import { useDomainPreferences } from './usePersonalContext';
 import { usePersonalVariant } from '../deps';
 import {
   adaptedSafety,
   diffIngredients,
-  familyCandidateFilters,
+  familySafetyFilters,
   nutritionDeltas,
   pairFamily,
   sideFromRecipe,
@@ -53,12 +53,15 @@ export function useComparison(fromId: string | undefined, toId: string | undefin
   const from = useRecipe(fromId ?? null);
   // A `to` id may name one of the person's own versions (the link from a saved makeover).
   const variant = usePersonalVariant(fromId, toId);
-  const needFamily = !!from.data && !toId && !variant;
+  // A recipe without a dish family has no other versions to look for: it stands alone.
+  const familyId = from.data?.familyId || undefined;
+  const needFamily = !!familyId && !toId && !variant;
   const prefs = useDomainPreferences();
   const allergens = prefs.allergens;
   const diets = prefs.diets;
-  const filters = useMemo(() => familyCandidateFilters({ allergens, diets }), [allergens, diets]);
-  const family = useCandidates(filters, { enabled: needFamily });
+  const filters = useMemo(() => familySafetyFilters({ allergens, diets }), [allergens, diets]);
+  // Only this dish's versions are read, already screened by the catalog's fail-closed filters.
+  const family = useRecipeFamily(familyId, filters, { enabled: needFamily });
   const pair = useMemo(
     () => (needFamily && from.data && family.data ? pairFamily(from.data, family.data) : null),
     [needFamily, from.data, family.data],
@@ -96,7 +99,8 @@ export function useComparison(fromId: string | undefined, toId: string | undefin
   const otherPending = other.isPending;
   const otherError = other.isError ? other.error : null;
   const refetchOther = other.refetch;
-  const familyPending = family.isPending;
+  // A query that is not running (disabled, or nothing to read) is never waited on.
+  const familyPending = family.isPending && family.fetchStatus !== 'idle';
 
   return useMemo((): ComparisonState => {
     if (!fromId) return { status: 'missing' };

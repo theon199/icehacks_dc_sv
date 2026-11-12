@@ -127,6 +127,35 @@ describe('createApiClient', () => {
     expect(error.userMessage).toContain('about 2 minutes');
   });
 
+  it('keeps the structured details of an error reply', async () => {
+    const { call } = makeClient({
+      fetchImpl: async () =>
+        reply.json(
+          {
+            error: {
+              code: 'ai_refused',
+              message: 'The answer still named an allergen.',
+              details: { reason: 'allergen_conflict', allergens: ['milk', 'egg'] },
+            },
+          },
+          { status: 422 },
+        ),
+    });
+    const error = await failureOf(call('makeover', {}, greetingSchema));
+    expect(error.code).toBe('ai_refused');
+    expect(error.serverMessage).toBe('The answer still named an allergen.');
+    expect(error.details).toEqual({ reason: 'allergen_conflict', allergens: ['milk', 'egg'] });
+  });
+
+  it('leaves details out when an error reply has none', async () => {
+    const { call } = makeClient({
+      fetchImpl: async () =>
+        reply.json({ error: { code: 'nope', details: 'text' } }, { status: 400 }),
+    });
+    const error = await failureOf(call('makeover', {}, greetingSchema));
+    expect(error.details).toBeUndefined();
+  });
+
   it('flags a reply that breaks the schema as a non-retryable server error', async () => {
     const { call } = makeClient({ fetchImpl: async () => reply.json({ greeting: 5 }) });
     const error = await failureOf(call('chef-reply', {}, greetingSchema));

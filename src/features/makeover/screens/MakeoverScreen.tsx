@@ -20,6 +20,7 @@ import {
   useTheme,
 } from '@/ui';
 
+import { conflictNotice } from './conflictNotice';
 import { GoalPicker } from '../components/GoalPicker';
 import { MakeoverResult } from '../components/MakeoverResult';
 import { AiGate, useRecipe, useSaveVariant } from '../deps';
@@ -217,6 +218,14 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
     );
   }
 
+  // A refusal over a declared allergen names the allergens, so the next try can avoid them.
+  const failure =
+    state.status !== 'failed'
+      ? null
+      : state.conflict
+        ? conflictNotice(state.conflict)
+        : state.problem;
+
   return (
     <Screen>
       <View style={styles.heading}>
@@ -228,11 +237,11 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
           Choose what matters and Famara will suggest swaps, keeping the dish you know.
         </Text>
       </View>
-      {state.status === 'failed' ? (
+      {failure ? (
         <Card variant="sunken" testID="makeover-problem" style={styles.problem}>
-          <Text variant="headline">{state.problem.title}</Text>
+          <Text variant="headline">{failure.title}</Text>
           <Text variant="callout" tone="muted">
-            {state.problem.message}
+            {failure.message}
           </Text>
         </Card>
       ) : null}

@@ -1,4 +1,5 @@
 import { screen, userEvent } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import type { ComponentType, ReactNode } from 'react';
 
 import type { RecipeSummary } from '@/lib/catalog';
@@ -50,7 +51,10 @@ beforeEach(() => {
 });
 afterEach(clearQueryClients);
 
-async function renderDay(isSafe: (recipe: RecipeSummary) => boolean = () => true) {
+async function renderDay(
+  isSafe: (recipe: RecipeSummary) => boolean = () => true,
+  smallAppetite = false,
+) {
   const slots = useMealPlanStore.getState().weeks[WEEK]?.slots ?? {};
   await renderCookbook(
     <DayMeals
@@ -60,7 +64,7 @@ async function renderDay(isSafe: (recipe: RecipeSummary) => boolean = () => true
       slots={slots}
       recipes={new Map()}
       readOnly={false}
-      smallPortions={false}
+      smallAppetite={smallAppetite}
       moveWeeks={[WEEK]}
       isSafe={isSafe}
     />,
@@ -106,6 +110,32 @@ describe('DayMeals adding a meal', () => {
     expect(lastToast()).toMatchObject({
       message: ARCHIVED_WEEK_MESSAGE,
       tone: 'danger',
+    });
+  });
+});
+
+describe('DayMeals opening a meal', () => {
+  beforeEach(() => jest.mocked(router.push).mockClear());
+
+  it('opens the recipe at the portion the meal was planned at', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'safe', 2, 0.5);
+    await renderDay();
+    await user.press(screen.getByTestId('slot-dinner'));
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/recipe/[id]',
+      params: { id: 'safe', portion: '0.5' },
+    });
+  });
+
+  it('opens a meal planned without a portion at the size the setting gives it', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: WEEK, day: 2, slot: 'lunch' }, 'safe', 2);
+    await renderDay(undefined, true);
+    await user.press(screen.getByTestId('slot-lunch'));
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/recipe/[id]',
+      params: { id: 'safe', portion: '0.5' },
     });
   });
 });

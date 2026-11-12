@@ -6,8 +6,7 @@
  *   recommender domain. Preferences, feedback and recipes go through the app-wide bridges
  *   (`@/stores/domainBridge`, `@/lib/catalog`); only the planner-specific shapes (nutrition keys,
  *   personal details, goal tags for the planner's bonus) are built here;
- * - neutral stand-ins for sibling features that are not on `main` yet, so screens can mount them
- *   today and pick up the real thing by changing this file only.
+ * - sibling features' public surfaces the Cookbook mounts (grocery's cost estimate).
  *
  * Everything in this file is pure apart from the two hooks at the bottom.
  */
@@ -87,9 +86,7 @@ export function usePersonAge(): number | null {
 }
 
 /**
- * Estimated grocery cost for a set of planned recipes. The grocery feature owns cost estimates;
- * until it publishes a summary component this renders nothing.
+ * Estimated grocery cost; the planner passes its week as `recipes` (each with the servings it
+ * feeds) so the whole week is costed as one shopping trip.
  */
-export function WeekCostSummary(_props: { recipeIds: readonly string[] }): null {
-  return null;
-}
+export { CostSummary } from '@/features/grocery';
