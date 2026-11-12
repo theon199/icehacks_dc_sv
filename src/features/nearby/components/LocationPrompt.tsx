@@ -95,7 +95,20 @@ export function LocationPrompt({ dishName, location }: LocationPromptProps) {
             <Text variant="callout" tone="muted">
               {`Search a city or neighborhood to find ${dishName} there.`}
             </Text>
-            <CitySearch status={location.citySearch} onSearch={location.searchCity} />
+            <CitySearch
+              status={location.citySearch}
+              onSearch={location.searchCity}
+              initialQuery={state.previous?.label ?? ''}
+            />
+            {state.previous ? (
+              <Button
+                label="Back to results"
+                icon="chevron.left"
+                variant="ghost"
+                onPress={location.cancelCity}
+                testID="nearby-cancel-city"
+              />
+            ) : null}
             <Button
               label="Use my location"
               icon="location"

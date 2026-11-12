@@ -23,6 +23,8 @@ export interface NearbyLocation {
   requestPermission: () => void;
   /** Switches to the manual city search. */
   chooseCity: () => void;
+  /** Leaves the city search for the area searched before it, when there was one. */
+  cancelCity: () => void;
   /** Looks up a city and, when found, uses it as the search origin. */
   searchCity: (query: string) => Promise<void>;
   citySearch: CitySearchStatus;
@@ -107,6 +109,11 @@ export function useNearbyLocation(service: LocationService = expoLocationService
     dispatch({ type: 'chooseCity' });
   }, []);
 
+  const cancelCity = useCallback(() => {
+    setCitySearch('idle');
+    dispatch({ type: 'cancelCity' });
+  }, []);
+
   const searchCity = useCallback(
     async (query: string) => {
       setCitySearch('searching');
@@ -137,6 +144,7 @@ export function useNearbyLocation(service: LocationService = expoLocationService
     origin: originOf(state),
     requestPermission,
     chooseCity,
+    cancelCity,
     searchCity,
     citySearch,
     useDevice,

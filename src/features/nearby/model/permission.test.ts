@@ -119,4 +119,30 @@ describe('locationReducer', () => {
     expect(originOf({ step: 'explain' })).toBeNull();
     expect(originOf({ step: 'manual', origin: null, reason: 'chosen' })).toBeNull();
   });
+
+  it('goes back to the previous device results when a change of area is cancelled', () => {
+    const located = run([
+      { type: 'checked', permission: granted },
+      { type: 'located', point },
+    ]);
+    const changing = locationReducer(located, { type: 'chooseCity' });
+    expect(originOf(changing)).toBeNull();
+    expect(locationReducer(changing, { type: 'cancelCity' })).toEqual(located);
+  });
+
+  it('goes back to the previous city when a change of area is cancelled', () => {
+    const austin = run([{ type: 'chooseCity' }, { type: 'citySelected', point, label: 'Austin' }]);
+    const changing = locationReducer(austin, { type: 'chooseCity' });
+    expect(changing).toMatchObject({ step: 'manual', origin: null, previous: { label: 'Austin' } });
+    expect(originOf(locationReducer(changing, { type: 'cancelCity' }))).toEqual({
+      point,
+      source: 'city',
+      label: 'Austin',
+    });
+  });
+
+  it('has nothing to cancel back to without an earlier area', () => {
+    const manual = run([{ type: 'chooseCity' }]);
+    expect(locationReducer(manual, { type: 'cancelCity' })).toBe(manual);
+  });
 });

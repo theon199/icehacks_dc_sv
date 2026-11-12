@@ -34,7 +34,13 @@ export type LocationState =
   | { step: 'located'; origin: NearbyOrigin }
   | { step: 'blocked' }
   | { step: 'unavailable' }
-  | { step: 'manual'; origin: NearbyOrigin | null; reason: 'chosen' | 'blocked' | 'unavailable' };
+  | {
+      step: 'manual';
+      origin: NearbyOrigin | null;
+      reason: 'chosen' | 'blocked' | 'unavailable';
+      /** The area searched before "Change" was tapped, so the person can go back to it. */
+      previous?: NearbyOrigin;
+    };
 
 export type LocationEvent =
   | { type: 'checked'; permission: PermissionSnapshot }
@@ -44,7 +50,8 @@ export type LocationEvent =
   | { type: 'locateFailed' }
   | { type: 'chooseCity' }
   | { type: 'citySelected'; point: LatLng; label: string }
-  | { type: 'useDevice' };
+  | { type: 'useDevice' }
+  | { type: 'cancelCity' };
 
 export const initialLocationState: LocationState = { step: 'checking' };
 
@@ -86,8 +93,23 @@ export function locationReducer(state: LocationState, event: LocationEvent): Loc
         : state;
     case 'locateFailed':
       return state.step === 'locating' ? { step: 'unavailable' } : state;
-    case 'chooseCity':
-      return { step: 'manual', origin: null, reason: reasonFor(state) };
+    case 'chooseCity': {
+      const previous = originOf(state);
+      return {
+        step: 'manual',
+        origin: null,
+        reason: reasonFor(state),
+        ...(previous ? { previous } : {}),
+      };
+    }
+    case 'cancelCity': {
+      // Back to the results the person was looking at before tapping "Change".
+      if (state.step !== 'manual' || state.origin || !state.previous) return state;
+      const { previous } = state;
+      return previous.source === 'device'
+        ? { step: 'located', origin: previous }
+        : { step: 'manual', origin: previous, reason: state.reason };
+    }
     case 'citySelected':
       return {
         step: 'manual',
