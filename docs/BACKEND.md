@@ -417,15 +417,16 @@ read with a size cap and validated with zod (400 `invalid_request`, 413, 415) �
 re-validated and trimmed → `{ ...result, quota: { remaining, reset_at } }`. Invalid input never
 spends quota. Errors use the shared envelope; Claude failures map through `anthropicErrorToHttp`
 (422 `ai_refused`, 502, 503, 504). Logs carry the feature, model, stop reason and token counts
-only, never request content or user ids. Each system prompt is byte-stable and cached; per-user
-context goes into the user turn. Replies are constrained with structured outputs and then read
+only, never request content or user ids. Each system prompt is byte-stable and cached (except
+`nearby-chat`, whose prompt is below the minimum cacheable size); per-user context goes into the
+user turn. Replies are constrained with structured outputs and then read
 back with a looser schema, so out-of-range values are trimmed instead of failing the call.
 
 | Function | Model / effort | Deadline | Body cap | Quota feature (default per day) |
 | --- | --- | --- | --- | --- |
 | `chef` | default tier, medium | 90 s | 2.6 MB | `chef` (60) |
 | `snap` | default tier; low (pantry), medium (dish) | 60 s | 4.2 MB | `snap_pantry` / `snap_dish` (20 each) |
-| `makeover` | default tier, medium | 100 s | 128 KB | `makeover` (20) |
+| `makeover` | default tier, medium | 100 s (140 s with the allergen retry) | 128 KB | `makeover` (20) |
 | `nearby-chat` | fast tier, low | 30 s | 32 KB | `nearby_chat` (30) |
 
 **`chef`** — input `{messages, profile, candidates, image?}`. `messages`: 1–40 `{role, content}`
@@ -442,7 +443,8 @@ an id the device did not offer can never come back (none when `candidates` is em
 ≤ 3 MB decoded (HEIC is refused with 415), `note` ≤ 200 chars. Results:
 - `{status: "ok", mode: "pantry", items: [{name, quantity, unit, confidence}]}` — ≤ 40 items,
   lowercase names, duplicates merged, sorted by confidence; `quantity` and `unit` are both null
-  when the amount is unknown; units come from a fixed list (`piece`, `g`, `ml`, `cup`, `can`, …).
+  when the amount is unknown or rounds to 0 (quantities keep 2 decimals); units come from a fixed
+  list (`piece`, `g`, `ml`, `cup`, `can`, …).
 - `{status: "ok", mode: "dish", dish: {name, cuisine, key_ingredients, portion, nutrition,
   nutrition_confidence: "estimated", confidence}}` — `nutrition` has `kcal`, `protein_g`,
   `carbs_g`, `fat_g`, `fiber_g`, `sodium_mg`, each `{estimate, low, high}` with
@@ -453,14 +455,22 @@ an id the device did not offer can never come back (none when `candidates` is em
 **`makeover`** — input `{recipe: {title, servings, ingredients, steps}, goals, diet, allergens,
 request?}` (1–60 ingredient lines ≤ 200 chars, 1–40 steps ≤ 1000 chars, servings 1–24, `request`
 ≤ 300 chars). Output `{title, servings, ingredients, steps, swaps: [{from, to, why}], note}`;
-servings always equal the input. **Allergen guard:** the adapted ingredients, steps and swap
-targets are scanned for words naming a declared allergen (`makeover/allergens.ts`: plurals and
-"-ed" forms, accents folded, known safe phrases such as "coconut milk" or "water chestnut",
-explicit qualifiers such as "dairy-free" or "vegan" for the rest of a clause). Any hit returns 422
-`ai_refused` with `details: {reason: "allergen_conflict", allergens: [...]}` and the makeover is
-not returned. The check is deliberately cautious (unqualified "flour" counts as wheat, oats as
-gluten; "lactose-free" and "non-dairy" do not clear milk), and it is defence in depth, not a
-safety certificate: the app still re-checks AI output.
+servings always equal the input. **Allergen guard:** the title, adapted ingredients, steps, swap
+targets and note are scanned for words naming a declared allergen (`makeover/allergens.ts`:
+plurals, "-ed" and "-ies" forms, accents folded, known safe phrases such as "coconut milk" or
+"water chestnut"). An explicit qualifier such as "dairy-free" or "vegan" only covers the short
+ingredient phrase right after it (at most three words, ending at a preposition, article,
+participle or adverb), and never a word that is the allergen itself ("sesame-free za'atar" is
+still flagged). The swap `from` and `why` fields are not scanned, since they name what was
+removed. On a hit, Claude is asked once more in the same call, told which words were found
+(about one extra model call, no extra quota; skipped when less than 30 s of the 140 s budget is
+left). If the answer still has a hit, the function returns 422 `ai_refused` with
+`details: {reason: "allergen_conflict", allergens: [...]}` and the makeover is not returned; that
+call still counts against the quota. The check is deliberately cautious (unqualified "flour" and
+breaded cakes count as wheat, oats as gluten, pesto as tree nuts and milk; "lactose-free" and
+"non-dairy" do not clear milk), and it is defence in depth, not a safety certificate: the app
+still re-checks AI output. Allergen ids and their prompt labels live in `makeover/allergens.ts`
+and are shared by `chef` and `nearby-chat`.
 
 **`nearby-chat`** — input `{dish: {name, cuisine?}, places: [{name, cuisine, rating}], goals,
 diet, allergens}` (≤ 20 places, rating 0–5). Output `{tips}`: 2–4 one-sentence tips. The prompt
