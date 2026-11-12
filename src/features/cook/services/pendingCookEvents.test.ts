@@ -41,6 +41,7 @@ describe('flushPendingCookEvents', () => {
       recordCookEvent: rpc,
       classifyFailure: classifyCookEventError,
       now: () => NOW,
+      currentUserId: () => 'user-1',
     });
 
     expect(delivered).toBe(1);
@@ -59,6 +60,7 @@ describe('flushPendingCookEvents', () => {
       classifyFailure: classifyCookEventError,
       now: () => NOW,
       timeoutMs: 5,
+      currentUserId: () => 'user-1',
     });
 
     expect(delivered).toBe(0);
@@ -81,6 +83,7 @@ describe('flushPendingCookEvents', () => {
       classifyFailure: classifyCookEventError,
       now: () => NOW,
       timeoutMs: 5,
+      currentUserId: () => 'user-1',
     });
     expect(delivered).toBe(0);
     expect(queuedIds()).toEqual(['late']);
@@ -108,6 +111,99 @@ describe('flushPendingCookEvents', () => {
     });
 
     expect(rpc).toHaveBeenCalledTimes(1);
+    expect(queuedIds()).toEqual([]);
+  });
+});
+
+describe('flushPendingCookEvents account binding', () => {
+  const ok = { eventId: 'x', newBadges: [] };
+
+  it('sends nothing when the run starts for an account that is not signed in', async () => {
+    signIn('user-1');
+    usePendingCookEvents.getState().add('user-1', request('mine'));
+    const rpc = jest.fn().mockResolvedValue(ok);
+
+    const delivered = await flushPendingCookEvents('user-1', {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+      currentUserId: () => 'user-2',
+    });
+
+    expect(delivered).toBe(0);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing for a run started while signed out', async () => {
+    usePendingCookEvents.getState().add('user-1', request('mine'));
+    const rpc = jest.fn().mockResolvedValue(ok);
+
+    await flushPendingCookEvents('user-1', {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+    });
+
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('stops before the next send once another account is signed in, even if the queue lags', async () => {
+    let signedIn = 'user-1';
+    const queue = usePendingCookEvents.getState();
+    queue.add('user-1', request('first'));
+    queue.add('user-1', request('second'));
+    queue.add('user-1', request('third'));
+    const rpc = jest.fn(async () => {
+      // The session moves on before the queue is told to forget the old account.
+      signedIn = 'user-2';
+      return ok;
+    });
+
+    const delivered = await flushPendingCookEvents('user-1', {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+      currentUserId: () => signedIn,
+    });
+
+    expect(delivered).toBe(1);
+    expect(rpc.mock.calls.map(([sent]) => sent.clientEventId)).toEqual(['first']);
+  });
+
+  it('stops before the next send when the session store switches accounts mid-run', async () => {
+    signIn('user-1');
+    const queue = usePendingCookEvents.getState();
+    queue.add('user-1', request('first'));
+    queue.add('user-1', request('second'));
+    const rpc = jest.fn(async () => {
+      signIn('user-2');
+      return ok;
+    });
+
+    await flushPendingCookEvents('user-1', {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+    });
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(queuedIds()).toEqual([]);
+  });
+
+  it('sends every queued cook while the same account stays signed in', async () => {
+    signIn('user-1');
+    const queue = usePendingCookEvents.getState();
+    queue.add('user-1', request('first'));
+    queue.add('user-1', request('second'));
+    const rpc = jest.fn().mockResolvedValue(ok);
+
+    const delivered = await flushPendingCookEvents('user-1', {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+    });
+
+    expect(delivered).toBe(2);
     expect(queuedIds()).toEqual([]);
   });
 });
