@@ -201,4 +201,66 @@ describe('planReducer', () => {
     planReducer(s, { type: 'archiveWeek', at: AT, week: WEEK });
     expect(JSON.stringify(s)).toBe(frozen);
   });
+  describe('rejects invalid cell references and dates', () => {
+    const base = run({ type: 'place', at: AT, cell: cell(0, 'dinner'), meal: meal('a') });
+    const badDay = 9 as unknown as CellRef['day'];
+    const badSlot = 'brunch' as unknown as CellRef['slot'];
+    const badRefs: readonly CellRef[] = [
+      cell(0, 'dinner', '2026-11-10'), // a Tuesday
+      cell(0, 'dinner', '2026-02-30'), // not a real date
+      cell(0, 'dinner', 'next week'),
+      cell(badDay, 'dinner'),
+      cell(-1 as unknown as CellRef['day'], 'dinner'),
+      cell(0, badSlot),
+    ];
+
+    it.each(badRefs)('ignores place/clear/setServings/move/swap for %o', (ref) => {
+      const actions: PlanAction[] = [
+        { type: 'place', at: AT, cell: ref, meal: meal('b') },
+        { type: 'clear', at: AT, cell: ref },
+        { type: 'setServings', at: AT, cell: ref, servings: 3 },
+        { type: 'move', at: AT, from: cell(0, 'dinner'), to: ref },
+        { type: 'move', at: AT, from: ref, to: cell(0, 'dinner') },
+        { type: 'swap', at: AT, a: cell(0, 'dinner'), b: ref },
+      ];
+      for (const action of actions) {
+        expect(() => planReducer(base, action)).not.toThrow();
+        expect(planReducer(base, action)).toBe(base);
+      }
+    });
+
+    it('never creates a duplicate week key for a non-Monday week', () => {
+      const s = planReducer(base, {
+        type: 'place',
+        at: AT,
+        cell: cell(2, 'lunch', '2026-11-11'),
+        meal: meal('b'),
+      });
+      expect(Object.keys(s.weeks)).toEqual([WEEK]);
+    });
+
+    it('applyFill ignores a bad week and drops assignments with a bad day or slot', () => {
+      const assignments = [
+        { day: badDay, slot: 'dinner' as const, meal: meal('x') },
+        { day: 1 as const, slot: badSlot, meal: meal('y') },
+        { day: 2 as const, slot: 'lunch' as const, meal: meal('z') },
+      ];
+      expect(
+        planReducer(base, { type: 'applyFill', at: AT, week: '2026-11-12', assignments }),
+      ).toBe(base);
+      const s = planReducer(base, { type: 'applyFill', at: AT, week: WEEK, assignments });
+      expect(Object.keys(s.weeks[WEEK]?.cells ?? {}).sort()).toEqual(['0:dinner', '2:lunch']);
+    });
+
+    it('clearDay ignores an out-of-range day', () => {
+      expect(planReducer(base, { type: 'clearDay', at: AT, week: WEEK, day: badDay })).toBe(base);
+    });
+
+    it('archivePast with an invalid today is a no-op instead of throwing', () => {
+      for (const today of ['', 'yesterday', '2026-13-01', '2026-02-29']) {
+        expect(() => planReducer(base, { type: 'archivePast', at: AT, today })).not.toThrow();
+        expect(planReducer(base, { type: 'archivePast', at: AT, today })).toBe(base);
+      }
+    });
+  });
 });

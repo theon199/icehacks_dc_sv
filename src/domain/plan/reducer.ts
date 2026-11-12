@@ -2,8 +2,19 @@
  * Pure reducer for the weekly planner. Every action carries the timestamp it happened at so the
  * reducer never reads the clock. Actions that change nothing return the same state object, which
  * lets stores skip re-renders and sync writes.
+ *
+ * Input from storage or the UI is not trusted: a week id must be a real Monday, a day must be one of
+ * `DAY_INDICES` and a slot one of `MEAL_SLOTS`. Any action that names an invalid week, day, slot or
+ * `today` is ignored (the same state is returned). The reducer never throws.
  */
-import { weekStartOf, type DayIndex, type IsoDate } from './dates';
+import {
+  DAY_INDICES,
+  dayIndexOf,
+  isIsoDate,
+  weekStartOf,
+  type DayIndex,
+  type IsoDate,
+} from './dates';
 import {
   cellKey,
   MEAL_SLOTS,
@@ -60,6 +71,24 @@ export function getMeal(state: PlannerState, cell: CellRef): PlannedMeal | undef
   return state.weeks[cell.week]?.cells[cellKey(cell.day, cell.slot)];
 }
 
+/** A week id is valid when it is a real calendar date that falls on a Monday. */
+export function isValidWeekStart(week: unknown): week is IsoDate {
+  return typeof week === 'string' && isIsoDate(week) && dayIndexOf(week) === 0;
+}
+
+function isValidDay(day: unknown): day is DayIndex {
+  return (DAY_INDICES as readonly unknown[]).includes(day);
+}
+
+function isValidSlot(slot: unknown): slot is MealSlot {
+  return (MEAL_SLOTS as readonly unknown[]).includes(slot);
+}
+
+/** True when the reference names a real Monday week, a day 0–6 and a known meal slot. */
+export function isValidCellRef(ref: CellRef): boolean {
+  return isValidWeekStart(ref.week) && isValidDay(ref.day) && isValidSlot(ref.slot);
+}
+
 function isValidMeal(meal: PlannedMeal): boolean {
   return (
     meal.recipeId.length > 0 &&
@@ -112,7 +141,7 @@ function archiveWeeks(state: PlannerState, at: string, starts: readonly IsoDate[
 export function planReducer(state: PlannerState, action: PlanAction): PlannerState {
   switch (action.type) {
     case 'place': {
-      if (!isValidMeal(action.meal)) return state;
+      if (!isValidCellRef(action.cell) || !isValidMeal(action.meal)) return state;
       const { week, day, slot } = action.cell;
       return editCells(state, action.at, [{ week, key: cellKey(day, slot), meal: action.meal }]);
     }
@@ -120,6 +149,7 @@ export function planReducer(state: PlannerState, action: PlanAction): PlannerSta
     case 'swap': {
       const a = action.type === 'move' ? action.from : action.a;
       const b = action.type === 'move' ? action.to : action.b;
+      if (!isValidCellRef(a) || !isValidCellRef(b)) return state;
       const mealA = getMeal(state, a);
       const mealB = getMeal(state, b);
       if (mealA === undefined && (action.type === 'move' || mealB === undefined)) return state;
@@ -129,10 +159,12 @@ export function planReducer(state: PlannerState, action: PlanAction): PlannerSta
       ]);
     }
     case 'clear': {
+      if (!isValidCellRef(action.cell)) return state;
       const { week, day, slot } = action.cell;
       return editCells(state, action.at, [{ week, key: cellKey(day, slot), meal: undefined }]);
     }
     case 'clearDay': {
+      if (!isValidDay(action.day)) return state;
       const week = state.weeks[action.week];
       if (!week) return state;
       const prefix = `${action.day}:`;
@@ -150,6 +182,7 @@ export function planReducer(state: PlannerState, action: PlanAction): PlannerSta
       return { ...state, weeks };
     }
     case 'setServings': {
+      if (!isValidCellRef(action.cell)) return state;
       const meal = getMeal(state, action.cell);
       if (!meal || !Number.isFinite(action.servings) || action.servings <= 0) return state;
       if (meal.servings === action.servings) return state;
@@ -159,9 +192,10 @@ export function planReducer(state: PlannerState, action: PlanAction): PlannerSta
       ]);
     }
     case 'applyFill': {
+      if (!isValidWeekStart(action.week)) return state;
       const existing = state.weeks[action.week]?.cells ?? {};
       const edits = action.assignments
-        .filter((a) => isValidMeal(a.meal))
+        .filter((a) => isValidDay(a.day) && isValidSlot(a.slot) && isValidMeal(a.meal))
         .filter((a) => action.overwrite === true || existing[cellKey(a.day, a.slot)] === undefined)
         .map((a) => ({ week: action.week, key: cellKey(a.day, a.slot), meal: a.meal }));
       return editCells(state, action.at, edits);
@@ -169,6 +203,7 @@ export function planReducer(state: PlannerState, action: PlanAction): PlannerSta
     case 'archiveWeek':
       return archiveWeeks(state, action.at, [action.week]);
     case 'archivePast': {
+      if (typeof action.today !== 'string' || !isIsoDate(action.today)) return state;
       const current = weekStartOf(action.today);
       return archiveWeeks(
         state,
