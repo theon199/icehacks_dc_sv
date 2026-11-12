@@ -28,12 +28,14 @@ export interface SearchFilterState {
   readonly maxKcal: number | null;
 }
 
+const NOTHING_PICKED: readonly never[] = Object.freeze([]);
+
 export const EMPTY_FILTERS: SearchFilterState = Object.freeze({
-  cuisines: Object.freeze([]) as readonly string[],
-  courses: Object.freeze([]) as readonly Course[],
+  cuisines: NOTHING_PICKED,
+  courses: NOTHING_PICKED,
   maxMinutes: null,
-  diets: Object.freeze([]) as readonly DietId[],
-  goals: Object.freeze([]) as readonly GoalTag[],
+  diets: NOTHING_PICKED,
+  goals: NOTHING_PICKED,
   maxKcal: null,
 });
 
@@ -80,8 +82,10 @@ function sorted<T extends string>(values: readonly T[]): T[] {
 export function toSearchFilters(state: SearchFilterState): SearchFilters {
   const out: SearchFilters = {};
   if (state.cuisines.length > 0) out.cuisines = sorted(state.cuisines);
-  if (state.courses.length === 1) out.course = state.courses[0] as Course;
-  else if (state.courses.length > 1) out.course = sorted(state.courses);
+  const [onlyCourse, ...moreCourses] = state.courses;
+  if (onlyCourse !== undefined) {
+    out.course = moreCourses.length === 0 ? onlyCourse : sorted(state.courses);
+  }
   if (state.maxMinutes != null) out.maxMinutes = state.maxMinutes;
   const mask = dietMask(state.diets);
   if (mask !== 0) out.dietMask = mask;
@@ -90,7 +94,10 @@ export function toSearchFilters(state: SearchFilterState): SearchFilters {
   return out;
 }
 
-/** Number of filter groups in use, for the badge on the Filters button. */
+/**
+ * Number of individual filter values in use (each cuisine, course, diet and goal counts, plus one
+ * each for a time or calorie limit), for the badge on the Filters button.
+ */
 export function activeFilterCount(state: SearchFilterState): number {
   return (
     state.cuisines.length +

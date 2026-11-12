@@ -1,8 +1,18 @@
-import { ALLERGEN_IDS, type AllergenMap, type RecipeSummary } from '@/lib/catalog';
+import type { AllergenMap, RecipeSummary } from '@/lib/catalog';
 
-/** Every allergen verified absent. */
-export const allFree = (): AllergenMap =>
-  Object.fromEntries(ALLERGEN_IDS.map((id) => [id, 'free'])) as unknown as AllergenMap;
+/** Every allergen verified absent. Spelled out so the compiler flags a newly added allergen. */
+export const allFree = (): AllergenMap => ({
+  milk: 'free',
+  egg: 'free',
+  fish: 'free',
+  shellfish: 'free',
+  tree_nut: 'free',
+  peanut: 'free',
+  wheat: 'free',
+  soy: 'free',
+  sesame: 'free',
+  gluten: 'free',
+});
 
 /** A plain catalog summary for tests; override what the test is about. */
 export function searchRecipe(id: string, overrides: Partial<RecipeSummary> = {}): RecipeSummary {
