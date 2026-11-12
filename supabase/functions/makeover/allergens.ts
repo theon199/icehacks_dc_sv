@@ -582,8 +582,10 @@ function phrasePattern(phrase: string): string {
   return [...words.map(escape), ending].join("[\\s-]+");
 }
 
-const WORD_START = "(?<![\\w'])";
-const WORD_END = "(?![\\w'])";
+// A word starts after a non-word character, but not inside a contraction such as "don't".
+const WORD_START = "(?<!\\w)(?<!\\w')";
+// A word may carry a possessive ("salmon's", "prawns'") before it ends.
+const WORD_END = "(?:'s?)?(?![\\w'])";
 const anyOf = (phrases: readonly string[]) => `(?:${phrases.map(phrasePattern).join("|")})`;
 
 interface CompiledRule {

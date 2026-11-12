@@ -176,3 +176,12 @@ Deno.test("egg dishes, doughs, bakes and compound words are recognised", () => {
   assertEquals(hits("Pour over the béchamel", ["milk"]), ["milk"]);
   assertEquals(hits("Pipe the buttercream", ["milk"]), ["milk"]);
 });
+
+Deno.test("possessives and quoted words still name the allergen", () => {
+  assertEquals(hits("Pat the salmon's skin dry", ["fish"]), ["fish"]);
+  assertEquals(hits("Remove the shrimp's tails", ["shellfish"]), ["shellfish"]);
+  assertEquals(hits("Peel the prawns' shells", ["shellfish"]), ["shellfish"]);
+  assertEquals(hits("Let the butter's foam subside", ["milk"]), ["milk"]);
+  assertEquals(hits("Rest until the cheese’s surface browns", ["milk"]), ["milk"]);
+  assertEquals(hits("Top with 'parmesan'", ["milk"]), ["milk"]);
+});

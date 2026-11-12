@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import type { createClient } from "@supabase/supabase-js";
-import { createMakeoverHandler, makeoverQuota } from "./handler.ts";
+import { createMakeoverHandler, findMakeoverConflicts, makeoverQuota } from "./handler.ts";
 
 const ENV: Record<string, string> = {
   SUPABASE_URL: "http://127.0.0.1:54321",
@@ -302,4 +302,19 @@ Deno.test("an empty adaptation is an upstream error", async () => {
     )
   );
   assertEquals(res.status, 502);
+});
+
+Deno.test("a stale step that still names the allergen is caught", () => {
+  const conflicts = findMakeoverConflicts(
+    {
+      title: "Crispy tofu bowl",
+      servings: 2,
+      ingredients: ["400 g firm tofu", "1 tbsp olive oil"],
+      steps: ["Pat the salmon's skin side dry", "Sear until golden"],
+      swaps: [{ from: "salmon", to: "firm tofu", why: "Keeps it fish-free" }],
+      note: "Same method, plant protein.",
+    },
+    ["fish"],
+  );
+  assertEquals(conflicts.map((conflict) => conflict.allergen), ["fish"]);
 });
