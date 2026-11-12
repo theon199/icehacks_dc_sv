@@ -64,10 +64,62 @@ function rememberUnsent(userId: string, record: AiConsentRecord | null): void {
   }
 }
 
+/** How long one account write may take before the queue moves on and treats it as failed. */
+export const AI_CONSENT_WRITE_TIMEOUT_MS = 15_000;
+
+/**
+ * Writes that timed out but have not settled yet. Such a write may still reach the server after a
+ * newer one, so while any are outstanding a withdrawal is kept on the device for resending.
+ */
+let outstandingLateWrites = 0;
+
 async function writeServerRecord(record: AiConsentRecord): Promise<void> {
   const { error } = await getSupabase().auth.updateUser({ data: { ai_consent: record } });
   if (error) throw error;
 }
+
+/**
+ * Sends `record`, giving up after the timeout so one stuck request cannot hold every later answer.
+ * When a write that gave up finally settles, a withdrawal still kept on the device is sent again,
+ * in case the late write replaced it on the server.
+ */
+function writeServerRecordWithTimeout(userId: string, record: AiConsentRecord): Promise<void> {
+  const write = writeServerRecord(record);
+  return new Promise<void>((resolve, reject) => {
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      outstandingLateWrites += 1;
+      reject(new Error('The account write timed out'));
+    }, AI_CONSENT_WRITE_TIMEOUT_MS);
+    write.then(
+      () => {
+        if (!timedOut) {
+          clearTimeout(timer);
+          resolve();
+        }
+      },
+      (error: unknown) => {
+        if (!timedOut) {
+          clearTimeout(timer);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      },
+    );
+    void write
+      .catch(() => undefined)
+      .then(() => {
+        if (!timedOut) return;
+        outstandingLateWrites -= 1;
+        if (readUnsent(userId) && useSessionStore.getState().userId === userId) {
+          void reconcileAiConsent();
+        }
+      });
+  });
+}
+
+/** Whether a sent withdrawal can be forgotten: no earlier write can still land after it. */
+const noLateWrites = () => outstandingLateWrites === 0;
 
 /**
  * Server writes run one at a time, in the order they were asked for. Without this a reconcile
@@ -79,7 +131,8 @@ let writeQueue: Promise<unknown> = Promise.resolve();
 /**
  * Queues `record` for `userId`'s account. When its turn comes it is sent only if that account is
  * still signed in (the write goes to whoever holds the session) and `stillWanted()` holds.
- * Resolves true once sent, false when skipped; rejects when the server refused it.
+ * Resolves true once sent, false when skipped; rejects when the server refused it or did not
+ * answer within `AI_CONSENT_WRITE_TIMEOUT_MS`.
  */
 function sendRecord(
   userId: string,
@@ -88,7 +141,7 @@ function sendRecord(
 ): Promise<boolean> {
   const turn = writeQueue.then(async () => {
     if (useSessionStore.getState().userId !== userId || !stillWanted()) return false;
-    await writeServerRecord(record);
+    await writeServerRecordWithTimeout(userId, record);
     return true;
   });
   writeQueue = turn.catch(() => undefined);
@@ -123,7 +176,9 @@ export async function setAiConsent(granted: boolean, now: Date = new Date()): Pr
   useSessionStore.getState().setAiConsent(false);
   rememberUnsent(userId, record);
   try {
-    if ((await sendRecord(userId, record)) && latest()) rememberUnsent(userId, null);
+    if ((await sendRecord(userId, record)) && latest() && noLateWrites()) {
+      rememberUnsent(userId, null);
+    }
   } catch (error) {
     logger.warn('AI withdrawal not saved to the account yet; will retry', describeError(error));
   }
@@ -149,7 +204,7 @@ export async function reconcileAiConsent(): Promise<void> {
       if (useSessionStore.getState().aiConsent) useSessionStore.getState().setAiConsent(false);
       // Checked again when its turn in the queue comes: a newer answer replaces this resend.
       const sent = await sendRecord(userId, unsent, stillCurrent);
-      if (sent && stillCurrent()) rememberUnsent(userId, null);
+      if (sent && stillCurrent() && noLateWrites()) rememberUnsent(userId, null);
       return;
     }
 
@@ -189,5 +244,6 @@ export function useAiConsentSync(): void {
 /** Test hook. */
 export function resetAiConsentForTests(): void {
   decisionCount = 0;
+  outstandingLateWrites = 0;
   writeQueue = Promise.resolve();
 }

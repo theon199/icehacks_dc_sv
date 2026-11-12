@@ -1,6 +1,7 @@
 import { useSessionStore } from '@/features/auth';
 
 import {
+  AI_CONSENT_WRITE_TIMEOUT_MS,
   AI_TERMS_VERSION,
   forgetAiConsentOnDevice,
   readConsentRecord,
@@ -249,6 +250,67 @@ describe('ordering of account writes', () => {
     await expect(agree).resolves.toBe('refused');
     expect(writes.sent()).toHaveLength(1);
     expect(useSessionStore.getState().aiConsent).toBe(false);
+  });
+});
+
+describe('an account write that never answers', () => {
+  /** The first updateUser call hangs until released; later calls succeed. */
+  function oneHungWrite() {
+    let release: () => void = () => undefined;
+    mockAuth.updateUser.mockReset();
+    mockAuth.updateUser.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ data: {}, error: null });
+        }),
+    );
+    mockAuth.updateUser.mockResolvedValue({ data: {}, error: null });
+    return { release: () => release() };
+  }
+
+  const sentAnswers = () =>
+    mockAuth.updateUser.mock.calls.map(
+      (call) => (call[0] as { data: { ai_consent: { granted: boolean } } }).data.ai_consent.granted,
+    );
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('gives up on a stuck yes so later answers are not held behind it', async () => {
+    signIn('user-t1', false);
+    oneHungWrite();
+    const agree = setAiConsent(true);
+    const outcome = expect(agree).rejects.toThrow('timed out');
+    await jest.advanceTimersByTimeAsync(AI_CONSENT_WRITE_TIMEOUT_MS);
+    await outcome;
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+
+    await setAiConsent(false);
+    expect(sentAnswers()).toEqual([true, false]);
+  });
+
+  it('sends a withdrawal again once a stuck earlier write finally lands', async () => {
+    signIn('user-t2', false);
+    const hung = oneHungWrite();
+    const agree = setAiConsent(true).catch(() => undefined);
+    await jest.advanceTimersByTimeAsync(AI_CONSENT_WRITE_TIMEOUT_MS);
+    await agree;
+
+    // The withdrawal reaches the server, but the stuck yes could still land after it.
+    await setAiConsent(false);
+    expect(sentAnswers()).toEqual([true, false]);
+
+    // It lands: the withdrawal kept on the device goes out again and wins.
+    hung.release();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(sentAnswers()).toEqual([true, false, false]);
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+
+    // Nothing is left to resend after that.
+    mockAuth.updateUser.mockClear();
+    accountRecord('user-t2', withdrawn);
+    await reconcileAiConsent();
+    expect(mockAuth.updateUser).not.toHaveBeenCalled();
   });
 });
 
