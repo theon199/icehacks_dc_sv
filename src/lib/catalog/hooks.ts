@@ -73,7 +73,8 @@ export function useRecipes(ids: readonly string[]) {
     queryKey: catalogKeys.recipes(ids),
     queryFn: () => getRecipeSummaries(ids),
     enabled: ids.length > 0,
-    placeholderData: keepPreviousData,
+    // No keepPreviousData here: showing the last list's recipes for a different set of ids would
+    // briefly render the wrong cookbook or plan.
   });
 }
 
