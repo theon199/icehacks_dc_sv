@@ -23,6 +23,24 @@ const minimalTip: PublishPostInput = {
 
 const savedRow = { id: 'post-9', status: 'visible', kind: 'tip', title: 'Rest your dough' };
 
+/** What the publish client resolves with (already parsed into its camelCase shape). */
+const functionAnswer = {
+  post: {
+    ...savedRow,
+    authorId: 'me',
+    body: '',
+    recipeRef: null,
+    rating: null,
+    visibility: 'public',
+    parentPostId: null,
+    likeCount: 0,
+    commentCount: 0,
+    createdAt: '2026-11-11T12:00:00Z',
+    updatedAt: '2026-11-11T12:00:00Z',
+  },
+  held: false,
+};
+
 /** The 404 the gateway answers with when the function is not deployed at all. */
 const functionNotDeployed = () =>
   new ApiError({ kind: 'server', functionName: 'publish', status: 404, code: 'NOT_FOUND' });
@@ -48,9 +66,9 @@ describe('toFtsQuery', () => {
 
 describe('publishPost', () => {
   it('sends only the fields that have values', async () => {
-    callMock.mockResolvedValueOnce(savedRow);
+    callMock.mockResolvedValueOnce(functionAnswer);
 
-    await publishPost(minimalTip);
+    await expect(publishPost(minimalTip)).resolves.toEqual(savedRow);
 
     expect(callMock).toHaveBeenCalledWith(
       'publish',
@@ -61,7 +79,7 @@ describe('publishPost', () => {
   });
 
   it('sends rating, recipe, parent and photos (without an empty blurhash) when set', async () => {
-    callMock.mockResolvedValueOnce(savedRow);
+    callMock.mockResolvedValueOnce(functionAnswer);
 
     await publishPost({
       ...minimalTip,
@@ -69,7 +87,7 @@ describe('publishPost', () => {
       body: 'Less sugar.',
       recipeRef: 'catalog:12',
       rating: 5,
-      parentPostId: 'post-1',
+      parentPostId: '6f1c2a4e-8b3d-4c5e-9a7f-1b2c3d4e5f60',
       media: [
         { path: 'u/a.jpg', width: 10, height: 20, blurhash: null },
         { path: 'u/b.jpg', width: 30, height: 40, blurhash: 'LKO2?U%2Tw=w' },
@@ -83,7 +101,7 @@ describe('publishPost', () => {
       body: 'Less sugar.',
       recipe_ref: 'catalog:12',
       rating: 5,
-      parent_post_id: 'post-1',
+      parent_post_id: '6f1c2a4e-8b3d-4c5e-9a7f-1b2c3d4e5f60',
       media: [
         { path: 'u/a.jpg', width: 10, height: 20 },
         { path: 'u/b.jpg', width: 30, height: 40, blurhash: 'LKO2?U%2Tw=w' },

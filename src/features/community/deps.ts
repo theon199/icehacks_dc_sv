@@ -2,13 +2,17 @@
  * The narrow set of things Community needs from other parts of the app, behind one file.
  *
  * Recipes come from the bundled catalog, saved/cooked lists from the user's own data, and posts
- * and comments are published through the `publish` edge function (server-side moderation, rate and
- * image limits). Each export is shaped like docs/PRODUCT.md, docs/DATA.md and docs/BACKEND.md
- * describe, so pointing one at its dedicated module is a change to this file only.
+ * and comments go through the `publish` edge function client in src/lib/api/community.ts
+ * (text review, rate and image limits). Each export is shaped like docs/PRODUCT.md, docs/DATA.md
+ * and docs/BACKEND.md describe, so pointing one at its dedicated module changes this file only.
  */
 import { z } from 'zod';
 
-import { callFunction } from '@/lib/api/client';
+import {
+  publishComment as sendComment,
+  publishPost as sendPost,
+  type NewPost,
+} from '@/lib/api/community';
 import { ApiError } from '@/lib/api/errors';
 import { catalogQuery } from '@/lib/db/catalog';
 import { supabase } from '@/lib/supabase/client';
@@ -155,13 +159,10 @@ export interface PublishCommentInput {
   parentCommentId: string | null;
 }
 
-const PUBLISH_FUNCTION = 'publish';
-const PUBLISH_TIMEOUT_MS = 30_000;
-
 /**
  * True when the edge function itself is not deployed in this environment (as opposed to the
  * function answering 404 about a post or comment). Only then do we fall back to the RPC, which
- * applies the same database-side rules.
+ * applies the same database-side rules but skips the text review.
  */
 function functionMissing(error: unknown): boolean {
   return (
@@ -181,36 +182,24 @@ function firstRow(data: unknown): unknown {
   return Array.isArray(data) ? (data as unknown[])[0] : data;
 }
 
-/** The function answers `{ post, held }` / `{ comment, held }`; a bare row is accepted too. */
-const publishPostResponse = z.union([
-  z.object({ post: publishedPostSchema }).transform((value) => value.post),
-  publishedPostSchema,
-]);
-
-const publishCommentResponse = z.union([
-  z.object({ comment: publishedCommentSchema }).transform((value) => value.comment),
-  publishedCommentSchema,
-]);
+/** The request for the publish client: optional fields are left out rather than sent empty. */
+function toNewPost(input: PublishPostInput): NewPost {
+  return {
+    kind: input.kind,
+    title: input.title,
+    ...(input.body ? { body: input.body } : {}),
+    ...(input.recipeRef ? { recipeRef: input.recipeRef } : {}),
+    ...(input.rating != null ? { rating: input.rating } : {}),
+    ...(input.parentPostId ? { parentPostId: input.parentPostId } : {}),
+    ...(input.media.length > 0 ? { media: input.media.map(mediaPayload) } : {}),
+  };
+}
 
 /** Publishes a post. A `status` of `hidden` means it is held for review. */
 export async function publishPost(input: PublishPostInput): Promise<PublishedPost> {
   try {
-    return await callFunction(
-      PUBLISH_FUNCTION,
-      {
-        type: 'post',
-        kind: input.kind,
-        title: input.title,
-        // Optional fields are left out rather than sent as null.
-        ...(input.body ? { body: input.body } : {}),
-        ...(input.recipeRef ? { recipe_ref: input.recipeRef } : {}),
-        ...(input.rating != null ? { rating: input.rating } : {}),
-        ...(input.parentPostId ? { parent_post_id: input.parentPostId } : {}),
-        ...(input.media.length > 0 ? { media: input.media.map(mediaPayload) } : {}),
-      },
-      publishPostResponse,
-      { timeoutMs: PUBLISH_TIMEOUT_MS },
-    );
+    const { post } = await sendPost(toNewPost(input));
+    return { id: post.id, status: post.status, kind: post.kind, title: post.title };
   } catch (error) {
     if (!functionMissing(error)) throw error;
   }
@@ -232,17 +221,12 @@ export async function publishPost(input: PublishPostInput): Promise<PublishedPos
 /** Publishes a comment or a reply. A `status` of `hidden` means it is held for review. */
 export async function publishComment(input: PublishCommentInput): Promise<PublishedComment> {
   try {
-    return await callFunction(
-      PUBLISH_FUNCTION,
-      {
-        type: 'comment',
-        post_id: input.postId,
-        body: input.body,
-        ...(input.parentCommentId ? { parent_comment_id: input.parentCommentId } : {}),
-      },
-      publishCommentResponse,
-      { timeoutMs: PUBLISH_TIMEOUT_MS },
-    );
+    const { comment } = await sendComment({
+      postId: input.postId,
+      body: input.body,
+      ...(input.parentCommentId ? { parentCommentId: input.parentCommentId } : {}),
+    });
+    return { id: comment.id, status: comment.status, post_id: comment.postId };
   } catch (error) {
     if (!functionMissing(error)) throw error;
   }
