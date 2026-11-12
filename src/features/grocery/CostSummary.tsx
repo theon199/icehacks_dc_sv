@@ -16,12 +16,14 @@ export type CostSummaryProps = CostSource & {
 };
 
 /**
- * Estimated grocery cost for a recipe (`recipeId`, optional `servings`) or a shopping list
- * (`list`, optional `servings`): per serving and in total, what is left out and why, a sheet of
- * price sources, and "Buy at Walmart" when that is possible. Pass a memoised `list`; a new
- * object on every render recomputes the estimate.
+ * Estimated grocery cost for a recipe (`recipeId`, optional `servings`), several recipes costed
+ * as one trip (`recipes`, each with optional `servings`) or a shopping list (`list`, optional
+ * `servings`): per serving and in total, what is left out and why, a sheet of price sources, and
+ * "Buy at Walmart" when that is possible. Pass a memoised `list`; a new object on every render
+ * recomputes the estimate (`recipes` is compared by content, so a fresh array is fine).
  *
- * Renders nothing when the recipe cannot be read, so it never breaks the screen it sits on.
+ * Renders nothing when the recipes cannot be read or there is nothing on the list, so it never
+ * breaks the screen it sits on.
  */
 export function CostSummary({
   hideWalmart = false,
@@ -43,7 +45,7 @@ export function CostSummary({
   );
 
   // Loading reads the local catalog and is brief; an unreadable recipe shows nothing at all.
-  if (state.status !== 'ready') return null;
+  if (state.status !== 'ready' || state.display.empty) return null;
   const ready = state;
 
   const hasStaples = ready.estimate.items.some((item) => item.status === 'staple');
