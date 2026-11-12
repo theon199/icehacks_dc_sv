@@ -5,31 +5,13 @@
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
-import { dayIndexOf, weekStartOf } from '@/domain/plan';
 import { catalogKeys, getRecipeDetail, useIngredients, type RecipeDetail } from '@/lib/catalog';
-import { entryPortion, slotKey, useMealPlanStore, type PlanWeek } from '@/stores/mealPlan';
+import { useMealPlanStore } from '@/stores/mealPlan';
 import { selectPantryItems, usePantryStore } from '@/stores/pantry';
 import { selectSmallAppetite, usePreferencesStore } from '@/stores/preferences';
 
 import { buildPlannedList, ingredientIdsOf, type ListRecipe, type PlannedList } from './buildList';
-import { plannedMealsInRange, recipeIdsOf, type DateRange, type PlannedMealRef } from './planRange';
-
-/**
- * Planned meals with each one's portion folded into its servings, so the list buys what will be
- * cooked: two half-portion servings need as much as one whole serving. The portion is the one the
- * meal was planned at, or the small-appetite setting's for a meal planned without one.
- */
-export function portionedMeals(
-  meals: readonly PlannedMealRef[],
-  weeks: Readonly<Record<string, PlanWeek>>,
-  smallAppetite: boolean,
-): PlannedMealRef[] {
-  return meals.map((meal) => {
-    const entry = weeks[weekStartOf(meal.date)]?.slots[slotKey(dayIndexOf(meal.date), meal.meal)];
-    const portion = entryPortion(entry ?? {}, meal.meal, smallAppetite);
-    return portion === 1 ? meal : { ...meal, servings: meal.servings * portion };
-  });
-}
+import { plannedMealsInRange, recipeIdsOf, type DateRange } from './planRange';
 
 // The catalog ships with the app and never changes while it runs.
 const recipeQueryOptions = {
@@ -93,7 +75,10 @@ export function useShoppingList(range: DateRange): ShoppingListResult {
   const pantry = usePantryStore(selectPantryItems);
   const smallAppetite = usePreferencesStore(selectSmallAppetite);
 
-  const meals = useMemo(() => plannedMealsInRange(weeks, range), [weeks, range]);
+  const meals = useMemo(
+    () => plannedMealsInRange(weeks, range, smallAppetite),
+    [weeks, range, smallAppetite],
+  );
   const recipeIds = useMemo(() => recipeIdsOf(meals), [meals]);
   const details = useRecipeDetails(recipeIds);
 
@@ -104,14 +89,12 @@ export function useShoppingList(range: DateRange): ShoppingListResult {
   const list = useMemo(() => {
     if (meals.length === 0 || details.pending || !ingredientsReady) return null;
     return buildPlannedList({
-      meals: portionedMeals(meals, weeks, smallAppetite),
+      meals,
       recipes: details.recipes,
       ingredients: ingredients.data ?? [],
       pantry,
-      // Each meal's portion is already in its servings.
-      portion: 1,
     });
-  }, [meals, weeks, details, ingredientsReady, ingredients.data, pantry, smallAppetite]);
+  }, [meals, details, ingredientsReady, ingredients.data, pantry]);
 
   const error = details.error ?? ingredients.error;
   const status: ShoppingListStatus =

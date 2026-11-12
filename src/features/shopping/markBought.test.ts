@@ -13,8 +13,8 @@ import { linkPantryItems } from './pantryLink';
 
 const at = '2026-11-11T10:00:00.000Z';
 const meals = [
-  { date: '2026-11-12', meal: 'dinner', recipeId: 'test:curry', servings: 2 },
-  { date: '2026-11-13', meal: 'dinner', recipeId: 'test:fried-rice', servings: 4 },
+  { date: '2026-11-12', meal: 'dinner', recipeId: 'test:curry', servings: 2, portion: 1 },
+  { date: '2026-11-13', meal: 'dinner', recipeId: 'test:fried-rice', servings: 4, portion: 1 },
 ] as const;
 
 function listFor(pantry: readonly PantryItem[]) {
@@ -23,7 +23,6 @@ function listFor(pantry: readonly PantryItem[]) {
     recipes: RECIPES,
     ingredients: INGREDIENTS,
     pantry,
-    portion: 1,
   });
 }
 
@@ -98,7 +97,9 @@ describe('mark bought → pantry', () => {
 
   it('tops up a used-up free-text entry for an amount-less catalog line', () => {
     const input = {
-      meals: [{ date: '2026-11-12', meal: 'dinner', recipeId: 'test:glaze', servings: 1 }],
+      meals: [
+        { date: '2026-11-12', meal: 'dinner', recipeId: 'test:glaze', servings: 1, portion: 1 },
+      ],
       recipes: new Map([
         [
           'test:glaze',
@@ -110,7 +111,6 @@ describe('mark bought → pantry', () => {
         ],
       ]),
       ingredients: INGREDIENTS,
-      portion: 1,
     } as const;
     let items = addPantryItem({}, { name: 'Eggs', qty: 2 }, { id: 'typed', at });
     const before = buildPlannedList({ ...input, pantry: Object.values(items) });
@@ -125,7 +125,9 @@ describe('mark bought → pantry', () => {
 
   it('clears a "to taste" line when the pantry had exactly the measured count', () => {
     const input = {
-      meals: [{ date: '2026-11-12', meal: 'dinner', recipeId: 'test:bake', servings: 1 }],
+      meals: [
+        { date: '2026-11-12', meal: 'dinner', recipeId: 'test:bake', servings: 1, portion: 1 },
+      ],
       recipes: new Map([
         [
           'test:bake',
@@ -137,7 +139,6 @@ describe('mark bought → pantry', () => {
         ],
       ]),
       ingredients: INGREDIENTS,
-      portion: 1,
     } as const;
     let items: Readonly<Record<string, PantryItem>> = addPantryItem(
       {},
@@ -221,7 +222,9 @@ describe('mark bought → pantry', () => {
   it('rounds bought amounts up, so no rounding crumb stays on the list', () => {
     const vanilla = ingredient('vanilla_extract', 'baking');
     const input = {
-      meals: [{ date: '2026-11-12', meal: 'dinner', recipeId: 'test:cake', servings: 1 }],
+      meals: [
+        { date: '2026-11-12', meal: 'dinner', recipeId: 'test:cake', servings: 1, portion: 1 },
+      ],
       recipes: new Map([
         [
           'test:cake',
@@ -229,7 +232,6 @@ describe('mark bought → pantry', () => {
         ],
       ]),
       ingredients: [vanilla],
-      portion: 1,
     } as const;
     const before = buildPlannedList({ ...input, pantry: [] });
     expect(before.items[0]?.amounts[0]?.unit).toBe('ml');
@@ -244,7 +246,9 @@ describe('mark bought → pantry', () => {
     'clears an item used both as %s and "to taste" once it is bought',
     (_label, id, qty, unit) => {
       const input = {
-        meals: [{ date: '2026-11-12', meal: 'dinner', recipeId: 'test:mixed', servings: 1 }],
+        meals: [
+          { date: '2026-11-12', meal: 'dinner', recipeId: 'test:mixed', servings: 1, portion: 1 },
+        ],
         recipes: new Map([
           [
             'test:mixed',
@@ -256,7 +260,6 @@ describe('mark bought → pantry', () => {
           ],
         ]),
         ingredients: INGREDIENTS,
-        portion: 1,
       } as const;
       const before = buildPlannedList({ ...input, pantry: [] });
       expect(before.items).toEqual([expect.objectContaining({ key: `i:${id}`, asNeeded: true })]);

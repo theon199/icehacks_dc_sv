@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
@@ -6,12 +5,10 @@ import { Button, ErrorState, Text, useTheme } from '@/ui';
 
 import { ChipGroup } from '../components/ChipGroup';
 import { StepHeader } from '../components/StepHeader';
-import { loadPantryStaples, type PantryStaple } from '../deps';
+import { sortStaplesForDisplay, usePantryStaples, type PantryStaple } from '../deps';
 import { toggle } from '../onboardingModel';
 import { ingredientLabel, pantryCategoryLabel } from '../options';
 import type { StepProps } from './types';
-
-export const pantryStaplesKey = ['catalog', 'pantry-staples'] as const;
 
 function groupByCategory(staples: readonly PantryStaple[]) {
   const groups = new Map<string, { id: string; label: string }[]>();
@@ -29,13 +26,10 @@ function groupByCategory(staples: readonly PantryStaple[]) {
 
 export function PantryStep({ draft, onChange }: StepProps) {
   const theme = useTheme();
-  const query = useQuery({
-    queryKey: pantryStaplesKey,
-    queryFn: loadPantryStaples,
-    staleTime: Infinity,
-  });
-  const groups = useMemo(() => groupByCategory(query.data ?? []), [query.data]);
-  const allIds = useMemo(() => (query.data ?? []).map((staple) => staple.id), [query.data]);
+  const query = usePantryStaples();
+  const staples = useMemo(() => sortStaplesForDisplay(query.data ?? []), [query.data]);
+  const groups = useMemo(() => groupByCategory(staples), [staples]);
+  const allIds = useMemo(() => staples.map((staple) => staple.id), [staples]);
   const everything = allIds.length > 0 && allIds.every((id) => draft.pantryStaples.includes(id));
 
   return (

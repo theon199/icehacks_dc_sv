@@ -3,3 +3,4 @@
  * modules never load through this barrel.
  */
 export { ESTIMATED_MEAL_PREFIX, estimatedMealId } from './deps';
+export { snapCameraHref, snapModeParam, type SnapMode } from './links';

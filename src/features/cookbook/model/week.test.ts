@@ -83,18 +83,43 @@ describe('store and planner shapes', () => {
   };
 
   it('reads a stored week as planner cells', () => {
-    const plan = toWeekPlan(week, WEEK, 0.5);
-    expect(plan.cells['0:dinner']).toEqual({ recipeId: 'a', servings: 2, portion: 0.5 });
+    const plan = toWeekPlan(week, WEEK, false);
+    expect(plan.cells['0:dinner']).toEqual({ recipeId: 'a', servings: 2, portion: 1 });
     expect(plan.cells['4:breakfast']?.recipeId).toBe('c');
-    expect(toWeekPlan(undefined, WEEK).cells).toEqual({});
+    expect(toWeekPlan(undefined, WEEK, true).cells).toEqual({});
   });
 
-  it('keeps the portion a meal was planned at when reading a week', () => {
+  it('reads each meal at the portion it is shown and bought at', () => {
     const planned: PlanWeek = {
       ...week,
-      slots: { '1-dinner': { recipeId: 'd', servings: 2, addedAt: 'x', portion: 0.5 } },
+      slots: {
+        '1-dinner': { recipeId: 'd', servings: 2, addedAt: 'x', portion: 0.5 },
+        '1-lunch': { recipeId: 'e', servings: 2, addedAt: 'x', portion: 1 },
+        '1-breakfast': { recipeId: 'f', servings: 1, addedAt: 'x' },
+        '1-snack': { recipeId: 'g', servings: 1, addedAt: 'x' },
+      },
     };
-    expect(toWeekPlan(planned, WEEK, 1).cells['1:dinner']?.portion).toBe(0.5);
+    const portions = (smallAppetite: boolean) =>
+      Object.fromEntries(
+        Object.entries(toWeekPlan(planned, WEEK, smallAppetite).cells).map(([key, meal]) => [
+          key,
+          meal?.portion,
+        ]),
+      );
+    // A portion chosen at planning time stays whatever the setting says now.
+    expect(portions(false)).toEqual({
+      '1:dinner': 0.5,
+      '1:lunch': 1,
+      '1:breakfast': 1,
+      '1:snack': 1,
+    });
+    // Meals stored without one follow small appetite mode, which leaves snacks whole.
+    expect(portions(true)).toEqual({
+      '1:dinner': 0.5,
+      '1:lunch': 1,
+      '1:breakfast': 0.5,
+      '1:snack': 1,
+    });
   });
 
   it('turns planner assignments into whole-serving slot writes with their portion', () => {

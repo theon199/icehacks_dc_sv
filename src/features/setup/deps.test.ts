@@ -1,6 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 
-import { clearCatalogCaches } from '@/lib/catalog';
+import { clearCatalogCaches, getPantryStaples } from '@/lib/catalog';
 import { describeCatalogDb } from '@/lib/catalog/__fixtures__/nodeCatalogDb';
 import { resetCatalogForTests } from '@/lib/db/catalog';
 import { storageKey } from '@/lib/storage/kv';
@@ -40,7 +40,7 @@ const answers = (overrides: Partial<OnboardingAnswers> = {}): OnboardingAnswers 
   ...overrides,
 });
 
-const { loadCuisineOptions, loadPantryStaples, readSavedAnswers, saveOnboarding } = setupDeps;
+const { loadCuisineOptions, readSavedAnswers, saveOnboarding, sortStaplesForDisplay } = setupDeps;
 
 const oliveOil: setupDeps.PantryStaple = { id: 'olive_oil', name: 'olive oil', category: 'oil' };
 
@@ -131,11 +131,23 @@ describeCatalogDb('catalog reads', () => {
     }
   });
 
-  it('offers only pantry staples, grouped by shelf', async () => {
-    const staples = await loadPantryStaples();
+  it('orders pantry staples by shelf, then name, without reordering the cached list', async () => {
+    const cached = await getPantryStaples();
+    const before = cached.map((staple) => staple.id);
+    const staples = sortStaplesForDisplay(cached);
     expect(staples.length).toBeGreaterThan(0);
     expect(staples.map((staple) => staple.id)).toContain('onion');
     const categories = staples.map((staple) => staple.category);
     expect(categories).toEqual([...categories].sort((a, b) => a.localeCompare(b)));
+    expect(cached.map((staple) => staple.id)).toEqual(before);
+  });
+
+  it('orders staples on one shelf by name', () => {
+    const staples = sortStaplesForDisplay([
+      { id: 'b', name: 'salt', category: 'spice' },
+      { id: 'a', name: 'olive oil', category: 'oil' },
+      { id: 'c', name: 'black pepper', category: 'spice' },
+    ]);
+    expect(staples.map((staple) => staple.id)).toEqual(['a', 'c', 'b']);
   });
 });

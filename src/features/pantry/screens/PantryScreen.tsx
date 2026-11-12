@@ -1,8 +1,9 @@
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { snapCameraHref } from '@/features/snap';
 import {
   selectPantryIngredientIds,
   selectPantryShelves,
@@ -23,10 +24,10 @@ import type { PantryPatch } from '../editForm';
 import { SHELF_TITLES } from '../shelves';
 
 /**
- * The Snap camera (the Snap tab). Its pantry results screen reads the photo the camera just took,
- * so it is only ever reached from there, never opened directly.
+ * The Snap camera (the Snap tab), opened on its pantry mode. Its pantry results screen reads the
+ * photo the camera just took, so it is only ever reached from there, never opened directly.
  */
-const SNAP_CAMERA_HREF = '/snap';
+const SNAP_CAMERA_HREF: Href = snapCameraHref({ mode: 'pantry' });
 
 type Row =
   | { type: 'shelf'; key: string; title: string; count: number }

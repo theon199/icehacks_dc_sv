@@ -19,6 +19,7 @@ import {
 import { renderWithTheme } from '@/test/render';
 
 import { RecipeDetailScreen } from './RecipeDetailScreen';
+import type { PlannedPortion } from '../model/plannedPortion';
 import { allergenMap, ingredient, makeDetail, prefs } from '../test/fixtures';
 
 const mockPush = jest.fn();
@@ -97,10 +98,10 @@ function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-async function renderScreen() {
+async function renderScreen(plannedPortion?: PlannedPortion) {
   await renderWithTheme(
     <Providers>
-      <RecipeDetailScreen recipeId={recipe.id} />
+      <RecipeDetailScreen recipeId={recipe.id} plannedPortion={plannedPortion} />
     </Providers>,
   );
   await screen.findByText('Chickpea curry', {}, SLOW);
@@ -153,6 +154,36 @@ describe('RecipeDetailScreen', () => {
     expect(
       await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings / 2}`, {}, SLOW),
     ).toBeTruthy();
+  });
+
+  it('sizes a planned half portion as planned, whatever the setting says', async () => {
+    await renderScreen(0.5);
+    expect(
+      await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings / 2}`, {}, SLOW),
+    ).toBeTruthy();
+    expect(screen.getByTestId('recipe-planned-portion')).toHaveTextContent(
+      'Half portion, as planned',
+    );
+    expect(screen.getByText('Per serving (half portion)')).toBeTruthy();
+    // Two cups for four standard servings is one cup at half size.
+    expect(screen.getByText('1 cup')).toBeTruthy();
+  });
+
+  it('keeps a meal planned at full size whole in small appetite mode', async () => {
+    usePreferencesStore.setState({ prefs: prefs({ allergens: ['milk'], smallAppetite: true }) });
+    await renderScreen(1);
+    expect(
+      await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings}`, {}, SLOW),
+    ).toBeTruthy();
+    expect(screen.getByTestId('recipe-planned-portion')).toHaveTextContent(
+      'Full portion, as planned',
+    );
+    expect(screen.getByText('2 cups')).toBeTruthy();
+  });
+
+  it('shows no portion note when opened outside the plan', async () => {
+    await renderScreen();
+    expect(screen.queryByTestId('recipe-planned-portion')).toBeNull();
   });
 
   it('marks ingredient lines that contain a declared allergen', async () => {

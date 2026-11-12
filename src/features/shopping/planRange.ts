@@ -1,9 +1,9 @@
 /**
  * Which planned meals a shopping list covers. The person picks a range of days; every planned
- * slot on those days contributes its recipe and servings.
+ * slot on those days contributes its recipe, servings and portion.
  */
 import { addDays, daysBetween, dayIndexOf, weekStartOf, type IsoDate } from '@/domain/plan';
-import { MEALS, slotKey, type Meal, type PlanWeek } from '@/stores/mealPlan';
+import { entryPortion, MEALS, slotKey, type Meal, type PlanWeek } from '@/stores/mealPlan';
 
 export const RANGE_PRESETS = ['thisWeek', 'next7', 'nextWeek'] as const;
 export type RangePreset = (typeof RANGE_PRESETS)[number];
@@ -44,12 +44,18 @@ export interface PlannedMealRef {
   readonly meal: Meal;
   readonly recipeId: string;
   readonly servings: number;
+  /**
+   * Size of each serving relative to a standard one, as the meal is shown and cooked: the portion
+   * it was planned at, or the small-appetite setting's for a meal planned without one.
+   */
+  readonly portion: number;
 }
 
 /** Planned slots on the range's days, in date then meal order. */
 export function plannedMealsInRange(
   weeks: Readonly<Record<string, PlanWeek>>,
   range: DateRange,
+  smallAppetite: boolean,
 ): PlannedMealRef[] {
   const out: PlannedMealRef[] = [];
   for (const date of datesIn(range)) {
@@ -58,7 +64,14 @@ export function plannedMealsInRange(
     const day = dayIndexOf(date);
     for (const meal of MEALS) {
       const entry = week.slots[slotKey(day, meal)];
-      if (entry) out.push({ date, meal, recipeId: entry.recipeId, servings: entry.servings });
+      if (!entry) continue;
+      out.push({
+        date,
+        meal,
+        recipeId: entry.recipeId,
+        servings: entry.servings,
+        portion: entryPortion(entry, meal, smallAppetite),
+      });
     }
   }
   return out;
