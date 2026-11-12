@@ -9,7 +9,7 @@ import {
   type SyncEngine,
   type SyncStatus,
 } from './engine';
-import { memoryLedgerStorage } from './ledger';
+import { LEDGER_HEADER_KEY, ledgerBucketKey, memoryLedgerStorage } from './ledger';
 import { SyncError, type LifecycleState, type SyncTransport } from './types';
 
 const T0 = Date.parse('2026-11-11T10:00:00.000Z');
@@ -37,7 +37,7 @@ interface Device {
 function makeDevice(
   server: FakeSyncServer,
   name: string,
-  options: { userId?: string; transport?: SyncTransport } = {},
+  options: { userId?: string; transport?: SyncTransport; extra?: MemoryAdapter[] } = {},
 ): Device {
   const notes = memoryAdapter('notes');
   const storage = memoryLedgerStorage();
@@ -50,7 +50,7 @@ function makeDevice(
       userId: options.userId ?? 'user-1',
       deviceId: name,
       transport: options.transport ?? server.transport({ online: () => online }),
-      adapters: [notes],
+      adapters: [notes, ...(options.extra ?? [])],
       storage,
       connectivity: {
         isOnline: () => online,
@@ -524,5 +524,145 @@ describe('backoffDelay', () => {
     expect(backoffDelay(2, () => 1)).toBe(4000);
     expect(backoffDelay(3, () => 0)).toBe(4000);
     expect(backoffDelay(30, () => 1)).toBe(5 * 60_000);
+  });
+});
+
+describe('ledger persistence', () => {
+  it('saves only the header and the changed collection after a local edit', async () => {
+    const feedback = memoryAdapter('feedback');
+    const device = await started(makeDevice(server, 'phone', { extra: [feedback] }));
+    device.notes.set('n', { text: 'note' });
+    await elapse(PUSH_DEBOUNCE_MS * 2);
+    device.storage.writes.length = 0;
+
+    feedback.set('f1', { recipeId: 'r1', signal: 'like' });
+    // After the save debounce, before the push debounce.
+    await elapse(500);
+    expect(device.storage.writes).toEqual([ledgerBucketKey('feedback'), LEDGER_HEADER_KEY]);
+
+    device.storage.writes.length = 0;
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.get('feedback', 'f1')).toBeDefined();
+    expect(device.storage.writes).not.toContain(ledgerBucketKey('notes'));
+    expect(device.storage.current?.docs.notes?.n?.s).toBe(true);
+  });
+});
+
+describe('rejections the server cannot settle', () => {
+  function rejectingTransport(
+    reason: 'future_timestamp' | 'stale',
+    shouldReject: () => boolean,
+  ): SyncTransport & { pushed: string[] } {
+    const base = server.transport();
+    const pushed: string[] = [];
+    return {
+      pushed,
+      pull: base.pull,
+      push: async (docs) => {
+        pushed.push(...docs.map((doc) => doc.doc_id));
+        if (!shouldReject()) return base.push(docs);
+        return {
+          applied: [],
+          rejected: docs.map((doc) => ({
+            collection: doc.collection,
+            doc_id: doc.doc_id,
+            reason,
+            server: null,
+          })),
+        };
+      },
+    };
+  }
+
+  it('holds back a document dated in the future until the next start', async () => {
+    let reject = true;
+    const transport = rejectingTransport('future_timestamp', () => reject);
+    const phone = await started(makeDevice(server, 'phone', { transport }));
+    phone.notes.set('a', { text: 'from a fast clock' });
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(transport.pushed).toEqual(['a']);
+    expect(phone.engine.getStatus().pending).toBe(0);
+
+    // Later drains do not send it again.
+    await phone.engine.syncNow();
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(transport.pushed).toEqual(['a']);
+
+    reject = false;
+    await phone.restart();
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(transport.pushed).toEqual(['a', 'a']);
+    expect(server.get('notes', 'a')?.data).toEqual({ text: 'from a fast clock' });
+  });
+
+  it('pulls the server copy when a stale rejection does not include it', async () => {
+    let reject = true;
+    const transport = rejectingTransport('stale', () => reject);
+    const phone = await started(makeDevice(server, 'phone', { transport }));
+    server.seed(seedDoc('a', { text: 'newer elsewhere' }, T0 + 10 * 60_000));
+    phone.notes.set('a', { text: 'older here' });
+    await elapse(PUSH_DEBOUNCE_MS);
+    reject = false;
+    await elapse(PUSH_DEBOUNCE_MS);
+
+    expect(transport.pushed).toEqual(['a']);
+    expect(phone.notes.docs.get('a')).toEqual({ text: 'newer elsewhere' });
+    expect(phone.engine.getStatus().pending).toBe(0);
+  });
+
+  it('stops isolating a refused batch once the engine is stopped', async () => {
+    let phone: Device | null = null;
+    let pushes = 0;
+    const transport: SyncTransport = {
+      pull: server.transport().pull,
+      push: async () => {
+        pushes += 1;
+        void phone?.engine.stop();
+        throw new SyncError('invalid', 'nope');
+      },
+    };
+    phone = await started(makeDevice(server, 'phone', { transport }));
+    for (const id of ['a', 'b', 'c', 'd']) phone.notes.set(id, { id });
+    await elapse(PUSH_DEBOUNCE_MS * 2);
+    expect(pushes).toBe(1);
+  });
+});
+
+describe('collections added by an app update', () => {
+  it('pulls everything again so documents skipped by older builds arrive', async () => {
+    server.seed(seedDoc('n1', { text: 'note' }));
+    server.seed({ ...seedDoc('t1', { tip: 'from the server' }), collection: 'tips' });
+    const storage = memoryLedgerStorage();
+    const notes = memoryAdapter('notes');
+    const tips = memoryAdapter('tips');
+    const build = (adapters: MemoryAdapter[]) =>
+      createSyncEngine({
+        userId: 'user-1',
+        deviceId: 'phone',
+        transport: server.transport(),
+        adapters,
+        storage,
+        random: () => 1,
+      });
+
+    const older = build([notes]);
+    await older.start();
+    await settle();
+    await older.stop();
+    expect(storage.current?.known).toEqual(['notes']);
+
+    // The newer build ships a default document with the same id as the account's.
+    tips.docs.set('t1', { tip: 'local default' });
+    server.pullCalls = [];
+    const newer = build([notes, tips]);
+    await newer.start();
+    await settle();
+    await elapse(PUSH_DEBOUNCE_MS);
+
+    expect(server.pullCalls[0]).toMatchObject({ since: 0 });
+    expect(tips.docs.get('t1')).toEqual({ tip: 'from the server' });
+    expect(server.get('tips', 't1')?.data).toEqual({ tip: 'from the server' });
+    expect(storage.current?.known).toEqual(['notes', 'tips']);
+    await newer.stop();
   });
 });
