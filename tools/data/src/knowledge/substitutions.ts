@@ -167,7 +167,7 @@ export const SUBSTITUTIONS: readonly SubstitutionDef[] = [
   sub('dried_cranberry', 'raisins', 1, 'lower_calorie', 'Unsweetened dried fruit avoids added sugar.'),
   sub('flavored_yogurt', 'low_fat_yogurt', 1, 'lower_calorie', 'Add fresh fruit for sweetness instead of added sugar.'),
   // Nuts and seeds for allergies
-  sub('peanut_butter', 'sunflower_seed', 1, 'allergen', 'Sunflower seed butter spreads and bakes like peanut butter.'),
+  sub('peanut_butter', 'sunflower_seed_butter', 1, 'allergen', 'Sunflower seed butter spreads and bakes like peanut butter.'),
   sub('peanut', 'pumpkin_seed', 1, 'allergen', 'Toasted pumpkin seeds add crunch without peanuts.'),
   sub('almond', 'pumpkin_seed', 1, 'allergen', 'Nut-free crunch for salads and granola.'),
   sub('walnut', 'sunflower_seed', 1, 'allergen', 'Toast for a nutty flavour without tree nuts.'),
@@ -176,7 +176,7 @@ export const SUBSTITUTIONS: readonly SubstitutionDef[] = [
   sub('cashew', 'sunflower_seed', 1, 'allergen', 'Soak and blend for creamy sauces.'),
   sub('almond_milk', 'oat_milk', 1, 'allergen', 'Nut-free and creamy.'),
   sub('pesto', 'basil', 1, 'allergen', 'Blend basil with olive oil, garlic and lemon for a nut- and dairy-free sauce.'),
-  sub('tahini', 'sunflower_seed', 1, 'allergen', 'Sunflower seed butter stands in for sesame paste.'),
+  sub('tahini', 'sunflower_seed_butter', 1, 'allergen', 'Sunflower seed butter stands in for sesame paste.'),
   sub('sesame_oil', 'olive_oil', 1, 'allergen', 'Sesame-free; finish with toasted seeds only if safe.'),
   sub('tofu', 'chickpea', 1, 'allergen', 'Soy-free protein for curries and bowls.'),
   // Plant-forward bulk
