@@ -28,6 +28,33 @@ describe('decideVideoLoad', () => {
     ).toBe('allow');
   });
 
+  it('keeps locally built and plain-http sub-frames inside the player', () => {
+    for (const url of [
+      'about:srcdoc',
+      'blob:https://www.youtube-nocookie.com/0b7c6f1e-2d4a-4c55-9a51-3f6f1a2b9c10',
+      'data:text/html,<p>frame</p>',
+      'http://ads.example.org/pixel',
+    ]) {
+      expect(decideVideoLoad({ url, isTopFrame: false, navigationType: 'other' })).toBe('allow');
+    }
+  });
+
+  it('never lets a sub-frame hand off to another app', () => {
+    for (const url of ['itms-apps://apps.apple.com/app/id1', 'intent://open#Intent;end']) {
+      expect(decideVideoLoad({ url, isTopFrame: false, navigationType: 'click' })).toBe('block');
+    }
+  });
+
+  it('does not treat the embed host over plain http as the embed', () => {
+    expect(
+      decideVideoLoad({
+        url: 'http://www.youtube-nocookie.com/embed/abcdefghijk',
+        isTopFrame: true,
+        navigationType: 'other',
+      }),
+    ).toBe('block');
+  });
+
   it('opens a link the cook tapped in the main frame externally', () => {
     expect(
       decideVideoLoad({

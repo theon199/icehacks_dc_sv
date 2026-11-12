@@ -8,6 +8,8 @@ import { Button, Text, useTheme } from '@/ui';
 import { youtubeEmbedUrl, type TutorialVideo as Video } from '../logic/session';
 import { decideVideoLoad } from '../logic/videoNavigation';
 
+const ALL_ORIGINS = ['*'];
+
 export interface TutorialVideoProps {
   video: Video;
 }
@@ -65,7 +67,11 @@ export function TutorialVideo({ video }: TutorialVideoProps) {
           allowsFullscreenVideo
           javaScriptEnabled
           domStorageEnabled
-          originWhitelist={['https://*']}
+          // Every load, in every frame, is gated by `decideVideoLoad`. The WebView's own origin
+          // list runs first and hands anything it rejects straight to the OS (no tap needed), and
+          // would also cancel the about:, blob: and data: frames the player relies on, so it lets
+          // everything through to that one decision.
+          originWhitelist={ALL_ORIGINS}
           onShouldStartLoadWithRequest={allowNavigation}
           onLoadEnd={() => setLoading(false)}
           onError={() => setFailed(true)}

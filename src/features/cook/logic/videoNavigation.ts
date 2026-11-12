@@ -17,6 +17,15 @@ export interface VideoLoadRequest {
 
 export const VIDEO_EMBED_HOST = 'www.youtube-nocookie.com';
 
+const WEB_SCHEMES = new Set(['https:', 'http:']);
+/** Schemes a player builds its own frames from; they never leave the device. */
+const LOCAL_FRAME_SCHEMES = new Set(['about:', 'blob:', 'data:']);
+
+/**
+ * The single gate for every load in the tutorial player, in every frame. The WebView's own origin
+ * list is left wide open so this function sees everything, including the frames the player builds
+ * locally.
+ */
 export function decideVideoLoad(
   request: VideoLoadRequest,
   embedHost: string = VIDEO_EMBED_HOST,
@@ -28,10 +37,13 @@ export function decideVideoLoad(
   } catch {
     return 'block';
   }
-  if (target.hostname === embedHost) return 'allow';
-  // Frames inside the player load where they are; they never take over the screen.
-  if (request.isTopFrame === false) return 'allow';
+  if (target.protocol === 'https:' && target.hostname === embedHost) return 'allow';
+  if (request.isTopFrame === false) {
+    // Frames inside the player load where they are; they never take over the screen, and no
+    // sub-frame load, tapped or not, ever opens another app.
+    const inPlace = WEB_SCHEMES.has(target.protocol) || LOCAL_FRAME_SCHEMES.has(target.protocol);
+    return inPlace ? 'allow' : 'block';
+  }
   const tapped = request.navigationType === 'click';
-  const web = target.protocol === 'https:' || target.protocol === 'http:';
-  return tapped && web ? 'external' : 'block';
+  return tapped && WEB_SCHEMES.has(target.protocol) ? 'external' : 'block';
 }
