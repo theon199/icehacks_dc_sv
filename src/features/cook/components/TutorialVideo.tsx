@@ -6,16 +6,16 @@ import { WebView, type WebViewNavigation } from 'react-native-webview';
 import { Button, Text, useTheme } from '@/ui';
 
 import { youtubeEmbedUrl, type TutorialVideo as Video } from '../logic/session';
+import { decideVideoLoad } from '../logic/videoNavigation';
 
 export interface TutorialVideoProps {
   video: Video;
 }
 
-const EMBED_HOST = 'www.youtube-nocookie.com';
-
 /**
- * The recipe's tutorial video, playing inline above the step. Only the embed itself loads inside
- * the player; any link the video tries to open goes to the system browser instead.
+ * The recipe's tutorial video, playing inline above the step. The embed and the frames inside it
+ * load in place; a link the cook taps opens in the system browser, and nothing else navigates away
+ * (see `decideVideoLoad`).
  */
 export function TutorialVideo({ video }: TutorialVideoProps) {
   const theme = useTheme();
@@ -40,16 +40,12 @@ export function TutorialVideo({ video }: TutorialVideoProps) {
   }
 
   const embed = youtubeEmbedUrl(video.youtubeId);
-  const allowNavigation = (request: WebViewNavigation) => {
-    let host = '';
-    try {
-      host = new URL(request.url).hostname;
-    } catch {
-      return false;
+  const allowNavigation = (request: WebViewNavigation & { isTopFrame?: boolean }) => {
+    const decision = decideVideoLoad(request);
+    if (decision === 'external') {
+      void WebBrowser.openBrowserAsync(request.url).catch(() => undefined);
     }
-    if (host === EMBED_HOST || request.url === 'about:blank') return true;
-    void WebBrowser.openBrowserAsync(request.url).catch(() => undefined);
-    return false;
+    return decision === 'allow';
   };
 
   return (
