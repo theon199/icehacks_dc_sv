@@ -14,7 +14,7 @@ import {
   usePendingFollowIds,
   useSuggestions,
 } from '../hooks/useFriends';
-import { usePullRefresh } from '../hooks/useProfileRefresh';
+import { useFriendsRefresh } from '../hooks/useProfileRefresh';
 import type { Person } from '../model/connections';
 import { buildFriendRows, type FriendRow } from '../model/friendRows';
 
@@ -25,7 +25,7 @@ export function FriendsScreen() {
   const suggestions = useSuggestions();
   const follow = useFollowToggle();
   const pendingIds = usePendingFollowIds();
-  const pull = usePullRefresh(() => Promise.all([connections.refetch(), suggestions.refetch()]));
+  const pull = useFriendsRefresh();
 
   const rows = useMemo(
     () => (connections.groups ? buildFriendRows(connections.groups, suggestions.data ?? []) : []),
