@@ -80,26 +80,36 @@ export function versionedPersist<S, P>(config: VersionedPersistConfig<S, P>): Pe
  * A Keychain failure (for example before the first unlock after a restart) rejects, so hydration
  * fails and can be retried instead of silently starting from empty state. Content that is not
  * valid JSON can never be read back, so it is removed and treated as absent.
+ *
+ * Long values are written in several Keychain entries, so operations run one at a time: two
+ * overlapping writes (or a write and a removal on sign-out) could otherwise interleave.
  */
 export function securePersistStorage<P>(): PersistStorage<P> {
   const keychain = createChunkedSecureStorage(SecureStore, {
     keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
   });
   const key = (name: string) => `famara.${name}`;
+  let queue: Promise<unknown> = Promise.resolve();
+  const serial = <T>(operation: () => Promise<T>): Promise<T> => {
+    const run = queue.then(operation, operation);
+    queue = run.catch(() => undefined);
+    return run;
+  };
   return {
-    async getItem(name) {
-      const raw = await keychain.getItem(key(name));
-      if (raw == null) return null;
-      try {
-        return JSON.parse(raw) as StorageValue<P>;
-      } catch {
-        logger.warn('Dropping unreadable secure state', { store: name });
-        await keychain.removeItem(key(name));
-        return null;
-      }
-    },
-    setItem: (name, value) => keychain.setItem(key(name), JSON.stringify(value)),
-    removeItem: (name) => keychain.removeItem(key(name)),
+    getItem: (name) =>
+      serial(async () => {
+        const raw = await keychain.getItem(key(name));
+        if (raw == null) return null;
+        try {
+          return JSON.parse(raw) as StorageValue<P>;
+        } catch {
+          logger.warn('Dropping unreadable secure state', { store: name });
+          await keychain.removeItem(key(name));
+          return null;
+        }
+      }),
+    setItem: (name, value) => serial(() => keychain.setItem(key(name), JSON.stringify(value))),
+    removeItem: (name) => serial(() => keychain.removeItem(key(name))),
   };
 }
 
