@@ -1,11 +1,15 @@
 import { useSessionStore } from '@/features/auth';
+// The auth feature exports this class as a type only; the test needs a real instance.
+import { AccountError as AuthAccountError } from '@/features/auth/accountApi';
 
 import {
   AccountError,
   changeEmail,
   changePassword,
+  deleteAccount,
   fetchAccountUser,
   PUSH_UNREGISTER_TIMEOUT_MS,
+  signOutEverywhere,
   signOutLocally,
 } from './accountApi';
 
@@ -21,11 +25,19 @@ const mockAuth = {
 jest.mock('@/lib/supabase/client', () => ({ getSupabase: () => ({ auth: mockAuth }) }));
 
 const mockUnregisterPush = jest.fn((): Promise<void> => Promise.resolve());
-const mockEndSession = jest.fn((): Promise<void> => Promise.resolve());
+const mockEndSession = jest.fn((_scope: string): Promise<unknown> => Promise.resolve(false));
+const mockDeleteAccount = jest.fn((_userId: string): Promise<void> => Promise.resolve());
 jest.mock('../deps', () => ({
-  clearLocalUserData: jest.fn(),
+  deleteSignedInAccount: (userId: string) => mockDeleteAccount(userId),
   unregisterPushDevice: () => mockUnregisterPush(),
-  endAuthSession: () => mockEndSession(),
+  endAuthSession: (scope: string) => mockEndSession(scope),
+}));
+
+const mockMigrate = jest.fn((_userId: string): Promise<string> => Promise.resolve('nothing'));
+const mockDiscard = jest.fn((_userId: string): Promise<void> => Promise.resolve());
+jest.mock('../legacySettings', () => ({
+  migrateLegacySettings: (userId: string) => mockMigrate(userId),
+  discardLegacyAccount: (userId: string) => mockDiscard(userId),
 }));
 
 describe('fetchAccountUser', () => {
@@ -177,6 +189,7 @@ describe('signOutLocally', () => {
     });
     await signOutLocally();
     expect(mockEndSession).toHaveBeenCalledTimes(1);
+    expect(mockEndSession).toHaveBeenCalledWith('local');
     expect(mockAuth.signOut).not.toHaveBeenCalled();
     expect(useSessionStore.getState().status).toBe('signedOut');
   });
@@ -209,17 +222,33 @@ describe('signOutLocally', () => {
     expect(useSessionStore.getState().status).toBe('ready');
   });
 
-  it('unregisters push while the session is still valid', async () => {
+  it('unregisters push and moves old answers while the session is still valid', async () => {
     const order: string[] = [];
     mockUnregisterPush.mockImplementation(async () => {
       order.push('unregister');
+    });
+    mockMigrate.mockImplementation(async () => {
+      order.push('migrate');
+      return 'notReady';
     });
     mockEndSession.mockImplementation(async () => {
       order.push('signOut');
       stored = false;
     });
     await signOutLocally();
-    expect(order).toEqual(['unregister', 'signOut']);
+    expect(order).toEqual(['unregister', 'migrate', 'signOut']);
+    expect(mockMigrate).toHaveBeenCalledWith('user-1');
+    // An account whose old answers could not be moved keeps them for its next sign-in.
+    expect(mockDiscard).not.toHaveBeenCalled();
+  });
+
+  it('signs out of every device and reports whether they were reached', async () => {
+    mockEndSession.mockImplementation(async () => {
+      stored = false;
+      return true;
+    });
+    await expect(signOutEverywhere()).resolves.toEqual({ everywhere: true });
+    expect(mockEndSession).toHaveBeenCalledWith('global');
   });
 
   it('does not wait on an unreachable push service', async () => {
@@ -232,5 +261,45 @@ describe('signOutLocally', () => {
     await jest.advanceTimersByTimeAsync(PUSH_UNREGISTER_TIMEOUT_MS);
     await done;
     expect(useSessionStore.getState().status).toBe('signedOut');
+  });
+});
+
+describe('deleteAccount', () => {
+  let stored = true;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stored = true;
+    mockAuth.getSession.mockImplementation(async () => ({
+      data: { session: stored ? { access_token: 't' } : null },
+      error: null,
+    }));
+    mockAuth.signOut.mockImplementation(async () => {
+      stored = false;
+      return { error: null };
+    });
+    useSessionStore.getState().signedIn({
+      userId: 'user-1',
+      birthYear: 1990,
+      onboardingComplete: true,
+      aiConsent: false,
+    });
+  });
+
+  it('signs out once the account is deleted, even if clearing this device fails', async () => {
+    mockDeleteAccount.mockRejectedValueOnce(new Error('could not reset a store'));
+    await deleteAccount();
+    expect(mockDeleteAccount).toHaveBeenCalledWith('user-1');
+    expect(mockDiscard).toHaveBeenCalledWith('user-1');
+    expect(mockAuth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(useSessionStore.getState().status).toBe('signedOut');
+  });
+
+  it('stays signed in and explains when the server did not delete the account', async () => {
+    mockDeleteAccount.mockRejectedValueOnce(new AuthAccountError('offline', 'offline'));
+    await expect(deleteAccount()).rejects.toMatchObject({ code: 'offline' });
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(mockDiscard).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().status).toBe('ready');
   });
 });
