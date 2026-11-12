@@ -260,7 +260,12 @@ unique words (`pipeline/search.ts`):
 
 - the head noun of the ingredient's name (*oil* for vegetable oil) and its curated aliases
   (`knowledge/searchAliases.ts`: true equivalents only, so *garbanzo*, *aubergine* or *courgette*
-  find recipes whose lines say chickpeas, eggplant or zucchini);
+  find recipes whose lines say chickpeas, eggplant or zucchini). A one-word alias is indexed as
+  is; a multi-word alias adds only its words that are foods on their own (a one-word ingredient
+  name, plural, synonym or alias) and are not listed descriptors (`ALIAS_DESCRIPTORS`). So
+  "coriander leaves" adds *coriander* but not *leaves*, "plain flour" adds *flour* but not
+  *plain*, and "half and half" adds nothing, which keeps searches such as *french*, *plain* or
+  *sweet potato* from returning recipes that merely contain green beans, flour or peppers;
 - other words of the ingredient's name only when the line uses them (*vegetable* for "vegetable
   oil", not for "sunflower oil");
 - the line's own words that belong to one of the ingredient's matching synonyms (*penne* from
@@ -275,7 +280,9 @@ return recipes that do not contain what was asked for.
 
 `npm run build` fails unless all of these hold: knowledge tables validate; every FDC id exists and
 its description matches; no synonym maps to two ingredients; no "A or B" synonym is less
-restrictive than an alternative it hides; every `preparedAs` names an ingredient; substitutions reference known
+restrictive than an alternative it hides; every `preparedAs` names an ingredient; no word indexed from a search alias is a cuisine label,
+cuisine place name or listed descriptor, and every alias entry names a known ingredient and
+indexes at least one word; substitutions reference known
 ingredients, are unique and have notes; unique recipe ids and slugs; every recipe has ≥ 1
 ingredient and ≥ 1 step; enums are valid (course, cuisine, region, confidence, goal tags, allergen
 states, diet bits, effort 1–3); servings 1–48; active ≤ total minutes; health score 0–1; nutrient
