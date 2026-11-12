@@ -460,11 +460,12 @@ targets and note are scanned for words naming a declared allergen (`makeover/all
 plurals, "-ed" and "-ies" forms, accents folded, known safe phrases such as "coconut milk" or
 "water chestnut"). An explicit qualifier such as "dairy-free" or "vegan" only covers the short
 ingredient phrase right after it (at most three words, ending at a preposition, article,
-participle or adverb), and never a word that is the allergen itself ("sesame-free za'atar" is
-still flagged). The swap `from` and `why` fields are not scanned, since they name what was
+participle or adverb, and right after the first ingredient of any allergen, so "vegan mayo tuna
+salad" is still flagged for fish), and never a word that is the allergen itself ("sesame-free
+za'atar", "soy-free tamari" and "gluten-free oats" are still flagged). The swap `from` and `why` fields are not scanned, since they name what was
 removed. On a hit, Claude is asked once more in the same call, told which words were found
 (about one extra model call, no extra quota; skipped when less than 30 s of the 140 s budget is
-left). If the answer still has a hit, the function returns 422 `ai_refused` with
+left; the 140 s budget starts when the request arrives, and the app waits 150 s). If the answer still has a hit, the function returns 422 `ai_refused` with
 `details: {reason: "allergen_conflict", allergens: [...]}` and the makeover is not returned; that
 call still counts against the quota. The check is deliberately cautious (unqualified "flour" and
 breaded cakes count as wheat, oats as gluten, pesto as tree nuts and milk; "lactose-free" and

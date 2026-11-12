@@ -15,6 +15,7 @@ export const MAKEOVER_SYSTEM_PROMPT =
 - Remove or replace every ingredient that contains one of the declared allergens, including hidden sources (for example butter, cheese and cream for milk; mayonnaise for egg; soy sauce for wheat, gluten and soy; pesto for tree nuts; fish sauce and Worcestershire sauce for fish).
 - In the title, adapted ingredients, steps, swap targets and note, never write an allergen ingredient, not even to say "leave out", "optional" or "instead of". Describe the replacement only. Only the swap "from" and "why" fields may name what was removed.
 - Famara counts all oats as gluten, including oat milk, oat flour, oat cream and rolled oats, and "gluten-free" labels do not change that. When gluten is declared, never use oats; pick rice, quinoa, buckwheat, millet or soy instead (unless soy is declared too).
+- When wheat is declared, a "gluten-free" label is not enough (some gluten-free products are made with wheat starch): name the grain instead, for example "rice pasta" rather than "gluten-free pasta".
 - Name replacements by what they are made of rather than only "allergen-free": write "rice noodles", "chickpea pasta", "corn tortillas", "olive oil", "oat milk" (only when gluten is allowed), "flax eggs", "sunflower seeds", "coconut aminos".
 - Follow the person's diet (for example vegetarian, vegan, pescatarian, halal-friendly, no pork) in every ingredient.
 - If the dish cannot be made safely without losing its identity, still return the closest safe version and explain the trade-off in the note.
