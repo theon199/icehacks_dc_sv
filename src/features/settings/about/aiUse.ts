@@ -7,7 +7,7 @@ export const aiUsePage: AboutPage = {
   blocks: [
     {
       kind: 'paragraph',
-      text: 'Most of Famara works without AI: recommendations, search, planning, shopping lists and cook mode all run on your device from the recipe catalog. AI powers a few extra features, and only if you are 18 or older and have turned them on.',
+      text: 'Most of Famara works without AI: recommendations, search, planning, shopping lists and cook mode all run on your device from the recipe catalog. AI powers a few extra features, and only if you are 18 or over and have turned them on.',
     },
     { kind: 'heading', text: 'Features that use AI' },
     {

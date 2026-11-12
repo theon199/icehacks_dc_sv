@@ -22,7 +22,7 @@ export const howItWorksPage: AboutPage = {
         'Your goals: more protein, more fiber, lower sodium and the others you picked.',
         'Your time and effort: how long a recipe takes and how involved it is.',
         'Your pantry: recipes that use what you already have get a boost in "Use my pantry".',
-        'Your feedback: likes, cooks and "not for me" reasons shape what comes next. Older signals fade over time.',
+        'Your feedback: likes, cooks and "not for me" reasons shape what comes next. Feedback from long ago counts for less over time.',
       ],
     },
     {
