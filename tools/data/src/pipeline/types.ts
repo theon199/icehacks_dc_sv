@@ -69,6 +69,8 @@ export interface RecipeRow {
   tutorials: RecipeTutorialRow[];
   /** Ingredient display names for full-text search. */
   search_ingredients: string;
+  /** Lines that name a known ingredient but also list a choice that could not be identified. */
+  partial_lines: number;
 }
 
 export interface BuildIssue {
