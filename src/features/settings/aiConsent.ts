@@ -187,13 +187,6 @@ function isLatest(decision: LatestDecision): boolean {
   );
 }
 
-/** Whether `a` was decided after `b`; an unreadable time never counts as newer. */
-function decidedAfter(a: AiConsentRecord, b: AiConsentRecord): boolean {
-  const at = Date.parse(a.decided_at);
-  const bt = Date.parse(b.decided_at);
-  return Number.isFinite(at) && Number.isFinite(bt) && at > bt;
-}
-
 function sameRecord(a: AiConsentRecord, b: AiConsentRecord): boolean {
   return (
     a.granted === b.granted && a.terms_version === b.terms_version && a.decided_at === b.decided_at
@@ -201,42 +194,42 @@ function sameRecord(a: AiConsentRecord, b: AiConsentRecord): boolean {
 }
 
 /**
- * Before an agreement is sent again, the account is read. If it already holds that agreement
- * (the late write failed and changed nothing) nothing needs sending. If it holds a newer answer,
- * made on another device after this one agreed, this device follows that answer instead. Only an
- * older record, or none, is replaced. Resolves false when the account cannot be read, so consent
- * is never sent again on a guess; the next reconcile settles it.
+ * After a late account write, an agreement is never sent again automatically: the record that
+ * write left behind cannot show whether another device withdrew in the meantime, and resending
+ * could undo that withdrawal. The account is read instead. If it still holds this agreement,
+ * nothing changes. Otherwise this device follows the account (AI stays on only when the account
+ * itself grants it, and closes otherwise), and the person can agree again. When the account cannot
+ * be read nothing changes here; the next reconcile settles it.
  */
-async function grantNeedsResend(decision: LatestDecision): Promise<boolean> {
+async function followAccountAfterLateGrant(decision: LatestDecision): Promise<void> {
   const { data, error } = await getSupabase().auth.getUser();
-  if (error || data.user?.id !== decision.userId || !isLatest(decision)) return false;
+  if (error || data.user?.id !== decision.userId || !isLatest(decision)) return;
   const current = readConsentRecord(data.user.user_metadata);
-  if (!current) return true;
-  if (sameRecord(current, decision.record)) return false;
-  if (decidedAfter(current, decision.record)) {
-    latestDecision = { userId: decision.userId, record: current, seq: decision.seq };
-    const granted = recordGrantsAi(current);
-    if (useSessionStore.getState().aiConsent !== granted) {
-      useSessionStore.getState().setAiConsent(granted);
-    }
-    return false;
+  if (current && sameRecord(current, decision.record)) return;
+  latestDecision = current ? { userId: decision.userId, record: current, seq: decision.seq } : null;
+  const granted = current ? recordGrantsAi(current) : false;
+  if (useSessionStore.getState().aiConsent !== granted) {
+    useSessionStore.getState().setAiConsent(granted);
   }
-  return true;
 }
 
 /**
- * Sends `decision` again unless a newer one replaces it before its turn in the queue. A
- * withdrawal is always sent again, like an unsent one; an agreement only after `grantNeedsResend`.
+ * Settles `decision` after a late account write. A withdrawal is sent again, like an unsent one,
+ * unless a newer answer replaces it before its turn in the queue. An agreement is never resent:
+ * see `followAccountAfterLateGrant`.
  */
 async function resendDecision(decision: LatestDecision): Promise<void> {
   const { userId, record } = decision;
   const stillLatest = () => isLatest(decision);
   try {
-    if (record.granted && !(await grantNeedsResend(decision))) return;
+    if (record.granted) {
+      await followAccountAfterLateGrant(decision);
+      return;
+    }
     const sent = await sendRecord(userId, record, stillLatest);
-    if (sent && !record.granted && stillLatest() && noLateWrites()) rememberUnsent(userId, null);
+    if (sent && stillLatest() && noLateWrites()) rememberUnsent(userId, null);
   } catch (error) {
-    logger.warn('Could not resend the AI answer after a late account write', describeError(error));
+    logger.warn('Could not settle the AI answer after a late account write', describeError(error));
   }
 }
 
