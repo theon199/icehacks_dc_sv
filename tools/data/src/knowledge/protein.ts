@@ -30,8 +30,10 @@ export const PROTEIN: IngredientDef[] = [
   ing('ham', 'protein', { syn: ['deli ham', 'smoked ham', 'cooked ham', 'chopped lean ham', 'lean ham', 'ham slices', 'gammon'], meat: 'pork', fdc: [173864, 'Ham, sliced, regular (approximately 11% fat)'], units: { slice: 28, piece: 28 } }),
   ing('cured_ham', 'protein', { name: 'cured ham', syn: ['parma ham', 'prosciutto', 'serrano ham', 'jamon iberico', 'jamon serrano', 'speck'], meat: 'pork', fdc: [173864, 'Ham, sliced, regular (approximately 11% fat)'], units: { slice: 15, piece: 15 } }),
   ing('chorizo', 'protein', { syn: ['chorizo sausage', 'spanish chorizo'], meat: 'pork', variable: true, fdc: [173859, 'Sausage, pork, chorizo, link or ground, raw'], units: { piece: 100, link: 100 } }),
-  ing('sausage', 'protein', { syn: ['sausages', 'pork sausages', 'german sausages', 'bratwurst', 'italian sausage', 'italian fennel sausages', 'sour pork sausage', 'breakfast sausage', 'cumberland sausages', 'toulouse sausages', 'chipolatas'], meat: 'pork', variable: true, fdc: [171631, 'Sausage, Italian, pork, mild, raw'], units: { piece: 75, link: 75, medium: 75 } }),
-  ing('smoked_sausage', 'protein', { syn: ['kielbasa', 'kabanos sausages', 'kabanos', 'polish kabanos', 'polish sausage', 'low fat polish kielbasa sausage', 'smoked sausage', 'frankfurters', 'hot dogs'], meat: 'pork', variable: true, fdc: [173879, 'Kielbasa, fully cooked, unheated'], units: { piece: 75, link: 75 } }),
+  ing('pork_sausage', 'protein', { name: 'pork sausage', syn: ['pork sausages', 'pork sausage', 'sour pork sausage', 'pork breakfast sausage', 'pork chipolatas'], meat: 'pork', variable: true, fdc: [171631, 'Sausage, Italian, pork, mild, raw'], units: { piece: 75, link: 75, medium: 75 } }),
+  // Sausages that do not name their meat may be pork, beef, chicken or a blend: 'mixed' claims no diet.
+  ing('sausage', 'protein', { syn: ['sausages', 'german sausages', 'bratwurst', 'italian sausage', 'italian fennel sausages', 'breakfast sausage', 'cumberland sausages', 'toulouse sausages', 'chipolatas'], meat: 'mixed', variable: true, fdc: [171631, 'Sausage, Italian, pork, mild, raw'], units: { piece: 75, link: 75, medium: 75 } }),
+  ing('smoked_sausage', 'protein', { syn: ['kielbasa', 'kabanos sausages', 'kabanos', 'polish kabanos', 'polish sausage', 'low fat polish kielbasa sausage', 'smoked sausage', 'frankfurters', 'hot dogs'], meat: 'mixed', variable: true, fdc: [173879, 'Kielbasa, fully cooked, unheated'], units: { piece: 75, link: 75 } }),
   ing('blood_sausage', 'protein', { syn: ['black pudding', 'morcilla', 'blood pudding'], meat: 'pork', variable: true, allergens: ['gluten'], fdc: [171618, 'Blood sausage'], units: { slice: 25, piece: 25 } }),
   ing('lard', 'oil', { syn: ['pork lard', 'pork fat'], meat: 'pork', fdc: [171401, 'Lard'] }),
   // Lamb, goat, game
@@ -39,7 +41,8 @@ export const PROTEIN: IngredientDef[] = [
   ing('ground_lamb', 'protein', { syn: ['lamb mince', 'minced lamb'], meat: 'lamb', fdc: [174370, 'Lamb, ground, raw'] }),
   ing('lamb_chop', 'protein', { syn: ['lamb loin chops', 'lamb chops', 'lamb cutlets', 'lamb loin'], meat: 'lamb', fdc: [173810, 'Lamb, New Zealand, imported, loin chop, separable lean only, raw'], units: { piece: 90 } }),
   ing('lamb_shank', 'protein', { syn: ['lamb shanks'], meat: 'lamb', fdc: [174454, 'Lamb, New Zealand, imported, hind-shank, separable lean only, raw'], units: { piece: 350 } }),
-  ing('lamb_kidney', 'protein', { syn: ['lamb kidneys', 'kidneys'], meat: 'lamb', fdc: [174354, 'Lamb, variety meats and by-products, kidneys, raw'], units: { piece: 60 } }),
+  ing('lamb_kidney', 'protein', { syn: ['lamb kidneys'], meat: 'lamb', fdc: [174354, 'Lamb, variety meats and by-products, kidneys, raw'], units: { piece: 60 } }),
+  ing('kidney', 'protein', { name: 'kidneys', syn: ['kidneys', 'ox kidney', 'pig kidneys', 'veal kidneys'], meat: 'mixed', fdc: [174354, 'Lamb, variety meats and by-products, kidneys, raw'], units: { piece: 60 } }),
   ing('goat', 'protein', { syn: ['goat meat', 'mutton goat'], meat: 'lamb', fdc: [175303, 'Game meat, goat, raw'] }),
   ing('rabbit', 'protein', { meat: 'game', fdc: [172521, 'Game meat, rabbit, domesticated, composite of cuts, raw'] }),
   ing('frog_legs', 'protein', { syn: ['frogs legs', 'frog legs'], meat: 'game', fdc: [168148, 'Frog legs, raw'] }),

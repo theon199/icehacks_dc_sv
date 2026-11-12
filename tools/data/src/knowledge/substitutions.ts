@@ -75,6 +75,7 @@ export const SUBSTITUTIONS: readonly SubstitutionDef[] = [
   sub('bacon', 'smoked_paprika', 0.05, 'lower_sodium', 'A pinch of smoked paprika brings smoky depth without cured meat.'),
   sub('bacon', 'turkey_ham', 1, 'diet', 'Pork-free; crisp it in a hot pan.'),
   sub('sausage', 'ground_chicken', 1, 'lower_sat_fat', 'Season with fennel, garlic and chilli for a sausage-like taste.'),
+  sub('pork_sausage', 'ground_chicken', 1, 'lower_sat_fat', 'Season with fennel, garlic and chilli for a sausage-like taste.'),
   sub('chorizo', 'smoked_paprika', 0.05, 'lower_sat_fat', 'Smoked paprika and garlic carry the flavour without the fat.'),
   sub('chicken_thigh', 'chicken_breast', 1, 'lower_sat_fat', 'Leaner; pound to an even thickness so it stays moist.'),
   sub('chicken_wing', 'chicken_breast', 1, 'lower_sat_fat', 'Cut into strips and bake for wing-style bites.'),
@@ -93,6 +94,7 @@ export const SUBSTITUTIONS: readonly SubstitutionDef[] = [
   sub('chicken_stock', 'low_sodium_chicken_stock', 1, 'lower_sodium', 'Season at the end, once you can taste the finished dish.'),
   sub('broth', 'low_sodium_chicken_stock', 1, 'lower_sodium', 'Lets you control salt yourself.'),
   sub('stock_cube', 'low_sodium_chicken_stock', 1, 'lower_sodium', 'Use about 1 cup broth in place of each cube plus its water.'),
+  sub('vegetable_stock_cube', 'vegetable_stock', 1, 'lower_sodium', 'Liquid broth lets you choose a low-sodium carton; check labels.'),
   sub('chicken_stock_cube', 'low_sodium_chicken_stock', 1, 'lower_sodium', 'Use about 1 cup broth in place of each cube plus its water.'),
   sub('beef_stock_cube', 'beef_stock', 1, 'lower_sodium', 'Liquid stock carries less salt than most cubes; check labels.'),
   // Salt and sodium
