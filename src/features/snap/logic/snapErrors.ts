@@ -1,8 +1,12 @@
 /**
- * What to tell the person when a snap fails, and what they can do about it.
+ * What to tell the person when a snap fails, and what they can do about it. General AI failures
+ * (limits, age, connection, timeouts) use the shared AI wording; only photo problems are worded
+ * here.
  */
-import { isAiAgeRestricted, isAiQuotaExceeded, isAiRefused } from '@/lib/api/ai';
+import { isAiQuotaExceeded, isAiRefused } from '@/lib/api/ai';
 import { isApiError } from '@/lib/api/errors';
+
+import { describeAiProblem, waitPhrase, type AiProblem } from '../deps';
 
 /** The photo could not be read or converted on the device. */
 export class PhotoPrepError extends Error {
@@ -33,15 +37,10 @@ export function secondsUntilMidnight(now: Date): number {
   return Math.max(60, Math.ceil((midnight.getTime() - now.getTime()) / 1000));
 }
 
-function waitPhrase(seconds: number | undefined): string {
-  if (seconds == null || seconds <= 0) return 'tomorrow';
-  const hours = Math.round(seconds / 3600);
-  if (hours >= 2) return `in about ${hours} hours`;
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  return minutes >= 60
-    ? 'in about an hour'
-    : `in about ${minutes} minute${minutes === 1 ? '' : 's'}`;
-}
+const SNAP_COPY = { feature: 'Snap', unit: 'snaps' } as const;
+
+/** Problems no other photo can fix right now. */
+const NO_RETAKE: ReadonlySet<AiProblem['kind']> = new Set(['daily_limit', 'age', 'signed_out']);
 
 /** Null for a cancellation the person asked for, which needs no message. */
 export function describeSnapError(error: unknown, now: Date = new Date()): SnapProblem | null {
@@ -53,60 +52,45 @@ export function describeSnapError(error: unknown, now: Date = new Date()): SnapP
       canRetake: true,
     };
   }
-  if (!isApiError(error)) {
-    return {
-      title: 'Something went wrong',
-      message: 'Please try again in a moment.',
-      canRetry: true,
-      canRetake: true,
-    };
+  if (isApiError(error)) {
+    if (error.kind === 'cancelled') return null;
+    // Sending the very same photo again gets the same answer; a new one might not.
+    // (Checked through `unknown`: the helper is a type guard, which would leave `error` as `never`
+    // on the way out.)
+    const raw: unknown = error;
+    if (isAiRefused(raw)) {
+      return {
+        title: "Couldn't read that photo",
+        message:
+          'The AI could not work with this photo. A clearer, closer shot of the food may help.',
+        canRetry: false,
+        canRetake: true,
+      };
+    }
+    if (error.kind === 'validation') {
+      return {
+        title: "Couldn't use that photo",
+        message: 'The photo may be too large or in a format Famara cannot read. Try another one.',
+        canRetry: false,
+        canRetake: true,
+      };
+    }
   }
-  if (error.kind === 'cancelled') return null;
-  // The AI helpers are type guards; checking through `unknown` keeps `error` an ApiError below.
-  const raw: unknown = error;
-  if (isAiQuotaExceeded(raw)) {
-    const wait = waitPhrase(error.retryAfterSeconds);
-    const seconds =
-      error.retryAfterSeconds != null && error.retryAfterSeconds > 0
-        ? error.retryAfterSeconds
-        : secondsUntilMidnight(now);
-    return {
-      title: "You've used today's snaps",
-      message: `Snap has a daily limit. You can snap again ${wait}.`,
-      canRetry: false,
-      canRetake: false,
-      pause: { seconds, note: `Daily limit reached. You can snap again ${wait}.` },
-    };
-  }
-  if (isAiAgeRestricted(raw)) {
-    return {
-      title: 'Snap is for adults',
-      message: 'AI features are available to people 18 and over.',
-      canRetry: false,
-      canRetake: false,
-    };
-  }
-  if (isAiRefused(raw)) {
-    return {
-      title: "Couldn't read that photo",
-      message:
-        'The AI could not work with this photo. A clearer, closer shot of the food may help.',
-      canRetry: true,
-      canRetake: true,
-    };
-  }
-  if (error.kind === 'validation') {
-    return {
-      title: "Couldn't use that photo",
-      message: 'The photo may be too large or in a format Famara cannot read. Try another one.',
-      canRetry: false,
-      canRetake: true,
-    };
-  }
-  return {
-    title: error.kind === 'network' ? "You're offline" : "Couldn't read your photo",
-    message: error.userMessage,
-    canRetry: error.retryable,
-    canRetake: true,
+
+  const shared = describeAiProblem(error, SNAP_COPY);
+  const problem: SnapProblem = {
+    title: shared.title,
+    message: shared.message,
+    canRetry: shared.canRetry,
+    canRetake: !NO_RETAKE.has(shared.kind),
   };
+  if (isAiQuotaExceeded(error)) {
+    const told = error.retryAfterSeconds;
+    const seconds = told != null && told > 0 ? told : secondsUntilMidnight(now);
+    problem.pause = {
+      seconds,
+      note: `Daily limit reached. Snaps refresh ${waitPhrase(seconds) ?? 'tomorrow'}.`,
+    };
+  }
+  return problem;
 }

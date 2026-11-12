@@ -13,7 +13,6 @@ import {
 import { useSnapSession } from './snapSession';
 import { catalogRecipe } from './testing';
 
-jest.mock('./components/SnapAiGate', () => ({ SnapAiGate: () => null }));
 jest.mock('expo-crypto', () => ({
   randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
 }));

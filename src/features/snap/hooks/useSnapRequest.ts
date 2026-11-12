@@ -1,13 +1,15 @@
 /**
  * Runs one snap: shrink the photo on the device, send it to the snap function, and hand the reading
  * to the result screens through the snap session. Cancellable at any point, and cancelled when the
- * screen unmounts. A snap that finishes while its tab is in the background still completes.
+ * screen unmounts or the signed-in account changes. A snap that finishes while its tab is in the
+ * background still completes.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { aiApi, type AiApi, type SnapMode } from '@/lib/api/ai';
 
 import { preparePhoto, type PhotoSource, type PreparedPhoto } from '../capture/preparePhoto';
+import { onAccountChange } from '../deps';
 import { describeSnapError, type SnapProblem } from '../logic/snapErrors';
 import { useSnapSession } from '../snapSession';
 
@@ -66,6 +68,18 @@ export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestO
     onResultRef.current = onResult;
   }, [onResult]);
   useEffect(() => () => controllerRef.current?.abort(), []);
+  // A reading that lands after sign-out (or a switch of account) belongs to nobody signed in now:
+  // stop the snap so it is never handed to the next person.
+  useEffect(
+    () =>
+      onAccountChange(() => {
+        controllerRef.current?.abort();
+        controllerRef.current = null;
+        setPhase({ status: 'idle' });
+        setPause(null);
+      }),
+    [],
+  );
   useEffect(() => {
     pauseRef.current = pause;
     if (!pause) return undefined;

@@ -13,30 +13,17 @@ import type * as TestingModule from '../testing';
 import { SnapScreen } from './SnapScreen';
 import { preparePhoto } from '../capture/preparePhoto';
 import { useSnapSession } from '../snapSession';
-import { mockRouter, renderScreen } from '../testing';
+import { blurScreen, focusScreen, mockRouter, renderScreen } from '../testing';
 
 const mockTakePicture = jest.fn();
 
-/** Whether the Snap tab is focused, changeable from a test. */
-const mockFocus = {
-  focused: true,
-  listeners: new Set<() => void>(),
-  set(focused: boolean) {
-    this.focused = focused;
-    for (const listener of this.listeners) listener();
-  },
-};
-
 jest.mock('expo-router', () => {
-  const { useEffect, useSyncExternalStore } = jest.requireActual<typeof ReactModule>('react');
-  const subscribe = (listener: () => void) => {
-    mockFocus.listeners.add(listener);
-    return () => mockFocus.listeners.delete(listener);
-  };
+  const helpers = jest.requireActual<typeof TestingModule>('../testing');
   return {
-    router: jest.requireActual<typeof TestingModule>('../testing').mockRouter,
-    useIsFocused: () => useSyncExternalStore(subscribe, () => mockFocus.focused),
-    useFocusEffect: (effect: () => void) => useEffect(effect, [effect]),
+    router: helpers.mockRouter,
+    useRouter: () => helpers.mockRouter,
+    useIsFocused: helpers.useTestIsFocused,
+    useFocusEffect: helpers.useTestFocusEffect,
   };
 });
 jest.mock('expo-camera', () => {
@@ -92,7 +79,6 @@ function permission(state: 'granted' | 'ask' | 'blocked') {
 const quota = { remaining: 4, reset_at: '2026-11-12T00:00:00Z' };
 
 beforeEach(() => {
-  mockFocus.focused = true;
   useSnapSession.getState().clear();
   signIn({ age: 30, consent: true });
   permission('granted');
@@ -109,16 +95,17 @@ describe('Snap gating', () => {
   it('keeps the camera closed for people under 18', async () => {
     signIn({ age: 16, consent: true });
     await renderScreen(<SnapScreen />);
-    expect(screen.getByText('Snap is for adults')).toBeOnTheScreen();
+    expect(screen.getByTestId('snap-ai-gate')).toHaveTextContent(/Snap is for adults/);
+    expect(screen.queryByTestId('ai-gate-review')).toBeNull();
     expect(useCameraPermissions).not.toHaveBeenCalled();
   });
 
   it('asks adults to turn on AI before opening the camera', async () => {
     signIn({ age: 30, consent: false });
     await renderScreen(<SnapScreen />);
-    expect(screen.getByText('Turn on AI to use Snap')).toBeOnTheScreen();
+    expect(screen.getByTestId('snap-ai-gate')).toHaveTextContent(/Turn on AI features to use Snap/);
     expect(useCameraPermissions).not.toHaveBeenCalled();
-    await userEvent.setup().press(screen.getByRole('button', { name: 'Review and turn on' }));
+    await userEvent.setup().press(screen.getByTestId('ai-gate-review'));
     expect(mockRouter.push).toHaveBeenCalledWith('/ai-consent');
   });
 });
@@ -231,7 +218,7 @@ describe('Snap camera', () => {
     const shutter = screen.getByRole('button', { name: 'Take photo' });
     await waitFor(() => expect(shutter).toBeEnabled());
     await userEvent.setup().press(shutter);
-    expect(await screen.findByText("You've used today's snaps")).toBeOnTheScreen();
+    expect(await screen.findByText("You've reached today's Snap limit")).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retake' })).toBeNull();
     await userEvent.setup().press(screen.getByRole('button', { name: 'OK' }));
@@ -247,9 +234,9 @@ describe('Snap camera', () => {
   it('turns the camera off when the tab loses focus and back on when it returns', async () => {
     await renderScreen(<SnapScreen />);
     expect(screen.getByTestId('mock-camera')).toBeOnTheScreen();
-    await act(() => mockFocus.set(false));
+    await act(() => blurScreen());
     expect(screen.queryByTestId('mock-camera')).toBeNull();
-    await act(() => mockFocus.set(true));
+    await act(() => focusScreen());
     expect(screen.getByTestId('mock-camera')).toBeOnTheScreen();
   });
 
@@ -315,5 +302,51 @@ describe('Snap camera', () => {
     await act(async () => undefined);
     expect(useSnapSession.getState().result).toBeNull();
     expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+  it('offers only a new photo when the AI declines this one', async () => {
+    jest
+      .mocked(aiApi.readSnap)
+      .mockRejectedValue(
+        new ApiError({ kind: 'validation', functionName: 'snap', status: 422, code: 'ai_refused' }),
+      );
+    await renderScreen(<SnapScreen />);
+    const shutter = screen.getByRole('button', { name: 'Take photo' });
+    await waitFor(() => expect(shutter).toBeEnabled());
+    await userEvent.setup().press(shutter);
+    expect(await screen.findByText("Couldn't read that photo")).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retake' })).toBeOnTheScreen();
+  });
+
+  it('drops a snap still in flight when the account changes', async () => {
+    let finish: ((value: Awaited<ReturnType<typeof aiApi.readSnap>>) => void) | undefined;
+    let signal: AbortSignal | undefined;
+    jest.mocked(aiApi.readSnap).mockImplementation(
+      (_input, options) =>
+        new Promise((resolve) => {
+          signal = options?.signal;
+          finish = resolve;
+        }),
+    );
+    await renderScreen(<SnapScreen />);
+    const shutter = screen.getByRole('button', { name: 'Take photo' });
+    await waitFor(() => expect(shutter).toBeEnabled());
+    await userEvent.setup().press(shutter);
+    await waitFor(() => expect(finish).toBeDefined());
+
+    await act(() => {
+      useSessionStore.getState().signedIn({
+        userId: 'u2',
+        birthYear: thisYear - 40,
+        onboardingComplete: true,
+        aiConsent: true,
+      });
+    });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => finish?.({ status: 'ok', mode: 'pantry', items: [], quota }));
+
+    expect(useSnapSession.getState().result).toBeNull();
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    expect(await screen.findByTestId('mock-camera')).toBeOnTheScreen();
   });
 });

@@ -19,8 +19,13 @@ describe('snap error copy', () => {
         retryAfterSeconds: 7200,
       }),
     );
-    expect(problem).toMatchObject({ title: "You've used today's snaps", canRetry: false });
+    expect(problem).toMatchObject({
+      title: "You've reached today's Snap limit",
+      canRetry: false,
+      canRetake: false,
+    });
     expect(problem?.message).toContain('in about 2 hours');
+    expect(problem?.pause?.note).toBe('Daily limit reached. Snaps refresh in about 2 hours.');
   });
 
   it('pauses snapping until the daily limit resets', () => {
@@ -51,6 +56,12 @@ describe('snap error copy', () => {
       canRetry: true,
     });
     expect(describeSnapError(apiError({ kind: 'timeout' }))).toMatchObject({ canRetry: true });
+  });
+
+  it('offers a new photo, not the same one again, when the AI declines it', () => {
+    expect(
+      describeSnapError(apiError({ kind: 'validation', status: 422, code: 'ai_refused' })),
+    ).toMatchObject({ title: "Couldn't read that photo", canRetry: false, canRetake: true });
   });
 
   it('asks for another photo when the image could not be used', () => {

@@ -2,9 +2,9 @@
  * The one place Snap reaches into code owned by other areas. Everything here is a thin adapter so
  * that when a sibling module lands (or a shared shape changes) only this file moves.
  *
- * - `AiGate`: the 18+ and AI-consent gate. Snap is a tab root, which `Stack.Protected` cannot
- *   guard, so the screen renders this gate itself. Until Chef publishes its shared gate, Snap uses
- *   a local gate with the same contract built on the session store.
+ * - `AiGate`: Chef's shared 18+ and AI-consent gate. Snap is a tab root, which `Stack.Protected`
+ *   cannot guard, so the screen renders the gate itself. `describeAiProblem` and `waitPhrase` are
+ *   Chef's wording for AI failures; Snap adds only what is specific to photos.
  * - Preference and recipe bridges: the user stores and the catalog use their own field names and
  *   vocabularies, while ranking and safety in `src/domain` expect the domain shapes. These
  *   functions translate one way only (store/catalog → domain) and fail closed.
@@ -23,7 +23,8 @@ import type { RecipeCandidate, RecipeSummary } from '@/lib/catalog';
 import type { HealthGoal, Preferences, Units } from '@/stores';
 import { useCookLogStore } from '@/stores';
 
-export { SnapAiGate as AiGate } from './components/SnapAiGate';
+export { selectCanUseAi, useSessionStore } from '@/features/auth';
+export { AiGate, describeAiProblem, waitPhrase, type AiProblem } from '@/features/chef';
 
 // --- Account -----------------------------------------------------------------------------------
 

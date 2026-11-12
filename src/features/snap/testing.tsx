@@ -2,8 +2,9 @@
  * Test helpers for Snap screens. Only imported by tests.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactElement, ReactNode } from 'react';
+import { useEffect, type EffectCallback, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { create } from 'zustand';
 
 import type { RecipeCandidate } from '@/lib/catalog';
 import { renderWithTheme } from '@/test/render';
@@ -48,6 +49,28 @@ export const mockRouter = {
   back: jest.fn(),
   canGoBack: jest.fn(() => true),
 };
+
+/**
+ * Navigation focus for screens under test. Starts focused before every test; `blurScreen` and
+ * `focusScreen` simulate leaving the tab and coming back.
+ */
+const testNavigation = create<{ focused: boolean }>()(() => ({ focused: true }));
+
+export const blurScreen = () => testNavigation.setState({ focused: false });
+export const focusScreen = () => testNavigation.setState({ focused: true });
+
+/** Test version of `useIsFocused`. */
+export function useTestIsFocused(): boolean {
+  return testNavigation((state) => state.focused);
+}
+
+/** Test version of `useFocusEffect`: runs on focus and cleans up on blur, like the real one. */
+export function useTestFocusEffect(effect: EffectCallback): void {
+  const focused = useTestIsFocused();
+  useEffect(() => (focused ? effect() : undefined), [focused, effect]);
+}
+
+beforeEach(focusScreen);
 
 const clients: QueryClient[] = [];
 
