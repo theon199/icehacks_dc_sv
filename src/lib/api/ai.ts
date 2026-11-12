@@ -68,6 +68,11 @@ export interface ChefProfileSummary {
   goals: string[];
   time_budget_minutes: number | null;
   small_appetite: boolean;
+  /**
+   * False while the allergen and diet questions are unanswered, so Chef reads the empty lists as
+   * "unknown" rather than "none". Omitted means answered.
+   */
+  allergens_answered?: boolean;
 }
 
 /** A recipe the device already checked against the person's allergens and diet. */
