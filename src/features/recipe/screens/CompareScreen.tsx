@@ -16,6 +16,7 @@ import {
 } from '@/ui';
 
 import { CompareHeader, DeltaTable, DiffRow } from '../components/CompareRows';
+import { SafetyWarning } from '../components/SafetyWarning';
 import { useCanUseAi } from '../deps';
 import { useComparison, type ComparisonState } from '../hooks/useComparison';
 import { aiConsentHref, makeoverHref, recipeHref } from '../links';
@@ -30,6 +31,7 @@ type Ready = Extract<ComparisonState, { status: 'ready' }>;
 
 type Row =
   | { type: 'header'; key: 'header' }
+  | { type: 'safety'; key: 'safety' }
   | { type: 'heading'; key: string; title: string }
   | { type: 'deltas'; key: 'deltas' }
   | { type: 'diff'; key: string; entry: DiffEntry };
@@ -37,11 +39,12 @@ type Row =
 function rowsFor(state: Ready): Row[] {
   const changed = state.diff.filter((d) => d.kind !== 'same');
   const same = state.diff.filter((d) => d.kind === 'same');
-  const rows: Row[] = [
-    { type: 'header', key: 'header' },
+  const rows: Row[] = [{ type: 'header', key: 'header' }];
+  if (!state.safety.eligible) rows.push({ type: 'safety', key: 'safety' });
+  rows.push(
     { type: 'heading', key: 'h-nutrition', title: 'Nutrition' },
     { type: 'deltas', key: 'deltas' },
-  ];
+  );
   if (changed.length > 0) {
     rows.push({ type: 'heading', key: 'h-changed', title: 'What changed' });
     for (const entry of changed) rows.push({ type: 'diff', key: `d-${entry.key}`, entry });
@@ -73,6 +76,15 @@ export function CompareScreen({ fromId, toId }: CompareScreenProps) {
               personal={state.personal}
               summary={state.summary}
             />
+          );
+        case 'safety':
+          return (
+            <View style={styles.safety}>
+              <SafetyWarning
+                verdict={state.safety}
+                subject={`About ${state.adapted.title}, the healthier version:`}
+              />
+            </View>
           );
         case 'heading':
           return (
@@ -165,5 +177,6 @@ const styles = StyleSheet.create({
   pad: { padding: gutter },
   centre: { justifyContent: 'center', padding: gutter },
   list: { paddingHorizontal: gutter, paddingBottom: space.xxxl },
+  safety: { paddingTop: space.md },
   heading: { paddingTop: space.xl, paddingBottom: space.sm },
 });

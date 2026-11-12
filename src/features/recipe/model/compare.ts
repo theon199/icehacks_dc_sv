@@ -5,8 +5,18 @@
  * Amounts are compared per serving (by weight) because the two recipes may make different numbers
  * of servings.
  */
+import {
+  ALLERGEN_IDS,
+  checkRecipe,
+  compileSafetyRules,
+  unknownAllergenMap,
+  type SafetyFields,
+  type SafetyPrefs,
+  type SafetyVerdict,
+} from '@/domain';
 import { TARGET_KIND, type NutrientKey } from '@/domain/nutrition';
 import type {
+  CandidateFilters,
   NutritionConfidence,
   RecipeDetail,
   RecipeIngredientLine,
@@ -24,6 +34,11 @@ export interface CompareSide {
   readonly lines: readonly Pick<RecipeIngredientLine, 'ingredientId' | 'text' | 'grams'>[];
   readonly nutrition: RecipeNutrition | null;
   readonly confidence: NutritionConfidence;
+  /**
+   * Allergen statuses and diet bits for this version, or null when nothing is known about them
+   * (a personal version saved without them). Null is checked as "every allergen unknown".
+   */
+  readonly safety: SafetyFields | null;
 }
 
 export function sideFromRecipe(recipe: RecipeDetail): CompareSide {
@@ -34,7 +49,37 @@ export function sideFromRecipe(recipe: RecipeDetail): CompareSide {
     lines: recipe.ingredients,
     nutrition: recipe.nutrition,
     confidence: recipe.nutritionConfidence,
+    safety: { allergens: recipe.allergens, dietFlags: recipe.dietFlags },
   };
+}
+
+const ALL_UNKNOWN: SafetyFields = { allergens: unknownAllergenMap(), dietFlags: 0 };
+
+/**
+ * Whether the healthier version clears the person's allergens and diets. Fail-closed like the rest
+ * of the app: a version with no allergen data, or a person who has not answered the allergen
+ * questions, is never eligible, so the screen warns instead of presenting it as simply better.
+ */
+export function adaptedSafety(side: CompareSide, prefs: SafetyPrefs): SafetyVerdict {
+  return checkRecipe(side.safety ?? ALL_UNKNOWN, prefs);
+}
+
+/** Enough to cover every recipe in the bundled catalog when looking for other versions. */
+const FAMILY_SCAN_LIMIT = 2000;
+
+/**
+ * Catalog filters for finding another version of a dish to compare against. Every course is
+ * searched, since versions of one dish can sit in different courses. Only versions that clear the
+ * person's allergens (verified free, so `unknown` is out) and diets are considered; before the
+ * person has answered the allergen questions, only versions free of every allergen are.
+ */
+export function familyCandidateFilters(prefs: SafetyPrefs): CandidateFilters {
+  const rules = compileSafetyRules(prefs);
+  if (!rules.answered) return { avoidAllergens: ALLERGEN_IDS, limit: FAMILY_SCAN_LIMIT };
+  const filters: CandidateFilters = { limit: FAMILY_SCAN_LIMIT };
+  if (rules.mustBeFree.length > 0) filters.avoidAllergens = [...rules.mustBeFree].sort();
+  if (rules.requiredDiets > 0) filters.dietMask = rules.requiredDiets;
+  return filters;
 }
 
 export type DiffKind = 'swapped' | 'removed' | 'added' | 'more' | 'less' | 'same';

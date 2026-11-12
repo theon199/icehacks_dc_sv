@@ -1,11 +1,15 @@
+import { ALLERGEN_IDS, dietMask } from '@/domain';
+
 import {
+  adaptedSafety,
   diffIngredients,
+  familyCandidateFilters,
   nutritionDeltas,
   pairFamily,
   sideFromRecipe,
   summariseComparison,
 } from './compare';
-import { line, makeDetail } from '../test/fixtures';
+import { allergenMap, line, makeDetail } from '../test/fixtures';
 
 const original = sideFromRecipe(
   makeDetail({
@@ -132,5 +136,56 @@ describe('pairFamily', () => {
 
   it('returns null when the dish has no other version', () => {
     expect(pairFamily(make('solo', 'f', 0.5), [make('x', 'g', 0.9)])).toBeNull();
+  });
+});
+
+describe('familyCandidateFilters', () => {
+  it('keeps out declared allergens and searches every course', () => {
+    const filters = familyCandidateFilters({ allergens: ['peanut'], diets: [] });
+    expect(filters.avoidAllergens).toEqual(['peanut']);
+    expect(filters.dietMask).toBeUndefined();
+    expect(filters.course).toBeUndefined();
+  });
+
+  it('requires followed diets and the allergens that could disprove them', () => {
+    const filters = familyCandidateFilters({ allergens: [], diets: ['dairy_free'] });
+    expect(filters.dietMask).toBe(dietMask(['dairy_free']));
+    expect(filters.avoidAllergens).toEqual(['milk']);
+  });
+
+  it('only allows versions free of every allergen before the person has answered', () => {
+    const filters = familyCandidateFilters({ allergens: null, diets: null });
+    expect([...(filters.avoidAllergens ?? [])].sort()).toEqual([...ALLERGEN_IDS].sort());
+  });
+});
+
+describe('adaptedSafety', () => {
+  const peanutPrefs = { allergens: ['peanut' as const], diets: [] };
+  const withPeanut = (status: 'free' | 'contains' | 'unknown') =>
+    sideFromRecipe(makeDetail({ allergens: allergenMap({ peanut: status }) }));
+
+  it('clears a version verified free of the declared allergens', () => {
+    expect(adaptedSafety(withPeanut('free'), peanutPrefs).eligible).toBe(true);
+  });
+
+  it('flags a version that contains a declared allergen', () => {
+    const verdict = adaptedSafety(withPeanut('contains'), peanutPrefs);
+    expect(verdict.eligible).toBe(false);
+    expect(verdict.reasons.map((r) => r.code)).toEqual(['contains_allergen']);
+  });
+
+  it('flags a version whose declared allergen is unverified', () => {
+    const verdict = adaptedSafety(withPeanut('unknown'), peanutPrefs);
+    expect(verdict.reasons.map((r) => r.code)).toEqual(['allergen_unverified']);
+  });
+
+  it('treats a version with no allergen data as unverified', () => {
+    const verdict = adaptedSafety({ ...withPeanut('free'), safety: null }, peanutPrefs);
+    expect(verdict.reasons.map((r) => r.code)).toEqual(['allergen_unverified']);
+  });
+
+  it('never clears a version before the person has answered the allergen questions', () => {
+    const verdict = adaptedSafety(withPeanut('free'), { allergens: null, diets: null });
+    expect(verdict.eligible).toBe(false);
   });
 });

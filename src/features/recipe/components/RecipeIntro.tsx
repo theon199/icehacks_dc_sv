@@ -4,9 +4,10 @@ import { StyleSheet, View } from 'react-native';
 
 import { cuisineLabel, formatMinutes, type FitReason, type SafetyVerdict } from '@/domain';
 import type { RecipeSummary } from '@/lib/catalog';
-import { Chip, Icon, PressableScale, Text, space, useTheme } from '@/ui';
+import { Chip, Icon, PressableScale, Text, space } from '@/ui';
 
 import { FitSummary } from './FitSummary';
+import { SafetyWarning } from './SafetyWarning';
 import { isSafeLink } from '../model/tutorials';
 
 const EFFORT_LABEL = { 1: 'Easy', 2: 'Some effort', 3: 'Involved' } as const;
@@ -27,7 +28,6 @@ export const RecipeIntro = memo(function RecipeIntro({
   safety,
   onOpenWhy,
 }: RecipeIntroProps) {
-  const theme = useTheme();
   const sourceUrl = recipe.sourceUrl && isSafeLink(recipe.sourceUrl) ? recipe.sourceUrl : null;
   const openSource = useCallback(() => {
     if (sourceUrl) void WebBrowser.openBrowserAsync(sourceUrl);
@@ -77,32 +77,7 @@ export const RecipeIntro = memo(function RecipeIntro({
         ) : null}
       </PressableScale>
 
-      {safety && !safety.eligible ? (
-        <View
-          accessibilityRole="alert"
-          style={[
-            styles.warning,
-            { backgroundColor: theme.colors.warningSoft, borderRadius: theme.radii.md },
-          ]}
-        >
-          <Icon
-            name="exclamationmark.triangle.fill"
-            android="warning"
-            size={18}
-            color="onWarningSoft"
-          />
-          <View style={styles.warningText}>
-            <Text variant="subhead" color="onWarningSoft">
-              Check before you cook
-            </Text>
-            {safety.reasons.map((reason, index) => (
-              <Text key={`${reason.code}-${index}`} variant="footnote" color="onWarningSoft">
-                {reason.message}
-              </Text>
-            ))}
-          </View>
-        </View>
-      ) : null}
+      <SafetyWarning verdict={safety} />
 
       {fitScore !== null ? (
         <FitSummary fitScore={fitScore} reasons={reasons} onPress={onOpenWhy} />
@@ -116,6 +91,4 @@ const styles = StyleSheet.create({
   titles: { gap: space.xs },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   source: { flexDirection: 'row', alignItems: 'center', gap: space.xs, alignSelf: 'flex-start' },
-  warning: { flexDirection: 'row', gap: space.sm, padding: space.md },
-  warningText: { flex: 1, gap: 2 },
 });
