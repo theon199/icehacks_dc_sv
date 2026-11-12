@@ -9,12 +9,12 @@
 -- limit is reached, so concurrent calls can never overspend.
 
 create table public.ai_usage (
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id uuid not null references auth.users on delete cascade,
   feature text not null constraint ai_usage_feature_format check (feature ~ '^[a-z][a-z0-9_]{1,39}$'),
   window_start timestamptz not null,
   window_seconds integer not null constraint ai_usage_window_range check (window_seconds between 60 and 2592000),
   count integer not null default 0 constraint ai_usage_count_nonneg check (count >= 0),
-  updated_at timestamptz not null default now(),
+  updated_at timestamptz default now() not null,
   primary key (user_id, feature, window_seconds, window_start)
 );
 create index ai_usage_window_start_idx on public.ai_usage (window_start);
@@ -99,7 +99,7 @@ create table public.ingredient_price_cache (
   source_url text,
   -- 'listed' when read from a retailer listing, 'estimated' when inferred by the AI fallback.
   confidence text not null default 'listed' constraint ingredient_price_cache_confidence check (confidence in ('listed', 'estimated')),
-  fetched_at timestamptz not null default now(),
+  fetched_at timestamptz default now() not null,
   expires_at timestamptz not null
 );
 create index ingredient_price_cache_ingredient_idx on public.ingredient_price_cache (ingredient_id, region);
@@ -112,7 +112,7 @@ create table public.places_cache (
   lat_rounded numeric(6, 2) not null,
   lng_rounded numeric(6, 2) not null,
   payload jsonb not null,
-  fetched_at timestamptz not null default now(),
+  fetched_at timestamptz default now() not null,
   expires_at timestamptz not null
 );
 create index places_cache_expires_idx on public.places_cache (expires_at);
@@ -124,10 +124,10 @@ create index places_cache_expires_idx on public.places_cache (expires_at);
 create table public.dish_confirmations (
   place_id text not null constraint dish_confirmations_place_length check (char_length(place_id) between 1 and 300),
   dish_key text not null constraint dish_confirmations_dish_format check (dish_key ~ '^[a-z0-9][a-z0-9_:-]{0,127}$'),
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id uuid not null references auth.users on delete cascade,
   had_it boolean not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null,
   primary key (place_id, dish_key, user_id)
 );
 create index dish_confirmations_dish_place_idx on public.dish_confirmations (dish_key, place_id);
@@ -203,21 +203,28 @@ $$;
 -- RLS + grants
 -- ---------------------------------------------------------------------------------------------
 
-alter table public.ai_usage enable row level security;
-alter table public.ingredient_price_cache enable row level security;
-alter table public.places_cache enable row level security;
-alter table public.dish_confirmations enable row level security;
+alter table public.ai_usage
+  enable row level security;
+alter table public.ingredient_price_cache
+  enable row level security;
+alter table public.places_cache
+  enable row level security;
+alter table public.dish_confirmations
+  enable row level security;
 
-create policy ai_usage_select_own on public.ai_usage
+create policy ai_usage_select_own
+  on public.ai_usage
   for select to authenticated
   using (user_id = (select auth.uid()));
 
 -- Prices are shared, non-personal reference data.
-create policy ingredient_price_cache_select_fresh on public.ingredient_price_cache
+create policy ingredient_price_cache_select_fresh
+  on public.ingredient_price_cache
   for select to authenticated
   using (expires_at > now());
 
-create policy dish_confirmations_select_own on public.dish_confirmations
+create policy dish_confirmations_select_own
+  on public.dish_confirmations
   for select to authenticated
   using (user_id = (select auth.uid()));
 

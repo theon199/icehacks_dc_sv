@@ -1,5 +1,5 @@
 begin;
-create extension if not exists pgtap with schema extensions;
+create extension if not exists pgtap schema extensions;
 select no_plan();
 
 -- Test helpers live in a throwaway schema inside this transaction.

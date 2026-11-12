@@ -27,25 +27,30 @@ on conflict (id) do update
 -- Object policies
 -- ---------------------------------------------------------------------------------------------
 
-create policy famara_avatars_read on storage.objects
+create policy famara_avatars_read
+  on storage.objects
   for select to authenticated
   using (bucket_id = 'avatars');
 
-create policy famara_avatars_insert_own on storage.objects
+create policy famara_avatars_insert_own
+  on storage.objects
   for insert to authenticated
   with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
-create policy famara_avatars_update_own on storage.objects
+create policy famara_avatars_update_own
+  on storage.objects
   for update to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text)
   with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
-create policy famara_avatars_delete_own on storage.objects
+create policy famara_avatars_delete_own
+  on storage.objects
   for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
 -- Attached media follows the visibility of its post (post_media RLS defers to posts RLS).
-create policy famara_post_media_read on storage.objects
+create policy famara_post_media_read
+  on storage.objects
   for select to authenticated
   using (
     bucket_id = 'post-media'
@@ -55,20 +60,24 @@ create policy famara_post_media_read on storage.objects
     )
   );
 
-create policy famara_post_media_insert_own on storage.objects
+create policy famara_post_media_insert_own
+  on storage.objects
   for insert to authenticated
   with check (bucket_id = 'post-media' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
-create policy famara_post_media_update_own on storage.objects
+create policy famara_post_media_update_own
+  on storage.objects
   for update to authenticated
   using (bucket_id = 'post-media' and (storage.foldername(name))[1] = (select auth.uid())::text)
   with check (bucket_id = 'post-media' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
-create policy famara_post_media_delete_own on storage.objects
+create policy famara_post_media_delete_own
+  on storage.objects
   for delete to authenticated
   using (bucket_id = 'post-media' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
-create policy famara_snap_uploads_owner on storage.objects
+create policy famara_snap_uploads_owner
+  on storage.objects
   for all to authenticated
   using (bucket_id = 'snap-uploads' and (storage.foldername(name))[1] = (select auth.uid())::text)
   with check (bucket_id = 'snap-uploads' and (storage.foldername(name))[1] = (select auth.uid())::text);
@@ -78,18 +87,19 @@ create policy famara_snap_uploads_owner on storage.objects
 -- ---------------------------------------------------------------------------------------------
 
 create table private.storage_purge_queue (
-  id bigint generated always as identity primary key,
+  id bigint primary key generated always as identity,
   bucket_id text not null,
   object_name text not null,
   reason text not null,
-  enqueued_at timestamptz not null default now(),
+  enqueued_at timestamptz default now() not null,
   attempts integer not null default 0,
   last_attempt_at timestamptz,
   unique (bucket_id, object_name)
 );
 create index storage_purge_queue_pending_idx on private.storage_purge_queue (last_attempt_at nulls first, id);
 
-alter table private.storage_purge_queue enable row level security;
+alter table private.storage_purge_queue
+  enable row level security;
 
 create function private.enqueue_storage_purge(p_bucket text, p_name text, p_reason text)
 returns void

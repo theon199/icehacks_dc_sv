@@ -1,6 +1,6 @@
 -- Structural guarantees every migration must keep.
 begin;
-create extension if not exists pgtap with schema extensions;
+create extension if not exists pgtap schema extensions;
 select no_plan();
 
 select is(

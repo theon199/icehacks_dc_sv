@@ -6,16 +6,16 @@
 -- sends the recipe's cuisine for cuisine stats.
 
 create table public.cook_events (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users (id) on delete cascade,
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid not null references auth.users on delete cascade,
   recipe_ref text not null constraint cook_events_recipe_ref_length check (char_length(recipe_ref) between 1 and 128),
   cuisine text constraint cook_events_cuisine_format check (cuisine is null or cuisine ~ '^[a-z][a-z_]{0,39}$'),
-  cooked_at timestamptz not null default now(),
+  cooked_at timestamptz default now() not null,
   -- The cook's calendar day in their own time zone; streaks count local days.
   local_date date not null,
   rating smallint constraint cook_events_rating_range check (rating is null or rating between 1 and 5),
   client_event_id uuid,
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   constraint cook_events_client_event_unique unique (user_id, client_event_id)
 );
 
@@ -36,7 +36,7 @@ create table public.badges (
 create table public.badge_awards (
   user_id uuid not null references public.profiles (id) on delete cascade,
   badge_id text not null references public.badges (id) on delete cascade,
-  awarded_at timestamptz not null default now(),
+  awarded_at timestamptz default now() not null,
   primary key (user_id, badge_id)
 );
 create index badge_awards_badge_idx on public.badge_awards (badge_id);
@@ -401,23 +401,30 @@ $$;
 -- RLS + grants
 -- ---------------------------------------------------------------------------------------------
 
-alter table public.cook_events enable row level security;
-alter table public.badges enable row level security;
-alter table public.badge_awards enable row level security;
+alter table public.cook_events
+  enable row level security;
+alter table public.badges
+  enable row level security;
+alter table public.badge_awards
+  enable row level security;
 
-create policy cook_events_select_own on public.cook_events
+create policy cook_events_select_own
+  on public.cook_events
   for select to authenticated
   using (user_id = (select auth.uid()));
 
-create policy cook_events_delete_own on public.cook_events
+create policy cook_events_delete_own
+  on public.cook_events
   for delete to authenticated
   using (user_id = (select auth.uid()));
 
-create policy badges_select_all on public.badges
+create policy badges_select_all
+  on public.badges
   for select to authenticated
   using (true);
 
-create policy badge_awards_select_unblocked on public.badge_awards
+create policy badge_awards_select_unblocked
+  on public.badge_awards
   for select to authenticated
   using (
     user_id = (select auth.uid())

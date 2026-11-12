@@ -10,7 +10,7 @@
 -- ---------------------------------------------------------------------------------------------
 
 create table public.posts (
-  id uuid primary key default gen_random_uuid(),
+  id uuid default gen_random_uuid() primary key,
   author_id uuid not null references public.profiles (id) on delete cascade,
   kind public.post_kind not null,
   recipe_ref text
@@ -26,8 +26,8 @@ create table public.posts (
   parent_post_id uuid references public.posts (id) on delete set null,
   like_count integer not null default 0 constraint posts_like_count_nonneg check (like_count >= 0),
   comment_count integer not null default 0 constraint posts_comment_count_nonneg check (comment_count >= 0),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null,
   constraint posts_recipe_required check (kind = 'tip' or recipe_ref is not null),
   constraint posts_not_own_parent check (parent_post_id is null or parent_post_id <> id)
 );
@@ -39,7 +39,7 @@ create index posts_recipe_ref_idx on public.posts (recipe_ref) where recipe_ref 
 create index posts_status_idx on public.posts (status, created_at desc);
 
 create table public.post_media (
-  id uuid primary key default gen_random_uuid(),
+  id uuid default gen_random_uuid() primary key,
   post_id uuid not null references public.posts (id) on delete cascade,
   owner_id uuid not null references public.profiles (id) on delete cascade,
   path text not null unique
@@ -48,20 +48,20 @@ create table public.post_media (
   height integer not null constraint post_media_height_range check (height between 1 and 8192),
   blurhash text constraint post_media_blurhash_length check (blurhash is null or char_length(blurhash) <= 100),
   position smallint not null constraint post_media_position_range check (position between 0 and 3),
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   unique (post_id, position)
 );
 create index post_media_owner_idx on public.post_media (owner_id);
 
 create table public.comments (
-  id uuid primary key default gen_random_uuid(),
+  id uuid default gen_random_uuid() primary key,
   post_id uuid not null references public.posts (id) on delete cascade,
   author_id uuid not null references public.profiles (id) on delete cascade,
   parent_comment_id uuid references public.comments (id) on delete cascade,
   body text not null constraint comments_body_length check (char_length(btrim(body)) between 1 and 1000),
   status public.content_status not null default 'visible',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null
 );
 create index comments_post_created_idx on public.comments (post_id, created_at, id);
 create index comments_author_created_idx on public.comments (author_id, created_at desc);
@@ -70,7 +70,7 @@ create index comments_parent_idx on public.comments (parent_comment_id) where pa
 create table public.post_likes (
   post_id uuid not null references public.posts (id) on delete cascade,
   user_id uuid not null references public.profiles (id) on delete cascade,
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   primary key (post_id, user_id)
 );
 create index post_likes_user_idx on public.post_likes (user_id, created_at desc);
@@ -78,7 +78,7 @@ create index post_likes_user_idx on public.post_likes (user_id, created_at desc)
 create table public.post_saves (
   user_id uuid not null references public.profiles (id) on delete cascade,
   post_id uuid not null references public.posts (id) on delete cascade,
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   primary key (user_id, post_id)
 );
 create index post_saves_post_idx on public.post_saves (post_id);
@@ -87,7 +87,7 @@ create index post_saves_user_created_idx on public.post_saves (user_id, created_
 create table public.follows (
   follower_id uuid not null references public.profiles (id) on delete cascade,
   followee_id uuid not null references public.profiles (id) on delete cascade,
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   primary key (follower_id, followee_id),
   constraint follows_not_self check (follower_id <> followee_id)
 );
@@ -96,8 +96,8 @@ create index follows_followee_idx on public.follows (followee_id, created_at des
 create table public.friend_invites (
   code text primary key constraint friend_invites_code_format check (code ~ '^[A-Z2-9]{10}$'),
   inviter_id uuid not null references public.profiles (id) on delete cascade,
-  created_at timestamptz not null default now(),
-  expires_at timestamptz not null default now() + interval '7 days',
+  created_at timestamptz default now() not null,
+  expires_at timestamptz default now() not null + interval '7 days',
   redeemed_by uuid references public.profiles (id) on delete set null,
   redeemed_at timestamptz
 );
@@ -106,7 +106,7 @@ create index friend_invites_redeemed_by_idx on public.friend_invites (redeemed_b
 create index friend_invites_expires_idx on public.friend_invites (expires_at);
 
 create table public.notifications (
-  id uuid primary key default gen_random_uuid(),
+  id uuid default gen_random_uuid() primary key,
   recipient_id uuid not null references public.profiles (id) on delete cascade,
   actor_id uuid references public.profiles (id) on delete cascade,
   kind public.notification_kind not null,
@@ -114,7 +114,7 @@ create table public.notifications (
   comment_id uuid references public.comments (id) on delete cascade,
   data jsonb not null default '{}'::jsonb,
   read_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz default now() not null
 );
 create index notifications_recipient_created_idx on public.notifications (recipient_id, created_at desc, id desc);
 create index notifications_recipient_unread_idx on public.notifications (recipient_id) where read_at is null;
@@ -132,7 +132,7 @@ create unique index notifications_follow_once_idx
 -- Managed by staff with the service role.
 create table private.review_terms (
   term text primary key constraint review_terms_term_length check (char_length(term) between 2 and 80),
-  created_at timestamptz not null default now()
+  created_at timestamptz default now() not null
 );
 
 create trigger posts_touch_updated_at
@@ -1024,17 +1024,27 @@ $$;
 -- RLS
 -- ---------------------------------------------------------------------------------------------
 
-alter table public.posts enable row level security;
-alter table public.post_media enable row level security;
-alter table public.comments enable row level security;
-alter table public.post_likes enable row level security;
-alter table public.post_saves enable row level security;
-alter table public.follows enable row level security;
-alter table public.friend_invites enable row level security;
-alter table public.notifications enable row level security;
-alter table private.review_terms enable row level security;
+alter table public.posts
+  enable row level security;
+alter table public.post_media
+  enable row level security;
+alter table public.comments
+  enable row level security;
+alter table public.post_likes
+  enable row level security;
+alter table public.post_saves
+  enable row level security;
+alter table public.follows
+  enable row level security;
+alter table public.friend_invites
+  enable row level security;
+alter table public.notifications
+  enable row level security;
+alter table private.review_terms
+  enable row level security;
 
-create policy posts_select_visible on public.posts
+create policy posts_select_visible
+  on public.posts
   for select to authenticated
   using (
     author_id = (select auth.uid())
@@ -1046,15 +1056,18 @@ create policy posts_select_visible on public.posts
     )
   );
 
-create policy posts_delete_own on public.posts
+create policy posts_delete_own
+  on public.posts
   for delete to authenticated
   using (author_id = (select auth.uid()));
 
-create policy post_media_select_visible on public.post_media
+create policy post_media_select_visible
+  on public.post_media
   for select to authenticated
   using (exists (select 1 from public.posts p where p.id = post_id));
 
-create policy comments_select_visible on public.comments
+create policy comments_select_visible
+  on public.comments
   for select to authenticated
   using (
     exists (select 1 from public.posts p where p.id = post_id)
@@ -1065,19 +1078,23 @@ create policy comments_select_visible on public.comments
     )
   );
 
-create policy comments_delete_own on public.comments
+create policy comments_delete_own
+  on public.comments
   for delete to authenticated
   using (author_id = (select auth.uid()));
 
-create policy post_likes_select_own on public.post_likes
+create policy post_likes_select_own
+  on public.post_likes
   for select to authenticated
   using (user_id = (select auth.uid()));
 
-create policy post_saves_select_own on public.post_saves
+create policy post_saves_select_own
+  on public.post_saves
   for select to authenticated
   using (user_id = (select auth.uid()));
 
-create policy follows_select_unblocked on public.follows
+create policy follows_select_unblocked
+  on public.follows
   for select to authenticated
   using (
     follower_id = (select auth.uid())
@@ -1088,19 +1105,23 @@ create policy follows_select_unblocked on public.follows
     )
   );
 
-create policy friend_invites_select_own on public.friend_invites
+create policy friend_invites_select_own
+  on public.friend_invites
   for select to authenticated
   using (inviter_id = (select auth.uid()));
 
-create policy friend_invites_delete_own on public.friend_invites
+create policy friend_invites_delete_own
+  on public.friend_invites
   for delete to authenticated
   using (inviter_id = (select auth.uid()) and redeemed_by is null);
 
-create policy notifications_select_own on public.notifications
+create policy notifications_select_own
+  on public.notifications
   for select to authenticated
   using (recipient_id = (select auth.uid()));
 
-create policy notifications_delete_own on public.notifications
+create policy notifications_delete_own
+  on public.notifications
   for delete to authenticated
   using (recipient_id = (select auth.uid()));
 

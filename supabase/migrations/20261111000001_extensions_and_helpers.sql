@@ -8,8 +8,8 @@
 --     get USAGE on it only so RLS policies can call the few helpers granted to them.
 --   * SECURITY DEFINER functions always pin `search_path = ''` and use fully-qualified names.
 
-create extension if not exists citext with schema extensions;
-create extension if not exists pgcrypto with schema extensions;
+create extension if not exists citext schema extensions;
+create extension if not exists pgcrypto schema extensions;
 
 create schema if not exists private;
 revoke all on schema private from public;

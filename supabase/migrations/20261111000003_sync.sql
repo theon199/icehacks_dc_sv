@@ -13,7 +13,7 @@
 create sequence private.user_document_revision_seq as bigint;
 
 create table public.user_documents (
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id uuid not null references auth.users on delete cascade,
   collection text not null
     constraint user_documents_collection_format check (collection ~ '^[a-z][a-z0-9_]{0,39}$'),
   doc_id text not null
@@ -25,7 +25,7 @@ create table public.user_documents (
     constraint user_documents_device_id_length check (char_length(device_id) between 1 and 64),
   deleted_at timestamptz,
   revision bigint not null default nextval('private.user_document_revision_seq'),
-  server_updated_at timestamptz not null default now(),
+  server_updated_at timestamptz default now() not null,
   primary key (user_id, collection, doc_id)
 );
 
@@ -34,9 +34,11 @@ create index user_documents_user_revision_idx on public.user_documents (user_id,
 comment on table public.user_documents is
   'Per-user synced documents. Written only through sync_push(); read through sync_pull().';
 
-alter table public.user_documents enable row level security;
+alter table public.user_documents
+  enable row level security;
 
-create policy user_documents_select_own on public.user_documents
+create policy user_documents_select_own
+  on public.user_documents
   for select to authenticated
   using (user_id = (select auth.uid()));
 

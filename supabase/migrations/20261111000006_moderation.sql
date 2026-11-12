@@ -7,7 +7,7 @@
 -- is hidden automatically by a system action (automated = true) and queued for review.
 
 create table public.reports (
-  id uuid primary key default gen_random_uuid(),
+  id uuid default gen_random_uuid() primary key,
   -- Null when raised automatically or when the reporter has since deleted their account.
   reporter_id uuid references public.profiles (id) on delete set null,
   automated boolean not null default false,
@@ -17,7 +17,7 @@ create table public.reports (
   reason public.report_reason not null,
   details text not null default '' constraint reports_details_length check (char_length(details) <= 1000),
   status public.report_status not null default 'open',
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   resolved_at timestamptz,
   resolved_by uuid references public.profiles (id) on delete set null
 );
@@ -31,7 +31,7 @@ create unique index reports_one_open_per_reporter_idx
   where status = 'open' and reporter_id is not null;
 
 create table public.moderation_actions (
-  id uuid primary key default gen_random_uuid(),
+  id uuid default gen_random_uuid() primary key,
   -- Null for automatic actions or when the moderator account no longer exists.
   moderator_id uuid references public.profiles (id) on delete set null,
   automated boolean not null default false,
@@ -42,7 +42,7 @@ create table public.moderation_actions (
   reason text not null constraint moderation_actions_reason_length check (char_length(btrim(reason)) between 1 and 500),
   report_id uuid references public.reports (id) on delete set null,
   suspended_until timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz default now() not null
 );
 create index moderation_actions_target_idx on public.moderation_actions (target_kind, target_id, created_at desc);
 create index moderation_actions_owner_idx on public.moderation_actions (target_owner_id, created_at desc) where target_owner_id is not null;
@@ -50,12 +50,12 @@ create index moderation_actions_moderator_idx on public.moderation_actions (mode
 create index moderation_actions_report_idx on public.moderation_actions (report_id) where report_id is not null;
 
 create table public.moderation_appeals (
-  id uuid primary key default gen_random_uuid(),
+  id uuid default gen_random_uuid() primary key,
   action_id uuid not null references public.moderation_actions (id) on delete cascade,
   appellant_id uuid not null references public.profiles (id) on delete cascade,
   message text not null constraint moderation_appeals_message_length check (char_length(btrim(message)) between 1 and 1000),
   status public.appeal_status not null default 'pending',
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   decided_by uuid references public.profiles (id) on delete set null,
   decided_at timestamptz,
   decision_note text constraint moderation_appeals_note_length check (decision_note is null or char_length(decision_note) <= 500),
@@ -663,19 +663,25 @@ $$;
 -- RLS + grants
 -- ---------------------------------------------------------------------------------------------
 
-alter table public.reports enable row level security;
-alter table public.moderation_actions enable row level security;
-alter table public.moderation_appeals enable row level security;
+alter table public.reports
+  enable row level security;
+alter table public.moderation_actions
+  enable row level security;
+alter table public.moderation_appeals
+  enable row level security;
 
-create policy reports_select_own_or_moderator on public.reports
+create policy reports_select_own_or_moderator
+  on public.reports
   for select to authenticated
   using (reporter_id = (select auth.uid()) or (select private.is_moderator()));
 
-create policy moderation_actions_select_owner_or_moderator on public.moderation_actions
+create policy moderation_actions_select_owner_or_moderator
+  on public.moderation_actions
   for select to authenticated
   using (target_owner_id = (select auth.uid()) or (select private.is_moderator()));
 
-create policy moderation_appeals_select_own_or_moderator on public.moderation_appeals
+create policy moderation_appeals_select_own_or_moderator
+  on public.moderation_appeals
   for select to authenticated
   using (appellant_id = (select auth.uid()) or (select private.is_moderator()));
 

@@ -6,7 +6,7 @@
 -- ---------------------------------------------------------------------------------------------
 
 create table public.profiles (
-  id uuid primary key references auth.users (id) on delete cascade,
+  id uuid references auth.users on delete cascade primary key,
   handle extensions.citext not null unique
     constraint profiles_handle_format check (handle::text ~ '^[A-Za-z0-9_]{3,24}$'),
   display_name text not null
@@ -29,26 +29,26 @@ create table public.profiles (
   is_team boolean not null default false,
   -- Set only by moderators through public.moderate().
   suspended_until timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null
 );
 
 comment on table public.profiles is 'Public face of an account. One row per auth user, created by trigger.';
 
 -- Birth year is sensitive and never readable directly; see public.age_years() / public.is_adult().
 create table private.account_ages (
-  user_id uuid primary key references auth.users (id) on delete cascade,
+  user_id uuid references auth.users on delete cascade primary key,
   birth_year smallint not null
     constraint account_ages_birth_year_range check (birth_year between 1900 and 2100),
-  set_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  set_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null
 );
 
 create table public.user_roles (
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id uuid not null references auth.users on delete cascade,
   role public.app_role not null,
-  granted_by uuid references auth.users (id) on delete set null,
-  granted_at timestamptz not null default now(),
+  granted_by uuid references auth.users on delete set null,
+  granted_at timestamptz default now() not null,
   primary key (user_id, role)
 );
 create index user_roles_granted_by_idx on public.user_roles (granted_by);
@@ -56,7 +56,7 @@ create index user_roles_granted_by_idx on public.user_roles (granted_by);
 create table public.blocks (
   blocker_id uuid not null references public.profiles (id) on delete cascade,
   blocked_id uuid not null references public.profiles (id) on delete cascade,
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   primary key (blocker_id, blocked_id),
   constraint blocks_not_self check (blocker_id <> blocked_id)
 );
@@ -369,30 +369,38 @@ $$;
 -- RLS + grants
 -- ---------------------------------------------------------------------------------------------
 
-alter table public.profiles enable row level security;
-alter table private.account_ages enable row level security;
-alter table public.user_roles enable row level security;
-alter table public.blocks enable row level security;
+alter table public.profiles
+  enable row level security;
+alter table private.account_ages
+  enable row level security;
+alter table public.user_roles
+  enable row level security;
+alter table public.blocks
+  enable row level security;
 
-create policy profiles_select_visible on public.profiles
+create policy profiles_select_visible
+  on public.profiles
   for select to authenticated
   using (
     id = (select auth.uid())
     or not private.is_blocked_pair((select auth.uid()), id)
   );
 
-create policy profiles_update_own on public.profiles
+create policy profiles_update_own
+  on public.profiles
   for update to authenticated
   using (id = (select auth.uid()))
   with check (id = (select auth.uid()));
 
-create policy user_roles_select_own on public.user_roles
+create policy user_roles_select_own
+  on public.user_roles
   for select to authenticated
   using (user_id = (select auth.uid()));
 
-create policy blocks_select_own on public.blocks
+create policy blocks_select_own
+  on public.blocks
   for select to authenticated
-  using (blocker_id = (select auth.uid()));
+  using ((select auth.uid()) = blocker_id);
 
 grant select on public.profiles to authenticated;
 grant update (handle, display_name, avatar_path, bio, cuisines) on public.profiles to authenticated;
