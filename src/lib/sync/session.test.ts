@@ -2,9 +2,10 @@ import { waitFor } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
 import Storage from 'expo-sqlite/kv-store';
 
-import { storageKey } from '@/lib/storage/kv';
+import { flushPendingWrites, storageKey } from '@/lib/storage/kv';
 import {
   defaultPreferences,
+  useFeedbackStore,
   usePantryStore,
   resetUserStores,
   usePreferencesStore,
@@ -14,7 +15,7 @@ import {
 
 import { FakeSyncServer } from './__fixtures__/fakeServer';
 import { memoryAdapter } from './__fixtures__/memoryAdapter';
-import { createSyncEngine } from './engine';
+import { createSyncEngine, type SyncEngine } from './engine';
 import type * as EngineModule from './engine';
 import { LEDGER_HEADER_KEY, ledgerBucketKey } from './ledger';
 import { registerSyncedStore } from './registry';
@@ -55,6 +56,7 @@ beforeEach(async () => {
   usePantryStore.getState().reset();
   useSavedStore.getState().reset();
   useVariantStore.getState().reset();
+  useFeedbackStore.getState().reset();
 });
 
 afterAll(() => stopSync());
@@ -189,6 +191,59 @@ describe('sync session', () => {
     expect(usePantryStore.getState().items).toEqual({});
   });
 
+  it('allows a direct reset as soon as the engine stops itself', async () => {
+    const refusing: SyncTransport = {
+      pull: () => Promise.reject(new SyncError('wrong_user', 'another account')),
+      push: () => Promise.reject(new SyncError('wrong_user', 'another account')),
+    };
+    jest.mocked(createSupabaseTransport).mockImplementationOnce(() => refusing);
+    await startSync('user-1');
+    const engine = jest.mocked(createSyncEngine).mock.results.at(-1)?.value as SyncEngine;
+    await waitFor(() => expect(engine.isStopped()).toBe(true));
+    usePantryStore.getState().add({ name: 'left behind' });
+    expect(() => resetUserStores()).not.toThrow();
+    expect(usePantryStore.getState().items).toEqual({});
+  });
+
+  it('never saves the ledger ahead of a store write the disk refused', async () => {
+    const feedbackKey = storageKey('user.feedback');
+    const feedbackBucket = () => Storage.getItemSync(storageKey(ledgerBucketKey('feedback'))) ?? '';
+    const write = jest.mocked(Storage.setItemSync);
+    const healthy = write.getMockImplementation();
+    await startSync('user-1');
+    await waitFor(() => expect(useSyncStatusStore.getState().phase).toBe('idle'));
+
+    try {
+      // The disk refuses the feedback store's write (the real deferred-write path), not the ledger's.
+      write.mockImplementation((key, value) => {
+        if (key === feedbackKey) throw new Error('disk full');
+        healthy?.(key, value);
+      });
+      useFeedbackStore.getState().record({ recipeId: 'mealdb:7', kind: 'like' });
+      const [eventId = ''] = Object.keys(useFeedbackStore.getState().events);
+      await expect(flushSync()).resolves.toBe(true);
+      expect(mockServer.get('feedback', eventId)).toBeDefined();
+
+      // Stopping saves the ledger, except that it would now describe an event the store lost.
+      await stopSync();
+      expect(Storage.getItemSync(feedbackKey) ?? '').not.toContain(eventId);
+      expect(feedbackBucket()).not.toContain(eventId);
+
+      // The disk recovers: the store's write goes through, and then the ledger's.
+      write.mockImplementation(healthy);
+      flushPendingWrites();
+      expect(Storage.getItemSync(feedbackKey)).toContain(eventId);
+      await startSync('user-1');
+      await waitFor(() => expect(useSyncStatusStore.getState().phase).toBe('idle'));
+      await expect(flushSync()).resolves.toBe(true);
+      await stopSync();
+      expect(feedbackBucket()).toContain(eventId);
+      expect(mockServer.get('feedback', eventId)?.deleted_at).toBeNull();
+    } finally {
+      write.mockImplementation(healthy);
+    }
+  });
+
   it('starts a fresh engine for the same account after one stopped itself', async () => {
     const refusing: SyncTransport = {
       pull: () => Promise.reject(new SyncError('wrong_user', 'another account')),
@@ -196,7 +251,8 @@ describe('sync session', () => {
     };
     jest.mocked(createSupabaseTransport).mockImplementationOnce(() => refusing);
     await startSync('user-1');
-    await waitFor(() => expect(useSyncStatusStore.getState().phase).toBe('stopped'));
+    const first = jest.mocked(createSyncEngine).mock.results.at(-1)?.value as SyncEngine;
+    await waitFor(() => expect(first.isStopped()).toBe(true));
     const engines = jest.mocked(createSyncEngine).mock.calls.length;
 
     await startSync('user-1');
