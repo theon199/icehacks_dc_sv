@@ -37,3 +37,17 @@ export function useProfileRefresh(): PullRefresh {
     await Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
   });
 }
+
+/**
+ * Reloads the follow lists, then the suggestions. Suggestions are fetched from the people I follow
+ * and ranked against both lists, so refreshing them before the lists land would rank stale data.
+ */
+export function useFriendsRefresh(): PullRefresh {
+  const queryClient = useQueryClient();
+  const userId = useMyUserId();
+  return usePullRefresh(async () => {
+    if (!userId) return;
+    await queryClient.invalidateQueries({ queryKey: profileKeys.follows(userId) });
+    await queryClient.invalidateQueries({ queryKey: profileKeys.suggestions(userId) });
+  });
+}

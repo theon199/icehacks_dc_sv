@@ -1,6 +1,8 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { Share } from 'react-native';
+
+import { toast } from '@/ui';
 
 import { FriendsScreen } from './FriendsScreen';
 import {
@@ -109,6 +111,46 @@ describe('FriendsScreen', () => {
       message: expect.stringContaining('famara://invite/ABCDEFGH23'),
     });
     expect(message).toMatchObject({ message: expect.stringContaining('ABCDE FGH23') });
+  });
+
+  it('does not call a share-sheet failure a failed invite', async () => {
+    jest.spyOn(Share, 'share').mockRejectedValue(new Error('share sheet unavailable'));
+    const toastShow = jest.spyOn(toast, 'show');
+    jest
+      .mocked(createFriendInvite)
+      .mockResolvedValue({ code: 'ABCDEFGH23', expires_at: '2099-01-01T00:00:00Z' });
+    await renderWithQuery(<FriendsScreen />);
+    await fireEvent.press(await screen.findByTestId('share-invite'));
+
+    await waitFor(() => expect(toastShow).toHaveBeenCalled());
+    const messages = toastShow.mock.calls.map(([options]) => options.message);
+    expect(messages).toContain(
+      'Your invite is ready, but the share sheet did not open. Share it from your open invites.',
+    );
+    expect(messages.join(' ')).not.toMatch(/Could not create an invite/);
+  });
+
+  it('refreshes suggestions only after the follow lists on pull', async () => {
+    await renderWithQuery(<FriendsScreen />);
+    await screen.findByText('Dee');
+    const order: string[] = [];
+    jest.mocked(fetchFollowLists).mockImplementation(async () => {
+      // Recorded when the lists arrive, so a suggestions fetch started earlier shows up first.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      order.push('lists');
+      return { following: [ana, ben], followers: [ana, cy] };
+    });
+    jest.mocked(fetchSecondDegree).mockImplementation(async () => {
+      order.push('suggestions');
+      return [{ via: 'ana', person: dee }];
+    });
+
+    const list = screen.getByTestId('friends-list');
+    const refreshControl = list.props.refreshControl as { props: { onRefresh: () => void } };
+    await act(async () => refreshControl.props.onRefresh());
+
+    await waitFor(() => expect(order).toContain('suggestions'));
+    expect(order).toEqual(['lists', 'suggestions']);
   });
 
   it('opens a typed invite code and rejects a malformed one', async () => {

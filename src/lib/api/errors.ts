@@ -26,6 +26,11 @@ export interface ApiErrorInit {
   serverMessage?: string;
   /** Seconds to wait before retrying, for rate limits. */
   retryAfterSeconds?: number;
+  /**
+   * Structured extras from the error envelope (`{ error: { code, message, details } }`), e.g.
+   * `{ reason: 'allergen_conflict', allergens: ['milk'] }`. Untrusted: read with a schema.
+   */
+  details?: Readonly<Record<string, unknown>>;
   cause?: unknown;
 }
 
@@ -36,6 +41,7 @@ export class ApiError extends Error {
   readonly code: string | undefined;
   readonly serverMessage: string | undefined;
   readonly retryAfterSeconds: number | undefined;
+  readonly details: Readonly<Record<string, unknown>> | undefined;
 
   constructor(init: ApiErrorInit) {
     super(`${init.functionName}: ${init.kind}${init.status ? ` (${init.status})` : ''}`, {
@@ -48,6 +54,7 @@ export class ApiError extends Error {
     this.code = init.code;
     this.serverMessage = init.serverMessage;
     this.retryAfterSeconds = init.retryAfterSeconds;
+    this.details = init.details;
   }
 
   /** Whether trying the same request again could succeed. */
@@ -65,6 +72,20 @@ export class ApiError extends Error {
 
 export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * The `details` object of an error response, from `{ error: { details } }` or a flat `{ details }`.
+ * Undefined when there is none or it is not an object; its contents are still unvalidated.
+ */
+export function readErrorDetails(body: unknown): Readonly<Record<string, unknown>> | undefined {
+  if (!isRecord(body)) return undefined;
+  const source = isRecord(body.error) ? body.error : body;
+  return isRecord(source.details) ? source.details : undefined;
 }
 
 function waitPhrase(seconds: number | undefined): string {

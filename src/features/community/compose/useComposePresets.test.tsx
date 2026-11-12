@@ -79,3 +79,36 @@ describe('useComposePresets', () => {
     expect(draft()).toEqual(inProgress);
   });
 });
+
+describe('useComposePresets with a cook-mode handover', () => {
+  const seed = {
+    rating: 5,
+    note: 'Swapped cream for yogurt.',
+    photo: { uri: 'file:///tmp/soup.jpg', width: 800, height: 600 },
+  };
+
+  it('fills rating, note and photo into an empty draft', async () => {
+    await renderHook(() =>
+      useComposePresets({ recipe: soup, remixOf: null, cookShare: seed, loading: false }),
+    );
+
+    expect(draft()).toMatchObject({
+      kind: 'cook',
+      recipeId: 'catalog:7',
+      rating: 5,
+      body: 'Swapped cream for yogurt.',
+      photos: [seed.photo],
+    });
+  });
+
+  it('only fills the gaps of a draft already about the same dish', async () => {
+    const inProgress = { ...emptyDraft, recipeId: 'catalog:7', title: 'My soup', body: 'Mine' };
+    useComposeDraftStore.setState({ ownerId: 'me', draft: inProgress });
+
+    await renderHook(() =>
+      useComposePresets({ recipe: soup, remixOf: null, cookShare: seed, loading: false }),
+    );
+
+    expect(draft()).toMatchObject({ body: 'Mine', rating: 5, photos: [seed.photo] });
+  });
+});

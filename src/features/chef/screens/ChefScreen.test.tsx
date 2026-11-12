@@ -194,6 +194,27 @@ describe('ChefScreen', () => {
     ]);
   });
 
+  it('ignores a suggestion chip while the daily limit is spent', async () => {
+    signIn(30);
+    useChefSession.setState({ limitedUntil: Date.now() + 2 * 3600 * 1000 });
+    await renderChef();
+
+    await userEvent.setup().press(screen.getByText('A cozy dinner under 30 minutes'));
+    expect(askChef).not.toHaveBeenCalled();
+    expect(Object.values(useChefStore.getState().threads)).toEqual([]);
+    expect(screen.getByTestId('chef-limit-note')).toBeOnTheScreen();
+  });
+
+  it('asks a suggestion chip question while Chef is free', async () => {
+    signIn(30);
+    askChef.mockResolvedValue(reply());
+    await renderChef();
+
+    await userEvent.setup().press(screen.getByText('A cozy dinner under 30 minutes'));
+    await waitFor(() => expect(askChef).toHaveBeenCalledTimes(1));
+    expect(onlyThread().messages[0]?.text).toBe('A cozy dinner under 30 minutes');
+  });
+
   it('does not offer to ask again once the daily limit is spent', async () => {
     signIn(30);
     askChef.mockRejectedValue(

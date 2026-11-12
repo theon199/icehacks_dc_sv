@@ -15,7 +15,7 @@ import {
   cookbookHref,
   cookHref,
   makeoverHref,
-  nearbyHref,
+  recipeNearbyHref,
   reportHref,
   shoppingHref,
   whyHref,
@@ -77,7 +77,7 @@ export function useRecipeActions(recipe: Pick<RecipeSummary, 'id' | 'title'> | n
       openWhy: () => go(whyHref(id)),
       compare: () => go(compareHref(id)),
       makeHealthier: () => go(canUseAi ? makeoverHref(id) : aiConsentHref),
-      nearby: () => go(nearbyHref({ title })),
+      nearby: () => go(recipeNearbyHref(id)),
       share: () => go(composeHref(id)),
       report: () => go(reportHref({ id, title })),
     };
