@@ -3,6 +3,7 @@ import {
   createVoiceCommandStream,
   parseDuration,
   parseVoiceCommand,
+  PARTIAL_SETTLE_MS,
   tokenize,
 } from './voiceCommands';
 
@@ -55,6 +56,17 @@ describe('parseVoiceCommand', () => {
     expect(parseVoiceCommand(phrase)).toBeNull();
   });
 
+  it.each(['set a timer for five', 'timer for twenty', 'start a timer for half'])(
+    'does not guess a unit for "%s"',
+    (phrase) => {
+      expect(parseVoiceCommand(phrase)).toBeNull();
+    },
+  );
+
+  it('still reads "one timer" as a plain timer request', () => {
+    expect(parseVoiceCommand('start one timer')).toEqual({ type: 'start_timer', seconds: null });
+  });
+
   it('prefers the timer when step words appear in a timer request', () => {
     expect(parseVoiceCommand('start the timer for the next step')).toEqual({
       type: 'start_timer',
@@ -100,53 +112,107 @@ describe('classify', () => {
 });
 
 describe('createVoiceCommandStream', () => {
-  it('acts on a partial result once and not again on the final one', () => {
+  const later = (at: number) => at + PARTIAL_SETTLE_MS;
+
+  it('acts on a partial result once it stands, and not again on the final one', () => {
     const stream = createVoiceCommandStream();
-    expect(stream.push('next', false)).toEqual([{ type: 'next' }]);
-    expect(stream.push('next step', false)).toEqual([]);
-    expect(stream.push('next step', true)).toEqual([]);
+    expect(stream.push('next', false, 0)).toEqual([]);
+    expect(stream.settlesAt()).toBe(PARTIAL_SETTLE_MS);
+    expect(stream.settle(PARTIAL_SETTLE_MS - 1)).toEqual([]);
+    expect(stream.settle(later(0))).toEqual([{ type: 'next' }]);
+    expect(stream.settlesAt()).toBeNull();
+    expect(stream.push('next step', false, 900)).toEqual([]);
+    expect(stream.settle(later(900))).toEqual([]);
+    expect(stream.push('next step', true, 1200)).toEqual([]);
+  });
+
+  it('does not move on when a step that starts with a command word is read aloud', () => {
+    const stream = createVoiceCommandStream();
+    expect(stream.push('next', false, 0)).toEqual([]);
+    expect(stream.push('next add', false, 250)).toEqual([]);
+    expect(stream.settle(later(0))).toEqual([]);
+    expect(stream.push('next add the garlic', false, 600)).toEqual([]);
+    expect(stream.push('next add the garlic', true, 1500)).toEqual([]);
+    expect(stream.settle(later(1500))).toEqual([]);
+  });
+
+  it('acts on the final result without waiting', () => {
+    const stream = createVoiceCommandStream();
+    expect(stream.push('back', false, 0)).toEqual([]);
+    expect(stream.push('go back', true, 300)).toEqual([{ type: 'back' }]);
+    expect(stream.settle(later(300))).toEqual([]);
+  });
+
+  it('restarts the wait while the command is still being said', () => {
+    const stream = createVoiceCommandStream();
+    stream.push('next', false, 0);
+    stream.push('next step', false, 400);
+    expect(stream.settle(later(0))).toEqual([]);
+    expect(stream.settle(later(400))).toEqual([{ type: 'next' }]);
   });
 
   it('hears a second command later in the same utterance', () => {
     const stream = createVoiceCommandStream();
-    expect(stream.push('next', false)).toEqual([{ type: 'next' }]);
-    expect(stream.push('next back', false)).toEqual([{ type: 'back' }]);
+    stream.push('next', false, 0);
+    expect(stream.settle(later(0))).toEqual([{ type: 'next' }]);
+    stream.push('next back', false, 2000);
+    expect(stream.settle(later(2000))).toEqual([{ type: 'back' }]);
   });
 
   it('waits for the duration of a timer request', () => {
     const stream = createVoiceCommandStream();
-    expect(stream.push('set a timer', false)).toEqual([]);
-    expect(stream.push('set a timer for', false)).toEqual([]);
-    expect(stream.push('set a timer for ten minutes', false)).toEqual([
-      { type: 'start_timer', seconds: 600 },
-    ]);
-    expect(stream.push('set a timer for ten minutes', true)).toEqual([]);
+    expect(stream.push('set a timer', false, 0)).toEqual([]);
+    expect(stream.push('set a timer for', false, 200)).toEqual([]);
+    expect(stream.settlesAt()).toBeNull();
+    expect(stream.push('set a timer for ten minutes', false, 500)).toEqual([]);
+    expect(stream.settle(later(500))).toEqual([{ type: 'start_timer', seconds: 600 }]);
+    expect(stream.push('set a timer for ten minutes', true, 1500)).toEqual([]);
   });
 
   it('starts a plain timer when the utterance ends', () => {
     const stream = createVoiceCommandStream();
-    expect(stream.push('start the timer', false)).toEqual([]);
-    expect(stream.push('start the timer', true)).toEqual([{ type: 'start_timer', seconds: null }]);
+    expect(stream.push('start the timer', false, 0)).toEqual([]);
+    expect(stream.push('start the timer', true, 900)).toEqual([
+      { type: 'start_timer', seconds: null },
+    ]);
+  });
+
+  it('does not start a timer for a number without a unit', () => {
+    const stream = createVoiceCommandStream();
+    expect(stream.push('set a timer for five', false, 0)).toEqual([]);
+    expect(stream.push('set a timer for five', true, 900)).toEqual([]);
   });
 
   it('does not fire on conversation that contains a command word', () => {
     const stream = createVoiceCommandStream();
-    expect(stream.push('I', false)).toEqual([]);
-    expect(stream.push('I went', false)).toEqual([]);
-    expect(stream.push('I went back', false)).toEqual([]);
+    expect(stream.push('I', false, 0)).toEqual([]);
+    expect(stream.push('I went', false, 100)).toEqual([]);
+    expect(stream.push('I went back', false, 200)).toEqual([]);
+    expect(stream.settle(later(200))).toEqual([]);
     // A clean command after the chatter still counts.
-    expect(stream.push('I went back next', false)).toEqual([{ type: 'next' }]);
+    stream.push('I went back next', false, 300);
+    expect(stream.settle(later(300))).toEqual([{ type: 'next' }]);
   });
 
   it('starts fresh after a final result and copes with revised partials', () => {
     const stream = createVoiceCommandStream();
-    stream.push('next step please', true);
-    expect(stream.push('back', false)).toEqual([{ type: 'back' }]);
+    stream.push('next step please', true, 0);
+    stream.push('back', false, 100);
+    expect(stream.settle(later(100))).toEqual([{ type: 'back' }]);
     stream.reset();
-    expect(stream.push('repeat', false)).toEqual([{ type: 'repeat' }]);
+    stream.push('repeat', false, 1000);
+    expect(stream.settle(later(1000))).toEqual([{ type: 'repeat' }]);
     // The recogniser shrinks its guess; a new command after it is still heard.
-    expect(stream.push('', false)).toEqual([]);
-    expect(stream.push('next', false)).toEqual([{ type: 'next' }]);
+    expect(stream.push('', false, 2000)).toEqual([]);
+    stream.push('next', false, 2100);
+    expect(stream.settle(later(2100))).toEqual([{ type: 'next' }]);
+  });
+
+  it('forgets a held command on reset', () => {
+    const stream = createVoiceCommandStream();
+    stream.push('next', false, 0);
+    stream.reset();
+    expect(stream.settle(later(0))).toEqual([]);
   });
 });
 

@@ -4,7 +4,8 @@
  * Kitchens are noisy and people talk while they cook, so a phrase only counts as a command when
  * every word in it belongs to the command vocabulary ("okay, next step please" is a command;
  * "I put it back" is not). Recognition sessions end at each pause, so a command said after a short
- * pause is always heard on its own.
+ * pause is always heard on its own. A timer phrase with a number but no unit ("timer for five") is
+ * ignored rather than guessed at.
  */
 
 export type VoiceCommand =
@@ -229,6 +230,9 @@ export function classify(words: readonly string[], { final }: { final: boolean }
     return { status: 'command', command: { type: intent } };
   }
   const seconds = parseDuration(words);
+  // "set a timer for five" names a length we cannot read; starting the step's own timer instead
+  // would run for a different time than the one asked for.
+  if (final && seconds === null && spokeNumber(words)) return { status: 'none' };
   const last = words[words.length - 1] ?? '';
   // "for five minutes" or "a five minute timer": nothing more is coming that would change it.
   const complete =
@@ -237,48 +241,97 @@ export function classify(words: readonly string[], { final }: { final: boolean }
   return { status: 'command', command: { type: 'start_timer', seconds } };
 }
 
+/** True when the phrase names a number, other than "one" in "one timer". */
+function spokeNumber(words: readonly string[]): boolean {
+  return words.some(
+    (word, i) =>
+      isNumberish(word) && !(word === 'one' && INTENT_WORDS[words[i + 1] ?? ''] === 'timer'),
+  );
+}
+
 /** One-shot parse of a finished phrase. */
 export function parseVoiceCommand(text: string): VoiceCommand | null {
   const result = classify(tokenize(text), { final: true });
   return result.status === 'command' ? result.command : null;
 }
 
+/**
+ * How long a command heard in a partial result must stand with no further words before it acts.
+ * Reading a step aloud ("Next, add the garlic") would otherwise move on at the first word; waiting
+ * this long still acts well before the recogniser declares the phrase finished.
+ */
+export const PARTIAL_SETTLE_MS = 700;
+
 export interface VoiceCommandStream {
   /**
-   * Feeds the recogniser's latest transcript for the current utterance. Returns the commands it
-   * completes; each spoken command is returned once even though partial results repeat it.
+   * Feeds the recogniser's latest transcript for the current utterance, heard at `at` (ms). Returns
+   * the commands it completes; each spoken command is returned once even though partial results
+   * repeat it. A command in a partial result is held until `settle` confirms it.
    */
-  push(transcript: string, isFinal: boolean): VoiceCommand[];
+  push(transcript: string, isFinal: boolean, at: number): VoiceCommand[];
+  /** Returns the held command once it has stood for `PARTIAL_SETTLE_MS` with no new words. */
+  settle(at: number): VoiceCommand[];
+  /** When a held command will be ready to `settle`, or null when nothing is held. */
+  settlesAt(): number | null;
   /** Forget the current utterance (call when a new recognition session starts). */
   reset(): void;
 }
 
+interface Held {
+  command: VoiceCommand;
+  /** Words of the utterance the command covers. */
+  words: number;
+  since: number;
+}
+
 /**
- * Turns the growing transcripts of one utterance into commands. Partial results let "next" act
- * as soon as it is heard; words already acted on are skipped so the final result does not repeat
- * the command.
+ * Turns the growing transcripts of one utterance into commands. A command in a partial result acts
+ * once it has stood briefly with nothing added, so "next" acts before the recogniser finishes but
+ * "next, add the garlic" does not; words already acted on are skipped so the final result does not
+ * repeat the command.
  */
 export function createVoiceCommandStream(): VoiceCommandStream {
   let consumed = 0;
+  let held: Held | null = null;
   return {
-    push(transcript, isFinal) {
+    push(transcript, isFinal, at) {
       const words = tokenize(transcript);
       // The recogniser can revise a partial result into fewer words.
       if (words.length < consumed) consumed = words.length;
-      const result = classify(words.slice(consumed), { final: isFinal });
+      const fresh = words.slice(consumed);
+      const result = classify(fresh, { final: isFinal });
       const commands: VoiceCommand[] = [];
       if (result.status === 'command') {
-        commands.push(result.command);
-        consumed = words.length;
-      } else if (result.status === 'none' && hasCommandWord(words.slice(consumed))) {
-        // Chatter mixed with a command word: skip it so a clean command after it still counts.
-        consumed = words.length;
+        if (isFinal) commands.push(result.command);
+        else if (held?.words !== words.length) {
+          held = { command: result.command, words: words.length, since: at };
+        }
+      } else {
+        held = null;
+        if (result.status === 'none' && hasCommandWord(fresh)) {
+          // Chatter mixed with a command word: skip it so a clean command after it still counts.
+          consumed = words.length;
+        }
       }
-      if (isFinal) consumed = 0;
+      if (isFinal) {
+        held = null;
+        consumed = 0;
+      }
       return commands;
+    },
+    settle(at) {
+      if (!held || at - held.since < PARTIAL_SETTLE_MS) return [];
+      const { command, words } = held;
+      held = null;
+      consumed = words;
+      return [command];
+    },
+    settlesAt() {
+      return held ? held.since + PARTIAL_SETTLE_MS : null;
     },
     reset() {
       consumed = 0;
+      held = null;
     },
   };
 }

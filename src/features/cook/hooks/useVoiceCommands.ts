@@ -2,6 +2,10 @@
  * Hands-free control for cook mode. While switched on it keeps a short recognition session open,
  * restarting it after each pause, and turns what it hears into commands. Recognition stays on the
  * device whenever the device supports it. Listening pauses while Famara is in the background.
+ *
+ * Each session is one utterance (`continuous: false`) so a command said after a pause is heard on
+ * its own. On some Android devices the recogniser plays a chime at every restart; Famara targets
+ * iOS, where it does not.
  */
 import {
   ExpoSpeechRecognitionModule,
@@ -54,6 +58,7 @@ export function useVoiceCommands(onCommand: (command: VoiceCommand) => void) {
   const wanted = useRef(false);
   const failures = useRef(0);
   const restartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stream = useRef(createVoiceCommandStream());
   const handler = useRef(onCommand);
   useLayoutEffect(() => {
@@ -65,8 +70,33 @@ export function useVoiceCommands(onCommand: (command: VoiceCommand) => void) {
     restartTimer.current = null;
   };
 
+  const clearSettle = () => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = null;
+  };
+
+  /**
+   * Acts on `commands` (worked out at time `at`), then waits for a command held from a partial
+   * result, if any.
+   */
+  const deliver = (commands: VoiceCommand[], at: number) => {
+    clearSettle();
+    for (const command of commands) handler.current(command);
+    const due = stream.current.settlesAt();
+    if (due === null) return;
+    settleTimer.current = setTimeout(
+      () => {
+        settleTimer.current = null;
+        const now = Date.now();
+        deliver(stream.current.settle(now), now);
+      },
+      Math.max(0, due - at),
+    );
+  };
+
   const begin = useCallback(() => {
     clearRestart();
+    clearSettle();
     if (!wanted.current || AppState.currentState === 'background') return;
     stream.current.reset();
     try {
@@ -99,7 +129,8 @@ export function useVoiceCommands(onCommand: (command: VoiceCommand) => void) {
   useSpeechRecognitionEvent('result', (event) => {
     const transcript = event.results[0]?.transcript ?? '';
     failures.current = 0;
-    for (const command of stream.current.push(transcript, event.isFinal)) handler.current(command);
+    const at = Date.now();
+    deliver(stream.current.push(transcript, event.isFinal, at), at);
   });
 
   useSpeechRecognitionEvent('error', (event) => {
@@ -123,8 +154,11 @@ export function useVoiceCommands(onCommand: (command: VoiceCommand) => void) {
   });
 
   useSpeechRecognitionEvent('end', () => {
-    if (wanted.current) scheduleRestart();
-    else
+    if (wanted.current) {
+      // The utterance is over, so a command still held from a partial result stands as said.
+      deliver(stream.current.settle(Number.POSITIVE_INFINITY), Date.now());
+      scheduleRestart();
+    } else
       setStatus((current) => (current === 'listening' || current === 'starting' ? 'off' : current));
   });
 
@@ -154,6 +188,8 @@ export function useVoiceCommands(onCommand: (command: VoiceCommand) => void) {
   const stop = useCallback(() => {
     wanted.current = false;
     clearRestart();
+    clearSettle();
+    stream.current.reset();
     setStatus('off');
     try {
       ExpoSpeechRecognitionModule.abort();
@@ -169,6 +205,8 @@ export function useVoiceCommands(onCommand: (command: VoiceCommand) => void) {
       if (next === 'active') begin();
       else {
         clearRestart();
+        clearSettle();
+        stream.current.reset();
         try {
           ExpoSpeechRecognitionModule.abort();
         } catch {
@@ -183,6 +221,7 @@ export function useVoiceCommands(onCommand: (command: VoiceCommand) => void) {
     () => () => {
       wanted.current = false;
       clearRestart();
+      clearSettle();
       try {
         ExpoSpeechRecognitionModule.abort();
       } catch {

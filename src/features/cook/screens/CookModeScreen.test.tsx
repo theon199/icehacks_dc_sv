@@ -5,6 +5,7 @@ import type { RecipeDetail } from '@/lib/catalog';
 import { renderWithTheme } from '@/test/render';
 
 import { CookModeScreen } from './CookModeScreen';
+import { PARTIAL_SETTLE_MS } from '../logic/voiceCommands';
 
 const mockRouter = {
   back: jest.fn(),
@@ -202,6 +203,9 @@ describe('CookModeScreen', () => {
         results: [{ transcript: 'next step', confidence: 0.9, segments: [] }],
       }),
     );
+    // A partial result acts once it has stood for a moment with nothing added.
+    expect(screen.queryByText('Simmer for 20 minutes.')).toBeNull();
+    await act(() => new Promise((resolve) => setTimeout(resolve, PARTIAL_SETTLE_MS + 50)));
     expect(screen.getByText('Simmer for 20 minutes.')).toBeTruthy();
 
     await act(async () =>
