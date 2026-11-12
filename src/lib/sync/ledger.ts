@@ -30,6 +30,11 @@ export const ledgerEntrySchema = z.object({
   x: z.literal(true).optional(),
   /** Highest server revision seen for the document. */
   r: z.number().optional(),
+  /**
+   * The server's copy at revision `r` is a tombstone, while this device holds a newer, unsent
+   * version. Only set on entries waiting in the outbox; a synced entry says it with `x`.
+   */
+  t: z.literal(true).optional(),
   /** Epoch of the last full pull that returned the document. */
   e: z.number().optional(),
   /** The server copy could not be read by this build; keep it and do not treat it as deleted. */

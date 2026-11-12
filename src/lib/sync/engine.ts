@@ -19,7 +19,9 @@
  *   flushed (`persistLocal`) before every ledger save, so a crash can never make the ledger
  *   describe a document the store lost, which would read as a deletion on the next start.
  * - Over the account quota, only changes that cannot grow the account are sent (edits of
- *   documents the server has, and deletions), priority collections first.
+ *   documents the server holds live, and deletions), priority collections first. Everything is
+ *   tried again only when something is known to have freed space (a live document deleted, a
+ *   stored one made smaller), after a real return from the background, on `syncNow` or on restart.
  */
 import { describeError, logger } from '../logger';
 import { fingerprint } from './fingerprint';
@@ -85,7 +87,10 @@ export interface SyncEngineOptions {
   now?: () => number;
   random?: () => number;
   pushDebounceMs?: number;
-  /** Writes the stores' deferred changes to disk; called before every ledger save. */
+  /**
+   * Writes the stores' deferred changes to disk; called before every ledger save. It throws when
+   * a store could not be written, and the ledger is then not saved (it is tried again later).
+   */
   persistLocal?: () => void;
   onStatus?: (status: SyncStatus) => void;
 }
@@ -94,7 +99,10 @@ export interface SyncEngine {
   start(): Promise<void>;
   /** Stops all activity and saves the ledger. Pending changes stay in the outbox. */
   stop(): Promise<void>;
-  /** Pulls, then pushes, now (unless offline or backing off after an error). */
+  /**
+   * Pulls, then pushes, now (unless offline or backing off after an error). Over the account
+   * quota it also tries the held-back changes again, since the user asked for it.
+   */
   syncNow(): Promise<void>;
   /** Pushes pending changes now, skipping the debounce. */
   flush(): Promise<void>;
@@ -122,6 +130,10 @@ interface SentVersion {
   u: string;
   d: string;
   deleted: boolean;
+  /** Size of the document sent (0 for a tombstone). */
+  bytes: number;
+  /** A tombstone for a document the server was last known to hold live. */
+  deletesLive: boolean;
 }
 
 type Timer = ReturnType<typeof setTimeout>;
@@ -172,6 +184,14 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   let overQuota = false;
   /** Versions refused for quota even when sent alone (`collection/docId` → updated_at). */
   const quotaHeld = new Map<string, string>();
+  /**
+   * Sizes of live server copies seen since the start (`collection/docId` → bytes), from pulls and
+   * accepted pushes. An accepted edit smaller than the copy it replaced freed space. Bounded by
+   * the account's live documents; an unknown size never counts as freeing space.
+   */
+  const serverBytes = new Map<string, number>();
+  /** The app went to the background since it was last active. */
+  let backgrounded = false;
   let status: SyncStatus = { phase: 'stopped', pending: 0, lastSyncedAt: null, lastError: null };
   /** Collections whose ledger bucket changed since the last save. */
   const dirty = new Set<string>();
@@ -304,9 +324,18 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
 
   /** Carries the server bookkeeping (revision, pull epoch) over to a new local version. */
   function withMeta(next: LedgerEntry, previous: LedgerEntry | undefined): LedgerEntry {
-    if (previous?.r != null) next.r = previous.r;
+    if (previous?.r != null) {
+      next.r = previous.r;
+      if (!serverHoldsLive(previous)) next.t = true;
+    }
     if (previous?.e != null) next.e = previous.e;
     return next;
+  }
+
+  /** Whether the server's copy at revision `r` was live when this device last heard of it. */
+  function serverHoldsLive(entry: LedgerEntry): boolean {
+    if (entry.r == null) return false;
+    return entry.s ? !entry.x : !entry.t;
   }
 
   function scanAll(): boolean {
@@ -376,6 +405,12 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       for (const doc of list) {
         const entry = entries[doc.doc_id];
         if (entry && (localWins(entry, doc) || (entry.s && sameVersion(entry, doc)))) {
+          if (!entry.s && doc.revision >= (entry.r ?? 0)) {
+            // The server's copy is older than the local version; remember whether it is live.
+            if (doc.deleted_at != null) entry.t = true;
+            else delete entry.t;
+            serverBytes.delete(`${collection}/${doc.doc_id}`);
+          }
           entry.r = Math.max(entry.r ?? 0, doc.revision);
           if (epoch != null) entry.e = epoch;
           // The server copy is now known and older, so the held local version can go out again.
@@ -400,6 +435,10 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         const seen = epoch ?? previous?.e;
         if (seen != null) base.e = seen;
         const data = local.get(doc.doc_id);
+        const sizeKey = `${collection}/${doc.doc_id}`;
+        if (data && doc.deleted_at == null && !rejected.has(doc.doc_id)) {
+          serverBytes.set(sizeKey, fingerprint(data).bytes);
+        } else serverBytes.delete(sizeKey);
 
         if (rejected.has(doc.doc_id)) {
           // Keep the server copy as it is; this build cannot represent it.
@@ -409,7 +448,14 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         } else if (doc.deleted_at != null) {
           if (data) {
             // The store kept the document (it refused the delete): push it back as a new version.
-            entries[doc.doc_id] = { ...base, ...stamp(base), h: fingerprint(data).hash, s: false };
+            // The server holds a tombstone, so sending it adds a live document again.
+            entries[doc.doc_id] = {
+              ...base,
+              ...stamp(base),
+              h: fingerprint(data).hash,
+              s: false,
+              t: true,
+            };
             restamped = true;
           } else if (adapter.uniqueIds) {
             // Its id never comes back, so there is nothing left to remember.
@@ -511,9 +557,12 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   // ---------------------------------------------------------------------------------------------
   // Push
 
-  /** Whether sending this version cannot raise the account's document count: see `overQuota`. */
+  /**
+   * Whether sending this version cannot raise the account's document count (see `overQuota`): a
+   * deletion, or an edit of a document the server holds live.
+   */
   function cannotGrow(entry: LedgerEntry): boolean {
-    return !!entry.x || entry.r != null;
+    return !!entry.x || serverHoldsLive(entry);
   }
 
   function leaveQuotaMode(): void {
@@ -540,11 +589,13 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         if (overQuota && (!cannotGrow(entry) || quotaHeld.get(key) === entry.u)) continue;
         skip.add(key);
         let data: OutgoingDoc['data'] = {};
+        let bytes = 0;
         if (!entry.x) {
           local ??= adapter.getDocs();
           const current = local.get(docId);
           if (!current) continue;
-          if (fingerprint(current).bytes > MAX_DOC_BYTES) {
+          bytes = fingerprint(current).bytes;
+          if (bytes > MAX_DOC_BYTES) {
             entry.b = 'too_large';
             dirty.add(collection);
             logger.warn('Not syncing a document over the size limit', { collection, docId });
@@ -560,7 +611,15 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
           device_id: entry.d,
           deleted_at: entry.x ? entry.u : null,
         });
-        sent.push({ collection, docId, u: entry.u, d: entry.d, deleted: !!entry.x });
+        sent.push({
+          collection,
+          docId,
+          u: entry.u,
+          d: entry.d,
+          deleted: !!entry.x,
+          bytes,
+          deletesLive: !!entry.x && serverHoldsLive(entry),
+        });
       }
     }
     return { docs, sent };
@@ -579,7 +638,18 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       // An edit made while the push was in flight stays in the outbox.
       if (!isSentVersion(entry, version)) continue;
       dirty.add(applied.collection);
-      if (entry.x) freed = true;
+      // Deleting a document the server held live frees space, and so does shrinking a stored one.
+      // A tombstone for a document it never held live, or an edit of unknown size, frees none.
+      const sizeKey = `${applied.collection}/${applied.doc_id}`;
+      if (version.deleted) {
+        if (version.deletesLive) freed = true;
+        serverBytes.delete(sizeKey);
+      } else {
+        const sizeBefore = serverBytes.get(sizeKey);
+        if (sizeBefore != null && version.bytes < sizeBefore) freed = true;
+        serverBytes.set(sizeKey, version.bytes);
+      }
+      delete entry.t;
       if (entry.x && adapters.get(applied.collection)?.uniqueIds) {
         // Its id never comes back, so the server's copy of the deletion is all that is needed.
         delete entries[applied.doc_id];
@@ -590,7 +660,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       if (epoch != null) entry.e = epoch;
     }
     if (freed && overQuota) {
-      // A deletion went through, so the account may have room again: try everything once more.
+      // Space was freed, so the account may have room again: try everything once more.
       leaveQuotaMode();
       wanted.push = true;
     }
@@ -853,6 +923,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     unsubscribers.push(
       lifecycle.subscribe((state) => {
         if (state === 'background') {
+          backgrounded = true;
           if (pushTimer) {
             clearTimeout(pushTimer);
             pushTimer = null;
@@ -861,8 +932,11 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
           void request({ push: true });
         } else {
           resetBackoff();
-          // Space may have been freed elsewhere meanwhile; finding out costs one request.
-          leaveQuotaMode();
+          // Back from the background, space may have been freed elsewhere meanwhile, and finding
+          // out costs one request. A brief interruption (Control Center, a system sheet) only
+          // makes the app inactive, so it does not pay that request each time.
+          if (backgrounded) leaveQuotaMode();
+          backgrounded = false;
           void request({ pull: true, push: true });
         }
       }),
@@ -907,7 +981,10 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   return {
     start,
     stop,
-    syncNow: () => request({ pull: true, push: true }),
+    syncNow: () => {
+      leaveQuotaMode();
+      return request({ pull: true, push: true });
+    },
     flush: async () => {
       if (pushTimer) {
         clearTimeout(pushTimer);

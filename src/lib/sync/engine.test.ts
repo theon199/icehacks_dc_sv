@@ -392,7 +392,7 @@ describe('offline and failures', () => {
     expect(phone.engine.getStatus()).toMatchObject({ phase: 'idle', lastError: null });
   });
 
-  it('keeps new documents back over quota until something changes locally', async () => {
+  it('keeps new documents back over quota until space may have been freed', async () => {
     let quota = true;
     const base = server.transport();
     const transport: SyncTransport = {
@@ -408,9 +408,14 @@ describe('offline and failures', () => {
     await elapse(10 * 60_000);
     expect(server.get('notes', 'a')).toBeUndefined();
     quota = false;
+    // Deleting a document the server never held frees nothing, so 'b' keeps waiting.
     phone.notes.remove('a');
     phone.notes.set('b', { n: 2 });
     await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.get('notes', 'b')).toBeUndefined();
+    // Asking for a sync checks again.
+    await phone.engine.syncNow();
+    await settle();
     expect(server.get('notes', 'b')).toBeDefined();
   });
 
@@ -696,12 +701,85 @@ describe('over the account quota', () => {
     expect(server.get('notes', 'c')).toBeUndefined();
     expect(phone.engine.getStatus()).toMatchObject({ lastError: 'quota', pending: 2 });
 
-    // Neither the held version nor the new document is tried again with the next edit.
+    // Neither the held version nor the new document is tried again with the next edit, which
+    // does not make 'b' any smaller.
     const before = attempts;
-    phone.notes.set('b', { id: 'b', edited: 2 });
+    phone.notes.set('b', { id: 'b', edited: 'again' });
     await elapse(PUSH_DEBOUNCE_MS);
-    expect(server.get('notes', 'b')?.data).toEqual({ id: 'b', edited: 2 });
+    expect(server.get('notes', 'b')?.data).toEqual({ id: 'b', edited: 'again' });
     expect(attempts).toBe(before + 1);
+  });
+
+  it('tries held changes again once an accepted edit makes a stored document smaller', async () => {
+    server.seed(seedDoc('big', { text: 'x'.repeat(400) }));
+    server.seed(seedDoc('grow', { text: 'small' }));
+    const phone = await started(makeDevice(server, 'phone'));
+    server.maxLiveBytes = server.liveBytes() + 50;
+
+    // Neither fits: 'grow' would take the account over its size, and so would the new note.
+    phone.notes.set('grow', { text: 'y'.repeat(200) });
+    phone.notes.set('new', { text: 'z'.repeat(100) });
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.get('notes', 'grow')?.data).toEqual({ text: 'small' });
+    expect(server.get('notes', 'new')).toBeUndefined();
+    expect(phone.engine.getStatus()).toMatchObject({ lastError: 'quota', pending: 2 });
+
+    // Trimming the big note frees enough for both.
+    phone.notes.set('big', { text: 'x' });
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.get('notes', 'big')?.data).toEqual({ text: 'x' });
+    expect(server.get('notes', 'grow')?.data).toEqual({ text: 'y'.repeat(200) });
+    expect(server.get('notes', 'new')?.data).toEqual({ text: 'z'.repeat(100) });
+    expect(phone.engine.getStatus()).toMatchObject({ lastError: null, pending: 0 });
+  });
+
+  it('does not count a deletion the server already had as freeing space', async () => {
+    server.seed({ ...seedDoc('gone', {}), deleted_at: new Date(T0 - 60_000).toISOString() });
+    server.seed(seedDoc('kept', { n: 1 }));
+    const phone = await started(makeDevice(server, 'phone'));
+    server.maxLiveDocs = server.liveCount();
+
+    phone.notes.set('new', { n: 2 });
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(phone.engine.getStatus().lastError).toBe('quota');
+
+    // Bringing back a deleted note would add a live document, so it waits as well.
+    const calls = server.pushCalls.length;
+    phone.notes.set('gone', { n: 3 });
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.pushCalls).toHaveLength(calls);
+    // Deleting it again only sends a tombstone, and the full account is not tried again.
+    phone.notes.remove('gone');
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.pushCalls).toHaveLength(calls + 1);
+    expect(server.pushCalls.at(-1)?.map((doc) => doc.doc_id)).toEqual(['gone']);
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.pushCalls).toHaveLength(calls + 1);
+    expect(phone.engine.getStatus()).toMatchObject({ lastError: 'quota', pending: 1 });
+  });
+
+  it('checks the quota again after a real background, not after a brief interruption', async () => {
+    const phone = await started(makeDevice(server, 'phone'));
+    phone.notes.set('a', { n: 1 });
+    await elapse(PUSH_DEBOUNCE_MS);
+    server.maxLiveDocs = server.liveCount();
+    phone.notes.set('new', { n: 2 });
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(phone.engine.getStatus().lastError).toBe('quota');
+
+    // Control Center or a system sheet: active again without ever reaching the background.
+    const calls = server.pushCalls.length;
+    phone.lifecycle('active');
+    await settle();
+    expect(server.pushCalls).toHaveLength(calls);
+
+    server.maxLiveDocs = null;
+    phone.lifecycle('background');
+    await settle();
+    phone.lifecycle('active');
+    await settle();
+    expect(server.get('notes', 'new')?.data).toEqual({ n: 2 });
+    expect(phone.engine.getStatus()).toMatchObject({ lastError: null, pending: 0 });
   });
 });
 
