@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Keyboard, StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Keyboard, StyleSheet, View, type TextInput } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
 import { Button, Screen, Text, TextField } from '@/ui';
@@ -25,6 +25,7 @@ export function SignUpScreen() {
   const router = useRouter();
   const email = useField(validateEmail);
   const password = useField(validateNewPassword);
+  const passwordRef = useRef<TextInput>(null);
   const [agreed, setAgreed] = useState(false);
   const [termsError, setTermsError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -94,8 +95,11 @@ export function SignUpScreen() {
         autoComplete="email"
         textContentType="username"
         returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={() => passwordRef.current?.focus()}
       />
       <PasswordField
+        ref={passwordRef}
         testID="sign-up-password"
         label="Password"
         purpose="new"
@@ -105,6 +109,7 @@ export function SignUpScreen() {
         error={password.error}
         hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
         returnKeyType="done"
+        onSubmitEditing={() => Keyboard.dismiss()}
       />
       <TermsCheckbox
         checked={agreed}
