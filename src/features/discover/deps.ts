@@ -170,28 +170,40 @@ export function useDayHints(): DayHints {
 export const DINNER_FROM_HOUR = 15;
 
 /**
- * Folds day hints into the preferences used for ranking: an active day adds the protein goal, and
- * a short night adds the lighter-meals goal from mid-afternoon, when the next meal is dinner.
+ * Which day-context tilts apply right now, as plain flags. Health hands out a fresh hints object
+ * whenever its clock moves (every foreground, for one), so anything keyed on the deck must follow
+ * these values rather than the object, or the deck would restart without anything having changed.
  */
-export function withDayHints(
-  prefs: UserPreferences,
-  hints: DayHints,
-  hour: number,
-): UserPreferences {
+export interface DayTilt {
+  /** An active day: lean towards protein. */
+  readonly protein: boolean;
+  /** A short night, and dinner is the next meal: lean towards lighter dishes. */
+  readonly lighter: boolean;
+}
+
+export const NO_DAY_TILT: DayTilt = Object.freeze({ protein: false, lighter: false });
+
+export function dayTiltFor(hints: DayHints, hour: number): DayTilt {
+  const protein = hints.protein > 0;
+  const lighter = hints.lighter > 0 && hour >= DINNER_FROM_HOUR;
+  if (!protein && !lighter) return NO_DAY_TILT;
+  return { protein, lighter };
+}
+
+/** Folds a day tilt into the preferences used for ranking, as extra goals. */
+export function withDayTilt(prefs: UserPreferences, tilt: DayTilt): UserPreferences {
   const extra: Goal[] = [];
-  if (hints.protein > 0) extra.push('more_protein');
-  if (hints.lighter > 0 && hour >= DINNER_FROM_HOUR) extra.push('lighter_meals');
+  if (tilt.protein) extra.push('more_protein');
+  if (tilt.lighter) extra.push('lighter_meals');
   const missing = extra.filter((goal) => !prefs.goals.includes(goal));
   return missing.length === 0 ? prefs : { ...prefs, goals: [...prefs.goals, ...missing] };
 }
 
-/** One line for the deck header explaining a day-context tilt, or null when there is none. */
-export function dayHintNote(hints: DayHints, hour: number): string | null {
-  const protein = hints.protein > 0;
-  const lighter = hints.lighter > 0 && hour >= DINNER_FROM_HOUR;
-  if (protein && lighter) return 'Active day, short night: more protein, lighter dinners';
-  if (protein) return 'Active day: leaning towards more protein';
-  if (lighter) return 'Short night: leaning towards a lighter dinner';
+/** One line for the deck header explaining a day tilt, or null when there is none. */
+export function dayTiltNote(tilt: DayTilt): string | null {
+  if (tilt.protein && tilt.lighter) return 'Active day, short night: more protein, lighter dinners';
+  if (tilt.protein) return 'Active day: leaning towards more protein';
+  if (tilt.lighter) return 'Short night: leaning towards a lighter dinner';
   return null;
 }
 

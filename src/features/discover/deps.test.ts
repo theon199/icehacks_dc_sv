@@ -2,13 +2,14 @@ import { defaultPreferences, type FeedbackEvent as StoredFeedbackEvent } from '@
 
 import { candidate } from './__fixtures__/catalog';
 import {
-  dayHintNote,
+  dayTiltFor,
+  dayTiltNote,
   DINNER_FROM_HOUR,
   NO_DAY_HINTS,
   toRankFeedback,
   toRankPreferences,
   toRankRecipe,
-  withDayHints,
+  withDayTilt,
 } from './deps';
 
 function stored(
@@ -125,29 +126,40 @@ describe('toRankRecipe', () => {
   });
 });
 
-describe('day hints', () => {
+describe('day tilt', () => {
   const prefs = toRankPreferences({ ...defaultPreferences, allergensAnswered: true });
 
   it('leaves preferences alone without hints', () => {
-    expect(withDayHints(prefs, NO_DAY_HINTS, 19)).toBe(prefs);
-    expect(dayHintNote(NO_DAY_HINTS, 19)).toBeNull();
+    const tilt = dayTiltFor(NO_DAY_HINTS, 19);
+    expect(tilt).toEqual({ protein: false, lighter: false });
+    expect(withDayTilt(prefs, tilt)).toBe(prefs);
+    expect(dayTiltNote(tilt)).toBeNull();
   });
 
   it('adds a protein goal on an active day', () => {
-    const tilted = withDayHints(prefs, { protein: 0.6, lighter: 0 }, 9);
-    expect(tilted.goals).toContain('more_protein');
-    expect(dayHintNote({ protein: 0.6, lighter: 0 }, 9)).toMatch(/protein/);
+    const tilt = dayTiltFor({ protein: 0.6, lighter: 0 }, 9);
+    expect(withDayTilt(prefs, tilt).goals).toContain('more_protein');
+    expect(dayTiltNote(tilt)).toMatch(/protein/);
   });
 
   it('suggests lighter meals after a short night only once dinner is next', () => {
     const hints = { protein: 0, lighter: 0.6 };
-    expect(withDayHints(prefs, hints, DINNER_FROM_HOUR - 1).goals).not.toContain('lighter_meals');
-    expect(withDayHints(prefs, hints, DINNER_FROM_HOUR).goals).toContain('lighter_meals');
-    expect(dayHintNote(hints, DINNER_FROM_HOUR - 1)).toBeNull();
+    const morning = dayTiltFor(hints, DINNER_FROM_HOUR - 1);
+    const evening = dayTiltFor(hints, DINNER_FROM_HOUR);
+    expect(withDayTilt(prefs, morning).goals).not.toContain('lighter_meals');
+    expect(withDayTilt(prefs, evening).goals).toContain('lighter_meals');
+    expect(dayTiltNote(morning)).toBeNull();
+    expect(dayTiltNote(evening)).toMatch(/lighter/);
+  });
+
+  it('reads hint strength only as on or off', () => {
+    expect(dayTiltFor({ protein: 1, lighter: 0.6 }, 20)).toEqual(
+      dayTiltFor({ protein: 0.6, lighter: 0.3 }, 16),
+    );
   });
 
   it('does not repeat a goal the person already has', () => {
     const withGoal = { ...prefs, goals: ['more_protein' as const] };
-    expect(withDayHints(withGoal, { protein: 1, lighter: 0 }, 9)).toBe(withGoal);
+    expect(withDayTilt(withGoal, { protein: true, lighter: false })).toBe(withGoal);
   });
 });
