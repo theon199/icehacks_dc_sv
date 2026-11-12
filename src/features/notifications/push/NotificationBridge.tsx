@@ -76,9 +76,9 @@ export function NotificationBridge() {
       const data = response.notification.request.content.data;
       // A cook timer's local alert is not an inbox item: go back to the cook session. Opening it
       // again when it is already open would stack a second copy, so stay put when it (or its
-      // finish screen) is showing, and return to it when it is the nearest session down the
-      // stack. Going back lands on the nearest cook screen by name, so when another recipe's
-      // session sits in between, a new screen is opened rather than closing that session.
+      // finish screen) is showing, and return to it only when no other cook screen is showing or
+      // in the way. Going back lands on the nearest cook screen by name and rewrites its recipe,
+      // so another recipe's session or an unsaved finish screen would be lost: open a new screen.
       const cookUrl = cookTimerTapUrl(data);
       if (cookUrl) {
         const id = cookSessionIdFromUrl(cookUrl);

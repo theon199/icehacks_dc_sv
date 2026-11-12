@@ -244,6 +244,49 @@ describe('NotificationBridge tap routing', () => {
     expect(stackNames()).toEqual(['index', 'cook/[id]/index', 'cook/[id]/index']);
   });
 
+  it("keeps another recipe's session on screen when the tapped one is below it", async () => {
+    await renderAt('/', COOK_URL, '/cook/mealdb:2');
+    expect(screen.getByText('cooking mealdb:2')).toBeOnTheScreen();
+    await tap(cookTimerTap());
+    expect(await screen.findByText('cooking mealdb:1')).toBeOnTheScreen();
+    expect(stackEntries()).toEqual([
+      'index',
+      'cook/[id]/index mealdb:1',
+      'cook/[id]/index mealdb:2',
+      'cook/[id]/index mealdb:1',
+    ]);
+  });
+
+  it("keeps another recipe's unsaved finish screen on screen", async () => {
+    await renderAt('/', COOK_URL, '/cook/mealdb:2');
+    // A finished session replaces itself with its finish screen.
+    await act(async () => router.replace('/cook/mealdb:2/done'));
+    expect(screen.getByText('finished mealdb:2')).toBeOnTheScreen();
+    await tap(cookTimerTap());
+    expect(await screen.findByText('cooking mealdb:1')).toBeOnTheScreen();
+    expect(stackEntries()).toEqual([
+      'index',
+      'cook/[id]/index mealdb:1',
+      'cook/[id]/done mealdb:2',
+      'cook/[id]/index mealdb:1',
+    ]);
+  });
+
+  it("keeps another recipe's unsaved finish screen that sits under other screens", async () => {
+    await renderAt('/', COOK_URL, '/cook/mealdb:2');
+    await act(async () => router.replace('/cook/mealdb:2/done'));
+    await act(async () => router.push('/recipe/mealdb:9'));
+    await tap(cookTimerTap());
+    expect(await screen.findByText('cooking mealdb:1')).toBeOnTheScreen();
+    expect(stackEntries()).toEqual([
+      'index',
+      'cook/[id]/index mealdb:1',
+      'cook/[id]/done mealdb:2',
+      'recipe/[id] mealdb:9',
+      'cook/[id]/index mealdb:1',
+    ]);
+  });
+
   it('does not treat a lookalike payload as a cook timer', async () => {
     await renderAt('/');
     await tap(tapOf({ kind: 'cook_timer', url: 'https://example.com/cook/1' }));

@@ -123,6 +123,67 @@ describe('findCookSession', () => {
     expect(findCookSession(state, 'mealdb:1')).toBe('underneath');
   });
 
+  it("does not go back past another recipe's session on screen", () => {
+    const state = appStack(
+      route('index'),
+      route('cook/[id]/index', 'mealdb:1'),
+      route('cook/[id]/index', 'mealdb:2'),
+    );
+    expect(findCookSession(state, 'mealdb:1')).toBe('behindAnotherSession');
+  });
+
+  it("does not go back past another recipe's finish screen on screen", () => {
+    const state = appStack(
+      route('index'),
+      route('cook/[id]/index', 'mealdb:1'),
+      route('cook/[id]/done', 'mealdb:2'),
+    );
+    expect(findCookSession(state, 'mealdb:1')).toBe('behindAnotherSession');
+  });
+
+  it("does not go back past another recipe's finish screen in between", () => {
+    const state = appStack(
+      route('index'),
+      route('cook/[id]/index', 'mealdb:1'),
+      route('cook/[id]/done', 'mealdb:2'),
+      route('recipe/[id]', 'mealdb:9'),
+    );
+    expect(findCookSession(state, 'mealdb:1')).toBe('behindAnotherSession');
+  });
+
+  it('does not go back past a finish screen of the same recipe', () => {
+    const state = appStack(
+      route('cook/[id]/index', 'mealdb:1'),
+      route('cook/[id]/done', 'mealdb:1'),
+      route('recipe/[id]', 'mealdb:9'),
+    );
+    expect(findCookSession(state, 'mealdb:1')).toBe('behindAnotherSession');
+  });
+
+  it("reports nothing open when another recipe's finish screen is the only cook screen", () => {
+    expect(
+      findCookSession(appStack(route('index'), route('cook/[id]/done', 'mealdb:2')), 'mealdb:1'),
+    ).toBe('absent');
+  });
+
+  it('counts a cook screen in an inner navigator as nearer than the outer stack', () => {
+    const state: NavStateLike = {
+      index: 1,
+      routes: [
+        route('cook/[id]/index', 'mealdb:1'),
+        {
+          name: '(app)',
+          state: {
+            index: 1,
+            routes: [route('cook/[id]/index', 'mealdb:2'), route('recipe/[id]', 'mealdb:9')],
+          },
+        },
+      ],
+    };
+    expect(findCookSession(state, 'mealdb:1')).toBe('behindAnotherSession');
+    expect(findCookSession(state, 'mealdb:2')).toBe('underneath');
+  });
+
   it('tells sessions for other recipes apart', () => {
     const state = appStack(route('(tabs)'), route('cook/[id]/index', 'mealdb:2'));
     expect(findCookSession(state, 'mealdb:1')).toBe('absent');
