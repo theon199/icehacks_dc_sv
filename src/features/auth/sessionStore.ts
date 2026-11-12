@@ -23,6 +23,14 @@ export interface SignedInProfile {
   aiConsent?: boolean;
 }
 
+/** The age facts the server keeps (see `my_account_status`). */
+export interface ServerAgeRecord {
+  userId: string;
+  hasBirthYear: boolean;
+  /** Minimum possible age today; null without a birth year. */
+  ageYears: number | null;
+}
+
 export interface SessionState {
   status: SessionStatus;
   userId: string | null;
@@ -34,8 +42,18 @@ export interface SessionState {
   signedIn: (profile: SignedInProfile) => void;
   setBirthYear: (birthYear: number) => void;
   completeOnboarding: () => void;
+  /**
+   * Follows the preferences store: completion can also go back to false, when data another account
+   * left on this device is wiped as sync starts.
+   */
+  setOnboardingComplete: (complete: boolean) => void;
   /** Records the answer from the AI consent screen (or a later withdrawal). */
   setAiConsent: (granted: boolean) => void;
+  /**
+   * Applies the server's age record, which overrides the launch hint. Ignored when it belongs to a
+   * different person than the one signed in (a late reply after switching accounts).
+   */
+  applyServerAge: (record: ServerAgeRecord, now?: Date) => void;
   signedOut: () => void;
 }
 
@@ -58,9 +76,21 @@ export function resolveStatus(
 /**
  * Age in whole years from a birth year. Without a birth date the age is ambiguous for part of the
  * year, so this returns the lower bound (the person may not have had their birthday yet).
+ *
+ * This uses the device's local calendar year while the server counts in UTC, so for a few hours
+ * around 1 January the two can differ by one year. That only affects which setup screen shows in
+ * that window: deleting an account is always decided by the server's own record.
  */
 export function ageFromBirthYear(birthYear: number, now: Date = new Date()): number {
   return now.getFullYear() - birthYear - 1;
+}
+
+/**
+ * The birth year implied by a server age. Server ages are the same lower bound, so this inverts
+ * `ageFromBirthYear`; it is exact whenever the age was not clamped at zero.
+ */
+export function birthYearFromAge(ageYears: number, now: Date = new Date()): number {
+  return now.getFullYear() - ageYears - 1;
 }
 
 const signedOutState = {
@@ -93,13 +123,12 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     set({ birthYear, status: resolveStatus({ userId, birthYear, onboardingComplete }) });
   },
 
-  completeOnboarding: () => {
+  completeOnboarding: () => get().setOnboardingComplete(true),
+
+  setOnboardingComplete: (onboardingComplete) => {
     const { userId, birthYear } = get();
-    if (!userId) return;
-    set({
-      onboardingComplete: true,
-      status: resolveStatus({ userId, birthYear, onboardingComplete: true }),
-    });
+    if (!userId || get().onboardingComplete === onboardingComplete) return;
+    set({ onboardingComplete, status: resolveStatus({ userId, birthYear, onboardingComplete }) });
   },
 
   setAiConsent: (granted) => {
@@ -107,8 +136,43 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     set({ aiConsent: granted });
   },
 
+  applyServerAge: (record, now = new Date()) => {
+    const { userId, birthYear: local, onboardingComplete } = get();
+    if (!userId || userId !== record.userId) return;
+    let birthYear: number | null = null;
+    if (record.hasBirthYear && record.ageYears != null) {
+      // Keep the year entered on this device when it agrees with the server; otherwise rebuild it.
+      birthYear =
+        local != null && ageFromBirthYear(local, now) === record.ageYears
+          ? local
+          : birthYearFromAge(record.ageYears, now);
+    }
+    if (birthYear === local) return;
+    set({ birthYear, status: resolveStatus({ userId, birthYear, onboardingComplete }, now) });
+  },
+
   signedOut: () => set(signedOutState),
 }));
+
+/**
+ * Where a birth year places someone against Famara's age rules:
+ *
+ *   unknown         no birth year yet
+ *   underMinimum    certainly under 13 all year: the account cannot stay
+ *   notYetEligible  turns 13 at some point this year, so may still be 12: wait until next year
+ *   teen            13–17: the app without AI features
+ *   adult           18 or older
+ */
+export type AgeBand = 'unknown' | 'underMinimum' | 'notYetEligible' | 'teen' | 'adult';
+
+export function ageBandFor(birthYear: number | null, now: Date = new Date()): AgeBand {
+  if (birthYear == null) return 'unknown';
+  const oldestPossible = now.getFullYear() - birthYear;
+  if (oldestPossible < MIN_AGE) return 'underMinimum';
+  const youngestPossible = ageFromBirthYear(birthYear, now);
+  if (youngestPossible < MIN_AGE) return 'notYetEligible';
+  return youngestPossible < MIN_AI_AGE ? 'teen' : 'adult';
+}
 
 /** Age lower bound of the signed-in person, or null when unknown. */
 export function selectAge(state: Pick<SessionState, 'birthYear'>, now?: Date): number | null {
