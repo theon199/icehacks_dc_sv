@@ -28,3 +28,9 @@ export function resetCookbookStores() {
   prefs.update({ householdSize: 2, onboardedAt: '2026-11-01T00:00:00.000Z' });
   prefs.setAllergens([]);
 }
+
+/**
+ * Wait options for anything that happens after an action sheet closes: under Jest the native
+ * dismissal event never fires, so follow-ups run on the sheet's fallback timer.
+ */
+export const AFTER_SHEET = { timeout: 3000 } as const;
