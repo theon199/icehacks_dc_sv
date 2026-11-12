@@ -585,3 +585,21 @@ describe('review fixes', () => {
     expect(shortCumin.amounts[0]?.quantity).toBeCloseTo(14.7868, 3);
   });
 });
+
+describe('half packages from two recipes', () => {
+  it('adds ½ can and ½ can up to 1 can', () => {
+    const half = (recipeId: string): ShoppingRecipe => ({
+      recipeId,
+      servings: 2,
+      plannedServings: 2,
+      ingredients: [l('chickpea', 0.5, 'can')],
+    });
+    const list = buildShoppingList({
+      recipes: [half('r:a'), half('r:b')],
+      ingredients: INGREDIENTS,
+    });
+    expect(find(list.items, 'i:chickpea').amounts).toEqual([
+      { quantity: 1, unit: 'can', label: null },
+    ]);
+  });
+});

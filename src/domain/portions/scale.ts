@@ -126,6 +126,27 @@ function roundCount(value: number, step: number): number {
   return Math.max(step, Math.round(value / step) * step);
 }
 
+/** Steps a counted line may round to, coarsest first: whole items, then halves, thirds and quarters. */
+const COUNT_STEPS = [1, 1 / 2, 1 / 3, 1 / 4] as const;
+
+function isMultipleOf(value: number, step: number): boolean {
+  const n = value / step;
+  return Math.round(n) >= 1 && Math.abs(n - Math.round(n)) < 1e-6;
+}
+
+/**
+ * The coarsest step, no coarser than the rule allows, that the recipe's own amount sits on. A
+ * recipe asking for ½ stick of butter or ¼ head of cabbage keeps that granularity, so scaling by 1
+ * returns the recipe unchanged. An amount on none of the steps (0.4 of an onion) has no step: it
+ * is scaled exactly.
+ */
+function countStep(original: number, ruleStep: number): number | null {
+  for (const step of COUNT_STEPS) {
+    if (step <= ruleStep && isMultipleOf(original, step)) return step;
+  }
+  return null;
+}
+
 function scaleLine<L extends PortionLine>(
   line: L,
   factor: number,
@@ -160,8 +181,10 @@ function scaleLine<L extends PortionLine>(
     if (toBase(exact, unit) < floor) rounded = floor / UNITS[unit].base;
   } else if (!unknownWord) {
     const rule = divisibility(line.ingredient_id, unit);
-    if (rule === 'whole') rounded = roundCount(exact, 1);
-    else if (rule === 'half') rounded = roundCount(exact, 0.5);
+    if (rule !== 'free') {
+      const step = countStep(original, rule === 'whole' ? 1 : 0.5);
+      if (step !== null) rounded = roundCount(exact, step);
+    }
   }
   const ratio = rounded / original;
   return {

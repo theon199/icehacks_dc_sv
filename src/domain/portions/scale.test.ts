@@ -249,3 +249,37 @@ describe('unrecognised unit words', () => {
     expect(egg?.quantity).toBe(1);
   });
 });
+
+describe('counted lines off the whole or half step', () => {
+  const offStep = [
+    line('butter', 0.5, 'stick', 56),
+    line('tomato', 0.5, 'can'),
+    line('tofu', 0.5, 'package'),
+    line('cabbage', 0.25, 'head'),
+    line('onion', 0.25, null),
+    line('cucumber', 1 / 3, null),
+    line('egg', 1.5, null),
+    line('pepper', 0.4, null),
+  ];
+
+  it('returns them unchanged at factor 1 (property)', () => {
+    for (const scaled of scaleLines(offStep, 1)) {
+      expect(scaled.quantity).toBeCloseTo(scaled.line.quantity ?? NaN, 10);
+      expect(scaled.adjusted).toBe(false);
+    }
+  });
+
+  it('never scales them down to more than the original amount (property)', () => {
+    for (const factor of [0.05, 0.125, 0.25, 0.5, 0.75, 1]) {
+      for (const scaled of scaleLines(offStep, factor)) {
+        expect(scaled.quantity).toBeGreaterThan(0);
+        expect(scaled.quantity).toBeLessThanOrEqual((scaled.line.quantity ?? 0) + 1e-9);
+      }
+    }
+  });
+
+  it('halving half a stick of butter does not ask for a whole stick', () => {
+    const recipe: PortionRecipe = { servings: 4, ingredients: [line('butter', 0.5, 'stick', 56)] };
+    expect(scaleRecipe(recipe, 2).lines[0]?.quantity).toBeLessThanOrEqual(0.5);
+  });
+});
