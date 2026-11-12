@@ -95,8 +95,10 @@ export async function compressAvatar(image: PickedImage): Promise<string> {
 }
 
 /**
- * Uploads a new avatar and points the profile at it. If the profile update fails the upload is
- * removed again, so no orphaned file is left behind.
+ * Uploads a new avatar and points the profile at it. When the profile update fails, the upload is
+ * only removed once a fresh read shows the profile does not use it: a lost response can hide an
+ * update that did commit, and deleting the file then would break the avatar. If that read fails
+ * too, the file is kept; an unused object is cheaper than a broken photo.
  */
 export async function replaceAvatar(userId: string, image: PickedImage): Promise<ProfileRow> {
   const uri = await compressAvatar(image);
@@ -122,7 +124,9 @@ export async function replaceAvatar(userId: string, image: PickedImage): Promise
   try {
     return await updateProfile(userId, { avatar_path: path });
   } catch (error) {
-    await storage.remove([path]).catch(() => undefined);
+    const current = await fetchProfile(userId).catch(() => null);
+    if (current?.avatar_path === path) return current;
+    if (current) await storage.remove([path]).catch(() => undefined);
     throw error;
   }
 }
