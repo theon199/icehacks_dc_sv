@@ -111,6 +111,7 @@ export function FriendsScreen() {
       testID="friends-screen"
     >
       <FlashList
+        testID="friends-list"
         data={rows}
         keyExtractor={(row) => row.key}
         getItemType={(row) => row.type}
