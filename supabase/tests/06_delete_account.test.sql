@@ -37,6 +37,19 @@ $fn$;
 
 grant execute on all functions in schema tests to authenticated, anon;
 
+-- Members here call publish_post / add_comment directly, without the publish function's AI
+-- review, so stand in for its allow and let these cases exercise the RPCs' own rules. The
+-- review verdicts themselves are covered by 12_commerce_and_review_hold.
+create or replace function private.take_review_verdict(p_text text)
+returns text
+language sql
+volatile
+security definer
+set search_path = ''
+as $fn$
+  select 'allow'::text;
+$fn$;
+
 -- delete_my_account removes the auth user and every row they own, keeps other members' data
 -- consistent, and queues their files for purge.
 select tests.create_user('aaaaaaaa-0000-4000-8000-000000000001', 'ana');
