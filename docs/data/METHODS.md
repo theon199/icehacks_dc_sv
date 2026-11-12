@@ -14,7 +14,8 @@ optional unit. Units are normalised (`tbs`, `Tblsp`, capital `T` → `tbsp`; `t`
 1.5). Package sizes are understood (`1 x 400g tin`, `2 (14.5 ounce) cans`, `1 – 14-ounce can`,
 which is one can rather than a range of 1–14), and a bracketed weight after a count gives the size of
 each item (`1 (12 oz.) stir-fry vegetables` = 12 oz, `2 (6 oz) fillets` = 12 oz). A second, smaller
-mass adds to the first (`1 lb 2 oz`). A weight written after a household measure is preferred to it:
+mass adds to the first (`1 lb 2 oz`), and so does a second volume after *plus*
+(`1 cup plus 2 tablespoons` = 1.125 cups). A weight written after a household measure is preferred to it:
 after a container it is the size of each one (`1 can (28 ounces)`, `2 cans (15 ounces each)`),
 otherwise the line total (`2 cups (about 300g)`). An equal volume (`1 cup (250ml)`) or a trailing
 alternative after a mass (`175g/6oz`) keeps the first measure. Phrases such as *to taste*, *for
@@ -99,7 +100,9 @@ sweetened condensed milk, ketchup, sweet sauces, chocolate, sweetened dried frui
 course — main 400 g, soup 450 g, salad 250 g, side 225 g, breakfast 300 g, snack 120 g, dessert
 150 g, drink 300 g — rounded and clamped to 1–12. The estimate is then nudged so energy per serving
 stays within the course's range (e.g. main 250–900 kcal, dessert 120–650 kcal) and protein stays
-at or below 55 g. With an unknown weight the estimate is 4. Recipes with estimated servings always
+at or below 55 g. Light dishes such as clear broths may fall below the energy range rather than
+collapse into one huge bowl: a serving never weighs more than twice the typical portion. With an
+unknown weight the estimate is 4. Recipes with estimated servings always
 carry `nutrition_confidence = 'estimated'`.
 
 **Time.** MedlinePlus publishes prep, cook and total time; `total_minutes` is the total (or
@@ -112,12 +115,13 @@ preparation + cooking; active = preparation + 15 % of cooking (at most +30 min, 
 chilling or marinating is hands-off). Both are rounded to 5 minutes.
 
 **Timers** (`parse/steps.ts`). A step's `timer_seconds` is the longest duration it names
-(`simmer 20 minutes`, `bake 1 hour 15 minutes`, `soak for twenty-four hours`, `a few minutes` = 3).
+(`simmer 20 minutes`, `bake 1 hour 15 minutes`, `1h30`, `soak for twenty-four hours`, `a few minutes` = 3).
 Ranges use the lower bound so the cook checks early. Durations after *within*, *every*, *up to*,
 *than*, *first*, *last* or *over* are advice, not timers. Timers are 5 seconds to 24 hours.
 
-**Steps.** Instructions are split on line breaks; `STEP n` labels, numbering and bullets are
-removed; sub-headings ending in a colon are merged into the next step; paragraphs over 420
+**Steps.** Instructions are split on line breaks, except that a line ending mid-sentence (no closing
+punctuation) is joined to the next when that one starts in lower case, which undoes hard-wrapped
+source text; `STEP n` labels, numbering, bullets and checkbox glyphs (▢) are removed; sub-headings ending in a colon are merged into the next step; paragraphs over 420
 characters are regrouped by sentence. A recipe written as a single paragraph of three or more
 sentences is regrouped into steps of at most two sentences (≤ 200 characters) for cook mode.
 
@@ -134,7 +138,8 @@ order drinks → dips, salsas and sauces (snack) → soups → salads → desser
 dinner/lunch (main) → side dishes/breads (side) → snacks (snack). Dips and sauces come early because
 MedlinePlus also files them under meal listings, and a 20 kcal ranch dip is not a main dish. TheMealDB: *Dessert* → dessert; then title words for soup and salad;
 *Breakfast* → breakfast, *Side* → side, *Starter* → snack, sauces in *Miscellaneous* → side;
-everything else → main.
+everything else → main. From either source, a *main* that brings under 150 kcal per serving is
+listed as a *side* (a 20 kcal spaghetti-squash dish is eaten alongside something else).
 
 **Cuisine and region.** In order: TheMealDB's area (country or demonym, e.g. *United States*,
 *Norway*, *Saudi Arabian*); a country or demonym in the title (*Cambodian Fish Curry*); dish words
@@ -164,7 +169,9 @@ A recipe allergen is `contains` if any matched ingredient contains it, otherwise
 line is unmatched or any ingredient is `unknown`, otherwise `free`.
 
 Diet flags are the intersection of every named ingredient's flags; an unmatched line clears all of
-them. Vegan is never claimed for variable products; *no pork* / *no beef* / *halal-friendly* are
+them. Flags read the ingredient list only: a serving suggestion in the method (*top with prawns or
+salmon*) is optional and does not change them, so a recipe can be vegetarian as written while a
+step mentions a non-vegetarian variation. Vegan is never claimed for variable products; *no pork* / *no beef* / *halal-friendly* are
 never claimed with gelatin or unspecified meat; gluten-free and dairy-free also require the
 recipe's gluten / milk status to be `free`. Halal-friendly means no pork, no alcohol and no gelatin
 or unspecified meat — informational only, not a certification.
@@ -187,6 +194,14 @@ from the list are added to the roll-ups, unless the title says it is vegan, vege
   bouillon powders and gravy granules are. Plain ready-to-serve broths are usually just stock and
   salt; concentrates are where wheat, milk, soy and celery fillers appear. The diet effect of the
   named animal (chicken, beef) always applies.
+- *Unspecified meat products* claim no meat-related diet: sausages, hot dogs, frankfurters,
+  kielbasa and kidneys that do not name their animal, and stock cubes or bouillon that do not name
+  their base, are `mixed` (they may be pork, beef, chicken or a blend). Named forms (*pork
+  sausages*, *lamb kidneys*, *vegetable stock cube*, *beef bouillon*) keep their animal or stay
+  vegetarian.
+- *Ribbon pastas* (fettuccine, tagliatelle, pappardelle) and fresh pasta count as egg pasta: they
+  are traditionally made with egg, so Famara tags egg rather than guess per brand. Potato gnocchi
+  is its own variable entry (wheat; egg and milk unknown).
 - *Lamb and mutton stock* have their own entry (lamb), so they no longer count as beef; *veal stock*
   stays with beef broth.
 
@@ -207,7 +222,10 @@ nutrient is unknown is not awarded):
 
 **Gentle** (small-appetite friendly): 150–550 kcal per serving, ≤ 800 mg sodium, ready within 60
 minutes at effort 1–2, soft cooking (a soup or breakfast, or a step that simmers, steams, poaches,
-bakes, braises, mashes or blends), no deep-frying or charring, not billed as very spicy, not a drink.
+bakes, braises, mashes or blends), no frying in oil, no charring, not billed as very spicy, not a
+drink. Frying in oil means: a frying verb in the title, deep or shallow frying, *hot oil* or
+fritters anywhere in the text, a line of oil used as a frying medium (see §2), or fries as an
+ingredient. Softening onions in a spoonful of oil does not count.
 
 **Health score** (`tools/data/src/score.ts`, 0–1): rewards — fibre per 100 kcal (full at 1.4 g),
 protein per 100 kcal (full at 5 g), produce + legume share of food weight (full at 50 %); penalties
@@ -237,9 +255,21 @@ https address (for tutorials and `source_url`), otherwise the original address i
 
 ## 8a. Search
 
-The full-text index holds the title, the cuisine label and, for each matched ingredient, its name
-followed by its synonyms as unique words, so *garbanzo*, *aubergine* or *courgette* find recipes
-whose lines say chickpeas, eggplant or zucchini.
+The full-text index holds the title, the cuisine label and, for each matched ingredient line, as
+unique words (`pipeline/search.ts`):
+
+- the head noun of the ingredient's name (*oil* for vegetable oil) and its curated aliases
+  (`knowledge/searchAliases.ts`: true equivalents only, so *garbanzo*, *aubergine* or *courgette*
+  find recipes whose lines say chickpeas, eggplant or zucchini);
+- other words of the ingredient's name only when the line uses them (*vegetable* for "vegetable
+  oil", not for "sunflower oil");
+- the line's own words that belong to one of the ingredient's matching synonyms (*penne* from
+  "300 g penne"), except a word that is another ingredient's one-word name (*beef* in "beef
+  tomatoes").
+
+Matching synonyms are not indexed wholesale: many are varieties (*rigatoni* under pasta),
+compound phrases (*chicken or vegetable broth*) or name other foods, and would make a search
+return recipes that do not contain what was asked for.
 
 ## 9. Quality gates
 
