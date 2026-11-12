@@ -6,6 +6,8 @@ import {
   buildSourceRows,
   idsToBuy,
   ingredientIdOfKey,
+  isOptionalWithoutAmount,
+  itemsToCost,
   retailerSummary,
   safeLink,
   toPriceRecord,
@@ -175,8 +177,48 @@ describe('buildCostDisplay', () => {
       prices: { flour: FLOUR },
     });
     expect(display.nothingToBuy).toBe(true);
+    expect(display.empty).toBe(false);
     expect(display.totalCents).toBe(0);
     expect(display.hasEstimate).toBe(false);
+  });
+
+  it('calls a list with no items empty rather than already at home', () => {
+    const display = buildCostDisplay({ estimate: estimateFor({}, [], []), prices: {} });
+    expect(display.empty).toBe(true);
+    expect(display.nothingToBuy).toBe(false);
+    expect(display.toBuyCount).toBe(0);
+  });
+
+  it('does not count optional items without an amount as items to buy', () => {
+    const list = buildShoppingList({
+      recipes: [
+        {
+          recipeId: 'r',
+          servings: 4,
+          plannedServings: 4,
+          ingredients: [
+            ...PANCAKE_LINES,
+            {
+              ingredient_id: 'milk',
+              text: 'milk to serve',
+              quantity: null,
+              unit: null,
+              optional: true,
+            },
+          ],
+        },
+      ],
+      ingredients: SHOPPING_INGREDIENTS,
+    });
+    const items = itemsToCost(list.items);
+    const display = buildCostDisplay({
+      estimate: estimateFor({ flour: FLOUR, egg: EGGS }, items),
+      prices: { flour: FLOUR, egg: EGGS },
+    });
+    // flour, egg, tahini and the unmatched parsley; not the optional milk.
+    expect(display.toBuyCount).toBe(4);
+    expect(display.missing.map((m) => m.key)).not.toContain('i:milk');
+    expect(display.checking.map((m) => m.key)).toEqual(['i:tahini']);
   });
 });
 
@@ -221,6 +263,21 @@ describe('ids', () => {
     expect(ingredientIdOfKey('i:flour')).toBe('flour');
     expect(ingredientIdOfKey('t:fresh parsley')).toBeNull();
     expect(ingredientIdOfKey('i:')).toBeNull();
+  });
+
+  it('skips optional items that have no amount', () => {
+    const list = pancakeList();
+    const flour = list.items.find((i) => i.key === 'i:flour');
+    const egg = list.items.find((i) => i.key === 'i:egg');
+    if (!flour || !egg) throw new Error('fixture');
+    const garnish = { ...flour, key: 'i:milk', ingredientId: 'milk', optional: true, amounts: [] };
+    const optionalWithAmount = { ...egg, optional: true };
+    expect(isOptionalWithoutAmount(garnish)).toBe(true);
+    expect(isOptionalWithoutAmount(optionalWithAmount)).toBe(false);
+    expect(idsToBuy([garnish, optionalWithAmount])).toEqual(['egg']);
+    expect(itemsToCost([garnish, optionalWithAmount])).toEqual([optionalWithAmount]);
+    const unchanged = [optionalWithAmount];
+    expect(itemsToCost(unchanged)).toBe(unchanged);
   });
 
   it('asks prices only for items that must be bought', () => {
