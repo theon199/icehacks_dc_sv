@@ -101,13 +101,25 @@ describe('catalog hooks', () => {
   });
 
   describe('previous results while a new search loads', () => {
-    const never = () => new Promise<never>(() => undefined);
+    // The second search stays in flight while the test looks at what is shown, and is settled
+    // afterwards so nothing is left pending when the test ends.
+    const inFlight: (() => void)[] = [];
+    const held = () =>
+      new Promise<{ items: RecipeSummary[]; nextCursor: null }>((resolve) => {
+        inFlight.push(() => resolve({ items: [], nextCursor: null }));
+      });
+
+    afterEach(async () => {
+      await act(async () => {
+        for (const release of inFlight.splice(0)) release();
+      });
+    });
 
     async function searchAfterChange(next: { query: string; filters: SearchFilters }) {
       jest
         .mocked(searchRecipes)
         .mockResolvedValueOnce({ items: [summary('shown')], nextCursor: null })
-        .mockImplementationOnce(never);
+        .mockImplementationOnce(held);
       const { Wrapper } = wrapper();
       const initial = {
         query: 'dal',
