@@ -10,6 +10,7 @@ import {
   Card,
   EmptyState,
   ErrorState,
+  Icon,
   Screen,
   Skeleton,
   SkeletonGroup,
@@ -22,7 +23,7 @@ import {
 import { GoalPicker } from '../components/GoalPicker';
 import { MakeoverResult } from '../components/MakeoverResult';
 import { AiGate, useRecipe, useSaveVariant } from '../deps';
-import { makeoverRequestFrom } from '../logic/request';
+import { excusedNoteMentions, makeoverRequestFrom, noteMentionWarning } from '../logic/request';
 import { variantFromMakeover } from '../logic/variants';
 import { useMakeover } from '../useMakeover';
 
@@ -165,6 +166,8 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
 
   if (state.status === 'done') {
     const blocked = state.hits.length > 0;
+    // Mentions the save check lets through; worth a word, since the note may add one back.
+    const noteWarning = noteMentionWarning(excusedNoteMentions(state.makeover, state.checked));
     return (
       <Screen
         footer={
@@ -202,6 +205,14 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
           hits={state.hits}
           checked={state.checked}
         />
+        {noteWarning ? (
+          <Card variant="sunken" testID="makeover-note-warning" style={styles.noteWarning}>
+            <Icon name="exclamationmark.circle" size={18} color="warning" />
+            <Text variant="footnote" tone="muted" style={styles.flex}>
+              {noteWarning}
+            </Text>
+          </Card>
+        ) : null}
       </Screen>
     );
   }
@@ -241,4 +252,6 @@ const styles = StyleSheet.create({
   heading: { gap: space.xs },
   working: { alignItems: 'center', gap: space.md, paddingVertical: space.xxxl },
   problem: { gap: space.xs },
+  noteWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  flex: { flex: 1 },
 });
