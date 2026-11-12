@@ -67,6 +67,7 @@ const KEEP = new Set([
   'nachos',
   'tamales',
   'calamansis',
+  'fries',
 ]);
 
 export function singular(word: string): string {

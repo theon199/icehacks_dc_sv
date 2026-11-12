@@ -68,6 +68,12 @@ export interface IngredientOptions {
   water?: boolean;
   /** Sold as a plant-based product (vegan spread, plant milk): vegan even though brands vary. */
   labelledVegan?: boolean;
+  /**
+   * Concentrates (stock cubes, bouillon powder): the ready-to-use ingredient whose weight and
+   * nutrients apply when a line measures a cooking volume of it ("250ml stock cube" means made-up
+   * stock, not 250 ml of powder). The line keeps this ingredient for safety and shopping.
+   */
+  preparedAs?: string;
 }
 
 export interface IngredientDef extends Required<Pick<IngredientOptions, 'syn' | 'allergens' | 'units'>> {
@@ -85,6 +91,7 @@ export interface IngredientDef extends Required<Pick<IngredientOptions, 'syn' | 
   addedSugar: boolean;
   water: boolean;
   labelledVegan: boolean;
+  preparedAs: string | null;
 }
 
 export function ing(id: string, category: IngredientCategory, options: IngredientOptions = {}): IngredientDef {
@@ -107,6 +114,7 @@ export function ing(id: string, category: IngredientCategory, options: Ingredien
     addedSugar: options.addedSugar ?? category === 'sweetener',
     water: options.water ?? false,
     labelledVegan: options.labelledVegan ?? false,
+    preparedAs: options.preparedAs ?? null,
   };
 }
 
@@ -128,4 +136,5 @@ export const ingredientDefSchema = z.object({
   addedSugar: z.boolean(),
   water: z.boolean(),
   labelledVegan: z.boolean(),
+  preparedAs: z.string().nullable(),
 });

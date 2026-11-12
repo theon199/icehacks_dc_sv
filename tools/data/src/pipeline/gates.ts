@@ -1,6 +1,7 @@
 import { ingredientDefSchema, type IngredientDef } from '../knowledge/define.ts';
 import { CUISINE_BY_ID, REGIONS } from '../knowledge/cuisines.ts';
 import type { SubstitutionDef } from '../knowledge/substitutions.ts';
+import { compoundAliasGaps } from '../match/audit.ts';
 import type { IngredientMatcher } from '../match/matcher.ts';
 import type { FdcFood } from '../sources/fdc.ts';
 import { ALL_DIET_FLAGS, ALLERGEN_IDS, COURSES, GOAL_TAGS, NUTRITION_CONFIDENCE } from '../types.ts';
@@ -43,6 +44,13 @@ export function checkKnowledge(
       gates.check(food !== undefined, () => `ingredient ${def.id}: FDC ${fdcId} not found`);
       gates.check(!food || food.description === description, () => `ingredient ${def.id}: FDC ${fdcId} is "${food?.description}", table says "${description}"`);
     }
+  }
+  for (const def of defs) {
+    const prepared = def.preparedAs;
+    if (prepared !== null) gates.check(ids.has(prepared), () => `ingredient ${def.id}: preparedAs ${prepared} is not an ingredient`);
+  }
+  for (const gap of compoundAliasGaps(defs, matcher)) {
+    gates.check(false, () => `ingredient ${gap.id}: synonym "${gap.synonym}" hides "${gap.alternative}" (${gap.via}) and ${gap.reason}`);
   }
   for (const collision of matcher.collisions) {
     gates.check(false, () => `synonym "${collision.key}" maps to both ${collision.ids[0]} and ${collision.ids[1]}`);
