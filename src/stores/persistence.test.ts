@@ -95,6 +95,28 @@ describe('securePersistStorage', () => {
     expect(await storage.getItem('user.broken')).toBeNull();
     expect(await SecureStore.getItemAsync('famara.user.broken')).toBeNull();
   });
+
+  it('answers absent for a slow read that a removal overtook (sign-out during hydration)', async () => {
+    const storage = securePersistStorage<{ heightCm: number }>();
+    await storage.setItem('user.slow', { state: { heightCm: 180 }, version: 1 });
+    const read = SecureStore.getItemAsync as jest.Mock<Promise<string | null>, [string]>;
+    const original = read.getMockImplementation();
+    if (!original) throw new Error('expected the Keychain mock to have an implementation');
+    read.mockImplementation(
+      (key) => new Promise((resolve) => setTimeout(() => resolve(original(key)), 10)),
+    );
+    try {
+      const pending = storage.getItem('user.slow');
+      const removed = storage.removeItem('user.slow');
+      await expect(pending).resolves.toBeNull();
+      await removed;
+    } finally {
+      read.mockImplementation(original);
+    }
+    // A read requested after the removal sees the real (empty) state.
+    await storage.setItem('user.slow', { state: { heightCm: 165 }, version: 1 });
+    expect(await storage.getItem('user.slow')).toEqual({ state: { heightCm: 165 }, version: 1 });
+  });
 });
 
 describe('waitForHydration', () => {

@@ -13,7 +13,6 @@ import {
   type SyncTransport,
 } from './types';
 import { getSupabase, type FamaraSupabaseClient } from '../supabase/client';
-import type { Json } from '../supabase/database.types';
 
 const serverDocSchema = z.object({
   collection: z.string(),
@@ -68,7 +67,10 @@ export function toSyncError(error: RpcErrorLike, status: number): SyncError {
   if (code === 'PT401' || status === 401 || status === 403 || code === 'PGRST301') {
     return new SyncError('auth', 'The session is missing or expired.');
   }
-  if (code === '22023' || INVALID_CODES.has(message)) {
+  // Invalid input (22023), a failed check constraint (23514, e.g. an over-long doc_id) or any
+  // other plain 400 is about the documents sent, not the server: retrying the same batch cannot
+  // succeed, so let the engine isolate the offending document instead.
+  if (code === '22023' || code === '23514' || INVALID_CODES.has(message) || status === 400) {
     return new SyncError('invalid', message || 'The server refused the documents.');
   }
   if (status === 0 || code === '') {
@@ -130,7 +132,7 @@ export function createSupabaseTransport(
     async push(docs: OutgoingDoc[]): Promise<PushResult> {
       const instance = await client();
       const data = await call((signal) =>
-        instance.rpc('sync_push', { p_docs: docs as unknown as Json }).abortSignal(signal),
+        instance.rpc('sync_push', { p_docs: docs }).abortSignal(signal),
       );
       return parse(pushResultSchema, data, 'sync_push');
     },
