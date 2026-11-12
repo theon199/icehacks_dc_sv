@@ -86,7 +86,11 @@ export function ProfileHeader({
       {profile.bio ? <Text variant="callout">{profile.bio}</Text> : null}
 
       {profile.cuisines.length > 0 ? (
-        <View style={styles.chips} accessibilityLabel="Favourite cuisines">
+        <View
+          style={styles.chips}
+          accessible
+          accessibilityLabel={`Favourite cuisines: ${profile.cuisines.map(cuisineLabel).join(', ')}`}
+        >
           {profile.cuisines.map((id) => (
             <Chip key={id} label={cuisineLabel(id)} />
           ))}

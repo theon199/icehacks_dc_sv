@@ -17,19 +17,6 @@ export function cuisineLabel(id: string): string {
     .join(' ');
 }
 
-/** Keeps valid ids once each, in their original order. */
-export function cleanCuisineIds(ids: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const raw of ids) {
-    const id = raw.trim();
-    if (!CUISINE_ID_PATTERN.test(id) || seen.has(id)) continue;
-    seen.add(id);
-    result.push(id);
-  }
-  return result;
-}
-
 /**
  * Toggles one cuisine in a selection, refusing to grow past the limit. Returns the same array when
  * nothing changes so callers can skip a state update.

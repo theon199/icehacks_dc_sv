@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import { ApiError } from '@/lib/api/errors';
 
@@ -27,6 +28,8 @@ const profile: ProfileRow = {
 async function renderSheet() {
   const onClose = jest.fn();
   await renderWithQuery(<EditProfileSheet profile={profile} onClose={onClose} />);
+  // Let the cuisine list load before acting, so no query update lands after the test ends.
+  await screen.findByTestId('cuisine-thai');
   return onClose;
 }
 
@@ -78,6 +81,31 @@ describe('EditProfileSheet', () => {
     await save();
     expect(onClose).toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('cancels straight away when nothing was edited', async () => {
+    const alert = jest.spyOn(Alert, 'alert');
+    const onClose = await renderSheet();
+    await fireEvent.press(screen.getByTestId('edit-profile-cancel'));
+    expect(onClose).toHaveBeenCalled();
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('asks before throwing away edits', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const onClose = await renderSheet();
+    await fireEvent.changeText(screen.getByTestId('edit-bio'), 'Soup season');
+    await fireEvent.press(screen.getByTestId('edit-profile-cancel'));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(alert).toHaveBeenCalledWith(
+      'Discard your changes?',
+      expect.any(String),
+      expect.any(Array),
+    );
+    const buttons = alert.mock.calls[0]?.[2] ?? [];
+    buttons.find((button) => button.text === 'Discard')?.onPress?.();
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('shows a taken handle next to the handle field', async () => {

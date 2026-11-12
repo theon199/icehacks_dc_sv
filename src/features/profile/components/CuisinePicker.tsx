@@ -24,7 +24,7 @@ export function CuisinePicker({ options, selected, onChange, error }: CuisinePic
   const full = selected.length >= MAX_PROFILE_CUISINES;
 
   return (
-    <View style={styles.container} accessibilityLabel="Favourite cuisines">
+    <View style={styles.container}>
       <Text variant="subhead" tone="muted">
         Favourite cuisines ({selected.length}/{MAX_PROFILE_CUISINES})
       </Text>

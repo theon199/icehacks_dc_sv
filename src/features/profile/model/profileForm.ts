@@ -89,9 +89,9 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
- * The columns that differ between the saved profile and a validated draft. Handles compare
- * case-insensitively, as the database does, but a change of case alone is still sent so people can
- * restyle their handle.
+ * The columns that differ between the saved profile and a validated draft. Every field, the handle
+ * included, is compared exactly, so a change of case alone is sent and people can restyle their
+ * handle; the database treats handles case-insensitively when it checks they are unique.
  */
 export function profilePatch(saved: ProfileDraft, next: ProfileDraft): ProfilePatch {
   const patch: ProfilePatch = {};
@@ -104,6 +104,11 @@ export function profilePatch(saved: ProfileDraft, next: ProfileDraft): ProfilePa
 
 export function isEmptyPatch(patch: ProfilePatch): boolean {
   return Object.keys(patch).length === 0;
+}
+
+/** Whether leaving the form now would lose anything the person typed or picked. */
+export function hasUnsavedChanges(saved: ProfileDraft, draft: ProfileDraft): boolean {
+  return !isEmptyPatch(profilePatch(normalizeDraft(saved), normalizeDraft(draft)));
 }
 
 export interface SaveErrorView {

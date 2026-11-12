@@ -3,6 +3,7 @@ import { ApiError } from '@/lib/api/errors';
 import {
   BIO_MAX,
   charCount,
+  hasUnsavedChanges,
   isEmptyPatch,
   profilePatch,
   saveErrorView,
@@ -100,6 +101,17 @@ describe('profilePatch', () => {
 
   it('sends a change of case in the handle', () => {
     expect(profilePatch(valid, { ...valid, handle: 'Ama_Cooks' })).toEqual({ handle: 'Ama_Cooks' });
+  });
+});
+
+describe('hasUnsavedChanges', () => {
+  it('ignores whitespace that saving would trim anyway', () => {
+    expect(hasUnsavedChanges(valid, { ...valid, displayName: '  Ama Owusu ' })).toBe(false);
+  });
+
+  it('notices a real edit', () => {
+    expect(hasUnsavedChanges(valid, { ...valid, cuisines: ['indian'] })).toBe(true);
+    expect(hasUnsavedChanges(valid, { ...valid, bio: '' })).toBe(true);
   });
 });
 

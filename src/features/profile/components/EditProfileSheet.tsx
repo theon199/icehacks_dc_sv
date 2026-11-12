@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { isApiError } from '@/lib/api/errors';
@@ -13,6 +13,7 @@ import {
   BIO_MAX,
   charCount,
   DISPLAY_NAME_MAX,
+  hasUnsavedChanges,
   isEmptyPatch,
   profilePatch,
   saveErrorView,
@@ -51,6 +52,22 @@ export function EditProfileSheet({ profile, onClose }: EditProfileSheetProps) {
     if (errors[field]) setErrors((current) => ({ ...current, [field]: undefined }));
   };
 
+  const dirty = hasUnsavedChanges(saved, draft);
+
+  // Leaving with edits asks first; with nothing changed the sheet just closes. While a save is in
+  // flight the sheet stays put so its result has somewhere to land.
+  const dismiss = () => {
+    if (update.isPending) return;
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    Alert.alert('Discard your changes?', 'Your edits to your profile have not been saved.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: onClose },
+    ]);
+  };
+
   const save = () => {
     setFormError(null);
     const result = validateProfileDraft(draft);
@@ -85,12 +102,20 @@ export function EditProfileSheet({ profile, onClose }: EditProfileSheetProps) {
       visible
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={dismiss}
+      allowSwipeDismissal={!dirty && !update.isPending}
       testID="edit-profile-sheet"
     >
       <View style={[styles.flex, { backgroundColor: theme.colors.surface }]}>
         <View style={[styles.bar, { borderBottomColor: theme.colors.border }]}>
-          <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} haptic={false} />
+          <Button
+            label="Cancel"
+            variant="ghost"
+            size="sm"
+            onPress={dismiss}
+            haptic={false}
+            testID="edit-profile-cancel"
+          />
           <Text variant="headline">Edit profile</Text>
           <Button
             label="Save"

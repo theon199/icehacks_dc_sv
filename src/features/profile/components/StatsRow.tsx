@@ -59,7 +59,13 @@ export function StatsRow({ stats, loading }: StatsRowProps) {
         </Text>
       ) : null}
       {cuisines.length > 0 ? (
-        <View style={styles.cuisines} accessibilityLabel="Cuisines you cook most">
+        <View
+          style={styles.cuisines}
+          accessible
+          accessibilityLabel={`Cuisines you cook most: ${cuisines
+            .map((cuisine) => `${cuisine.label}, ${cuisine.count}`)
+            .join('; ')}`}
+        >
           {cuisines.map((cuisine) => (
             <Chip key={cuisine.id} tone="accent" label={`${cuisine.label} · ${cuisine.count}`} />
           ))}

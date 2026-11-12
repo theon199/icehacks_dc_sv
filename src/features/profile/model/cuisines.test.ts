@@ -1,4 +1,4 @@
-import { cleanCuisineIds, cuisineLabel, toggleCuisine } from './cuisines';
+import { cuisineLabel, toggleCuisine } from './cuisines';
 
 describe('cuisineLabel', () => {
   it.each([
@@ -7,15 +7,6 @@ describe('cuisineLabel', () => {
     ['middle__eastern', 'Middle Eastern'],
   ])('%s → %s', (id, label) => {
     expect(cuisineLabel(id)).toBe(label);
-  });
-});
-
-describe('cleanCuisineIds', () => {
-  it('drops invalid and repeated ids', () => {
-    expect(cleanCuisineIds(['thai', 'Thai', 'thai', ' indian ', '9x', ''])).toEqual([
-      'thai',
-      'indian',
-    ]);
   });
 });
 

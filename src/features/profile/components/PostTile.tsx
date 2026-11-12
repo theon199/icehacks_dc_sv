@@ -38,6 +38,7 @@ export const PostTile = memo(function PostTile({ post, onPress }: PostTileProps)
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           recyclingKey={post.id}
+          priority="normal"
           transition={120}
           accessible={false}
         />

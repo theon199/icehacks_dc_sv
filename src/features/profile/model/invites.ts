@@ -36,7 +36,7 @@ function dayCountUntil(expiresAt: string, now: Date): number | null {
   return Math.ceil((end - now.getTime()) / 86_400_000);
 }
 
-/** "Expires in 6 days", "Expires today", "Expired". */
+/** "Expires in 6 days", "Expires within a day", "Expired". */
 export function inviteExpiryLabel(expiresAt: string, now: Date): string {
   const days = dayCountUntil(expiresAt, now);
   if (days == null) return 'Expiry unknown';
