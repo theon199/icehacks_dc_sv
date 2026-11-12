@@ -12,7 +12,7 @@ import { newId } from '@/lib/id';
 import { utf8Bytes } from '@/lib/sync/fingerprint';
 
 import { createSelector } from './memo';
-import { versionedPersist } from './persistence';
+import { BURST_WRITE_WINDOW_MS, versionedPersist } from './persistence';
 import { applyToRecord, createCollectionAdapter } from './syncAdapter';
 
 export const MAX_THREADS = 100;
@@ -169,6 +169,7 @@ export const useChefStore = create<ChefState>()(
     versionedPersist({
       name: 'user.chef',
       version: 1,
+      throttleMs: BURST_WRITE_WINDOW_MS,
       schema: z.object({ threads: z.record(z.string(), chefThreadSchema) }),
       partialize: (state) => ({ threads: state.threads }),
     }),
@@ -189,6 +190,8 @@ export const selectThread = (threadId: string) => (state: ChefState) =>
 
 export const chefSync = createCollectionAdapter({
   collection: 'chef_threads',
+  // Ids come from newId() and are never reused.
+  uniqueIds: true,
   store: useChefStore,
   select: (state) => state.threads,
   schema: chefThreadSchema,

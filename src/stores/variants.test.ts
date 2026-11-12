@@ -1,7 +1,7 @@
 import Storage from 'expo-sqlite/kv-store';
 
-import { syncedStores } from '@/lib/sync/registry';
 import { storageKey } from '@/lib/storage/kv';
+import { syncedStores } from '@/lib/sync/registry';
 
 // Only the stores barrel: no feature module that uses variants is loaded in this file.
 import { useVariantStore, variantsSync, upgradeVariantsV1, type RecipeVariant } from '.';

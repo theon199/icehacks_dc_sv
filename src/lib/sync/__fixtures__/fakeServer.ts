@@ -1,8 +1,9 @@
 /**
  * Test-only, in-memory model of `user_documents` with the semantics of `sync_push` and
  * `sync_pull` from docs/BACKEND.md: strict (updated_at, device_id) last-write-wins, stale-write
- * rejections carrying the server copy, revision cursors, paging, and tombstone compaction that
- * forces devices with an older cursor to resync.
+ * rejections carrying the server copy, revision cursors, paging, tombstone compaction that
+ * forces devices with an older cursor to resync, and the live-document quota (a push that leaves
+ * the account over the limit and raises its count fails as a whole).
  */
 import { stableStringify } from '../fingerprint';
 import { timestampMs } from '../ledger';
@@ -36,6 +37,8 @@ export class FakeSyncServer {
   pageSize: number | null = null;
   /** Called with each push before it is applied (lets a test inject a concurrent write). */
   beforePush: ((docs: OutgoingDoc[]) => void) | null = null;
+  /** Most live (not deleted) documents the account may hold; null for no limit. */
+  maxLiveDocs: number | null = null;
 
   private key(collection: string, docId: string) {
     return `${collection}/${docId}`;
@@ -63,8 +66,31 @@ export class FakeSyncServer {
     }
   }
 
+  /** Documents that are not tombstones. */
+  liveCount(): number {
+    let count = 0;
+    for (const row of this.rows.values()) if (row.deleted_at == null) count += 1;
+    return count;
+  }
+
   push(docs: OutgoingDoc[]): PushResult {
     this.beforePush?.(docs);
+    const rowsBefore = new Map(this.rows);
+    const revisionBefore = this.revision;
+    const liveBefore = this.liveCount();
+    const result = this.apply(docs);
+    const liveAfter = this.liveCount();
+    if (this.maxLiveDocs != null && liveAfter > this.maxLiveDocs && liveAfter > liveBefore) {
+      // The whole push is rolled back, as the RPC's transaction is.
+      this.rows.clear();
+      for (const [key, row] of rowsBefore) this.rows.set(key, row);
+      this.revision = revisionBefore;
+      throw new SyncError('quota', 'over the live-document limit');
+    }
+    return result;
+  }
+
+  private apply(docs: OutgoingDoc[]): PushResult {
     const result: PushResult = { applied: [], rejected: [] };
     for (const doc of docs) {
       const key = this.key(doc.collection, doc.doc_id);

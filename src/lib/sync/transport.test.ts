@@ -1,5 +1,5 @@
-import { fingerprint, hashText, stableStringify, utf8Bytes } from './fingerprint';
 import { memoryLedgerStorage } from './__fixtures__/memoryLedgerStorage';
+import { fingerprint, hashText, stableStringify, utf8Bytes } from './fingerprint';
 import { compareVersions, freshLedger, timestampMs } from './ledger';
 import { createSupabaseTransport, toSyncError } from './transport';
 import type { FamaraSupabaseClient } from '../supabase/client';

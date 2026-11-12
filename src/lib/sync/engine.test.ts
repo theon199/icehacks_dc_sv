@@ -1,15 +1,16 @@
 import { FakeSyncServer } from './__fixtures__/fakeServer';
 import { memoryAdapter, type MemoryAdapter } from './__fixtures__/memoryAdapter';
+import { memoryLedgerStorage } from './__fixtures__/memoryLedgerStorage';
 import {
   backoffDelay,
   createSyncEngine,
   FULL_PULL_MAX_AGE_MS,
+  LEDGER_SAVE_DELAY_MS,
   MAX_DOC_BYTES,
   PUSH_DEBOUNCE_MS,
   type SyncEngine,
   type SyncStatus,
 } from './engine';
-import { memoryLedgerStorage } from './__fixtures__/memoryLedgerStorage';
 import { LEDGER_HEADER_KEY, ledgerBucketKey } from './ledger';
 import { SyncError, type LifecycleState, type SyncTransport } from './types';
 
@@ -38,7 +39,12 @@ interface Device {
 function makeDevice(
   server: FakeSyncServer,
   name: string,
-  options: { userId?: string; transport?: SyncTransport; extra?: MemoryAdapter[] } = {},
+  options: {
+    userId?: string;
+    transport?: SyncTransport;
+    extra?: MemoryAdapter[];
+    persistLocal?: () => void;
+  } = {},
 ): Device {
   const notes = memoryAdapter('notes');
   const storage = memoryLedgerStorage();
@@ -67,6 +73,7 @@ function makeDevice(
         },
       },
       random: () => 1,
+      ...(options.persistLocal ? { persistLocal: options.persistLocal } : {}),
       onStatus: (status) => statuses.push(status),
     });
   const device: Device = {
@@ -385,7 +392,7 @@ describe('offline and failures', () => {
     expect(phone.engine.getStatus()).toMatchObject({ phase: 'idle', lastError: null });
   });
 
-  it('pauses pushing over quota until something changes locally', async () => {
+  it('keeps new documents back over quota until something changes locally', async () => {
     let quota = true;
     const base = server.transport();
     const transport: SyncTransport = {
@@ -435,6 +442,7 @@ describe('offline and failures', () => {
     };
     const phone = await started(makeDevice(server, 'phone', { transport }));
     expect(phone.engine.getStatus().phase).toBe('stopped');
+    expect(phone.engine.isStopped()).toBe(true);
   });
 });
 
@@ -537,15 +545,163 @@ describe('ledger persistence', () => {
     device.storage.writes.length = 0;
 
     feedback.set('f1', { recipeId: 'r1', signal: 'like' });
-    // After the save debounce, before the push debounce.
-    await elapse(500);
-    expect(device.storage.writes).toEqual([ledgerBucketKey('feedback'), LEDGER_HEADER_KEY]);
-
-    device.storage.writes.length = 0;
     await elapse(PUSH_DEBOUNCE_MS);
     expect(server.get('feedback', 'f1')).toBeDefined();
-    expect(device.storage.writes).not.toContain(ledgerBucketKey('notes'));
+    // The save for the edit and the one for its push are one write, made a little later.
+    expect(device.storage.writes).toEqual([]);
+    await elapse(LEDGER_SAVE_DELAY_MS);
+    expect(device.storage.writes).toEqual([ledgerBucketKey('feedback'), LEDGER_HEADER_KEY]);
+    expect(device.storage.current?.docs.feedback?.f1?.s).toBe(true);
     expect(device.storage.current?.docs.notes?.n?.s).toBe(true);
+  });
+
+  it('saves the ledger at once when the app goes to the background', async () => {
+    const device = await started(makeDevice(server, 'phone'));
+    await elapse(LEDGER_SAVE_DELAY_MS);
+    device.storage.writes.length = 0;
+    device.notes.set('n', { text: 'note' });
+    device.lifecycle('background');
+    await settle();
+    expect(device.storage.writes).toContain(ledgerBucketKey('notes'));
+  });
+
+  it('writes the stores to disk before every ledger save', async () => {
+    const order: string[] = [];
+    let failStores = false;
+    const persistLocal = () => {
+      if (failStores) throw new Error('disk full');
+      order.push('stores');
+    };
+    const device = await started(makeDevice(server, 'phone', { persistLocal }));
+    await elapse(LEDGER_SAVE_DELAY_MS);
+    order.length = 0;
+    device.storage.writes.length = 0;
+
+    device.notes.set('n', { text: 'note' });
+    await elapse(LEDGER_SAVE_DELAY_MS);
+    order.push(...device.storage.writes);
+    expect(order).toEqual(['stores', ledgerBucketKey('notes'), LEDGER_HEADER_KEY]);
+
+    // When the stores cannot be written, the ledger is not either: it would run ahead of them.
+    device.storage.writes.length = 0;
+    failStores = true;
+    device.notes.set('n', { text: 'edited' });
+    await elapse(LEDGER_SAVE_DELAY_MS);
+    expect(device.storage.writes).toEqual([]);
+    failStores = false;
+    await elapse(LEDGER_SAVE_DELAY_MS);
+    expect(device.storage.writes).toEqual([ledgerBucketKey('notes'), LEDGER_HEADER_KEY]);
+  });
+
+  it('forgets synced deletions where ids are never reused, and only there', async () => {
+    const events = memoryAdapter('feedback');
+    events.uniqueIds = true;
+    const phone = await started(makeDevice(server, 'phone', { extra: [events] }));
+    events.set('e1', { kind: 'like' });
+    events.set('e2', { kind: 'pass' });
+    phone.notes.set('n1', { text: 'a' });
+    await elapse(PUSH_DEBOUNCE_MS);
+
+    // A capped store evicting its oldest event, and an ordinary deletion.
+    events.remove('e1');
+    phone.notes.remove('n1');
+    await elapse(PUSH_DEBOUNCE_MS + LEDGER_SAVE_DELAY_MS);
+    expect(server.get('feedback', 'e1')?.deleted_at).not.toBeNull();
+    expect(server.get('notes', 'n1')?.deleted_at).not.toBeNull();
+    expect(Object.keys(phone.storage.current?.docs.feedback ?? {})).toEqual(['e2']);
+    expect(phone.storage.current?.docs.notes?.n1).toMatchObject({ x: true, s: true });
+
+    // Pulling the deletion back does not record it again, touch the store, or resend anything.
+    const pushes = server.pushCalls.length;
+    let storeChanges = 0;
+    events.subscribe(() => {
+      storeChanges += 1;
+    });
+    await phone.engine.syncNow();
+    await elapse(PUSH_DEBOUNCE_MS + LEDGER_SAVE_DELAY_MS);
+    expect(Object.keys(phone.storage.current?.docs.feedback ?? {})).toEqual(['e2']);
+    expect(storeChanges).toBe(0);
+    expect(server.pushCalls).toHaveLength(pushes);
+
+    // A device that joins later never records it either.
+    const tabletEvents = memoryAdapter('feedback');
+    tabletEvents.uniqueIds = true;
+    const tablet = await started(makeDevice(server, 'tablet', { extra: [tabletEvents] }));
+    await elapse(LEDGER_SAVE_DELAY_MS);
+    expect([...tabletEvents.docs.keys()]).toEqual(['e2']);
+    expect(Object.keys(tablet.storage.current?.docs.feedback ?? {})).toEqual(['e2']);
+  });
+});
+
+describe('over the account quota', () => {
+  it('still pushes a preferences edit, ahead of everything else', async () => {
+    const prefs = memoryAdapter('preferences');
+    prefs.priority = true;
+    const phone = await started(makeDevice(server, 'phone', { extra: [prefs] }));
+    prefs.set('main', { units: 'metric' });
+    phone.notes.set('a', { n: 1 });
+    await elapse(PUSH_DEBOUNCE_MS);
+    server.maxLiveDocs = server.liveCount();
+
+    // The account is full: new notes and a preferences edit made together.
+    for (let i = 0; i < 3; i += 1) phone.notes.set(`new-${i}`, { n: i });
+    prefs.set('main', { units: 'imperial' });
+    await elapse(PUSH_DEBOUNCE_MS);
+
+    expect(server.get('preferences', 'main')?.data).toEqual({ units: 'imperial' });
+    expect(server.pushCalls.at(-2)?.[0]?.collection).toBe('preferences');
+    expect(server.pushCalls.at(-1)?.map((doc) => doc.doc_id)).toEqual(['main']);
+    expect(server.get('notes', 'new-0')).toBeUndefined();
+    expect(phone.engine.getStatus()).toMatchObject({ lastError: 'quota', pending: 3 });
+
+    // Edits of stored documents keep going out, without a refused attempt first.
+    const calls = server.pushCalls.length;
+    phone.notes.set('a', { n: 2 });
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.get('notes', 'a')?.data).toEqual({ n: 2 });
+    expect(server.pushCalls).toHaveLength(calls + 1);
+
+    // A deletion frees room, and the waiting documents follow at once.
+    server.maxLiveDocs = null;
+    phone.notes.remove('a');
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.get('notes', 'a')?.deleted_at).not.toBeNull();
+    expect(server.get('notes', 'new-2')?.data).toEqual({ n: 2 });
+    expect(phone.engine.getStatus()).toMatchObject({ lastError: null, pending: 0 });
+  });
+
+  it('holds back an edit the full account still refuses and sends the others', async () => {
+    for (const id of ['a', 'b', 'grow']) server.seed(seedDoc(id, { id }));
+    const base = server.transport();
+    let attempts = 0;
+    const transport: SyncTransport = {
+      pull: base.pull,
+      push: async (docs) => {
+        attempts += 1;
+        // New documents never fit, and 'grow' would take the account's size over its limit.
+        const refused = docs.some(
+          (doc) => doc.doc_id === 'grow' || !server.get(doc.collection, doc.doc_id),
+        );
+        if (refused) throw new SyncError('quota', 'full');
+        return base.push(docs);
+      },
+    };
+    const phone = await started(makeDevice(server, 'phone', { transport }));
+    for (const id of ['a', 'b', 'grow', 'c']) phone.notes.set(id, { id, edited: true });
+    await elapse(PUSH_DEBOUNCE_MS);
+
+    expect(server.get('notes', 'a')?.data).toEqual({ id: 'a', edited: true });
+    expect(server.get('notes', 'b')?.data).toEqual({ id: 'b', edited: true });
+    expect(server.get('notes', 'grow')?.data).toEqual({ id: 'grow' });
+    expect(server.get('notes', 'c')).toBeUndefined();
+    expect(phone.engine.getStatus()).toMatchObject({ lastError: 'quota', pending: 2 });
+
+    // Neither the held version nor the new document is tried again with the next edit.
+    const before = attempts;
+    phone.notes.set('b', { id: 'b', edited: 2 });
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect(server.get('notes', 'b')?.data).toEqual({ id: 'b', edited: 2 });
+    expect(attempts).toBe(before + 1);
   });
 });
 

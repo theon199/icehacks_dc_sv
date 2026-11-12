@@ -15,6 +15,11 @@
  * - A stamp is always later than the version this device last saw, so an edit made after seeing a
  *   document beats that document even when clocks disagree a little.
  * - Only one pull or push runs at a time.
+ * - The saved ledger never runs ahead of the stores' saved copies: deferred store writes are
+ *   flushed (`persistLocal`) before every ledger save, so a crash can never make the ledger
+ *   describe a document the store lost, which would read as a deletion on the next start.
+ * - Over the account quota, only changes that cannot grow the account are sent (edits of
+ *   documents the server has, and deletions), priority collections first.
  */
 import { describeError, logger } from '../logger';
 import { fingerprint } from './fingerprint';
@@ -48,7 +53,12 @@ export const FULL_PULL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const MAX_DOC_BYTES = 200 * 1024;
 const BACKOFF_BASE_MS = 2000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
-const SAVE_DEBOUNCE_MS = 300;
+/**
+ * The ledger is saved at most this long after it changes, so the save for an edit and the one for
+ * its push usually coalesce. Losing an unsaved push result only means sending that version again,
+ * which the server accepts as already applied.
+ */
+export const LEDGER_SAVE_DELAY_MS = 3000;
 /** How long `stop()` waits for a request in flight before giving up on it. */
 const STOP_WAIT_MS = 2000;
 /** Synced tombstones older than the server's compaction window are forgotten. */
@@ -75,6 +85,8 @@ export interface SyncEngineOptions {
   now?: () => number;
   random?: () => number;
   pushDebounceMs?: number;
+  /** Writes the stores' deferred changes to disk; called before every ledger save. */
+  persistLocal?: () => void;
   onStatus?: (status: SyncStatus) => void;
 }
 
@@ -87,6 +99,11 @@ export interface SyncEngine {
   /** Pushes pending changes now, skipping the debounce. */
   flush(): Promise<void>;
   getStatus(): SyncStatus;
+  /**
+   * True once the engine is stopped for good: `stop()` was called, or it stopped itself because
+   * the session belongs to another account. A stopped engine never starts again.
+   */
+  isStopped(): boolean;
 }
 
 /** Exponential backoff with jitter: about 2 s, 4 s, 8 s ... capped at 5 minutes. */
@@ -125,9 +142,15 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     now = Date.now,
     random = Math.random,
     pushDebounceMs = PUSH_DEBOUNCE_MS,
+    persistLocal,
     onStatus,
   } = options;
   const adapters = new Map(options.adapters.map((adapter) => [adapter.collection, adapter]));
+  /** Collections in push order: priority ones first, otherwise as registered. */
+  const pushOrder = [
+    ...options.adapters.filter((adapter) => adapter.priority),
+    ...options.adapters.filter((adapter) => !adapter.priority),
+  ].map((adapter) => adapter.collection);
 
   let ledger: Ledger = freshLedger(userId);
   let active = false;
@@ -142,7 +165,13 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   let running: Promise<void> | null = null;
   let failures = 0;
   let retryAt = 0;
-  let quotaBlocked = false;
+  /**
+   * The server refused to let the account grow. Until space is freed, pushes leave out documents
+   * the server does not have yet; they stay in the outbox.
+   */
+  let overQuota = false;
+  /** Versions refused for quota even when sent alone (`collection/docId` → updated_at). */
+  const quotaHeld = new Map<string, string>();
   let status: SyncStatus = { phase: 'stopped', pending: 0, lastSyncedAt: null, lastError: null };
   /** Collections whose ledger bucket changed since the last save. */
   const dirty = new Set<string>();
@@ -177,6 +206,17 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       saveTimer = null;
     }
     try {
+      persistLocal?.();
+    } catch (error) {
+      // Saving the ledger anyway could make it describe documents the stores lost.
+      logger.warn(
+        'Could not save local changes; keeping the sync ledger as it is',
+        describeError(error),
+      );
+      if (active) scheduleSave();
+      return;
+    }
+    try {
       storage.save(ledger, dirty);
       dirty.clear();
     } catch (error) {
@@ -189,7 +229,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     saveTimer = setTimeout(() => {
       saveTimer = null;
       saveLedger();
-    }, SAVE_DEBOUNCE_MS);
+    }, LEDGER_SAVE_DELAY_MS);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -280,7 +320,6 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   function onLocalChange(adapter: SyncCollectionAdapter): void {
     if (!active || applyingRemote || !tracked(adapter.collection)) return;
     if (!scanCollection(adapter)) return;
-    quotaBlocked = false;
     scheduleSave();
     schedulePush();
     publish({});
@@ -322,6 +361,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     }
 
     let restamped = false;
+    let freed = false;
     for (const [collection, list] of byCollection) {
       const adapter = adapters.get(collection);
       // Collections from a newer build are left on the server untouched. The cursor still moves
@@ -331,6 +371,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       const incoming: ServerDoc[] = [];
       const upserts: { docId: string; data: unknown }[] = [];
       const deletes: string[] = [];
+      const before = adapter.getDocs();
 
       for (const doc of list) {
         const entry = entries[doc.doc_id];
@@ -339,11 +380,15 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
           if (epoch != null) entry.e = epoch;
           // The server copy is now known and older, so the held local version can go out again.
           if (entry.b === 'stale') delete entry.b;
+          if (adapter.uniqueIds && entry.s && entry.x) delete entries[doc.doc_id];
           continue;
         }
         incoming.push(doc);
-        if (doc.deleted_at != null) deletes.push(doc.doc_id);
-        else upserts.push({ docId: doc.doc_id, data: doc.data });
+        if (doc.deleted_at != null) {
+          if (entry && !entry.x) freed = true;
+          // Deleting what the store does not hold would only churn its state.
+          if (before.has(doc.doc_id)) deletes.push(doc.doc_id);
+        } else upserts.push({ docId: doc.doc_id, data: doc.data });
       }
 
       const rejected = applyToAdapter(adapter, upserts, deletes);
@@ -366,6 +411,9 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
             // The store kept the document (it refused the delete): push it back as a new version.
             entries[doc.doc_id] = { ...base, ...stamp(base), h: fingerprint(data).hash, s: false };
             restamped = true;
+          } else if (adapter.uniqueIds) {
+            // Its id never comes back, so there is nothing left to remember.
+            delete entries[doc.doc_id];
           } else {
             entries[doc.doc_id] = { ...base, x: true };
           }
@@ -381,6 +429,11 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       // Applying can change other documents too (a capped store drops its oldest), and change
       // tracking was paused meanwhile, so compare the whole collection once more.
       if (tracked(collection) && scanCollection(adapter)) restamped = true;
+    }
+    // Another device deleted something, so the account may have room again.
+    if (freed && overQuota) {
+      leaveQuotaMode();
+      restamped = true;
     }
     if (restamped) schedulePush();
   }
@@ -458,17 +511,33 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   // ---------------------------------------------------------------------------------------------
   // Push
 
+  /** Whether sending this version cannot raise the account's document count: see `overQuota`. */
+  function cannotGrow(entry: LedgerEntry): boolean {
+    return !!entry.x || entry.r != null;
+  }
+
+  function leaveQuotaMode(): void {
+    overQuota = false;
+    quotaHeld.clear();
+  }
+
+  /**
+   * The next batch to push, priority collections first. Over quota, documents the server has
+   * never stored are left in the outbox, and versions refused even on their own are held back.
+   */
   function collectOutbox(skip: Set<string>): { docs: OutgoingDoc[]; sent: SentVersion[] } {
     const docs: OutgoingDoc[] = [];
     const sent: SentVersion[] = [];
-    for (const [collection, entries] of Object.entries(ledger.docs)) {
+    for (const collection of pushOrder) {
+      const entries = ledger.docs[collection];
       const adapter = adapters.get(collection);
-      if (!adapter) continue;
+      if (!entries || !adapter) continue;
       let local: ReadonlyMap<string, OutgoingDoc['data']> | null = null;
       for (const [docId, entry] of Object.entries(entries)) {
         if (docs.length >= PUSH_BATCH_SIZE) return { docs, sent };
         const key = `${collection}/${docId}`;
         if (entry.s || entry.b || skip.has(key)) continue;
+        if (overQuota && (!cannotGrow(entry) || quotaHeld.get(key) === entry.u)) continue;
         skip.add(key);
         let data: OutgoingDoc['data'] = {};
         if (!entry.x) {
@@ -501,16 +570,29 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     const sentByKey = new Map(sent.map((item) => [`${item.collection}/${item.docId}`, item]));
     const epoch = ledger.fullPull?.epoch ?? null;
 
+    let freed = false;
     for (const applied of result.applied) {
       const version = sentByKey.get(`${applied.collection}/${applied.doc_id}`);
-      const entry = ledger.docs[applied.collection]?.[applied.doc_id];
-      if (!version || !entry) continue;
+      const entries = ledger.docs[applied.collection];
+      const entry = entries?.[applied.doc_id];
+      if (!version || !entries || !entry) continue;
       // An edit made while the push was in flight stays in the outbox.
       if (!isSentVersion(entry, version)) continue;
       dirty.add(applied.collection);
+      if (entry.x) freed = true;
+      if (entry.x && adapters.get(applied.collection)?.uniqueIds) {
+        // Its id never comes back, so the server's copy of the deletion is all that is needed.
+        delete entries[applied.doc_id];
+        continue;
+      }
       entry.s = true;
       entry.r = Math.max(entry.r ?? 0, applied.revision);
       if (epoch != null) entry.e = epoch;
+    }
+    if (freed && overQuota) {
+      // A deletion went through, so the account may have room again: try everything once more.
+      leaveQuotaMode();
+      wanted.push = true;
     }
 
     const serverCopies: ServerDoc[] = [];
@@ -542,47 +624,71 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     if (serverCopies.length > 0) applyServerDocs(serverCopies, epoch);
   }
 
+  /** Holds back the one version in `sent` that the server refused on its own. */
+  function holdRefused(sent: readonly SentVersion[], error: SyncError): void {
+    const [version] = sent;
+    const entry = version && ledger.docs[version.collection]?.[version.docId];
+    if (!version || !entry || !isSentVersion(entry, version)) return;
+    if (error.kind === 'quota') {
+      // Released when space is freed or the engine restarts; a newer edit is tried again.
+      quotaHeld.set(`${version.collection}/${version.docId}`, version.u);
+      logger.warn('Holding back a change the account has no room for', {
+        collection: version.collection,
+      });
+      return;
+    }
+    entry.b = 'invalid';
+    dirty.add(version.collection);
+    scheduleSave();
+    logger.error('The server refused a synced document', {
+      collection: version.collection,
+      message: error.message,
+    });
+  }
+
   async function pushBatch(docs: OutgoingDoc[], sent: SentVersion[]): Promise<void> {
     let result: PushResult;
     try {
       result = await transport.push(docs);
     } catch (error) {
-      if (!isSyncError(error) || error.kind !== 'invalid') throw error;
+      // A malformed document, or (already over quota) an edit that would still grow the account:
+      // find it by halving the batch so the rest goes through.
+      const isolate =
+        isSyncError(error) && (error.kind === 'invalid' || (error.kind === 'quota' && overQuota));
+      if (!isolate) throw error;
       if (!active) return;
       if (docs.length > 1) {
-        // Find the document the server refuses by halving the batch.
         const middle = Math.ceil(docs.length / 2);
         await pushBatch(docs.slice(0, middle), sent.slice(0, middle));
         if (!active) return;
         await pushBatch(docs.slice(middle), sent.slice(middle));
         return;
       }
-      const [version] = sent;
-      const entry = version && ledger.docs[version.collection]?.[version.docId];
-      if (version && entry && isSentVersion(entry, version)) {
-        entry.b = 'invalid';
-        dirty.add(version.collection);
-        scheduleSave();
-        logger.error('The server refused a synced document', {
-          collection: version.collection,
-          message: error.message,
-        });
-      }
+      holdRefused(sent, error);
       return;
     }
     if (!active) return;
     handlePushResult(result, sent);
-    saveLedger();
+    scheduleSave();
   }
 
   async function pushAll(): Promise<void> {
-    if (quotaBlocked || !ledger.bootstrapped) return;
+    if (!ledger.bootstrapped) return;
     const attempted = new Set<string>();
     for (;;) {
       if (!active) return;
       const { docs, sent } = collectOutbox(attempted);
       if (docs.length === 0) return;
-      await pushBatch(docs, sent);
+      try {
+        await pushBatch(docs, sent);
+      } catch (error) {
+        if (!isSyncError(error) || error.kind !== 'quota' || overQuota) throw error;
+        // The account is full. Edits of stored documents and deletions still fit, so send those
+        // (this batch's included) and keep new documents in the outbox until space is freed.
+        logger.warn('The account is over its synced-data limit; sending only edits and deletions');
+        overQuota = true;
+        for (const item of sent) attempted.delete(`${item.collection}/${item.docId}`);
+      }
     }
   }
 
@@ -607,14 +713,6 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     if (isSyncError(error) && error.kind === 'wrong_user') {
       logger.error('Sync stopped: the session belongs to another account');
       void stop();
-      return;
-    }
-    if (isSyncError(error) && error.kind === 'quota') {
-      // Retrying cannot help until this device deletes something; wait for the next local change.
-      quotaBlocked = true;
-      wanted.push = false;
-      logger.warn('Sync paused: the account is over its synced-data limit');
-      publish({ lastError: error.kind, phase: idlePhase() });
       return;
     }
     failures += 1;
@@ -646,7 +744,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         // A pull can leave changes to send (local wins, trimmed collections), so push after it.
         if (active) await pushAll();
         failures = 0;
-        if (active) publish({ lastSyncedAt: now(), lastError: null });
+        if (active) publish({ lastSyncedAt: now(), lastError: overQuota ? 'quota' : null });
       } catch (error) {
         if (pull) wanted.pull = true;
         if (push || pull) wanted.push = true;
@@ -694,8 +792,10 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   function pruneTombstones(): void {
     const cutoff = now() - TOMBSTONE_RETENTION_MS;
     for (const [collection, entries] of Object.entries(ledger.docs)) {
+      // Deletions in collections whose ids never come back need no memory at all.
+      const forgetAll = !!adapters.get(collection)?.uniqueIds;
       for (const [docId, entry] of Object.entries(entries)) {
-        if (entry.x && entry.s && timestampMs(entry.u) < cutoff) {
+        if (entry.x && entry.s && (forgetAll || timestampMs(entry.u) < cutoff)) {
           delete entries[docId];
           dirty.add(collection);
         }
@@ -761,6 +861,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
           void request({ push: true });
         } else {
           resetBackoff();
+          // Space may have been freed elsewhere meanwhile; finding out costs one request.
+          leaveQuotaMode();
           void request({ pull: true, push: true });
         }
       }),
@@ -814,5 +916,6 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       await request({ push: true });
     },
     getStatus: () => status,
+    isStopped: () => stopRequested,
   };
 }

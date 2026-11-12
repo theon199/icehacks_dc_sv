@@ -19,6 +19,7 @@ import { syncedStores } from './registry';
 import { useSyncStatusStore } from './status';
 import { createSupabaseTransport } from './transport';
 import type { Connectivity, Lifecycle } from './types';
+import { flushPendingWrites } from '../storage/kv';
 
 const connectivity: Connectivity = {
   isOnline: () => onlineManager.isOnline(),
@@ -93,7 +94,9 @@ async function flushEngine(timeoutMs: number): Promise<boolean> {
 }
 
 async function startEngine(userId: string): Promise<void> {
-  if (engine && engineUser === userId) return;
+  // An engine can stop on its own (the session turned out to belong to another account); a later
+  // start for the same account must then replace it rather than keep the dead one.
+  if (engine && engineUser === userId && !engine.isStopped()) return;
   await stopEngine();
 
   const stores = syncedStores();
@@ -114,6 +117,7 @@ async function startEngine(userId: string): Promise<void> {
     transport: createSupabaseTransport(userId),
     adapters: stores.map((store) => store.adapter),
     storage: kvLedgerStorage,
+    persistLocal: flushPendingWrites,
     connectivity,
     lifecycle,
     onStatus: (status) => useSyncStatusStore.getState().set(status),
