@@ -88,7 +88,7 @@ async function openCatalog(): Promise<SQLiteDatabase> {
   return db;
 }
 
-/** Deletes the copy left behind by a previous app version, if any. Best effort. */
+/** Deletes the copy made for a different bundled catalog build, if any. Best effort. */
 async function removeStaleCopy(current: string): Promise<void> {
   try {
     const previous = lastCatalogFile.getSync();

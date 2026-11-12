@@ -1,6 +1,14 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
-import { brandColors } from './src/ui/brandColors';
+/**
+ * Brand colors needed by native config. The config loader cannot import app source files, so these
+ * mirror `src/ui/brandColors.ts`; a unit test keeps the two in sync.
+ */
+export const configColors = {
+  basil: '#2F6A4F',
+  oat: '#FAF6EF',
+  night: '#151310',
+} as const;
 
 /**
  * Famara app configuration.
@@ -37,7 +45,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   icon: './assets/images/icon.png',
-  backgroundColor: brandColors.oat,
+  backgroundColor: configColors.oat,
   runtimeVersion: { policy: 'appVersion' },
   ...(easProjectId
     ? {
@@ -59,7 +67,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: 'com.famara.app',
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
-      backgroundColor: brandColors.basil,
+      backgroundColor: configColors.basil,
     },
     predictiveBackGestureEnabled: false,
   },
@@ -75,8 +83,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         image: './assets/images/splash-icon.png',
         imageWidth: 168,
         resizeMode: 'contain',
-        backgroundColor: brandColors.oat,
-        dark: { image: './assets/images/splash-icon.png', backgroundColor: brandColors.night },
+        backgroundColor: configColors.oat,
+        dark: { image: './assets/images/splash-icon.png', backgroundColor: configColors.night },
       },
     ],
     [
@@ -87,6 +95,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     ['expo-sqlite', { enableFTS: true }],
     'expo-secure-store',
+    'expo-status-bar',
+    'expo-system-ui',
     'expo-font',
     'expo-image',
     'expo-asset',
@@ -97,7 +107,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-notifications',
       {
-        color: brandColors.basil,
+        color: configColors.basil,
       },
     ],
     [
@@ -123,6 +133,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         locationWhenInUsePermission: permissions.location,
         locationAlwaysAndWhenInUsePermission: false,
         locationAlwaysPermission: false,
+        motionUsagePermission: false,
         isIosBackgroundLocationEnabled: false,
         isAndroidBackgroundLocationEnabled: false,
       },
