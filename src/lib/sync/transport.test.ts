@@ -134,6 +134,9 @@ describe('toSyncError', () => {
     [{ code: 'PT413', message: 'sync_quota' }, 413, 'quota', false],
     [{ code: 'PT401', message: 'unauthenticated' }, 401, 'auth', true],
     [{ code: '22023', message: 'invalid_document' }, 400, 'invalid', false],
+    [{ code: '23514', message: 'violates check constraint' }, 400, 'invalid', false],
+    [{ code: 'PGRST100', message: 'bad request' }, 400, 'invalid', false],
+    [{ code: 'PT429', message: 'rate_limited' }, 429, 'server', true],
     [{ code: '', message: 'TypeError: Network request failed' }, 0, 'network', true],
     [{ code: 'XX000', message: 'boom' }, 500, 'server', true],
   ])('maps %p (%p) to %p', (error, status, kind, retryable) => {
@@ -178,7 +181,7 @@ describe('ledger helpers', () => {
 
   it('only loads a ledger for the same account', () => {
     const storage = memoryLedgerStorage();
-    storage.save(freshLedger('u1'));
+    storage.save(freshLedger('u1'), []);
     expect(storage.load('u1')?.userId).toBe('u1');
     expect(storage.load('u2')).toBeNull();
   });
