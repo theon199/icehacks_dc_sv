@@ -162,8 +162,18 @@ export function DayMeals({
           onClose={() => setAdding(null)}
           onPick={(recipe) => {
             setAdding(null);
-            if (!isSafe(recipe)) return;
-            plannerActions.place(ref(adding), recipe.id);
+            if (!isSafe(recipe)) {
+              // The picker hides recipes that break the person's rules; one can still slip through
+              // when they changed while the sheet was open.
+              toast.show({
+                message: `${recipe.title} doesn't fit your allergies or diet, so it wasn't added`,
+                tone: 'danger',
+              });
+              return;
+            }
+            if (!plannerActions.place(ref(adding), recipe.id)) {
+              toast.show({ message: 'Archived weeks cannot be changed', tone: 'danger' });
+            }
           }}
         />
       ) : null}

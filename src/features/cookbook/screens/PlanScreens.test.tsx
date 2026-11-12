@@ -5,7 +5,7 @@ import { getRecipeSummaries, listCandidates } from '@/lib/catalog/queries';
 import { useMealPlanStore, usePreferencesStore } from '@/stores';
 import { useToastStore } from '@/ui';
 
-import { PlanWeekScreen } from './PlanWeekScreen';
+import { PlanWeekScreen, addedToPlanToast } from './PlanWeekScreen';
 import { TwoDayPlanScreen } from './TwoDayPlanScreen';
 import { candidatePool } from '../__fixtures__/recipes';
 import { clearQueryClients, renderCookbook, resetCookbookStores } from '../__fixtures__/render';
@@ -58,6 +58,21 @@ describe('Plan my week', () => {
     expect(router.back).toHaveBeenCalled();
   });
 
+  it('does not claim meals were added when the week was archived meanwhile', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm0');
+    await renderCookbook(<PlanWeekScreen week={WEEK} />);
+    await screen.findByTestId('fill-preview', {}, LONG);
+
+    plannerActions.archive(WEEK);
+    await user.press(screen.getByTestId('accept-fill'));
+    expect(Object.keys(slots())).toEqual(['2-dinner']);
+    expect(useToastStore.getState().queue[0]).toMatchObject({
+      message: expect.stringMatching(/^That week is archived, so nothing was added/),
+      tone: 'neutral',
+    });
+  });
+
   it('adds a snack a day when planning small meals', async () => {
     await renderCookbook(<PlanWeekScreen week="2026-11-16" />);
     await screen.findByTestId('fill-preview', {}, LONG);
@@ -89,6 +104,31 @@ describe('Plan my week', () => {
   });
 });
 
+describe('addedToPlanToast', () => {
+  it('reports what landed and why anything did not', () => {
+    expect(addedToPlanToast({ offered: 3, placed: 3, archived: false })).toEqual({
+      message: 'Added 3 meals to your plan',
+      tone: 'success',
+    });
+    expect(addedToPlanToast({ offered: 1, placed: 1, archived: false }).message).toBe(
+      'Added 1 meal to your plan',
+    );
+    expect(addedToPlanToast({ offered: 4, placed: 2, archived: false }).message).toBe(
+      'Added 2 meals to your plan. The rest had been planned in the meantime.',
+    );
+    expect(addedToPlanToast({ offered: 6, placed: 3, archived: true }).message).toBe(
+      'Added 3 meals to your plan. An archived week was left as it is.',
+    );
+    expect(addedToPlanToast({ offered: 3, placed: 0, archived: false })).toEqual({
+      message: 'Those meals are already planned',
+      tone: 'neutral',
+    });
+    expect(addedToPlanToast({ offered: 3, placed: 0, archived: true }).message).toMatch(
+      /^That week is archived, so nothing was added/,
+    );
+  });
+});
+
 describe('Two-day nutrition plan', () => {
   it('plans today and tomorrow against the targets and copies them into the planner', async () => {
     const user = userEvent.setup();
@@ -110,6 +150,37 @@ describe('Two-day nutrition plan', () => {
       '3-lunch',
     ]);
     expect(router.back).toHaveBeenCalled();
+  });
+
+  it('says an archived week took no meals instead of calling them already planned', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: WEEK, day: 0, slot: 'dinner' }, 'm0');
+    plannerActions.archive(WEEK);
+    await renderCookbook(<TwoDayPlanScreen />);
+    await screen.findByTestId('two-day-result', {}, LONG);
+    await screen.findAllByText(/^Dish /, {}, LONG);
+
+    await user.press(screen.getByTestId('add-two-day'));
+    expect(Object.keys(slots())).toEqual(['0-dinner']);
+    expect(useToastStore.getState().queue[0]).toMatchObject({
+      message: expect.stringMatching(/^That week is archived/),
+      tone: 'neutral',
+    });
+  });
+
+  it('says when the meals were already planned', async () => {
+    const user = userEvent.setup();
+    await renderCookbook(<TwoDayPlanScreen />);
+    await screen.findByTestId('two-day-result', {}, LONG);
+    await screen.findAllByText(/^Dish /, {}, LONG);
+    await user.press(screen.getByTestId('add-two-day'));
+    useToastStore.getState().clear();
+
+    await user.press(screen.getByTestId('add-two-day'));
+    expect(useToastStore.getState().queue[0]).toMatchObject({
+      message: 'Those meals are already planned',
+      tone: 'neutral',
+    });
   });
 
   it('labels the result estimated when a chosen recipe has estimated nutrition', async () => {

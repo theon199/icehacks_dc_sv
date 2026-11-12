@@ -9,6 +9,7 @@ import { Button, Card, Chip, EmptyState, Screen, space, Text, toast, Toggle } fr
 
 import { PlanStatus } from '../components/PlanStatus';
 import { useAutoFillPreview } from '../hooks/useAutoFillPreview';
+import { isWeekArchived } from '../hooks/usePlanner';
 import { useToday } from '../hooks/useToday';
 import { resolveWeekParam, SLOT_LABELS, weekDays, weekTitle, type DayInfo } from '../model/week';
 
@@ -18,6 +19,37 @@ export const REASON_LABELS: Readonly<Record<FillReason, string>> = {
   quick: 'Quick',
   gentle: 'Gentle',
 };
+
+/**
+ * The toast after copying planner output into the plan, from how many meals were offered, how
+ * many landed, and whether an archived week (which takes no writes) was among the targets.
+ */
+export function addedToPlanToast({
+  offered,
+  placed,
+  archived,
+}: {
+  offered: number;
+  placed: number;
+  archived: boolean;
+}): { message: string; tone: 'success' | 'neutral' } {
+  if (placed === 0) {
+    return {
+      message: archived
+        ? 'That week is archived, so nothing was added. Restore it from the archive to plan it.'
+        : 'Those meals are already planned',
+      tone: 'neutral',
+    };
+  }
+  const added = placed === 1 ? 'Added 1 meal to your plan' : `Added ${placed} meals to your plan`;
+  if (placed >= offered) return { message: added, tone: 'success' };
+  return {
+    message: archived
+      ? `${added}. An archived week was left as it is.`
+      : `${added}. The rest had been planned in the meantime.`,
+    tone: 'success',
+  };
+}
 
 export interface PlanWeekScreenProps {
   /** Monday of the week to fill, as it arrived in the route; anything else means this week. */
@@ -41,10 +73,7 @@ export function PlanWeekScreen({ week }: PlanWeekScreenProps) {
   const count = ready?.result.assignments.length ?? 0;
   const onAccept = () => {
     const placed = accept();
-    toast.show({
-      message: placed === 1 ? 'Added 1 meal to your plan' : `Added ${placed} meals to your plan`,
-      tone: 'success',
-    });
+    toast.show(addedToPlanToast({ offered: count, placed, archived: isWeekArchived(weekStart) }));
     router.back();
   };
 
@@ -72,7 +101,7 @@ export function PlanWeekScreen({ week }: PlanWeekScreenProps) {
       </View>
       <Toggle
         label="Plan small meals"
-        description="Half portions with a snack each day"
+        description="Favors gentle recipes and adds a snack each day"
         value={smallAppetite}
         onValueChange={setSmallAppetite}
         testID="small-meals"
