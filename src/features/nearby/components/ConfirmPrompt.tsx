@@ -32,7 +32,7 @@ export function ConfirmPrompt({ dishName, dishKey, place }: ConfirmPromptProps) 
 
   return (
     <Card variant="sunken" padding="lg" testID="nearby-confirm">
-      {thanks ? (
+      {prompt.kind === 'thanks' ? (
         <View style={styles.thanks}>
           <Icon name="checkmark.circle.fill" size={22} color="success" />
           <View style={styles.flex}>

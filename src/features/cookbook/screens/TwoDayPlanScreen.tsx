@@ -18,6 +18,7 @@ import {
   Toggle,
 } from '@/ui';
 
+import { addedToPlanToast } from './PlanWeekScreen';
 import { PlannedDayCard } from '../components/PlannedDayCard';
 import { PlanStatus } from '../components/PlanStatus';
 import { isWeekArchived, plannerActions } from '../hooks/usePlanner';
@@ -25,7 +26,6 @@ import { useToday } from '../hooks/useToday';
 import { useTwoDayPlan } from '../hooks/useTwoDayPlan';
 import { dayPlanWrites } from '../model/dayPlan';
 import { weekDays, locateDate } from '../model/week';
-import { addedToPlanToast } from './PlanWeekScreen';
 
 /**
  * Two days of meals chosen to land close to the person's daily nutrition targets. The search runs

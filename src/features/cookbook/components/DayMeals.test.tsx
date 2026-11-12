@@ -1,4 +1,5 @@
 import { screen, userEvent } from '@testing-library/react-native';
+import type { ComponentType, ReactNode } from 'react';
 
 import type { RecipeSummary } from '@/lib/catalog';
 import { useMealPlanStore } from '@/stores';
@@ -15,8 +16,13 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }
 // The picker has its own tests; here it hands back whichever recipe the test chooses.
 const mockPicked: { recipe: RecipeSummary | null } = { recipe: null };
 jest.mock('./AddMealSheet', () => {
-  const { Pressable, Text } = jest.requireActual<typeof import('react-native')>('react-native');
-  const { createElement } = jest.requireActual<typeof import('react')>('react');
+  const { Pressable, Text } = jest.requireActual<{
+    Pressable: ComponentType<object>;
+    Text: ComponentType<object>;
+  }>('react-native');
+  const { createElement } = jest.requireActual<{
+    createElement: (...args: unknown[]) => ReactNode;
+  }>('react');
   return {
     AddMealSheet: ({ onPick }: { onPick: (recipe: RecipeSummary) => void }) =>
       createElement(
