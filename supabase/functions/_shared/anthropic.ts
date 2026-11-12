@@ -472,8 +472,38 @@ interface CallBudget {
   giveUpAt: number;
 }
 
-function timeoutError(cause?: unknown): AnthropicError {
-  return new AnthropicError("timeout", "The Claude API did not answer in time.", { cause });
+function timeoutError(
+  cause?: unknown,
+  message = "The Claude API did not answer in time.",
+): AnthropicError {
+  return new AnthropicError("timeout", message, { cause });
+}
+
+function abortedError(cause?: unknown): AnthropicError {
+  return new AnthropicError("aborted", "The request was cancelled.", { cause });
+}
+
+/**
+ * Settles like `work`, unless `signal` fires first (or fired while `work` was finishing): then it
+ * rejects with the signal's reason. `work` itself keeps running; it is only no longer awaited.
+ */
+function settleBefore<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) reject(signal.reason);
+        else resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 /** Backoff waits shorter than this before the deadline are skipped: the retry could not finish. */
@@ -623,11 +653,7 @@ export class AnthropicClient {
       const wait = this.backoffMs(attempt, failure.retryAfterMs);
       if (this.now() + wait + MIN_ATTEMPT_MS > giveUpAt) throw failure;
       await this.sleep(wait);
-      if (req.signal?.aborted) {
-        throw new AnthropicError("aborted", "The request was cancelled.", {
-          cause: req.signal.reason,
-        });
-      }
+      if (req.signal?.aborted) throw abortedError(req.signal.reason);
     }
   }
 
@@ -668,9 +694,7 @@ export class AnthropicClient {
     callerSignal: AbortSignal | undefined,
     deadline: AbortSignal,
   ): AnthropicError {
-    if (callerSignal?.aborted) {
-      return new AnthropicError("aborted", "The request was cancelled.", { cause: error });
-    }
+    if (callerSignal?.aborted) return abortedError(error);
     if (deadline.aborted) return timeoutError(error);
     if (error instanceof AnthropicError) return error;
     // fetch() rejections and broken response streams: the connection failed, try again.
@@ -722,7 +746,9 @@ export class AnthropicClient {
    * Runs a tool-use loop: call Claude, execute the tools it asks for (in parallel), send all
    * results back in one user turn, repeat until it stops asking or `maxTurns` is reached.
    * The whole loop (every round, retry and tool run) shares one `timeoutMs` deadline, so it
-   * always ends inside the edge-function time limit.
+   * always ends inside the edge-function time limit. Tool handlers receive a signal that fires
+   * when the deadline passes or the caller aborts; the loop stops waiting for them at that point
+   * and fails with kind "timeout" or "aborted".
    */
   async runTools(
     req: Omit<MessageRequest, "tools">,
@@ -740,34 +766,86 @@ export class AnthropicClient {
       if (message.stop_reason !== "tool_use") return { message, messages };
 
       messages.push({ role: "assistant", content: message.content });
-      const results = await Promise.all(
-        toolUses(message).map((use) => executeTool(byName.get(use.name), use)),
-      );
+      const results = await this.runToolRound(toolUses(message), byName, req.signal, budget);
       messages.push({ role: "user", content: results });
     }
     throw new AnthropicError("tool_loop_limit", `Stopped after ${maxTurns} tool rounds.`);
+  }
+
+  /**
+   * Runs one round of tool calls in parallel within the call's budget. Each handler gets the
+   * caller's signal combined with the deadline, so it can stop early; one that ignores it is no
+   * longer awaited once the signal fires, and the round fails with "aborted" or "timeout".
+   */
+  private async runToolRound(
+    uses: readonly ToolUseBlock[],
+    byName: ReadonlyMap<string, ToolHandler>,
+    callerSignal: AbortSignal | undefined,
+    budget: CallBudget,
+  ): Promise<ToolResultBlockParam[]> {
+    const { deadline, giveUpAt } = budget;
+    const cancellation = (cause?: unknown): AnthropicError | null => {
+      if (callerSignal?.aborted) return abortedError(callerSignal.reason);
+      if (deadline.aborted || this.now() >= giveUpAt) {
+        return timeoutError(cause, "The tools did not finish in time.");
+      }
+      return null;
+    };
+    const before = cancellation();
+    if (before) throw before;
+    const signal = callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline;
+    const work = Promise.all(
+      uses.map((use) => executeTool(byName.get(use.name), use, { signal })),
+    );
+    try {
+      return await settleBefore(work, signal);
+    } catch (error) {
+      throw cancellation(error) ?? error;
+    }
   }
 }
 
 export type ToolOutput = string | Array<TextBlockParam | ImageBlockParam>;
 
-/** A tool plus the code that runs it. `invoke` validates the raw input before running. */
+/** What a running tool may use besides its input. */
+export interface ToolContext {
+  /**
+   * Fires when the caller aborts or the call's deadline passes. Pass it to `fetch` and other
+   * cancellable work: once it fires, the result is no longer awaited.
+   */
+  signal: AbortSignal;
+}
+
+/**
+ * A tool plus the code that runs it. `invoke` validates the raw input before running.
+ *
+ * Build handlers with `toolHandler()` rather than writing this object by hand: it validates the
+ * input and always hands `run` a context whose signal fires on the call's deadline or the caller's
+ * abort. A hand-written `invoke` that ignores `context` keeps working after the call is cancelled;
+ * the loop stops waiting for it, but its side effects still happen.
+ */
 export interface ToolHandler {
   tool: ZodTool;
-  invoke(input: unknown): Promise<{ ok: true; output: ToolOutput } | { ok: false; error: string }>;
+  invoke(
+    input: unknown,
+    context?: ToolContext,
+  ): Promise<{ ok: true; output: ToolOutput } | { ok: false; error: string }>;
 }
+
+/** A signal that never fires, for handlers invoked outside a tool loop. */
+const NEVER_ABORTED = new AbortController().signal;
 
 /** Pairs a tool with the function that executes it; `run` only ever sees validated input. */
 export function toolHandler<S extends z.ZodType>(
   tool: ZodTool<S>,
-  run: (input: z.output<S>) => Promise<ToolOutput>,
+  run: (input: z.output<S>, context: ToolContext) => Promise<ToolOutput>,
 ): ToolHandler {
   return {
     tool,
-    async invoke(input) {
+    async invoke(input, context) {
       const parsed = tool.parse(input);
       if (!parsed.ok) return { ok: false, error: `Invalid input: ${parsed.issues}` };
-      return { ok: true, output: await run(parsed.value) };
+      return { ok: true, output: await run(parsed.value, context ?? { signal: NEVER_ABORTED }) };
     },
   };
 }
@@ -775,6 +853,7 @@ export function toolHandler<S extends z.ZodType>(
 async function executeTool(
   handler: ToolHandler | undefined,
   use: ToolUseBlock,
+  context: ToolContext,
 ): Promise<ToolResultBlockParam> {
   const failed = (content: string): ToolResultBlockParam => ({
     type: "tool_result",
@@ -784,7 +863,7 @@ async function executeTool(
   });
   if (!handler) return failed(`Unknown tool: ${use.name}`);
   try {
-    const result = await handler.invoke(use.input);
+    const result = await handler.invoke(use.input, context);
     if (!result.ok) return failed(result.error);
     return { type: "tool_result", tool_use_id: use.id, content: result.output };
   } catch (error) {
