@@ -63,7 +63,11 @@ select throws_ok(
   'linking new tokens is rate limited'
 );
 select lives_ok(
-  $$select private.register_push_token('a0000000-0000-4000-8000-000000000004', tests.token('dee9'), 'ios')$$,
+  $$select private.register_push_token(
+      'a0000000-0000-4000-8000-000000000004',
+      (select t.token from private.push_tokens t
+       where t.user_id = 'a0000000-0000-4000-8000-000000000004' limit 1),
+      'ios')$$,
   'refreshing a token the account already holds is not limited'
 );
 
