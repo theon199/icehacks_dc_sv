@@ -17,7 +17,7 @@ import { useComposePresets } from '../compose/useComposePresets';
 import { useDictation } from '../compose/useDictation';
 import { usePublishDraft } from '../compose/usePublishDraft';
 import { usePost } from '../hooks/usePost';
-import { useRecipeSummary } from '../hooks/useRecipes';
+import { useRecipeLookup } from '../hooks/useRecipes';
 import {
   COMPOSE_LIMITS,
   KIND_COPY,
@@ -25,12 +25,15 @@ import {
   isDraftEmpty,
   type DraftErrors,
 } from '../logic/compose';
+import type { CookShareSeed } from '../logic/composeParams';
 import { HELD_POST_MESSAGE, publishErrorMessage } from '../logic/publishMessages';
 
 export interface ComposeScreenProps {
   recipeId?: string | undefined;
   /** Post id to remix. */
   remixOf?: string | undefined;
+  /** Rating, note and photo from cook mode, when opened to share a dish just cooked. */
+  cookShare?: CookShareSeed | null | undefined;
 }
 
 const KINDS = (['cook', 'remix', 'tip'] as const).map((kind) => ({
@@ -44,7 +47,7 @@ function goBack() {
 }
 
 /** Share a dish: recipe, photos, rating, note (with dictation) and kind. The draft is kept. */
-export function ComposeScreen({ recipeId, remixOf }: ComposeScreenProps) {
+export function ComposeScreen({ recipeId, remixOf, cookShare = null }: ComposeScreenProps) {
   const userId = useSessionStore((state) => state.userId);
   // Until the stored draft is claimed for this account, show a blank one rather than someone else's.
   const draft = useComposeDraftStore((state) =>
@@ -70,16 +73,31 @@ export function ComposeScreen({ recipeId, remixOf }: ComposeScreenProps) {
   }, [userId]);
 
   const parent = usePost(remixOf ?? '');
-  const presetRecipe = useRecipeSummary(recipeId ?? parent.data?.recipe_ref ?? null);
+  const parentPending = remixOf != null && parent.isPending;
+  // Remix titles come from the parent's recipe, so wait for that lookup too before applying.
+  const preset = useRecipeLookup(recipeId ?? parent.data?.recipe_ref ?? null);
   const presets = useMemo(
     () => ({
-      recipe: presetRecipe,
+      recipe: preset.recipe,
       remixOf: parent.data ?? null,
-      loading: (remixOf != null && parent.isPending) || (recipeId != null && presetRecipe == null),
+      cookShare,
+      loading: parentPending || preset.loading,
     }),
-    [parent.data, parent.isPending, presetRecipe, recipeId, remixOf],
+    [cookShare, parent.data, parentPending, preset.loading, preset.recipe],
   );
+  const parentUnavailable = remixOf != null && !parentPending && parent.data == null;
   useComposePresets(presets);
+
+  // A draft can point at a recipe whose name was not known when it was filled in (restored from
+  // an older session, or the lookup failed then); name it once the catalog answers.
+  const unnamed = useRecipeLookup(draft.recipeTitle == null ? draft.recipeId : null).recipe;
+  useEffect(() => {
+    if (!unnamed) return;
+    const current = useComposeDraftStore.getState().draft;
+    if (current.recipeId === unnamed.id && current.recipeTitle == null) {
+      update({ recipeTitle: unnamed.title });
+    }
+  }, [unnamed, update]);
 
   const dictation = useDictation(draft.body, (body) => update({ body }));
   const { cancel: cancelDictation } = dictation;
@@ -189,6 +207,12 @@ export function ComposeScreen({ recipeId, remixOf }: ComposeScreenProps) {
         {KIND_COPY[draft.kind].hint}
         {draft.kind === 'remix' && draft.parentTitle ? ` Based on “${draft.parentTitle}”.` : ''}
       </Text>
+      {parentUnavailable ? (
+        <Text variant="footnote" tone="danger" accessibilityLiveRegion="polite">
+          We couldn&rsquo;t open the post you wanted to remix; it may have been removed. You can
+          still share your own version of a recipe.
+        </Text>
+      ) : null}
 
       <RecipePicker
         selectedTitle={draft.recipeTitle}
