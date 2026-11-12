@@ -54,16 +54,28 @@ as $$
 $$;
 
 -- Links a device token to an account. A token that was registered by another account on the same
--- device (sign out, sign in as someone else) moves to the new account.
+-- device (sign out, sign in as someone else) moves to the new account. Re-registering a token the
+-- account already holds is free; linking a new token or taking one over is rate limited, which
+-- bounds how many devices one account can claim.
 create function private.register_push_token(p_user_id uuid, p_token text, p_platform text)
 returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_current_owner uuid;
 begin
   if p_user_id is null or not exists (select 1 from public.profiles p where p.id = p_user_id) then
     raise exception 'user_not_found' using errcode = 'PT404', detail = 'That account does not exist.';
+  end if;
+
+  select t.user_id into v_current_owner from private.push_tokens t where t.token = p_token;
+  if v_current_owner is distinct from p_user_id then
+    perform private.take_rate(
+      p_user_id, 'push_register', 20, interval '1 hour',
+      'Too many devices registered recently. Try again later.'
+    );
   end if;
 
   insert into private.push_tokens as t (token, user_id, platform)
@@ -137,6 +149,7 @@ as $$
     'comment_id', n.comment_id,
     'post_title', left(p.title, 80),
     'comment_excerpt', left(c.body, 140),
+    'badge_name', b.name,
     'data', n.data,
     'unread_count', (
       select count(*)::integer
@@ -154,14 +167,27 @@ as $$
   left join public.profiles a on a.id = n.actor_id
   left join public.posts p on p.id = n.post_id
   left join public.comments c on c.id = n.comment_id
+  left join public.badges b on n.kind = 'badge' and b.id = n.data ->> 'badge_id'
   where n.id = any (p_notification_ids)
     and d.tokens is not null;
 $$;
 
--- Queues one HTTP request to the push function. Returns the pg_net request id, or null when push
--- delivery is not configured. Dynamic SQL keeps this valid on databases without pg_net or Vault.
+-- Most jobs per request; matches DISPATCH_MAX_JOBS in supabase/functions/push/messages.ts.
+create function private.push_dispatch_chunk()
+returns integer
+language sql
+immutable
+set search_path = ''
+as $$
+  select 500;
+$$;
+
+-- Queues HTTP requests to the push function, one per chunk of at most push_dispatch_chunk() jobs.
+-- Returns how many requests were queued (0 when push delivery is not configured). Dynamic SQL
+-- keeps this valid on databases without pg_net or Vault. The function answers as soon as it has
+-- validated a request and delivers in the background, so the pg_net timeout only covers that.
 create function private.push_dispatch(p_messages jsonb)
-returns bigint
+returns integer
 language plpgsql
 volatile
 security definer
@@ -170,13 +196,17 @@ as $$
 declare
   v_url text;
   v_secret text;
-  v_request_id bigint;
+  v_total integer;
+  v_size integer := private.push_dispatch_chunk();
+  v_offset integer := 0;
+  v_chunk jsonb;
+  v_queued integer := 0;
 begin
   if p_messages is null or jsonb_typeof(p_messages) <> 'array' or jsonb_array_length(p_messages) = 0 then
-    return null;
+    return 0;
   end if;
   if to_regnamespace('net') is null or to_regclass('vault.decrypted_secrets') is null then
-    return null;
+    return 0;
   end if;
 
   execute
@@ -188,18 +218,27 @@ begin
     using 'famara_push_url', 'famara_push_secret';
 
   if v_url is null or v_secret is null then
-    return null;
+    return 0;
   end if;
 
-  execute
-    'select net.http_post(url := $1, body := $2, headers := $3, timeout_milliseconds := $4)'
-    into v_request_id
-    using
-      v_url,
-      jsonb_build_object('messages', p_messages),
-      jsonb_build_object('Content-Type', 'application/json', 'x-famara-push-secret', v_secret),
-      10000;
-  return v_request_id;
+  v_total := jsonb_array_length(p_messages);
+  while v_offset < v_total loop
+    select coalesce(jsonb_agg(e.value order by e.ordinality), '[]'::jsonb)
+      into v_chunk
+    from jsonb_array_elements(p_messages) with ordinality as e(value, ordinality)
+    where e.ordinality > v_offset and e.ordinality <= v_offset + v_size;
+
+    execute
+      'select net.http_post(url := $1, body := $2, headers := $3, timeout_milliseconds := $4)'
+      using
+        v_url,
+        jsonb_build_object('messages', v_chunk),
+        jsonb_build_object('Content-Type', 'application/json', 'x-famara-push-secret', v_secret),
+        10000;
+    v_queued := v_queued + 1;
+    v_offset := v_offset + v_size;
+  end loop;
+  return v_queued;
 end;
 $$;
 
@@ -252,6 +291,7 @@ revoke all on function private.unregister_push_token(uuid, text) from public;
 revoke all on function private.forget_push_tokens(text[]) from public;
 revoke all on function private.push_batch(uuid[]) from public;
 revoke all on function private.push_dispatch(jsonb) from public;
+revoke all on function private.push_dispatch_chunk() from public;
 revoke all on function private.notifications_after_insert_push() from public;
 
 grant execute on function private.push_device_limit() to service_role;

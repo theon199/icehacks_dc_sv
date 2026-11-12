@@ -28,7 +28,11 @@ notification inserts are unaffected.
 
 ## Delivery
 
-- Each statement that inserts notifications produces one request with every recipient device.
+- Each statement that inserts notifications produces one request with every recipient device, split
+  into requests of at most 500 jobs for very large statements.
+- On Supabase the function answers `202` once a request is validated and delivers in the background
+  (`EdgeRuntime.waitUntil`), so the database's 10 s pg_net timeout never cuts delivery short.
+  Elsewhere (tests, local runs without the edge runtime) it answers when delivery is done.
 - Every device gets its own message; messages go out in batches of 100 (the Expo limit per request),
   with retries and backoff on throttling and server errors.
 - Tickets that report `DeviceNotRegistered` remove that token from `private.push_tokens`.
@@ -42,7 +46,8 @@ Tokens live in `private.push_tokens` (not exposed through the Data API). The fun
 over `SUPABASE_DB_URL`, which the platform provides to edge functions, through
 `private.register_push_token`, `private.unregister_push_token` and `private.forget_push_tokens`. An
 account keeps at most ten devices; a token registered by a new account on the same device moves to
-that account.
+that account. Linking a new token (or taking one over) is limited to 20 per account per hour;
+refreshing a token the account already holds is not. Badge pushes use the name in `public.badges`.
 
 ## Checks
 

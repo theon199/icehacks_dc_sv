@@ -43,6 +43,18 @@ export interface PushDeps {
   /** Resolves the signed-in caller; throws a 401 HttpError otherwise. */
   authenticate: (req: Request) => Promise<{ userId: string }>;
   log?: (message: string, context: Record<string, unknown>) => void;
+  /**
+   * Keeps delivery running after the response is sent (`EdgeRuntime.waitUntil` in production).
+   * With it, dispatch answers 202 as soon as the request is validated, so the database's short
+   * pg_net timeout never cuts a slow delivery short; without it, dispatch answers when done.
+   */
+  background?: (work: Promise<unknown>) => void;
+}
+
+interface DeliverySummary {
+  accepted: number;
+  failed: number;
+  removed_tokens: number;
 }
 
 /** Compares two secrets in time that does not depend on where they first differ. */
@@ -90,6 +102,25 @@ async function handleDispatch(req: Request, deps: PushDeps): Promise<Response> {
     return json({ accepted: 0, failed: 0, removed_tokens: 0 });
   }
 
+  if (deps.background) {
+    deps.background(
+      deliver(messages, jobs.length, deps).catch((error: unknown) => {
+        deps.log?.("push delivery failed", {
+          error: error instanceof Error ? error.name : "unknown",
+        });
+      }),
+    );
+    return json({ queued: messages.length }, { status: 202 });
+  }
+  return json(await deliver(messages, jobs.length, deps));
+}
+
+/** Sends the messages and forgets tokens the push service no longer accepts. */
+async function deliver(
+  messages: readonly ExpoMessage[],
+  jobCount: number,
+  deps: PushDeps,
+): Promise<DeliverySummary> {
   const report = await deps.sender().send(messages);
   let removed = 0;
   if (report.invalidTokens.length > 0) {
@@ -103,13 +134,13 @@ async function handleDispatch(req: Request, deps: PushDeps): Promise<Response> {
     }
   }
   deps.log?.("push dispatched", {
-    jobs: jobs.length,
+    jobs: jobCount,
     accepted: report.accepted,
     failed: report.failed,
     removed_tokens: removed,
     errors: [...new Set(report.errors)].slice(0, 10),
   });
-  return json({ accepted: report.accepted, failed: report.failed, removed_tokens: removed });
+  return { accepted: report.accepted, failed: report.failed, removed_tokens: removed };
 }
 
 export function createPushHandler(deps: PushDeps): Handler {

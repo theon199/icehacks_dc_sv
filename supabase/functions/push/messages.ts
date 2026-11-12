@@ -31,6 +31,8 @@ export const PushJobSchema = z.object({
   comment_id: z.uuid().nullish(),
   post_title: z.string().nullish(),
   comment_excerpt: z.string().nullish(),
+  /** Name from `public.badges`, for `badge` entries. */
+  badge_name: z.string().max(80).nullish(),
   data: z.record(z.string(), z.unknown()).nullish(),
   unread_count: z.number().int().nonnegative().nullish(),
   tokens: z.array(z.string().min(1).max(256)).max(50),
@@ -38,26 +40,17 @@ export const PushJobSchema = z.object({
 
 export type PushJob = z.infer<typeof PushJobSchema>;
 
+/** Most jobs in one dispatch request; `private.push_dispatch` sends larger statements in parts. */
+export const DISPATCH_MAX_JOBS = 500;
+
 export const DispatchBodySchema = z.object({
-  messages: z.array(PushJobSchema).max(5000),
+  messages: z.array(PushJobSchema).max(DISPATCH_MAX_JOBS),
 });
 
 export interface PushCopy {
   title: string;
   body: string;
 }
-
-const BADGE_NAMES: Record<string, string> = {
-  first_cook: "First dish cooked",
-  cooks_10: "Ten dishes cooked",
-  cooks_50: "Fifty dishes cooked",
-  streak_3: "Three-day cooking streak",
-  streak_7: "Seven-day cooking streak",
-  streak_30: "Thirty-day cooking streak",
-  cuisines_5: "Five cuisines explored",
-  cuisines_10: "Ten cuisines explored",
-  first_post: "First community post",
-};
 
 /** Collapses whitespace and cuts to `max` characters, ending with an ellipsis when cut. */
 export function clip(text: string | null | undefined, max: number): string {
@@ -147,7 +140,7 @@ export function copyFor(job: PushJob): PushCopy {
         : { title: "Your appeal was reviewed", body: "Tap to read the outcome." };
     }
     case "badge": {
-      const badge = BADGE_NAMES[stringField(job.data, "badge_id") ?? ""];
+      const badge = job.badge_name?.trim();
       return {
         title: "New badge earned",
         body: badge ? `${badge}. Nicely done!` : "Tap to see what you unlocked.",

@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { errorResponse, HttpError } from "../_shared/http.ts";
 import type { ExpoMessage, SendReport } from "./expo.ts";
 import { createPushHandler, type PushDeps, SECRET_HEADER, secretsMatch } from "./handler.ts";
-import type { PushPlatform, PushStore } from "./store.ts";
+import { asRateLimit, type PushPlatform, type PushStore } from "./store.ts";
 
 const USER = "11111111-1111-4111-8111-111111111111";
 const TOKEN = "ExponentPushToken[abcdefghij]";
@@ -31,7 +31,7 @@ class MemoryStore implements PushStore {
   }
 }
 
-function setup(report?: Partial<SendReport>) {
+function setup(report?: Partial<SendReport>, background?: PushDeps["background"]) {
   const store = new MemoryStore();
   const sent: ExpoMessage[][] = [];
   const logs: string[] = [];
@@ -57,6 +57,7 @@ function setup(report?: Partial<SendReport>) {
       return Promise.resolve({ userId: USER });
     },
     log: (message) => logs.push(message),
+    ...(background ? { background } : {}),
   };
   const handler = createPushHandler(deps);
   const call = async (req: Request) => {
@@ -196,4 +197,43 @@ Deno.test("dispatch validates the payload", async () => {
     post("push/dispatch", { messages: [{ kind: "like" }] }, { [SECRET_HEADER]: "s3cret-value" }),
   );
   assertEquals(res.status, 400);
+});
+
+Deno.test("with background work, dispatch answers 202 at once and still delivers", async () => {
+  const pending: Promise<unknown>[] = [];
+  const { store, sent, logs, call } = setup(
+    { accepted: 0, failed: 1, invalidTokens: [DEAD] },
+    (work) => pending.push(work),
+  );
+  await store.register(USER, DEAD, "ios");
+
+  const res = await call(
+    post("push/dispatch", { messages: [job([DEAD])] }, { [SECRET_HEADER]: "s3cret-value" }),
+  );
+  assertEquals(res.status, 202);
+  assertEquals(await res.json(), { queued: 1 });
+  assertEquals(pending.length, 1);
+
+  await Promise.all(pending);
+  assertEquals(sent.length, 1);
+  assertEquals(store.tokens.has(DEAD), false);
+  assertEquals(logs, ["push dispatched"]);
+});
+
+Deno.test("dispatch refuses more jobs than one request may carry", async () => {
+  const { sent, call } = setup();
+  const jobs = Array.from({ length: 501 }, () => job([TOKEN]));
+  const res = await call(
+    post("push/dispatch", { messages: jobs }, { [SECRET_HEADER]: "s3cret-value" }),
+  );
+  assertEquals(res.status, 400);
+  assertEquals(sent.length, 0);
+});
+
+Deno.test("the database rate limit becomes a 429", () => {
+  const limited = asRateLimit({ code: "PT429", detail: "Too many devices registered recently." });
+  assertEquals(limited?.status, 429);
+  assertEquals(limited?.message, "Too many devices registered recently.");
+  assertEquals(asRateLimit({ code: "23505" }), null);
+  assertEquals(asRateLimit(new Error("boom")), null);
 });

@@ -97,3 +97,12 @@ Deno.test("moderation pushes carry the decision id and use the account channel",
   assertEquals(message?.channelId, "account");
   assertEquals(message?.threadId, "account");
 });
+
+Deno.test("badge pushes use the badge name the database sends", () => {
+  const named = copyFor(
+    job({ kind: "badge", actor_id: null, badge_name: "On a roll", data: { badge_id: "streak_3" } }),
+  );
+  assertEquals(named.body, "On a roll. Nicely done!");
+  const unnamed = copyFor(job({ kind: "badge", actor_id: null, data: { badge_id: "x" } }));
+  assertEquals(unnamed.body, "Tap to see what you unlocked.");
+});

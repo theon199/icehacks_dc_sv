@@ -7,6 +7,7 @@
 
 import postgres from "npm:postgres@3.4.5";
 import { type EnvReader, requireEnv } from "../_shared/env.ts";
+import { HttpError } from "../_shared/http.ts";
 
 export type PushPlatform = "ios" | "android";
 
@@ -34,12 +35,27 @@ function connection(env: EnvReader): Sql {
   return shared;
 }
 
+/** The database's rate limit (SQLSTATE PT429) as the shared 429 error, or null. */
+export function asRateLimit(error: unknown): HttpError | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) return null;
+  if ((error as { code: unknown }).code !== "PT429") return null;
+  const detail = "detail" in error ? (error as { detail: unknown }).detail : undefined;
+  return new HttpError(
+    "rate_limited",
+    typeof detail === "string" && detail ? detail : "Too many requests. Try again later.",
+  );
+}
+
 /** Store backed by the project database. The connection opens on first use. */
 export function createPostgresStore(env: EnvReader): PushStore {
   return {
     async register(userId, token, platform) {
       const sql = connection(env);
-      await sql`select private.register_push_token(${userId}::uuid, ${token}, ${platform})`;
+      try {
+        await sql`select private.register_push_token(${userId}::uuid, ${token}, ${platform})`;
+      } catch (error) {
+        throw asRateLimit(error) ?? error;
+      }
     },
     async unregister(userId, token) {
       const sql = connection(env);
