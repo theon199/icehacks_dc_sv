@@ -2,7 +2,6 @@ import {
   clearSlot,
   entryPortion,
   MAX_ARCHIVED_WEEKS,
-  mealOfSlot,
   mealPlanSync,
   moveSlot,
   plannedRecipeIds,
@@ -116,7 +115,6 @@ describe('portions', () => {
     expect(entryPortion({}, 'dinner', true)).toBe(0.5);
     expect(entryPortion({}, 'snack', true)).toBe(1);
     expect(entryPortion({}, 'lunch', false)).toBe(1);
-    expect(mealOfSlot('6-breakfast')).toBe('breakfast');
   });
 
   it('accepts synced weeks with and without portions, dropping only a portion it cannot use', () => {

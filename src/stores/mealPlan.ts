@@ -83,11 +83,6 @@ function withWeek(weeks: Weeks, week: PlanWeek): Weeks {
   return { ...weeks, [week.weekStart]: week };
 }
 
-/** The meal a slot key names. */
-export function mealOfSlot(slot: SlotKey): Meal {
-  return slot.slice(2) as Meal;
-}
-
 /**
  * The portion a planned meal is cooked at. A planner that chose one stored it with the meal; a meal
  * without one (added by hand, or saved before portions were stored) follows the small-appetite
