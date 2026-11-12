@@ -3,14 +3,18 @@ import { Stack } from 'expo-router';
 import { useSessionStore } from '@/features/auth';
 import { useStackScreenOptions } from '@/ui/navigation';
 
+import { useInviteLinkCapture } from './useInviteLinkCapture';
+
 /**
  * Top-level stack. `Stack.Protected` exposes exactly one of the (auth), (setup) and (app) groups
  * based on the session status; when the status changes, expo-router moves to the first screen
- * that is allowed. Auth links and the about pages stay reachable in every state.
+ * that is allowed. Auth links and the about pages stay reachable in every state. An invite link
+ * that arrives before the signed-in app is available is parked and opened once it is.
  */
 export function RootNavigator() {
   const status = useSessionStore((s) => s.status);
   const screenOptions = useStackScreenOptions();
+  useInviteLinkCapture(status);
   return (
     <Stack screenOptions={screenOptions}>
       <Stack.Protected guard={status === 'signedOut'}>

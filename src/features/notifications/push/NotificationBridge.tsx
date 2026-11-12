@@ -3,18 +3,20 @@
  * the signed-in layout. It:
  *
  * - shows pushes that arrive while Famara is open as banners and refreshes the inbox and badge;
- * - opens the right screen when a push is tapped, including the one that launched the app;
+ * - opens the right screen when a push is tapped, including the one that launched the app, and
+ *   returns to the cook session when a finished cook timer's alert is tapped;
  * - keeps this device's push registration in step with the OS permission and the push setting;
  * - listens for new inbox rows over realtime so the bell updates without a push;
  * - mirrors the unread count on the app icon.
  */
 import { useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
-import { useRouter } from 'expo-router';
+import { useNavigationContainerRef, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
+import { cookTimerTapUrl } from '@/features/cook';
 import { describeError, logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabase/client';
 
@@ -22,7 +24,7 @@ import { markNotificationsRead } from '../api';
 import { usePushEnabled } from '../deps';
 import { invalidateInbox, useUnreadCount } from '../queries';
 import { syncPushRegistration } from './pushDevice';
-import { resolvePushTap } from './routing';
+import { cookSessionIdFromUrl, findCookSession, resolvePushTap } from './routing';
 
 /** Response ids already acted on, so the launch response and its listener event route once. */
 const handledResponses = new Set<string>();
@@ -37,6 +39,9 @@ export function NotificationBridge() {
   const unread = useUnreadCount();
   const client = useQueryClient();
   const router = useRouter();
+  // A stable ref: the tap handler reads the current screens when a tap arrives, so the bridge does
+  // not re-render (or re-read the launch tap) on every navigation.
+  const navigation = useNavigationContainerRef();
 
   // Foreground presentation and inbox refresh on arrival.
   useEffect(() => {
@@ -49,7 +54,9 @@ export function NotificationBridge() {
         shouldSetBadge: true,
       }),
     });
-    const received = Notifications.addNotificationReceivedListener(() => {
+    const received = Notifications.addNotificationReceivedListener((notification) => {
+      // A cook timer's local alert has no inbox row behind it, so there is nothing to refetch.
+      if (cookTimerTapUrl(notification.request.content.data)) return;
       void invalidateInbox(client);
     });
     return () => {
@@ -66,7 +73,25 @@ export function NotificationBridge() {
       if (handledResponses.has(key)) return;
       handledResponses.add(key);
       if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
-      const tap = resolvePushTap(response.notification.request.content.data, userId);
+      const data = response.notification.request.content.data;
+      // A cook timer's local alert is not an inbox item: go back to the cook session. Opening it
+      // again when it is already open would stack a second copy, so stay put when it (or its
+      // finish screen) is showing, and return to it only when no other cook screen is showing or
+      // in the way. Going back lands on the nearest cook screen by name and rewrites its recipe,
+      // so another recipe's session or an unsaved finish screen would be lost: open a new screen.
+      const cookUrl = cookTimerTapUrl(data);
+      if (cookUrl) {
+        const id = cookSessionIdFromUrl(cookUrl);
+        if (!id) return;
+        const state = navigation.isReady() ? navigation.getRootState() : undefined;
+        const placement = findCookSession(state, id);
+        if (placement === 'onScreen') return;
+        const href = { pathname: '/cook/[id]', params: { id } } as const;
+        if (placement === 'underneath') router.dismissTo(href);
+        else router.push(href);
+        return;
+      }
+      const tap = resolvePushTap(data, userId);
       if (tap.notificationId) {
         markNotificationsRead([tap.notificationId])
           .then(() => invalidateInbox(client))
@@ -81,7 +106,7 @@ export function NotificationBridge() {
     }
     const subscription = Notifications.addNotificationResponseReceivedListener(open);
     return () => subscription.remove();
-  }, [client, router, userId]);
+  }, [client, navigation, router, userId]);
 
   // Registration: on sign-in, when the setting changes, when the app returns to the foreground and
   // when the OS rotates the device token.
