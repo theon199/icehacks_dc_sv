@@ -1,5 +1,6 @@
 import { fingerprint, hashText, stableStringify, utf8Bytes } from './fingerprint';
-import { compareVersions, memoryLedgerStorage, freshLedger, timestampMs } from './ledger';
+import { memoryLedgerStorage } from './__fixtures__/memoryLedgerStorage';
+import { compareVersions, freshLedger, timestampMs } from './ledger';
 import { createSupabaseTransport, toSyncError } from './transport';
 import type { FamaraSupabaseClient } from '../supabase/client';
 
@@ -161,6 +162,27 @@ describe('fingerprints', () => {
     expect(utf8Bytes('é')).toBe(2);
     expect(utf8Bytes('🍕')).toBe(4);
     expect(utf8Bytes('€')).toBe(3);
+  });
+
+  it('counts a lone surrogate as the 3-byte replacement character', () => {
+    const high = String.fromCharCode(0xd83c);
+    const low = String.fromCharCode(0xdf55);
+    // A high surrogate followed by something that is not a low surrogate is not a pair.
+    expect(utf8Bytes(`${high}a`)).toBe(4);
+    expect(utf8Bytes(`${high}é`)).toBe(5);
+    expect(utf8Bytes(`${high}${high}`)).toBe(6);
+    expect(utf8Bytes(`${high}${high}${low}`)).toBe(7);
+    // At the very end, and a low surrogate on its own.
+    expect(utf8Bytes(`a${high}`)).toBe(4);
+    expect(utf8Bytes(low)).toBe(3);
+    expect(utf8Bytes(`${low}${high}`)).toBe(6);
+  });
+
+  it('agrees with a real UTF-8 encoder on well-formed text', () => {
+    const encoder = new TextEncoder();
+    for (const text of ['Привет, мир', 'пицца 🍕🍕 и 寿司', '👩‍🍳 cooks', 'naïve café']) {
+      expect(utf8Bytes(text)).toBe(encoder.encode(text).length);
+    }
   });
 });
 
