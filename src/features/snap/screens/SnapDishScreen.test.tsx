@@ -4,12 +4,13 @@ import type { SnapDish } from '@/lib/api/ai';
 import { searchRecipes } from '@/lib/catalog/queries';
 import { defaultPreferences, useCookLogStore, usePreferencesStore } from '@/stores';
 
+import type * as TestingModule from '../testing';
 import { SnapDishScreen } from './SnapDishScreen';
 import { useSnapSession } from '../snapSession';
 import { catalogRecipe, mockRouter, renderScreen } from '../testing';
 
 jest.mock('expo-router', () => ({
-  router: jest.requireActual<typeof import('../testing')>('../testing').mockRouter,
+  router: jest.requireActual<typeof TestingModule>('../testing').mockRouter,
 }));
 jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('expo-crypto', () => ({

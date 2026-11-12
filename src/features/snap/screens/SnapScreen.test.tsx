@@ -1,12 +1,15 @@
 import { act, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { useCameraPermissions } from 'expo-camera';
 import { launchImageLibraryAsync } from 'expo-image-picker';
-import { Linking } from 'react-native';
+import type * as ReactModule from 'react';
+import { Linking, type View as ViewType } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
+import type * as AiModule from '@/lib/api/ai';
 import { aiApi } from '@/lib/api/ai';
 import { ApiError } from '@/lib/api/errors';
 
+import type * as TestingModule from '../testing';
 import { SnapScreen } from './SnapScreen';
 import { preparePhoto } from '../capture/preparePhoto';
 import { useSnapSession } from '../snapSession';
@@ -15,21 +18,21 @@ import { mockRouter, renderScreen } from '../testing';
 const mockTakePicture = jest.fn();
 
 jest.mock('expo-router', () => {
-  const { useEffect } = jest.requireActual<typeof import('react')>('react');
+  const { useEffect } = jest.requireActual<typeof ReactModule>('react');
   return {
-    router: jest.requireActual<typeof import('../testing')>('../testing').mockRouter,
+    router: jest.requireActual<typeof TestingModule>('../testing').mockRouter,
     useIsFocused: () => true,
     useFocusEffect: (effect: () => void) => useEffect(effect, [effect]),
   };
 });
 jest.mock('expo-camera', () => {
-  const React = jest.requireActual<typeof import('react')>('react');
-  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  const React = jest.requireActual<typeof ReactModule>('react');
+  const { View } = jest.requireActual<{ View: typeof ViewType }>('react-native');
   function CameraView({
     ref,
     onCameraReady,
   }: {
-    ref: import('react').Ref<unknown>;
+    ref: ReactModule.Ref<unknown>;
     onCameraReady?: () => void;
   }) {
     React.useImperativeHandle(ref, () => ({ takePictureAsync: mockTakePicture }));
@@ -42,7 +45,7 @@ jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: jest.fn() }));
 jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('../capture/preparePhoto', () => ({ preparePhoto: jest.fn() }));
 jest.mock('@/lib/api/ai', () => ({
-  ...jest.requireActual<typeof import('@/lib/api/ai')>('@/lib/api/ai'),
+  ...jest.requireActual<typeof AiModule>('@/lib/api/ai'),
   aiApi: { readSnap: jest.fn() },
 }));
 

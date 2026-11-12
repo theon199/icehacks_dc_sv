@@ -4,15 +4,16 @@ import type { Ingredient } from '@/lib/catalog';
 import { getIngredients, listCandidates, searchIngredients } from '@/lib/catalog/queries';
 import { defaultPreferences, usePantryStore, usePreferencesStore } from '@/stores';
 
+import type * as TestingModule from '../testing';
 import { SnapPantryScreen } from './SnapPantryScreen';
 import { useSnapSession } from '../snapSession';
 import { catalogRecipe, mockRouter, renderScreen } from '../testing';
 
 jest.mock('@shopify/flash-list', () => ({
-  FlashList: jest.requireActual<typeof import('../testing')>('../testing').MockFlashList,
+  FlashList: jest.requireActual<typeof TestingModule>('../testing').MockFlashList,
 }));
 jest.mock('expo-router', () => ({
-  router: jest.requireActual<typeof import('../testing')>('../testing').mockRouter,
+  router: jest.requireActual<typeof TestingModule>('../testing').mockRouter,
 }));
 jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('expo-crypto', () => ({
@@ -49,16 +50,14 @@ beforeEach(() => {
     return hit ? [hit] : [];
   });
   jest.mocked(getIngredients).mockResolvedValue([]);
-  jest
-    .mocked(listCandidates)
-    .mockResolvedValue([
-      catalogRecipe({
-        id: 'r:omelette',
-        title: 'Spinach omelette',
-        ingredientIds: ['egg', 'spinach'],
-      }),
-      catalogRecipe({ id: 'r:stew', title: 'Bean stew', ingredientIds: ['bean', 'carrot'] }),
-    ]);
+  jest.mocked(listCandidates).mockResolvedValue([
+    catalogRecipe({
+      id: 'r:omelette',
+      title: 'Spinach omelette',
+      ingredientIds: ['egg', 'spinach'],
+    }),
+    catalogRecipe({ id: 'r:stew', title: 'Bean stew', ingredientIds: ['bean', 'carrot'] }),
+  ]);
   usePantryStore.getState().reset();
   usePreferencesStore.setState({ prefs: { ...defaultPreferences, allergensAnswered: true } });
   useSnapSession.setState({
