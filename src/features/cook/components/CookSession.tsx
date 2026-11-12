@@ -147,6 +147,7 @@ export function CookSession({ recipe }: CookSessionProps) {
               <StepTimerCard
                 seconds={current.timerSeconds}
                 timer={stepTimer}
+                alertsInBackground={!timers.notificationsOff}
                 onStart={() => void startStepTimer(step)}
                 onPause={timers.pause}
                 onResume={timers.resume}
