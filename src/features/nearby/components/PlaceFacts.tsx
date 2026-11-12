@@ -3,16 +3,31 @@ import { StyleSheet, View } from 'react-native';
 
 import { Icon, Text } from '@/ui';
 
-import type { PlaceView } from '../model/placeView';
+import { placeFactsLabel, type PlaceView } from '../model/placeView';
 
 export interface PlaceFactsProps {
   place: PlaceView;
+  /**
+   * Inside a card that already speaks a label covering these facts, the row stays silent on both
+   * platforms; on its own (the place sheet) it is read as one phrase.
+   */
+  silent?: boolean;
 }
 
-/** One line of facts: rating, distance, open now and price level. */
-function PlaceFactsView({ place }: PlaceFactsProps) {
+/**
+ * One line of facts: rating, distance, open now and price level. The row is a single accessibility
+ * element with a spoken label, so screen readers say "Price level 2 of 4" rather than "$$".
+ */
+function PlaceFactsView({ place, silent = false }: PlaceFactsProps) {
+  const label = silent ? null : placeFactsLabel(place);
+  const a11y = silent
+    ? {
+        accessibilityElementsHidden: true,
+        importantForAccessibility: 'no-hide-descendants' as const,
+      }
+    : { accessible: label !== null, accessibilityLabel: label ?? undefined };
   return (
-    <View style={styles.row} importantForAccessibility="no-hide-descendants">
+    <View style={styles.row} {...a11y} testID="nearby-place-facts">
       {place.rating ? (
         <View style={styles.item}>
           <Icon name="star.fill" size={13} color="highlight" />

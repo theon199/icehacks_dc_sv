@@ -48,7 +48,7 @@ function PlaceCardView({ place, selected, width, onOpen }: PlaceCardProps) {
         </Text>
       ) : null}
       <View style={styles.spacer} />
-      <PlaceFacts place={place} />
+      <PlaceFacts place={place} silent />
       {tally ? (
         <Text variant="caption" tone="primary" numberOfLines={1} style={styles.tally}>
           {tally}

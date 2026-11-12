@@ -17,7 +17,7 @@ import {
   tallyLabel,
   websiteUrl,
 } from './placeFormat';
-import { kindLabel, placeAccessibilityLabel, toPlaceView } from './placeView';
+import { kindLabel, placeAccessibilityLabel, placeFactsLabel, toPlaceView } from './placeView';
 
 describe('dish', () => {
   it('builds dish keys the server accepts', () => {
@@ -153,5 +153,18 @@ describe('placeView', () => {
     expect(placeAccessibilityLabel(view)).toBe(
       'Basil House, 1 km away, rated 4.4, open now, Price level 2 of 4',
     );
+  });
+
+  it('reads the facts row as one phrase, with the price in words', () => {
+    const view = toPlaceView(place, null, 'metric');
+    expect(placeFactsLabel(view)).toBe(
+      'Rated 4.4 from 120 reviews, 1 km away, open now, Price level 2 of 4',
+    );
+    const sparse = toPlaceView(
+      { ...place, rating: null, ratingCount: null, priceLevel: null, openNow: null, distanceM: -1 },
+      null,
+      'metric',
+    );
+    expect(placeFactsLabel(sparse)).toBeNull();
   });
 });

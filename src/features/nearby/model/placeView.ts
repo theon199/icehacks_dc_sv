@@ -99,3 +99,23 @@ export function placeAccessibilityLabel(place: PlaceView): string {
   if (place.priceA11y) parts.push(place.priceA11y);
   return parts.join(', ');
 }
+
+/**
+ * What the facts row shows, read as one phrase: "Rated 4.5 from 80 reviews, 350 m away, open now,
+ * Price level 2 of 4". Null when the row shows nothing.
+ */
+export function placeFactsLabel(place: PlaceView): string | null {
+  const parts: string[] = [];
+  if (place.rating) {
+    parts.push(
+      place.reviews
+        ? `Rated ${place.rating} from ${place.reviews} reviews`
+        : `Rated ${place.rating}`,
+    );
+  }
+  if (place.distance) parts.push(`${place.distance} away`);
+  if (place.open === 'open') parts.push('open now');
+  if (place.open === 'closed') parts.push('closed now');
+  if (place.priceA11y) parts.push(place.priceA11y);
+  return parts.length > 0 ? parts.join(', ') : null;
+}
