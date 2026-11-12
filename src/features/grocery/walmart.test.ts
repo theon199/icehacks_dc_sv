@@ -9,6 +9,7 @@ import {
   planCart,
   shouldShowWalmart,
 } from './walmart';
+import { createWalmartReadiness } from './walmartReadiness';
 
 jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn() }));
 
@@ -44,29 +45,25 @@ describe('cartReadyIds', () => {
 });
 
 describe('shouldShowWalmart', () => {
-  const ready = new Set(['flour']);
+  const status = { configured: true, affiliate: false } as const;
+  const known = (ready: string[], unknown: string[] = []) => ({ ready: new Set(ready), unknown });
 
   it('shows when configured and an item to buy is cart-ready', () => {
-    expect(shouldShowWalmart({ configured: true, affiliate: true }, ['egg', 'flour'], ready)).toBe(
-      true,
-    );
+    expect(shouldShowWalmart(status, ['egg', 'flour'], known(['flour']))).toBe(true);
+  });
+
+  it('shows before anything has been looked up, so viewing alone costs no lookup', () => {
+    expect(shouldShowWalmart(status, ['egg', 'flour'], known([], ['egg', 'flour']))).toBe(true);
   });
 
   it('hides when the integration is not configured', () => {
-    expect(shouldShowWalmart({ configured: false }, ['flour'], ready)).toBe(false);
-    expect(shouldShowWalmart(undefined, ['flour'], ready)).toBe(false);
+    expect(shouldShowWalmart({ configured: false }, ['flour'], known(['flour']))).toBe(false);
+    expect(shouldShowWalmart(undefined, ['flour'], known([], ['flour']))).toBe(false);
   });
 
-  it('hides until availability is known', () => {
-    expect(shouldShowWalmart({ configured: true, affiliate: false }, ['flour'], undefined)).toBe(
-      false,
-    );
-  });
-
-  it('hides when no item to buy is cart-ready', () => {
-    const status = { configured: true, affiliate: false } as const;
-    expect(shouldShowWalmart(status, ['egg'], ready)).toBe(false);
-    expect(shouldShowWalmart(status, [], ready)).toBe(false);
+  it('hides once a lookup found nothing to buy that is cart-ready', () => {
+    expect(shouldShowWalmart(status, ['egg'], known(['flour']))).toBe(false);
+    expect(shouldShowWalmart(status, [], known(['flour'], ['egg']))).toBe(false);
   });
 });
 
@@ -137,33 +134,74 @@ describe('describeLeftOut', () => {
 });
 
 describe('openWalmartCart', () => {
-  it('builds the cart and opens its link', async () => {
-    const createCart = jest.fn().mockResolvedValue({
-      configured: true,
-      affiliate: false,
-      url: 'https://www.walmart.com/cart?items=1',
-      items: [{ ingredientId: 'flour', itemId: 'w', quantity: 1 }],
-      skipped: [],
-    });
+  const cartAnswer = {
+    configured: true as const,
+    affiliate: false,
+    url: 'https://www.walmart.com/cart?items=1',
+    items: [{ ingredientId: 'flour', itemId: 'w', quantity: 1 }],
+    skipped: [],
+  };
+
+  function pricesFor(statuses: Record<string, WalmartPrice['status']>) {
+    return jest.fn(async (ids: readonly string[]) => ({
+      configured: true as const,
+      prices: ids.map((id) => walmartPrice(id, statuses[id] ?? 'unmapped')),
+    }));
+  }
+
+  it('looks up the items, builds a cart of the ready ones and opens its link', async () => {
+    const fetchPrices = pricesFor({ flour: 'found' });
+    const createCart = jest.fn().mockResolvedValue(cartAnswer);
     const openUrl = jest.fn().mockResolvedValue(undefined);
     const outcome = await openWalmartCart(
-      { idsToBuy: ['flour', 'egg'], readyIds: new Set(['flour']) },
-      { createCart, openUrl },
+      { idsToBuy: ['egg', 'flour'] },
+      { fetchPrices, createCart, openUrl, readiness: createWalmartReadiness() },
     );
+    expect(fetchPrices).toHaveBeenCalledWith(['egg', 'flour']);
     expect(createCart).toHaveBeenCalledWith({ items: [{ ingredient_id: 'flour', quantity: 1 }] });
     expect(openUrl).toHaveBeenCalledWith('https://www.walmart.com/cart?items=1');
     expect(outcome.kind).toBe('opened');
+  });
+
+  it('reuses recent answers instead of looking up again', async () => {
+    const readiness = createWalmartReadiness();
+    const fetchPrices = pricesFor({ flour: 'found' });
+    const createCart = jest.fn().mockResolvedValue(cartAnswer);
+    const deps = { fetchPrices, createCart, openUrl: jest.fn(), readiness };
+    await openWalmartCart({ idsToBuy: ['flour'] }, deps);
+    await openWalmartCart({ idsToBuy: ['flour'] }, deps);
+    expect(fetchPrices).toHaveBeenCalledTimes(1);
+    expect(createCart).toHaveBeenCalledTimes(2);
   });
 
   it('opens nothing when no cart could be built', async () => {
     const createCart = jest.fn();
     const openUrl = jest.fn();
     const outcome = await openWalmartCart(
-      { idsToBuy: ['egg'], readyIds: new Set() },
-      { createCart, openUrl },
+      { idsToBuy: ['egg'] },
+      {
+        fetchPrices: pricesFor({ egg: 'not_found' }),
+        createCart,
+        openUrl,
+        readiness: createWalmartReadiness(),
+      },
     );
     expect(outcome).toEqual({ kind: 'empty' });
     expect(createCart).not.toHaveBeenCalled();
     expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing integration without building a cart', async () => {
+    const createCart = jest.fn();
+    const outcome = await openWalmartCart(
+      { idsToBuy: ['egg'] },
+      {
+        fetchPrices: jest.fn().mockResolvedValue({ configured: false }),
+        createCart,
+        readiness: createWalmartReadiness(),
+      },
+    );
+    expect(outcome).toEqual({ kind: 'unavailable' });
+    expect(createCart).not.toHaveBeenCalled();
   });
 });
