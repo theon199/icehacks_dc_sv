@@ -288,8 +288,8 @@ Deno.serve(createHandler(async (req) => {
 | `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY` | edge functions | service-role client (maintenance only) |
 | `ANTHROPIC_API_KEY` | edge functions (secret) | Claude API |
 | `ANTHROPIC_MODEL`, `ANTHROPIC_FAST_MODEL` | edge functions (optional) | model overrides |
-| `SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_APPLE_SECRET` | local CLI | Sign in with Apple |
-| `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | local CLI | Google sign-in |
+| `FAMARA_APPLE_SIGNIN_CLIENT_ID`, `FAMARA_APPLE_SIGNIN_SECRET` | local CLI | Sign in with Apple |
+| `FAMARA_GOOGLE_SIGNIN_CLIENT_ID`, `FAMARA_GOOGLE_SIGNIN_SECRET` | local CLI | Google sign-in |
 
 Never commit `.env` files or keys.
 

@@ -39,7 +39,7 @@ export const AI_QUOTAS = {
 const quotaRows = z
   .array(z.object({
     allowed: z.boolean(),
-    remaining: z.number().int().nonnegative(),
+    remaining: z.number().int().min(0),
     reset_at: z.string(),
   }))
   .length(1);

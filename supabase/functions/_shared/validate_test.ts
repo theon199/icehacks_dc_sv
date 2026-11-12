@@ -1,8 +1,9 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { HttpError } from "./http.ts";
 import { parseBody, parseWith } from "./validate.ts";
-import { rpcErrorToHttp } from "./rpc.ts";
+import { callRpc, rpcErrorToHttp } from "./rpc.ts";
 
 const schema = z.object({
   dish: z.string().min(1),
@@ -51,6 +52,25 @@ Deno.test("rpc errors map SQLSTATE to HTTP codes", () => {
   try {
     const unknown = rpcErrorToHttp({ code: "XX000", message: "boom" });
     assertEquals([unknown.status, unknown.code], [502, "upstream_error"]);
+  } finally {
+    console.error = original;
+  }
+});
+
+Deno.test("callRpc reports a result in an unexpected shape as an upstream error", async () => {
+  const client = {
+    rpc: () => Promise.resolve({ data: { surprise: true }, error: null }),
+  } as unknown as SupabaseClient;
+  const logged: unknown[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => logged.push(args);
+  try {
+    const error = await assertRejects(
+      () => callRpc(client, "my_stats", {}, z.object({ cooked_count: z.number() })),
+      HttpError,
+    );
+    assertEquals([error.status, error.code, error.details], [502, "upstream_error", undefined]);
+    assertEquals(logged.length, 1);
   } finally {
     console.error = original;
   }

@@ -9,7 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 import { type ErrorCode, HttpError } from "./http.ts";
-import { parseWith } from "./validate.ts";
+import { formatIssues } from "./validate.ts";
 
 export interface PostgrestLikeError {
   message: string;
@@ -24,6 +24,7 @@ const STATUS_BY_SQLSTATE: Record<string, ErrorCode> = {
   PT403: "forbidden",
   PT404: "not_found",
   PT409: "conflict",
+  PT413: "payload_too_large",
   PT429: "rate_limited",
   "22023": "invalid_request",
   "22P02": "invalid_request",
@@ -45,7 +46,11 @@ export function rpcErrorToHttp(error: PostgrestLikeError): HttpError {
   return new HttpError(code, message, { details: { reason: error.message } });
 }
 
-/** Calls `fn` and validates its result with `schema`. */
+/**
+ * Calls `fn` and validates its result with `schema`. A result in an unexpected shape is a server
+ * contract bug, not a client mistake: it is logged and reported as 502 `upstream_error`, without
+ * passing the validation issues to the caller.
+ */
 export async function callRpc<S extends z.ZodType>(
   client: SupabaseClient,
   fn: string,
@@ -54,5 +59,10 @@ export async function callRpc<S extends z.ZodType>(
 ): Promise<z.output<S>> {
   const { data, error } = await client.rpc(fn, args);
   if (error) throw rpcErrorToHttp(error);
-  return parseWith(schema, data, `${fn} result`);
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    console.error("rpc returned an unexpected shape", { fn, issues: formatIssues(result.error) });
+    throw new HttpError("upstream_error", "The database returned an unexpected response.");
+  }
+  return result.data;
 }

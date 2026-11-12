@@ -3,8 +3,10 @@
  *
  * Plain `fetch`, no SDK, so cold starts stay small. Covers what Famara's AI features need:
  *   - model tiers chosen by env (`ANTHROPIC_MODEL`, `ANTHROPIC_FAST_MODEL`)
- *   - per-attempt timeouts and retries on 408/409/429/5xx/529 with full-jitter backoff that
- *     honours `retry-after`
+ *   - one deadline for the whole call (every attempt, the response body and the backoff waits),
+ *     sized to fit inside the edge-function wall clock; retries on 408/409/429/5xx/529 and
+ *     connection failures with full-jitter backoff that honours `retry-after`. A call that hits
+ *     the deadline is not retried: there is no time left, and the request may already be billed.
  *   - prompt caching on the system prompt (tools + system form the cached prefix)
  *   - server-side refusal fallback on models that support it, and typed refusal errors
  *   - JSON output constrained by a zod schema (structured outputs), tool definitions from zod,
@@ -100,23 +102,12 @@ export interface ToolUseBlock {
   input: unknown;
 }
 
-export interface Usage {
-  input_tokens: number;
-  output_tokens: number;
-  cache_creation_input_tokens?: number | null;
-  cache_read_input_tokens?: number | null;
-  [key: string]: unknown;
-}
-
-export interface Message {
-  id: string;
-  model: string;
-  role: "assistant";
-  content: ContentBlock[];
-  stop_reason: string | null;
-  stop_details?: { type?: string; category?: string | null; explanation?: string | null } | null;
-  usage: Usage;
-}
+const usageSchema = z.looseObject({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+  cache_creation_input_tokens: z.number().nullable().optional(),
+  cache_read_input_tokens: z.number().nullable().optional(),
+});
 
 const messageSchema = z.object({
   id: z.string(),
@@ -132,8 +123,12 @@ const messageSchema = z.object({
     })
     .nullable()
     .optional(),
-  usage: z.looseObject({ input_tokens: z.number(), output_tokens: z.number() }),
+  usage: usageSchema,
 });
+
+export type Usage = z.output<typeof usageSchema>;
+/** A Messages API reply, exactly as validated by `messageSchema`. */
+export type Message = z.output<typeof messageSchema>;
 
 const errorBodySchema = z.object({
   error: z.object({ type: z.string(), message: z.string() }),
@@ -178,10 +173,11 @@ export class AnthropicError extends Error {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "AnthropicError";
     this.kind = kind;
-    this.status = options.status ?? null;
-    this.type = options.type ?? null;
-    this.retryable = options.retryable ?? false;
-    this.retryAfterMs = options.retryAfterMs ?? null;
+    const { status = null, type = null, retryable = false, retryAfterMs = null } = options;
+    this.status = status;
+    this.type = type;
+    this.retryable = retryable;
+    this.retryAfterMs = retryAfterMs;
     this.requestId = options.requestId ?? null;
     this.category = options.category ?? null;
   }
@@ -191,7 +187,7 @@ export class AnthropicError extends Error {
 export function parseRetryAfter(value: string | null, now: number = Date.now()): number | null {
   if (!value) return null;
   const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  if (value.trim() !== "" && Number.isFinite(seconds)) return Math.max(0, seconds) * 1000;
   const date = Date.parse(value);
   if (Number.isNaN(date)) return null;
   return Math.max(0, date - now);
@@ -305,9 +301,9 @@ export function toStructuredSchema(schema: unknown): JsonSchema {
   const visit = (node: unknown): unknown => {
     if (Array.isArray(node)) return node.map(visit);
     if (node === null || typeof node !== "object") return node;
-    const source = node as Record<string, unknown>;
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(source)) {
+    const out: { [key: string]: unknown } = {};
+    for (const entry of Object.entries(node)) {
+      const [key, value] = entry;
       if (key === "oneOf") {
         out["anyOf"] = visit(value);
         continue;
@@ -422,10 +418,7 @@ export function imageBlockFromBase64(data: string): ImageBlockParam {
   if ((payload.length * 3) / 4 > MAX_IMAGE_BYTES + 3) {
     throw new HttpError("payload_too_large", "Images must be 5 MB or smaller.");
   }
-  const binary = atob(payload);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return imageBlock(bytes);
+  return imageBlock(Uint8Array.from(atob(payload), (char) => char.charCodeAt(0)));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -458,15 +451,23 @@ export interface MessageRequest {
 export interface AnthropicClientOptions {
   apiKey: string;
   models?: { default?: string; fast?: string };
-  /** Per-attempt timeout in ms (default 60 s). */
+  /**
+   * Deadline in ms for a whole call: all attempts, reading the reply and the waits between
+   * retries (default 110 s, inside Supabase's 150 s edge-function limit). Reaching it ends the
+   * call with kind "timeout"; it is never retried.
+   */
   timeoutMs?: number;
-  /** Retries after the first attempt (default 2). */
+  /** Retries after the first attempt (default 2), as long as the deadline leaves room. */
   maxRetries?: number;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
+  now?: () => number;
   url?: string;
 }
+
+/** Backoff waits shorter than this before the deadline are skipped: the retry could not finish. */
+const MIN_ATTEMPT_MS = 1_000;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -475,9 +476,10 @@ export class AnthropicClient {
   private readonly apiKey: string;
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
-  private readonly fetchImpl: typeof fetch;
+  private readonly doFetch: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly random: () => number;
+  private readonly now: () => number;
   private readonly url: string;
 
   constructor(options: AnthropicClientOptions) {
@@ -487,11 +489,12 @@ export class AnthropicClient {
       default: options.models?.default ?? DEFAULT_MODEL,
       fast: options.models?.fast ?? DEFAULT_FAST_MODEL,
     };
-    this.timeoutMs = options.timeoutMs ?? 60_000;
+    this.timeoutMs = options.timeoutMs ?? 110_000;
     this.maxRetries = Math.max(0, options.maxRetries ?? 2);
-    this.fetchImpl = options.fetch ?? fetch;
+    this.doFetch = options.fetch ?? fetch;
     this.sleep = options.sleep ?? defaultSleep;
     this.random = options.random ?? Math.random;
+    this.now = options.now ?? Date.now;
     this.url = options.url ?? ANTHROPIC_MESSAGES_URL;
   }
 
@@ -577,28 +580,29 @@ export class AnthropicClient {
   }
 
   /**
-   * Sends one Messages request with timeouts and retries. Throws AnthropicError; a
-   * `stop_reason` of "refusal" is raised as kind "refusal".
+   * Sends one Messages request within the client deadline, retrying transient failures. Throws
+   * AnthropicError; a `stop_reason` of "refusal" is raised as kind "refusal".
    */
   async createMessage(req: MessageRequest): Promise<Message> {
     const { body, headers } = this.buildRequest(req);
     const payload = JSON.stringify(body);
+    const deadline = AbortSignal.timeout(this.timeoutMs);
+    const giveUpAt = this.now() + this.timeoutMs;
+    const signal = req.signal ? AbortSignal.any([req.signal, deadline]) : deadline;
 
     for (let attempt = 0;; attempt++) {
       let failure: AnthropicError;
       try {
-        const res = await this.send(payload, headers, req.signal);
-        if (res.ok) return this.readMessage(res);
-        failure = await errorFromResponse(res);
+        // The body is read inside the same try and under the same signal, so a reply that
+        // stalls half-way is classified like a stalled request.
+        return await this.attempt(payload, headers, signal);
       } catch (error) {
-        if (error instanceof AnthropicError) {
-          failure = error;
-        } else {
-          throw error;
-        }
+        failure = this.classify(error, req.signal, deadline);
       }
       if (!failure.retryable || attempt >= this.maxRetries) throw failure;
-      await this.sleep(this.backoffMs(attempt, failure.retryAfterMs));
+      const wait = this.backoffMs(attempt, failure.retryAfterMs);
+      if (this.now() + wait + MIN_ATTEMPT_MS > giveUpAt) throw failure;
+      await this.sleep(wait);
       if (req.signal?.aborted) {
         throw new AnthropicError("aborted", "The request was cancelled.", {
           cause: req.signal.reason,
@@ -607,57 +611,57 @@ export class AnthropicClient {
     }
   }
 
-  private async send(payload: string, headers: Headers, signal?: AbortSignal): Promise<Response> {
-    const timeout = AbortSignal.timeout(this.timeoutMs);
-    const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    try {
-      return await this.fetchImpl(this.url, {
-        method: "POST",
-        headers,
-        body: payload,
-        signal: combined,
-      });
-    } catch (error) {
-      if (signal?.aborted) {
-        throw new AnthropicError("aborted", "The request was cancelled.", { cause: error });
-      }
-      if (timeout.aborted) {
-        throw new AnthropicError("timeout", "The Claude API did not answer in time.", {
-          retryable: true,
-          cause: error,
-        });
-      }
-      throw new AnthropicError("network", "Could not reach the Claude API.", {
-        retryable: true,
-        cause: error,
-      });
-    }
-  }
+  /** One HTTP round trip: send, then read and validate the whole reply. */
+  private async attempt(payload: string, headers: Headers, signal: AbortSignal): Promise<Message> {
+    const res = await this.doFetch(this.url, { method: "POST", headers, body: payload, signal });
+    if (!res.ok) throw await errorFromResponse(res);
+    const requestId = res.headers.get("request-id");
+    const text = await res.text();
 
-  private async readMessage(res: Response): Promise<Message> {
     let raw: unknown;
     try {
-      raw = await res.json();
+      raw = JSON.parse(text);
     } catch (error) {
       throw new AnthropicError("invalid_response", "The Claude API returned invalid JSON.", {
         cause: error,
-        requestId: res.headers.get("request-id"),
+        requestId,
       });
     }
     const parsed = messageSchema.safeParse(raw);
     if (!parsed.success) {
       throw new AnthropicError("invalid_response", "The Claude API returned an unexpected shape.", {
-        requestId: res.headers.get("request-id"),
+        requestId,
       });
     }
-    const message = parsed.data as Message;
-    if (message.stop_reason === "refusal") {
+    if (parsed.data.stop_reason === "refusal") {
       throw new AnthropicError("refusal", "Claude declined the request.", {
-        category: message.stop_details?.category ?? null,
-        requestId: res.headers.get("request-id"),
+        category: parsed.data.stop_details?.category ?? null,
+        requestId,
       });
     }
-    return message;
+    return parsed.data;
+  }
+
+  /** Turns anything thrown by an attempt into an AnthropicError with the right retry policy. */
+  private classify(
+    error: unknown,
+    callerSignal: AbortSignal | undefined,
+    deadline: AbortSignal,
+  ): AnthropicError {
+    if (callerSignal?.aborted) {
+      return new AnthropicError("aborted", "The request was cancelled.", { cause: error });
+    }
+    if (deadline.aborted) {
+      return new AnthropicError("timeout", "The Claude API did not answer in time.", {
+        cause: error,
+      });
+    }
+    if (error instanceof AnthropicError) return error;
+    // fetch() rejections and broken response streams: the connection failed, try again.
+    return new AnthropicError("network", "Could not reach the Claude API.", {
+      retryable: true,
+      cause: error,
+    });
   }
 
   /** Sends a request and returns the reply's text. */
@@ -726,45 +730,46 @@ export class AnthropicClient {
   }
 }
 
+export type ToolOutput = string | Array<TextBlockParam | ImageBlockParam>;
+
+/** A tool plus the code that runs it. `invoke` validates the raw input before running. */
 export interface ToolHandler {
   tool: ZodTool;
-  run(input: unknown): Promise<string | Array<TextBlockParam | ImageBlockParam>>;
+  invoke(input: unknown): Promise<{ ok: true; output: ToolOutput } | { ok: false; error: string }>;
 }
 
-/** Pairs a tool with the function that executes it, keeping the input type. */
+/** Pairs a tool with the function that executes it; `run` only ever sees validated input. */
 export function toolHandler<S extends z.ZodType>(
   tool: ZodTool<S>,
-  run: (input: z.output<S>) => Promise<string | Array<TextBlockParam | ImageBlockParam>>,
+  run: (input: z.output<S>) => Promise<ToolOutput>,
 ): ToolHandler {
-  return { tool, run: (input) => run(input as z.output<S>) };
+  return {
+    tool,
+    async invoke(input) {
+      const parsed = tool.parse(input);
+      if (!parsed.ok) return { ok: false, error: `Invalid input: ${parsed.issues}` };
+      return { ok: true, output: await run(parsed.value) };
+    },
+  };
 }
 
 async function executeTool(
   handler: ToolHandler | undefined,
   use: ToolUseBlock,
 ): Promise<ToolResultBlockParam> {
-  if (!handler) {
-    return {
-      type: "tool_result",
-      tool_use_id: use.id,
-      content: `Unknown tool: ${use.name}`,
-      is_error: true,
-    };
-  }
-  const parsed = handler.tool.parse(use.input);
-  if (!parsed.ok) {
-    return {
-      type: "tool_result",
-      tool_use_id: use.id,
-      content: `Invalid input: ${parsed.issues}`,
-      is_error: true,
-    };
-  }
+  const failed = (content: string): ToolResultBlockParam => ({
+    type: "tool_result",
+    tool_use_id: use.id,
+    content,
+    is_error: true,
+  });
+  if (!handler) return failed(`Unknown tool: ${use.name}`);
   try {
-    return { type: "tool_result", tool_use_id: use.id, content: await handler.run(parsed.value) };
+    const result = await handler.invoke(use.input);
+    if (!result.ok) return failed(result.error);
+    return { type: "tool_result", tool_use_id: use.id, content: result.output };
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "Tool failed.";
-    return { type: "tool_result", tool_use_id: use.id, content: reason, is_error: true };
+    return failed(error instanceof Error ? error.message : "Tool failed.");
   }
 }
 

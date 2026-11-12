@@ -119,15 +119,13 @@ export async function readJson(req: Request, options: ReadJsonOptions = {}): Pro
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    received += value.byteLength;
+  for (let step = await reader.read(); !step.done; step = await reader.read()) {
+    received += step.value.byteLength;
     if (received > maxBytes) {
       await reader.cancel();
       throw new HttpError("payload_too_large", "The request body is too large.");
     }
-    chunks.push(value);
+    chunks.push(step.value);
   }
 
   const bytes = new Uint8Array(received);
@@ -147,7 +145,12 @@ export async function readJson(req: Request, options: ReadJsonOptions = {}): Pro
   }
 }
 
-export type Method = "GET" | "POST";
+const METHODS = ["GET", "POST"] as const;
+export type Method = (typeof METHODS)[number];
+
+function isMethod(value: string): value is Method {
+  return (METHODS as readonly string[]).includes(value);
+}
 
 export interface HandlerOptions {
   /** Methods the function accepts (OPTIONS is always answered). Defaults to POST only. */
@@ -165,7 +168,7 @@ export function createHandler(handler: Handler, options: HandlerOptions = {}): H
   return async (req: Request): Promise<Response> => {
     const preflight = handlePreflight(req);
     if (preflight) return preflight;
-    if (!methods.includes(req.method as Method)) {
+    if (!isMethod(req.method) || !methods.includes(req.method)) {
       return errorResponse(
         new HttpError("method_not_allowed", `Use ${methods.join(" or ")}.`, {
           headers: { Allow: [...methods, "OPTIONS"].join(", ") },

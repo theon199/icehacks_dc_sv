@@ -10,7 +10,8 @@ enabled = true
 port = 54321
 # Only these schemas are reachable through the Data API. `private` is never exposed.
 schemas = ["public", "graphql_public"]
-extra_search_path = ["public", "extensions"]
+# Unqualified names resolve against extensions (citext, pgcrypto) and then public.
+extra_search_path = ["extensions", "public"]
 max_rows = 1000
 
 [db]
@@ -86,16 +87,16 @@ max_enrolled_factors = 10
 
 [auth.external.apple]
 enabled = true
-client_id = "env(SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID)"
-secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
+client_id = "env(FAMARA_APPLE_SIGNIN_CLIENT_ID)"
+secret = "env(FAMARA_APPLE_SIGNIN_SECRET)"
 redirect_uri = ""
 url = ""
 skip_nonce_check = false
 
 [auth.external.google]
 enabled = true
-client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
-secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+client_id = "env(FAMARA_GOOGLE_SIGNIN_CLIENT_ID)"
+secret = "env(FAMARA_GOOGLE_SIGNIN_SECRET)"
 redirect_uri = ""
 url = ""
 skip_nonce_check = true

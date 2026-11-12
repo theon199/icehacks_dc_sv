@@ -65,7 +65,10 @@ function apiError(status: number, type: string, headers: HeadersInit = {}) {
   });
 }
 
-function client(replies: Reply[], options: { maxRetries?: number; timeoutMs?: number } = {}) {
+function client(
+  replies: Reply[],
+  options: { maxRetries?: number; timeoutMs?: number; now?: () => number } = {},
+) {
   const { calls, fetch } = fakeFetch(replies);
   const sleeps: number[] = [];
   const c = new AnthropicClient({
@@ -187,24 +190,79 @@ Deno.test("network failures are retried", async () => {
   assertEquals(calls.length, 2);
 });
 
-Deno.test("slow responses time out", async () => {
+Deno.test("slow responses time out and are not retried", async () => {
   const hang = (signal: AbortSignal) =>
     new Promise<Response>((_, reject) =>
       signal.addEventListener("abort", () => reject(signal.reason))
     );
-  const { client: c } = client([hang], { maxRetries: 0, timeoutMs: 10 });
+  const { client: c, calls } = client([hang, hang], { maxRetries: 2, timeoutMs: 10 });
   const error = await assertRejects(
     () => c.createMessage({ messages: [{ role: "user", content: "x" }] }),
     AnthropicError,
   );
-  assertEquals(error.kind, "timeout");
+  assertEquals([error.kind, error.retryable], ["timeout", false]);
+  assertEquals(calls.length, 1);
   quiet(() => {
     assertEquals(anthropicErrorToHttp(error).status, 504);
   });
 });
 
+/** Headers arrive at once; the body never finishes until the request is aborted. */
+function stalledBody(signal: AbortSignal): Promise<Response> {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"id":"msg_1",'));
+      signal.addEventListener("abort", () => controller.error(signal.reason));
+    },
+  });
+  return Promise.resolve(new Response(stream, { status: 200 }));
+}
+
+Deno.test("a reply body that stalls counts as a timeout, not an invalid response", async () => {
+  const { client: c, calls } = client([stalledBody, stalledBody], { timeoutMs: 20 });
+  const error = await assertRejects(
+    () => c.createMessage({ messages: [{ role: "user", content: "x" }] }),
+    AnthropicError,
+  );
+  assertEquals(error.kind, "timeout");
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("a reply body that breaks off is retried like a network failure", async () => {
+  const broken = () =>
+    Promise.resolve(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.error(new TypeError("connection reset"));
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+  const { client: c, calls } = client([broken, message([{ type: "text", text: "again" }])]);
+  assertEquals((await c.createText({ messages: [{ role: "user", content: "x" }] })).text, "again");
+  assertEquals(calls.length, 2);
+});
+
+Deno.test("no retry is started that could not finish before the deadline", async () => {
+  let clock = 0;
+  const { client: c, calls, sleeps } = client(
+    [apiError(429, "rate_limit_error", { "retry-after": "30" }), message([])],
+    { timeoutMs: 10_000, now: () => clock },
+  );
+  clock = 5_000;
+  const error = await assertRejects(
+    () => c.createMessage({ messages: [{ role: "user", content: "x" }] }),
+    AnthropicError,
+  );
+  assertEquals(error.status, 429);
+  assertEquals(calls.length, 1);
+  assertEquals(sleeps, []);
+});
+
 Deno.test("a caller abort is not retried", async () => {
-  const controller = new AbortController();
+  const caller = new AbortController();
   const hang = (signal: AbortSignal) =>
     new Promise<Response>((_, reject) =>
       signal.addEventListener("abort", () => reject(signal.reason))
@@ -212,9 +270,9 @@ Deno.test("a caller abort is not retried", async () => {
   const { client: c, calls } = client([hang, hang]);
   const pending = c.createMessage({
     messages: [{ role: "user", content: "x" }],
-    signal: controller.signal,
+    signal: caller.signal,
   });
-  controller.abort();
+  caller.abort();
   const error = await assertRejects(() => pending, AnthropicError);
   assertEquals(error.kind, "aborted");
   assertEquals(calls.length, 1);
