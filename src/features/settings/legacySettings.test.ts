@@ -175,6 +175,40 @@ describe('migrateLegacySettings', () => {
     await expect(migrateLegacySettings('user-1')).resolves.toBe('nothing');
   });
 
+  it('keeps the old allergens and diets until sync confirms the push (offline sign-out)', async () => {
+    usePreferencesStore.setState({ prefs: onboarded() });
+    writeOldSettings({
+      'user-1': oldEntry({ allergens: ['peanut'], diets: ['vegan'], cuisines: ['thai'] }),
+    });
+    await SecureStore.setItemAsync(oldPersonalKey('user-1'), JSON.stringify({ heightCm: 170 }));
+    // Offline: the merged answers are still waiting to be sent.
+    useSyncStatusStore
+      .getState()
+      .set({ phase: 'offline', pending: 1, lastSyncedAt: 1_700_000_000_000, lastError: null });
+
+    await expect(migrateLegacySettings('user-1')).resolves.toBe('migrated');
+    expect(selectAvoidAllergens(usePreferencesStore.getState())).toEqual(['peanut']);
+
+    // The only durable copy survives a wipe, cut down to the safety answers.
+    const kept = JSON.parse(Storage.getItemSync(OLD_KEY) ?? '{}') as {
+      state: { accounts: Record<string, { preferences: Record<string, unknown> }> };
+    };
+    expect(kept.state.accounts['user-1']?.preferences).toEqual({
+      allergens: ['peanut'],
+      diets: ['vegan'],
+    });
+    expect(await SecureStore.getItemAsync(oldPersonalKey('user-1'))).not.toBeNull();
+
+    // A wipe and a later run merge the allergens back in.
+    resetUserStores();
+    usePreferencesStore.setState({ prefs: onboarded() });
+    syncPulled();
+    await expect(migrateLegacySettings('user-1')).resolves.toBe('migrated');
+    expect(selectAvoidAllergens(usePreferencesStore.getState())).toEqual(['peanut']);
+    expect(usePreferencesStore.getState().prefs.cuisines).toEqual([]);
+    expect(oldAccounts()).toEqual([]);
+  });
+
   it('moves each account’s answers when that account signs in, then removes the old key', async () => {
     writeOldSettings({
       'user-1': oldEntry({ allergens: ['peanut'] }),

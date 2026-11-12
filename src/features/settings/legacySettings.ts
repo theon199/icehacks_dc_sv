@@ -28,7 +28,7 @@ import {
 } from '@/domain/types';
 import { describeError, logger } from '@/lib/logger';
 import { storageKey } from '@/lib/storage/kv';
-import { useSyncStatusStore } from '@/lib/sync';
+import { flushSync, useSyncStatusStore } from '@/lib/sync';
 
 import {
   MAX_CUISINES,
@@ -116,7 +116,7 @@ export function planLegacyMigration(entry: unknown, current: Preferences): Legac
   const plan: LegacyMigrationPlan = { preferences: {} };
 
   if (old.allergens != null) {
-    const base = current.allergensAnswered ? current.allergens : [];
+    const base = current.allergens;
     const merged = known<AllergenId>(allergenIdSchema, [...base, ...old.allergens]);
     if (!current.allergensAnswered || !sameMembers(merged, current.allergens)) {
       plan.allergens = merged;
@@ -232,7 +232,10 @@ function syncHasPulled(): boolean {
 const canWriteFor = (userId: string) => stillSignedInAs(userId) && isOnboarded() && syncHasPulled();
 
 export type LegacyMigrationResult =
-  /** Old answers were moved and this account's old copies deleted. */
+  /**
+   * Old answers were moved. This account's old copies are deleted once sync confirms the push;
+   * until then only its allergens and diets are kept, to be merged again on a later run.
+   */
   | 'migrated'
   /** This account has no old copies. */
   | 'nothing'
@@ -267,9 +270,51 @@ export async function migrateLegacySettings(userId: string): Promise<LegacyMigra
   if (old.details != null && !selectHasPersonalDetails(usePersonalDetailsStore.getState())) {
     usePersonalDetailsStore.getState().update(old.details);
   }
-  await discardLegacyAccount(userId);
-  logger.info('Moved old Settings answers into the shared stores');
+  // The old copies are the only durable record until the server has the merged answers, so they
+  // are deleted only once a push has gone through. Otherwise (offline, a failed push, or sign-out
+  // wiping the device first) the entry is cut down to its allergens and diets: running the merge
+  // again later can then only add safety answers, never undo a newer edit of anything else.
+  if (await pushConfirmed()) {
+    await discardLegacyAccount(userId);
+    logger.info('Moved old Settings answers into the shared stores');
+  } else {
+    keepOnlySafetyAnswers(userId);
+    logger.info('Moved old Settings answers; keeping their allergens until sync confirms them');
+  }
   return 'migrated';
+}
+
+/** How long the migration waits for its changes to reach the server. */
+const CONFIRM_TIMEOUT_MS = 4000;
+
+async function pushConfirmed(): Promise<boolean> {
+  const flushed = await flushSync(CONFIRM_TIMEOUT_MS).catch(() => false);
+  const status = useSyncStatusStore.getState();
+  return flushed && status.phase !== 'stopped' && status.pending === 0 && status.lastError == null;
+}
+
+/** Reduces one account's old entry to the answers whose loss would be unsafe. */
+function keepOnlySafetyAnswers(userId: string): void {
+  const read = readLegacyEnvelope();
+  if (read.kind !== 'ok' || !(userId in read.envelope.state.accounts)) return;
+  const legacy = legacyEntrySchema
+    .catch({ preferences: {}, notifications: {} })
+    .parse(read.envelope.state.accounts[userId] ?? {});
+  const reduced = {
+    preferences: {
+      allergens: legacy.preferences.allergens ?? null,
+      diets: legacy.preferences.diets ?? [],
+    },
+  };
+  const accounts = { ...read.envelope.state.accounts, [userId]: reduced };
+  try {
+    Storage.setItemSync(
+      LEGACY_KEY,
+      JSON.stringify({ ...read.envelope, state: { ...read.envelope.state, accounts } }),
+    );
+  } catch (error) {
+    logger.warn('Could not update the old settings entry', describeError(error));
+  }
 }
 
 /** Accounts whose old answers have been dealt with in this app session. */
