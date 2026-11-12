@@ -12,6 +12,10 @@ import { useSessionStore } from '@/features/auth';
 import { appScreens } from '@/features/shell/appScreens';
 import { ThemeProvider } from '@/ui/ThemeProvider';
 
+// The layout also mounts the session's background work, which needs the app's query client and
+// native modules; it has its own tests, and this file is only about the AI guard.
+jest.mock('@/features/shell/SignedInEffects', () => ({ SignedInEffects: () => null }));
+
 /** A stand-in screen that just prints its name. */
 function label(text: string) {
   return function StandIn() {

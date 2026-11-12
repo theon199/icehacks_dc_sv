@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { selectCanUseAi, useSessionStore } from '@/features/auth';
 import { useSettingsLaunchSync } from '@/features/settings';
 import { appScreens, type AppScreen } from '@/features/shell/appScreens';
+import { SignedInEffects } from '@/features/shell/SignedInEffects';
 import { useTheme } from '@/ui';
 import { useStackScreenOptions } from '@/ui/navigation';
 
@@ -21,13 +22,18 @@ export default function AppLayout() {
   // reconciled with the account at launch, and allergens an earlier build kept only in Settings
   // reach the safety filter without the person having to open Settings first.
   useSettingsLaunchSync();
+  // Session-wide background work (notification plumbing, cook retries, invite resume) sits beside
+  // it for the same reason: it must run from launch, not only once some screen happens to open.
   const toScreen = (screen: AppScreen) => (
     <Stack.Screen key={screen.name} name={screen.name} options={screen.options(theme)} />
   );
   return (
-    <Stack screenOptions={screenOptions}>
-      {openScreens.map(toScreen)}
-      <Stack.Protected guard={canUseAi}>{aiScreens.map(toScreen)}</Stack.Protected>
-    </Stack>
+    <>
+      <SignedInEffects />
+      <Stack screenOptions={screenOptions}>
+        {openScreens.map(toScreen)}
+        <Stack.Protected guard={canUseAi}>{aiScreens.map(toScreen)}</Stack.Protected>
+      </Stack>
+    </>
   );
 }
