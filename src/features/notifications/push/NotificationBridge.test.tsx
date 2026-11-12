@@ -39,10 +39,6 @@ jest.mock('@/lib/supabase/client', () => {
   const channel = { on: () => channel, subscribe: () => channel };
   return { supabase: { channel: () => channel, removeChannel: jest.fn(() => Promise.resolve()) } };
 });
-// Only the timer payload reader is needed; the cook screens behind the barrel are not.
-jest.mock('@/features/cook', () =>
-  jest.requireActual<object>('@/features/cook/logic/timerNotification'),
-);
 jest.mock('../api', () => ({ markNotificationsRead: (ids: string[]) => mockMarkRead(ids) }));
 jest.mock('../deps', () => ({ usePushEnabled: () => true }));
 jest.mock('../queries', () => ({

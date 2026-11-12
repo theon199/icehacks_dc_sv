@@ -56,7 +56,7 @@ describe('pending invite storage', () => {
     expect(await takePendingInvite(now)).toBeNull();
   });
 
-  it('drops an invite older than its time to live', async () => {
+  it('drops an invite past its time to live', async () => {
     await savePendingInvite(CODE, now);
     expect(await takePendingInvite(now + PENDING_INVITE_TTL_MS + 1)).toBeNull();
     // Expiry also clears it.
@@ -74,7 +74,7 @@ describe('pending invite storage', () => {
     expect(results.filter((code) => code === CODE)).toHaveLength(1);
   });
 
-  it('replaces an older invite with the latest link', async () => {
+  it('replaces a parked invite with the latest link', async () => {
     await savePendingInvite('ZZZZZZZZZZ', now);
     await savePendingInvite(CODE, now + 1);
     expect(await takePendingInvite(now + 2)).toBe(CODE);

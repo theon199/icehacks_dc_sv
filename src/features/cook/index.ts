@@ -1,6 +1,6 @@
-// Cook mode: public surface for routes and other features.
-export { CookDoneScreen, type CookDoneScreenProps } from './screens/CookDoneScreen';
-export { CookModeScreen, type CookModeScreenProps } from './screens/CookModeScreen';
+// Cook mode: public surface for other features. It stays free of the cook screens, which load
+// native modules (video player, speech recognition, keep-awake); routes import the screens from
+// their own files, so the app shell can use these helpers without loading any of that.
 export { useFlushPendingCooks } from './hooks/useFlushPendingCooks';
 export { parseVoiceCommand, type VoiceCommand } from './logic/voiceCommands';
 export {
@@ -8,3 +8,5 @@ export {
   cookTimerTapUrl,
   type CookTimerNotificationData,
 } from './logic/timerNotification';
+export type { CookDoneScreenProps } from './screens/CookDoneScreen';
+export type { CookModeScreenProps } from './screens/CookModeScreen';
