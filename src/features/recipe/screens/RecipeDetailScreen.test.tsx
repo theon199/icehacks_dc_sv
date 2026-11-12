@@ -39,6 +39,15 @@ jest.mock('react-native-webview', () => {
   const { View } = jest.requireActual<{ View: unknown }>('react-native');
   return { WebView: View };
 });
+// The grocery feature's own tests cover the estimate; here only what the recipe screen passes in.
+jest.mock('@/features/grocery', () => {
+  const { createElement } = jest.requireActual<typeof import('react')>('react');
+  const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    CostSummary: ({ recipeId, servings }: { recipeId: string; servings?: number }) =>
+      createElement(Text, null, `Cost of ${recipeId} for ${servings}`),
+  };
+});
 jest.mock('@/lib/catalog/queries', () => ({
   getRecipeDetail: jest.fn(),
   getRecipeSummaries: jest.fn(),
@@ -133,6 +142,21 @@ describe('RecipeDetailScreen', () => {
     expect(await screen.findByText('Milk: not verified', {}, SLOW)).toBeTruthy();
     expect(screen.getByText('Check before you cook')).toBeTruthy();
     expect(screen.getByText('May contain milk: ingredient data incomplete')).toBeTruthy();
+  });
+
+  it('estimates the cost of what the person will cook, half portions included', async () => {
+    usePreferencesStore.setState({ prefs: prefs({ allergens: ['milk'], smallAppetite: true }) });
+    await renderScreen();
+    expect(
+      await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings / 2}`, {}, SLOW),
+    ).toBeTruthy();
+  });
+
+  it('marks ingredient lines that contain a declared allergen', async () => {
+    usePreferencesStore.setState({ prefs: prefs({ allergens: ['egg'] }) });
+    await renderScreen();
+    // The ingredient line itself carries the note (the recipe-level warning says it too).
+    expect(await screen.findByLabelText(/Eggs, Contains egg/, {}, SLOW)).toBeTruthy();
   });
 
   it('rescales ingredients when servings change', async () => {
