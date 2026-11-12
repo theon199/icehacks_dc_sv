@@ -29,6 +29,7 @@ $fn$;
 grant execute on all functions in schema tests to authenticated, anon;
 
 select tests.create_user('aaaaaaaa-0000-4000-8000-0000000000c1', 'cora');
+select tests.create_user('aaaaaaaa-0000-4000-8000-0000000000d2', 'dara');
 
 -- ---------------------------------------------------------------------------------------------
 -- Price cache rows
@@ -50,10 +51,15 @@ select lives_ok(
     values ('us:leek', 'leek', 'priced', 'lb', 1.5, 299, 'Grocer', 'https://www.example.test/leek', now() + interval '14 days')$$,
   'a complete listed price is stored'
 );
+select lives_ok(
+  $$insert into public.ingredient_price_cache (cache_key, ingredient_id, status, expires_at)
+    values ('us:okra', 'okra', 'retry_later', now() + interval '10 minutes')$$,
+  'a retry-later marker needs no price either'
+);
 select throws_ok(
   $$insert into public.ingredient_price_cache (cache_key, ingredient_id, status, expires_at)
     values ('us:x', 'x', 'maybe', now())$$,
-  '23514', null, 'status is priced or not_found'
+  '23514', null, 'status is priced, not_found or retry_later'
 );
 
 -- ---------------------------------------------------------------------------------------------
@@ -136,34 +142,133 @@ select throws_ok(
 );
 
 -- ---------------------------------------------------------------------------------------------
--- Review hold header
+-- Review verdicts: only a fresh allow for the same member and text publishes visibly
 -- ---------------------------------------------------------------------------------------------
 
-select is(
-  (public.publish_post('tip', 'Plain tip', 'Toast the spices first.')).status,
-  'visible'::public.content_status,
-  'without the header clean text is published'
+select throws_ok(
+  $$select public.record_text_review(
+      'aaaaaaaa-0000-4000-8000-0000000000c1', 'post', 'Sneaky', '', 'allow')$$,
+  '42501', null, 'members cannot record review verdicts'
 );
-select set_config('request.headers', '{"x-famara-review-hold":"spam"}', true);
+
 select is(
-  (public.publish_post('tip', 'Held tip', 'Toast the spices first.')).status,
+  (public.publish_post('tip', 'Unreviewed tip', 'Toast the spices first.')).status,
   'hidden'::public.content_status,
-  'the review-hold header stores the post hidden'
-);
-select is(
-  (public.add_comment(
-     (select id from public.posts where title = 'Plain tip'), 'Nice one')).status,
-  'hidden'::public.content_status,
-  'the review-hold header stores the comment hidden'
-);
-select set_config('request.headers', '{}', true);
-select is(
-  (public.add_comment((select id from public.posts where title = 'Plain tip'), 'Thanks!')).status,
-  'visible'::public.content_status,
-  'other headers do not hold content'
+  'a post without a review verdict is held'
 );
 
 reset role;
+select is(
+  (select r.reason::text || ' | ' || r.details from public.reports r
+   join public.posts p on p.id::text = r.target_id
+   where p.title = 'Unreviewed tip' and r.automated),
+  'other | Automatic pre-publication review: no AI review cleared this text.',
+  'the automated report says no review cleared it'
+);
+select lives_ok(
+  $$select public.record_text_review(
+      'aaaaaaaa-0000-4000-8000-0000000000c1', 'post', '  Cleared tip ', 'Toast the spices first.', 'allow')$$,
+  'the service role records an allow'
+);
+set local role authenticated;
+select tests.login('aaaaaaaa-0000-4000-8000-0000000000c1');
+
+select is(
+  (public.publish_post('tip', 'Cleared tip', 'Toast the spices first.')).status,
+  'visible'::public.content_status,
+  'an allow for the same text publishes visibly'
+);
+select is(
+  (public.publish_post('tip', 'Cleared tip', 'Toast the spices first.')).status,
+  'hidden'::public.content_status,
+  'an allow is spent by the first publish'
+);
+
+reset role;
+select public.record_text_review(
+  'aaaaaaaa-0000-4000-8000-0000000000c1', 'comment', null, 'Lovely idea', 'allow');
+select public.record_text_review(
+  'aaaaaaaa-0000-4000-8000-0000000000d2', 'comment', null, 'Great photo', 'allow');
+select public.record_text_review(
+  'aaaaaaaa-0000-4000-8000-0000000000c1', 'comment', null, 'Old news', 'allow');
+update private.review_verdicts set expires_at = now() - interval '1 second'
+where text_sha256 = private.review_digest('Old news');
+select public.record_text_review(
+  'aaaaaaaa-0000-4000-8000-0000000000c1', 'comment', null, 'Buy my stuff', 'hold', 'spam');
+select public.record_text_review(
+  'aaaaaaaa-0000-4000-8000-0000000000c1', 'comment', null, 'Get cheap followers now', 'allow');
+insert into private.review_terms (term) values ('cheap followers') on conflict do nothing;
+set local role authenticated;
+select tests.login('aaaaaaaa-0000-4000-8000-0000000000c1');
+
+select is(
+  (public.add_comment((select id from public.posts where title = 'Cleared tip' and status = 'visible'),
+     'Lovely idea!')).status,
+  'hidden'::public.content_status,
+  'an allow for different text does not clear a comment'
+);
+select is(
+  (public.add_comment((select id from public.posts where title = 'Cleared tip' and status = 'visible'),
+     'Lovely idea')).status,
+  'visible'::public.content_status,
+  'an allow for the same comment text publishes it'
+);
+select is(
+  (public.add_comment((select id from public.posts where title = 'Cleared tip' and status = 'visible'),
+     'Great photo')).status,
+  'hidden'::public.content_status,
+  'another member''s allow does not clear the caller'
+);
+select is(
+  (public.add_comment((select id from public.posts where title = 'Cleared tip' and status = 'visible'),
+     'Old news')).status,
+  'hidden'::public.content_status,
+  'an expired allow does not clear the text'
+);
+select is(
+  (public.add_comment((select id from public.posts where title = 'Cleared tip' and status = 'visible'),
+     'Buy my stuff')).status,
+  'hidden'::public.content_status,
+  'a hold verdict keeps the comment hidden'
+);
+select is(
+  (public.add_comment((select id from public.posts where title = 'Cleared tip' and status = 'visible'),
+     'Get cheap followers now')).status,
+  'hidden'::public.content_status,
+  'review terms still hold text the AI review allowed'
+);
+
+reset role;
+select is(
+  (select r.reason::text || ' | ' || r.details from public.reports r
+   join public.comments c on c.id::text = r.target_id
+   where c.body = 'Buy my stuff' and r.automated),
+  'spam | Automatic pre-publication review held it (spam).',
+  'the reviewer''s category reaches the automated report'
+);
+select is(
+  (select r.details from public.reports r
+   join public.comments c on c.id::text = r.target_id
+   where c.body = 'Get cheap followers now' and r.automated),
+  'Automatic pre-publication review: the AI review allowed it, but it matched a review term or link rule.',
+  'a rule hold after an allow is labelled as such'
+);
+select is(
+  (select count(*)::integer from private.review_verdicts
+   where user_id = 'aaaaaaaa-0000-4000-8000-0000000000c1' and used_at is not null),
+  4,
+  'each verdict that was found was spent'
+);
+select throws_ok(
+  $$select public.record_text_review(
+      'aaaaaaaa-0000-4000-8000-0000000000c1', 'story', null, 'x', 'allow')$$,
+  '22023', 'invalid_target', 'targets are post or comment'
+);
+select throws_ok(
+  $$select public.record_text_review(
+      'aaaaaaaa-0000-4000-8000-0000000000c1', 'comment', null, 'x', 'allow', null, 3600)$$,
+  '22023', 'invalid_ttl', 'verdicts are short-lived'
+);
 
 select * from finish();
 rollback;

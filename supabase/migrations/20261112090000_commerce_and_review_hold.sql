@@ -1,26 +1,32 @@
 -- Famara: storage behind the prices, walmart, places and publish edge functions.
 --
---   * ingredient_price_cache learns to remember "no listing found" and the package size a price
---     refers to.
+--   * ingredient_price_cache learns to remember "no listing found", a short "retry later" after a
+--     failed lookup, and the package size a price refers to.
 --   * private.usage_budgets: per-period unit counters (a member's daily price fills, the global
 --     monthly allowance for paid upstream APIs), spent atomically through reserve_usage.
 --   * private.fill_leases: short leases so concurrent requests never fill the same cache entry
 --     twice (claim_fill_leases / release_fill_leases).
 --   * walmart_item_map (catalog ingredient -> Walmart item, staff-approved) and
 --     walmart_item_cache (item lookups, 24 h).
---   * private.needs_review also holds content when the publish function asks for it through the
---     x-famara-review-hold request header (its AI review did not clear the text).
+--   * private.review_verdicts + record_text_review: publish_post and add_comment show text
+--     straight away only with a fresh, single-use allow from the publish function's AI review
+--     for that member and that exact text; everything else is held for a moderator.
 --
--- The usage, lease and cache functions are for edge functions only: they are granted to
+-- The usage, lease, cache and review functions are for edge functions only: they are granted to
 -- service_role and to nobody else.
 
 -- ---------------------------------------------------------------------------------------------
 -- Ingredient prices: not-found results and package sizes
 -- ---------------------------------------------------------------------------------------------
 
+-- Entries are now keyed by ingredient *and* the name searched for (see the prices function), so
+-- rows under the earlier keys could never be read again. They are a cache, refilled on demand;
+-- clearing them also means no row predates the completeness rule below.
+delete from public.ingredient_price_cache;
+
 alter table public.ingredient_price_cache
   add column status text not null default 'priced'
-    constraint ingredient_price_cache_status check (status in ('priced', 'not_found')),
+    constraint ingredient_price_cache_status check (status in ('priced', 'not_found', 'retry_later')),
   add column package_qty numeric(10, 3)
     constraint ingredient_price_cache_package_qty_positive check (package_qty is null or package_qty > 0),
   alter column price_cents drop not null,
@@ -31,7 +37,7 @@ alter table public.ingredient_price_cache
 -- listing it was read from.
 alter table public.ingredient_price_cache
   add constraint ingredient_price_cache_priced_complete check (
-    status = 'not_found'
+    status <> 'priced'
     or (
       price_cents is not null
       and unit is not null
@@ -41,7 +47,8 @@ alter table public.ingredient_price_cache
   );
 
 comment on column public.ingredient_price_cache.status is
-  '''priced'' or ''not_found'' (no listing could be cited; retried after a shorter expiry).';
+  '''priced'', ''not_found'' (no listing could be cited; retried after 3 days) or ''retry_later'' '
+  '(the lookup failed upstream; retried after a few minutes).';
 comment on column public.ingredient_price_cache.package_qty is
   'How many `unit` the listed package holds; price_cents is the price of the whole package.';
 
@@ -256,25 +263,161 @@ grant select on public.walmart_item_map to authenticated;
 grant select, insert, update, delete on public.walmart_item_map, public.walmart_item_cache to service_role;
 
 -- ---------------------------------------------------------------------------------------------
--- Review hold requested by the publish function
+-- Review verdicts from the publish function
 -- ---------------------------------------------------------------------------------------------
--- publish_post and add_comment hold text that private.needs_review flags. The publish function
--- runs an AI review first and, unless that review clears the text, calls the RPC with the
--- x-famara-review-hold header; PostgREST exposes request headers to SQL, so the post or comment
--- is stored hidden (with an automated report the author can appeal) from its first moment. A
--- client sending the header itself only holds its own content.
+-- publish_post and add_comment publish text visibly only when the publish function's AI review
+-- allowed exactly that text for exactly that member moments earlier. The function records its
+-- verdict with record_text_review (service role only), then calls the RPC as the member, and
+-- private.needs_review spends the newest unused, unexpired verdict for (auth.uid(), sha256 of
+-- the text). Without an allow (a direct RPC call, an expired or spent verdict, other text) the
+-- post or comment is stored hidden from its first moment, with an automated report the author
+-- can appeal. The review-term and link rules still hold text the review allowed.
 
-create or replace function private.needs_review(p_text text)
-returns boolean
+create table private.review_verdicts (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users on delete cascade,
+  text_sha256 bytea not null constraint review_verdicts_digest_length check (octet_length(text_sha256) = 32),
+  verdict text not null constraint review_verdicts_verdict check (verdict in ('allow', 'hold')),
+  category text constraint review_verdicts_category_format check (category is null or category ~ '^[a-z][a-z_]{1,39}$'),
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz default now() not null
+);
+create index review_verdicts_member_text_idx on private.review_verdicts (user_id, text_sha256);
+create index review_verdicts_expires_idx on private.review_verdicts (expires_at);
+
+alter table private.review_verdicts
+  enable row level security;
+
+-- The text publish_post and add_comment hand to private.needs_review.
+create function private.review_subject(p_target text, p_title text, p_body text)
+returns text
 language sql
-stable
+immutable
 set search_path = ''
 as $$
-  select
-    coalesce(
-      nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-famara-review-hold',
-      ''
-    ) <> ''
+  select case p_target
+    when 'post' then btrim(coalesce(p_title, '')) || ' ' || btrim(coalesce(p_body, ''))
+    else btrim(coalesce(p_body, ''))
+  end;
+$$;
+
+create function private.review_digest(p_text text)
+returns bytea
+language sql
+immutable
+set search_path = ''
+as $$
+  select pg_catalog.sha256(pg_catalog.convert_to(coalesce(p_text, ''), 'UTF8'));
+$$;
+
+-- Records the AI review of a post or comment a member is about to publish. An allow is a
+-- single-use clearance for that member and that exact text; a hold only carries the category
+-- into the automated report. Returns the verdict id.
+create function public.record_text_review(
+  p_user_id uuid,
+  p_target text,
+  p_title text,
+  p_body text,
+  p_verdict text,
+  p_category text default null,
+  p_ttl_seconds integer default 120
+)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id bigint;
+begin
+  if p_user_id is null then
+    raise exception 'invalid_user' using errcode = '22023', detail = 'A member id is required.';
+  end if;
+  if p_target is null or p_target not in ('post', 'comment') then
+    raise exception 'invalid_target' using errcode = '22023', detail = 'Target must be post or comment.';
+  end if;
+  if p_verdict is null or p_verdict not in ('allow', 'hold') then
+    raise exception 'invalid_verdict' using errcode = '22023', detail = 'Verdict must be allow or hold.';
+  end if;
+  if p_category is not null and p_category !~ '^[a-z][a-z_]{1,39}$' then
+    raise exception 'invalid_category' using errcode = '22023', detail = 'Category must be a lowercase identifier.';
+  end if;
+  if p_ttl_seconds is null or p_ttl_seconds not between 10 and 600 then
+    raise exception 'invalid_ttl' using errcode = '22023', detail = 'Verdicts last 10 to 600 seconds.';
+  end if;
+
+  insert into private.review_verdicts (user_id, text_sha256, verdict, category, expires_at)
+  values (
+    p_user_id,
+    private.review_digest(private.review_subject(p_target, p_title, p_body)),
+    p_verdict,
+    case when p_verdict = 'hold' then coalesce(p_category, 'other') end,
+    now() + make_interval(secs => p_ttl_seconds)
+  )
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+comment on function public.record_text_review(uuid, text, text, text, text, text, integer) is
+  'Service role only. Records the publish function''s review of a member''s post or comment text.';
+
+-- Spends the caller's newest usable verdict for p_text and returns it ('allow' or 'hold'), or
+-- null when there is none. What was found is left in the transaction-local setting
+-- famara.review_outcome ('allow', 'hold:<category>' or 'none') for private.hold_for_review.
+create function private.take_review_verdict(p_text text)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_verdict private.review_verdicts%rowtype;
+begin
+  perform pg_catalog.set_config('famara.review_outcome', 'none', true);
+  if v_uid is null then
+    return null;
+  end if;
+
+  select * into v_verdict
+  from private.review_verdicts v
+  where v.user_id = v_uid
+    and v.text_sha256 = private.review_digest(p_text)
+    and v.used_at is null
+    and v.expires_at > now()
+  order by v.id desc
+  limit 1
+  for update skip locked;
+  if not found then
+    return null;
+  end if;
+
+  update private.review_verdicts set used_at = now() where id = v_verdict.id;
+  perform pg_catalog.set_config(
+    'famara.review_outcome',
+    case when v_verdict.verdict = 'hold' then 'hold:' || v_verdict.category else 'allow' end,
+    true
+  );
+  return v_verdict.verdict;
+end;
+$$;
+
+-- Fail closed: hold unless the publish function's review allowed this exact text, and hold text
+-- the review allowed when it trips a review term or carries several links.
+create or replace function private.needs_review(p_text text)
+returns boolean
+language plpgsql
+volatile
+set search_path = ''
+as $$
+declare
+  -- Spent before the rules below run, so an allow is never usable twice.
+  v_verdict text := private.take_review_verdict(p_text);
+begin
+  return coalesce(v_verdict, '') <> 'allow'
     or (
       coalesce(p_text, '') <> ''
       and (
@@ -285,6 +428,53 @@ as $$
         )
       )
     );
+end;
+$$;
+
+-- Same as before, plus what the review said: the report's reason follows the reviewer's
+-- category and its details say why the content was held, so moderators can triage.
+create or replace function private.hold_for_review(
+  p_kind public.report_target,
+  p_target_id text,
+  p_owner uuid,
+  p_reason text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_outcome text := coalesce(nullif(current_setting('famara.review_outcome', true), ''), 'none');
+  v_category text := case when v_outcome like 'hold:%' then substr(v_outcome, 6) end;
+  v_report_id uuid;
+begin
+  insert into public.reports (reporter_id, automated, target_kind, target_id, target_owner_id, reason, details)
+  values (
+    null, true, p_kind, p_target_id, p_owner,
+    case v_category
+      when 'spam' then 'spam'
+      when 'harassment' then 'harassment'
+      when 'hate' then 'hate'
+      when 'sexual' then 'sexual'
+      when 'violence' then 'violence'
+      when 'self_harm' then 'self_harm'
+      when 'medical_misinformation' then 'misinformation'
+      when 'dangerous_activity' then 'unsafe_food'
+      else 'other'
+    end::public.report_reason,
+    case
+      when v_category is not null then
+        'Automatic pre-publication review held it (' || v_category || ').'
+      when v_outcome = 'allow' then
+        'Automatic pre-publication review: the AI review allowed it, but it matched a review term or link rule.'
+      else
+        'Automatic pre-publication review: no AI review cleared this text.'
+    end
+  )
+  returning id into v_report_id;
+  perform private.system_hide(p_kind, p_target_id, p_reason, v_report_id);
+end;
 $$;
 
 -- ---------------------------------------------------------------------------------------------
@@ -301,6 +491,7 @@ declare
   v_items integer;
   v_leases integer;
   v_budgets integer;
+  v_verdicts integer;
 begin
   delete from public.walmart_item_cache c where c.expires_at < now();
   get diagnostics v_items = row_count;
@@ -308,7 +499,9 @@ begin
   get diagnostics v_leases = row_count;
   delete from private.usage_budgets b where b.period_start < (now() at time zone 'utc')::date - 100;
   get diagnostics v_budgets = row_count;
-  return v_items + v_leases + v_budgets;
+  delete from private.review_verdicts v where v.expires_at < now() - interval '1 day';
+  get diagnostics v_verdicts = row_count;
+  return v_items + v_leases + v_budgets + v_verdicts;
 end;
 $$;
 
@@ -323,6 +516,11 @@ grant execute on function public.reserve_usage(text, text, integer, integer) to 
 grant execute on function public.release_usage(text, text, integer) to service_role;
 grant execute on function public.claim_fill_leases(text[], uuid, integer) to service_role;
 grant execute on function public.release_fill_leases(text[], uuid) to service_role;
+grant execute on function public.record_text_review(uuid, text, text, text, text, text, integer) to service_role;
+
+revoke all on function private.review_subject(text, text, text) from public;
+revoke all on function private.review_digest(text) from public;
+revoke all on function private.take_review_verdict(text) from public;
 
 do $$
 begin

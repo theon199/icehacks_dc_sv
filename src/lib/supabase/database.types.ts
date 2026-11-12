@@ -1439,6 +1439,18 @@ export type Database = {
         };
         Returns: Json;
       };
+      record_text_review: {
+        Args: {
+          p_body: string;
+          p_category?: string;
+          p_target: string;
+          p_title: string;
+          p_ttl_seconds?: number;
+          p_user_id: string;
+          p_verdict: string;
+        };
+        Returns: number;
+      };
       redeem_friend_invite: { Args: { p_code: string }; Returns: Json };
       release_fill_leases: {
         Args: { p_holder: string; p_keys: string[] };
