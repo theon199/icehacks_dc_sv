@@ -177,7 +177,7 @@ describe('SearchScreen', () => {
   it('asks for AI consent before showing Chef', async () => {
     await renderScreen();
     await userEvent.setup().press(screen.getByRole('tab', { name: 'Chef' }));
-    expect(screen.getByText('Meet Chef')).toBeOnTheScreen();
+    expect(screen.getByText('Turn on AI features to use Chef')).toBeOnTheScreen();
     await userEvent.setup().press(screen.getByRole('button', { name: 'Review and turn on' }));
     expect(mockPush).toHaveBeenCalledWith('/ai-consent');
   });
@@ -189,5 +189,6 @@ describe('SearchScreen', () => {
     await renderScreen();
     await userEvent.setup().press(screen.getByRole('tab', { name: 'Chef' }));
     expect(screen.getByTestId('chef-pane')).toBeOnTheScreen();
+    expect(screen.getByTestId('chef-screen')).toBeOnTheScreen();
   });
 });

@@ -9,10 +9,10 @@ import { selectCanUseAi, selectIsAdult, useSessionStore } from '@/features/auth'
 import { usePreferencesStore, type Preferences } from '@/stores/preferences';
 
 /**
- * The Chef chat, shown under the Chef segment. Mounted from the chat screen module the Chef route
- * itself uses, so both entry points always render the same conversation UI.
+ * The Chef chat, shown under the Chef segment. It carries its own AI gate (18+ with AI features
+ * turned on), so Search adds no second check in front of it.
  */
-export { ChefScreen as ChefChat } from '@/features/chef/screens/ChefScreen';
+export { ChefScreen as ChefChat } from '@/features/chef';
 
 /** Account that owns the recent searches on this device. */
 export function useSearchOwnerId(): string | null {
