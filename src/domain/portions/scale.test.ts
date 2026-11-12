@@ -178,3 +178,69 @@ describe('scaleLines', () => {
     expect(viaLines.map((l) => l.quantity)).toEqual(quantities(scaleRecipe(frittata, 1)));
   });
 });
+
+describe('measured minimums never exceed the recipe', () => {
+  const measuredUnits = ['pinch', 'dash', 'tsp', 'tbsp', 'cup', 'ml', 'l', 'g', 'kg', 'oz', 'lb'];
+  const amounts = [0.01, 0.02, 0.1, 0.25, 0.5, 1, 1.5, 3, 250];
+
+  it('returns every line unchanged at factor 1 (property)', () => {
+    const lines: PortionLine[] = [];
+    for (const unit of measuredUnits) {
+      for (const q of amounts) lines.push(line('spice', q, unit, q * 2));
+    }
+    // Counted lines already on their rounding step, and lines with a unit word we do not know.
+    lines.push(line('egg', 3, null), line('onion', 1.5, null), line('garlic', 2, 'cloves'));
+    lines.push(line('flour', 1.3, 'heaping cup'), line('water', 0.2, 'splash of'));
+    for (const scaled of scaleLines(lines, 1)) {
+      expect(scaled.quantity).toBe(scaled.line.quantity);
+      expect(scaled.grams).toBe(scaled.line.grams);
+      expect(scaled.adjusted).toBe(false);
+    }
+  });
+
+  it('never scales a measured line down to more than its original amount (property)', () => {
+    for (const unit of measuredUnits) {
+      for (const q of amounts) {
+        for (const factor of [0.05, 0.125, 0.25, 0.5, 0.75, 1]) {
+          const [scaled] = scaleLines([line('spice', q, unit)], factor);
+          expect(scaled?.quantity).toBeGreaterThan(0);
+          expect(scaled?.quantity).toBeLessThanOrEqual(q);
+        }
+      }
+    }
+  });
+
+  it('keeps a pinch a pinch', () => {
+    const recipe: PortionRecipe = { servings: 4, ingredients: [line('salt', 1, 'pinch')] };
+    expect(scaleRecipe(recipe, 4).lines[0]).toMatchObject({ quantity: 1, adjusted: false });
+    expect(scaleRecipe(recipe, 1).lines[0]?.quantity).toBe(1);
+    expect(scaleRecipe(recipe, 8).lines[0]?.quantity).toBe(2);
+  });
+
+  it('keeps sub-gram amounts at their own size', () => {
+    const recipe: PortionRecipe = { servings: 4, ingredients: [line('saffron', 0.5, 'g')] };
+    expect(scaleRecipe(recipe, 4).lines[0]?.quantity).toBe(0.5);
+    expect(scaleRecipe(recipe, 1).lines[0]?.quantity).toBe(0.5);
+    expect(scaleRecipe(recipe, 1).lines[0]?.adjusted).toBe(true);
+  });
+
+  it('still lifts larger amounts to the usual minimum when scaled down', () => {
+    const [salt] = scaleLines([line('salt', 0.5, 'tsp')], 0.1);
+    expect(salt?.quantity).toBeCloseTo(1 / 8, 10);
+    const [yeast] = scaleLines([line('yeast', 7, 'g')], 0.1);
+    expect(yeast?.quantity).toBe(1);
+  });
+});
+
+describe('unrecognised unit words', () => {
+  it('keeps the exact amount instead of rounding it as a count', () => {
+    const [flour] = scaleLines([line('flour', 1, 'heaping cup', 140)], 0.25);
+    expect(flour).toMatchObject({ quantity: 0.25, unit: null, exactQuantity: 0.25, adjusted: false });
+    expect(flour?.grams).toBeCloseTo(35, 10);
+  });
+
+  it('still rounds lines with no unit at all as counts', () => {
+    const [egg] = scaleLines([line('egg', 1, '  ')], 0.25);
+    expect(egg?.quantity).toBe(1);
+  });
+});

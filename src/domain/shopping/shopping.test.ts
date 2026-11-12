@@ -483,8 +483,8 @@ describe('review fixes', () => {
       ingredients: INGREDIENTS,
     });
     expect(find(list.items, 'i:egg').amounts).toEqual([{ quantity: 2, unit: 'each', label: null }]);
-    // Minimum amounts are kept per recipe too: ⅛ tsp each.
-    expect(find(list.items, 'i:salt').amounts[0]?.quantity).toBeCloseTo((2 * 4.92892) / 8, 3);
+    // Minimums are kept per recipe too, capped at the recipe's own amount: 0.02 tsp each, not more.
+    expect(find(list.items, 'i:salt').amounts[0]?.quantity).toBeCloseTo(2 * 0.02 * 4.92892, 3);
   });
 
   it('honours scaled unit aliases', () => {

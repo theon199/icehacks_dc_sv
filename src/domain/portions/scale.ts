@@ -113,7 +113,11 @@ export function defaultDivisibility(
   return 'half';
 }
 
-/** Smallest amount worth writing down: ⅛ tsp for volumes, 1 g for weights. */
+/**
+ * Smallest amount worth writing down when scaling down: ⅛ tsp for volumes, 1 g for weights. A line
+ * that already asks for less (a pinch, half a gram of saffron) is floored at its own amount instead,
+ * so scaling never asks for more than the recipe itself does.
+ */
 const MIN_VOLUME_ML = UNITS.tsp.base / 8;
 const MIN_MASS_G = 1;
 
@@ -145,15 +149,19 @@ function scaleLine<L extends PortionLine>(
   const original = line.quantity * aliasScale;
   const exact = original * factor;
   let rounded = exact;
-  const dimension = unit === null ? 'count' : UNITS[unit].dimension;
-  if (dimension === 'count') {
+  // A unit word we do not know ("heaping cup") has no step to round to, so its exact amount is kept.
+  // The shopping list adds these lines up unrounded as well, so both screens agree.
+  const unknownWord = unit === null && line.unit != null && line.unit.trim() !== '';
+  if (unit !== null && UNITS[unit].dimension !== 'count') {
+    const floor = Math.min(
+      UNITS[unit].dimension === 'volume' ? MIN_VOLUME_ML : MIN_MASS_G,
+      toBase(original, unit),
+    );
+    if (toBase(exact, unit) < floor) rounded = floor / UNITS[unit].base;
+  } else if (!unknownWord) {
     const rule = divisibility(line.ingredient_id, unit);
     if (rule === 'whole') rounded = roundCount(exact, 1);
     else if (rule === 'half') rounded = roundCount(exact, 0.5);
-  } else if (unit !== null) {
-    const base = toBase(exact, unit);
-    const min = dimension === 'volume' ? MIN_VOLUME_ML : MIN_MASS_G;
-    if (base < min) rounded = min / UNITS[unit].base;
   }
   const ratio = rounded / original;
   return {
