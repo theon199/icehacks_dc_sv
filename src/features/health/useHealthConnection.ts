@@ -7,6 +7,7 @@ import {
   type HealthPlatform,
   type HealthRequestStatus,
 } from '@/domain/health';
+import { useSessionStore } from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
 import { toast } from '@/ui';
 
@@ -27,6 +28,16 @@ export interface HealthConnection {
   setSyncEnabled: (enabled: boolean) => void;
   /** Re-reads Health now, ignoring the usual interval. */
   refresh: () => Promise<void>;
+}
+
+/**
+ * Makes sure the stored health data belongs to whoever is signed in before it is turned on or
+ * synced, even when this hook is mounted without `useHealthRefresh` (Settings mounts the card on
+ * its own).
+ */
+function claimForSignedIn(): void {
+  const userId = useSessionStore.getState().userId;
+  if (userId) useHealthStore.getState().claimFor(userId);
 }
 
 /** The permission flow behind Settings › Health. */
@@ -63,6 +74,7 @@ export function useHealthConnection(): HealthConnection {
   const connect = useCallback(async () => {
     setBusy(true);
     try {
+      claimForSignedIn();
       useHealthStore.getState().setEnabled(true);
       await healthKitSource.requestAccess();
       const answered = await healthKitSource.requestStatus();
@@ -82,6 +94,9 @@ export function useHealthConnection(): HealthConnection {
   }, []);
 
   const setSyncEnabled = useCallback((next: boolean) => {
+    claimForSignedIn();
+    // Claiming clears another account's data and turns Health off; sync then has nothing to send.
+    if (next && !useHealthStore.getState().enabled) return;
     useHealthStore.getState().setSyncEnabled(next);
     if (next) void refreshHealth({ force: true });
     else void removeSyncedHealth();

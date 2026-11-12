@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, userEvent } from '@testing-library/react-native';
 
 import type { HealthPlatform, HealthRequestStatus } from '@/domain/health';
+import { useSessionStore } from '@/features/auth';
 import { renderWithTheme } from '@/test/render';
 
 import { healthCopy } from '../copy';
@@ -37,6 +38,7 @@ async function renderCard() {
 
 beforeEach(() => {
   useHealthStore.getState().reset();
+  useSessionStore.setState({ userId: null });
   source.requestAccess.mockResolvedValue(undefined);
 });
 
@@ -67,6 +69,36 @@ describe('HealthConnections', () => {
     expect(refreshHealth).toHaveBeenCalledWith({ force: true });
     expect(screen.getByText(copy.states.connected)).toBeOnTheScreen();
     expect(screen.getByLabelText(copy.sync)).toBeOnTheScreen();
+  });
+
+  it('claims stored data for the signed-in account before connecting', async () => {
+    device('available', 'answered');
+    useHealthStore.getState().claimFor('someone-else');
+    useHealthStore.getState().applyRefresh({ at: 1, glucosePairs: [] });
+    useSessionStore.setState({ userId: 'user-a' });
+    await renderCard();
+    await userEvent.setup().press(screen.getByRole('button', { name: copy.connect }));
+    expect(useHealthStore.getState()).toMatchObject({
+      ownerId: 'user-a',
+      enabled: true,
+      lastRefreshAt: null,
+    });
+  });
+
+  it('claims stored data for the signed-in account before turning sync on', async () => {
+    device('available', 'answered');
+    useHealthStore.getState().claimFor('someone-else');
+    useHealthStore.getState().setEnabled(true);
+    useSessionStore.setState({ userId: 'user-a' });
+    await renderCard();
+    await fireEvent(screen.getByLabelText(copy.sync), 'valueChange', true);
+    // The other account's data is cleared, which turns Health off until this account connects.
+    expect(useHealthStore.getState()).toMatchObject({
+      ownerId: 'user-a',
+      enabled: false,
+      syncEnabled: false,
+    });
+    expect(refreshHealth).not.toHaveBeenCalled();
   });
 
   it('asks again when Health is on but the sheet was never answered', async () => {

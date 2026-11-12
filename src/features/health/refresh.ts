@@ -38,6 +38,13 @@ export const REFRESH_RULES = {
    * cook log, so a meal deleted later stops counting too.
    */
   pairingLookbackMs: 7 * DAY_MS,
+  /**
+   * The first refresh after connecting (or after the stored data was cleared) pairs this far back
+   * once, so someone who already has glucose and cook history sees progress straight away.
+   */
+  firstPairingLookbackMs: 30 * DAY_MS,
+  /** Glucose is read in slices no longer than this, so a dense sensor never hits the read limit. */
+  glucoseReadSliceMs: 7 * DAY_MS,
 } as const;
 
 export interface RefreshDeps {
@@ -97,12 +104,24 @@ async function confirmOlderMeals(
   }
 }
 
+/** Glucose readings across `range`, read slice by slice (oldest first). */
+async function readGlucoseInSlices(deps: RefreshDeps, range: TimeRange) {
+  const slices: TimeRange[] = [];
+  for (let start = range.from; start < range.to; start += REFRESH_RULES.glucoseReadSliceMs) {
+    slices.push({ from: start, to: Math.min(start + REFRESH_RULES.glucoseReadSliceMs, range.to) });
+  }
+  const parts = await Promise.all(slices.map((slice) => deps.source.readGlucose(slice)));
+  // Slices share their edges; prepareReadings drops the duplicate timestamps.
+  return parts.flat();
+}
+
 async function readGlucosePairs(
   deps: RefreshDeps,
   now: number,
   stored: readonly GlucosePair[],
+  lookbackMs: number,
 ): Promise<GlucosePair[]> {
-  const from = now - REFRESH_RULES.pairingLookbackMs;
+  const from = now - lookbackMs;
   // Neighbouring meals just outside the lookback still decide whether a meal inside it is clean.
   const meals = await deps.listCookedMeals({
     from: from - GLUCOSE_PAIRING_RULES.otherMealMs,
@@ -119,7 +138,7 @@ async function readGlucosePairs(
   const earliest = Math.min(...candidates.map((meal) => meal.startedAt));
   const range = { from: earliest - GLUCOSE_PAIRING_RULES.baselineLeadMs, to: now };
   const [readings, workouts] = await Promise.all([
-    deps.source.readGlucose(range),
+    readGlucoseInSlices(deps, range),
     deps.source.readWorkouts(range),
   ]);
   const context = { readings: prepareReadings(readings), meals, workouts, now };
@@ -129,6 +148,15 @@ async function readGlucosePairs(
     if (outcome.ok) fresh.push(outcome.pair);
   }
   return merge(fresh);
+}
+
+/**
+ * Whether the stored data belongs to the account that is signed in now. Cook log reads go through
+ * that account's session, and a signed-out session reads an empty log without any error, so a run
+ * may only read or write while both match.
+ */
+function signedInAs(deps: RefreshDeps, owner: string | null): owner is string {
+  return owner !== null && deps.currentUserId() === owner;
 }
 
 /** Whether the store still holds Health data for `owner`, with Health on. */
@@ -142,7 +170,7 @@ async function syncSummaries(deps: RefreshDeps, owner: string | null, now: numbe
   if (!state.syncEnabled) return;
   // Pushes land in whichever account is signed in, so only push into the account that owns the
   // data.
-  if (owner === null || deps.currentUserId() !== owner) return;
+  if (!signedInAs(deps, owner)) return;
   const docs: HealthSyncDoc[] = [
     {
       docId: 'glucose_insights',
@@ -163,6 +191,7 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
   if (!state.enabled) return 'disabled';
   // Everything read below belongs to this account; an account switch mid-run discards it.
   const owner = state.ownerId;
+  if (!signedInAs(deps, owner)) return 'account_changed';
 
   const now = deps.now();
   const last = state.lastRefreshAt;
@@ -176,7 +205,14 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
 
   const [day, glucose] = await Promise.allSettled([
     readDayContext(deps, now),
-    readGlucosePairs(deps, now, state.glucosePairs),
+    readGlucosePairs(
+      deps,
+      now,
+      state.glucosePairs,
+      state.lastRefreshAt === null
+        ? REFRESH_RULES.firstPairingLookbackMs
+        : REFRESH_RULES.pairingLookbackMs,
+    ),
   ]);
   if (day.status === 'rejected') {
     logger.warn('Day context refresh failed', describeError(day.reason));
@@ -186,10 +222,10 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
   }
   if (day.status === 'rejected' && glucose.status === 'rejected') return 'failed';
 
-  // Health may have been turned off, or another account signed in, while reading; never write
-  // data back after that.
+  // Health may have been turned off, or the person signed out or switched accounts, while
+  // reading; never write data back after that (a signed-out read would look like an empty log).
   const current = useHealthStore.getState();
-  if (current.ownerId !== owner) return 'account_changed';
+  if (current.ownerId !== owner || !signedInAs(deps, owner)) return 'account_changed';
   if (!current.enabled) return 'disabled';
   current.applyRefresh({
     at: now,

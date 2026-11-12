@@ -257,6 +257,80 @@ describe('refreshHealth', () => {
     expect(deps.pushHealthDocs).not.toHaveBeenCalled();
   });
 
+  it('does nothing while nobody is signed in or the data has no owner', async () => {
+    const deps = makeDeps();
+    deps.currentUserId.mockReturnValue(null);
+    await expect(refreshHealth({}, deps)).resolves.toBe('account_changed');
+
+    useHealthStore.getState().reset();
+    useHealthStore.getState().setEnabled(true);
+    const unowned = makeDeps();
+    await expect(refreshHealth({}, unowned)).resolves.toBe('account_changed');
+    expect(unowned.source.platform).not.toHaveBeenCalled();
+  });
+
+  it('keeps stored pairs when the person signs out during the read', async () => {
+    const recent = storedPair('recent', NOW - 2 * 24 * HOUR_MS);
+    const old = storedPair('old', NOW - 12 * 24 * HOUR_MS);
+    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [old, recent] });
+    const sleep = deferred<[]>();
+    const deps = makeDeps({ readSleep: jest.fn(() => sleep.promise) });
+    const pending = refreshHealth({ force: true }, deps);
+    await Promise.resolve();
+
+    // A signed-out session reads an empty cook log without any error.
+    deps.currentUserId.mockReturnValue(null);
+    deps.listCookedMeals.mockResolvedValue([]);
+    deps.findCookedMealIds.mockResolvedValue(new Set());
+    sleep.resolve([]);
+
+    await expect(pending).resolves.toBe('account_changed');
+    expect(useHealthStore.getState()).toMatchObject({
+      ownerId: USER,
+      lastRefreshAt: NOW - HOUR_MS,
+      glucosePairs: [old, recent],
+    });
+    expect(deps.pushHealthDocs).not.toHaveBeenCalled();
+  });
+
+  it('pairs further back once on the first refresh, reading glucose in slices', async () => {
+    const deps = makeDeps();
+    await refreshHealth({}, deps);
+    expect(deps.listCookedMeals).toHaveBeenCalledWith(
+      expect.objectContaining({ from: expect.any(Number) as number, to: NOW }),
+    );
+    const firstFrom = (deps.listCookedMeals.mock.calls[0]?.[0] as { from: number }).from;
+    expect(NOW - firstFrom).toBeGreaterThan(REFRESH_RULES.firstPairingLookbackMs);
+
+    deps.listCookedMeals.mockClear();
+    await refreshHealth({ force: true }, deps);
+    const laterFrom = (deps.listCookedMeals.mock.calls[0]?.[0] as { from: number }).from;
+    expect(NOW - laterFrom).toBeLessThan(REFRESH_RULES.firstPairingLookbackMs);
+    expect(NOW - laterFrom).toBeGreaterThan(REFRESH_RULES.pairingLookbackMs);
+  });
+
+  it('pairs an older meal on the first refresh', async () => {
+    const olderMealAt = NOW - 20 * 24 * HOUR_MS;
+    const older: CookedMeal = { ...meal, id: 'meal-old', startedAt: olderMealAt };
+    const deps = makeDeps({
+      readGlucose: jest.fn(async (range) =>
+        [...readingsAround(olderMealAt), ...readingsAround(MEAL_AT)].filter(
+          (reading) => reading.at >= range.from && reading.at <= range.to,
+        ),
+      ),
+    });
+    deps.listCookedMeals.mockResolvedValue([older, meal]);
+    await expect(refreshHealth({}, deps)).resolves.toBe('refreshed');
+    expect(deps.source.readGlucose.mock.calls.length).toBeGreaterThan(1);
+    for (const [range] of deps.source.readGlucose.mock.calls) {
+      expect(range.to - range.from).toBeLessThanOrEqual(REFRESH_RULES.glucoseReadSliceMs);
+    }
+    expect(useHealthStore.getState().glucosePairs.map((pair) => pair.mealId)).toEqual([
+      'meal-old',
+      'meal-1',
+    ]);
+  });
+
   it('does not write anything if Health was turned off during the read', async () => {
     const deps = makeDeps({
       readSleep: jest.fn(async () => {
@@ -308,12 +382,19 @@ describe('refreshHealth', () => {
       expect(useHealthStore.getState().lastSyncedAt).toBe(NOW);
     });
 
-    it('does not push when a different account is signed in', async () => {
+    it('neither reads, stores nor pushes when a different account is signed in', async () => {
       useHealthStore.getState().setSyncEnabled(true);
       const deps = makeDeps();
       deps.currentUserId.mockReturnValue('user-b');
-      await expect(refreshHealth({}, deps)).resolves.toBe('refreshed');
+      await expect(refreshHealth({}, deps)).resolves.toBe('account_changed');
+      expect(deps.listCookedMeals).not.toHaveBeenCalled();
       expect(deps.pushHealthDocs).not.toHaveBeenCalled();
+      expect(useHealthStore.getState()).toMatchObject({
+        ownerId: USER,
+        dayContext: null,
+        glucosePairs: [],
+        lastRefreshAt: null,
+      });
     });
 
     it('leaves lastSyncedAt alone when the push fails', async () => {
