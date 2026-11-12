@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { memo } from 'react';
 import { ActionSheetIOS, Alert, Platform, StyleSheet, View } from 'react-native';
 
+import { reportHref } from '@/features/moderation';
 import { Button, IconButton, Text, useTheme } from '@/ui';
 
 import { AuthorLine } from './AuthorLine';
@@ -34,8 +35,7 @@ function showMenu({ comment, isOwn, onDelete, onBlock }: CommentItemProps) {
         { text: 'Block', style: 'destructive', onPress: () => onBlock(comment) },
       ],
     );
-  const report = () =>
-    router.push({ pathname: '/moderation/report', params: { target: 'comment', id: comment.id } });
+  const report = () => router.push(reportHref({ kind: 'comment', id: comment.id }, who));
 
   const items = isOwn
     ? [{ label: 'Delete comment', destructive: true, run: confirmDelete }]

@@ -6,9 +6,7 @@ import { formatMinutes } from '@/lib/format';
 import { Button, Card, Icon, PressableScale, Text, TextField, useTheme } from '@/ui';
 
 import type { RecipeSummary } from '../deps';
-import { useMyRecipes, useRecipeSearch } from '../hooks/useRecipes';
-
-const SECTION_LIMIT = 6;
+import { PICKER_SECTION_LIMIT, useMyRecipes, useRecipeSearch } from '../hooks/useRecipes';
 
 function RecipeOption({
   recipe,
@@ -74,7 +72,7 @@ function Section({
       <Text variant="overline" tone="subtle">
         {title}
       </Text>
-      {recipes.slice(0, SECTION_LIMIT).map((recipe) => (
+      {recipes.slice(0, PICKER_SECTION_LIMIT).map((recipe) => (
         <RecipeOption key={recipe.id} recipe={recipe} onPick={onPick} />
       ))}
     </View>
@@ -171,8 +169,8 @@ export function RecipePicker({
         )
       ) : (
         <>
-          <Section title="Recently cooked" recipes={mine.data?.cooked ?? []} onPick={pick} />
-          <Section title="Saved" recipes={mine.data?.saved ?? []} onPick={pick} />
+          <Section title="Recently cooked" recipes={mine.data.cooked ?? []} onPick={pick} />
+          <Section title="Saved" recipes={mine.data.saved ?? []} onPick={pick} />
         </>
       )}
       {searching && search.data?.length === 0 ? (

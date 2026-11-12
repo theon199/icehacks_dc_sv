@@ -143,7 +143,11 @@ export function useOpenInvites() {
   });
 }
 
-/** Creates an invite and opens the share sheet with its link and code. */
+/**
+ * Creates an invite and opens the share sheet with its link and code. Only a failure to create the
+ * invite is reported as one: if the share sheet itself fails, the invite already exists and is
+ * listed under open invites, where it can be shared again.
+ */
 export function useShareInvite() {
   const userId = useMyUserId();
   const queryClient = useQueryClient();
@@ -151,9 +155,17 @@ export function useShareInvite() {
     mutationFn: async () => {
       const invite = await createFriendInvite();
       if (userId) void queryClient.invalidateQueries({ queryKey: profileKeys.invites(userId) });
-      await Share.share({
-        message: inviteShareMessage(invite.code, invite.expires_at, new Date()),
-      });
+      try {
+        await Share.share({
+          message: inviteShareMessage(invite.code, invite.expires_at, new Date()),
+        });
+      } catch {
+        toast.show({
+          tone: 'danger',
+          message:
+            'Your invite is ready, but the share sheet did not open. Share it from your open invites.',
+        });
+      }
       return invite;
     },
     onError: (error) => {

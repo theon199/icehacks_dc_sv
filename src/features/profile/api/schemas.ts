@@ -31,14 +31,18 @@ export type PersonRow = z.infer<typeof personRowSchema>;
 
 export const PERSON_COLUMNS = 'id, handle, display_name, avatar_path, is_team';
 
-const count = z.number().catch(0);
+/**
+ * A malformed answer must fail the query (the screen then offers a retry) rather than read as
+ * zero: showing someone a streak of 0 they did not have is worse than showing nothing.
+ */
+const count = z.number().int().nonnegative();
 
 export const myStatsSchema = z.object({
   cooked_count: count,
   cooked_this_week: count,
   current_streak: count,
   longest_streak: count,
-  last_cooked_at: z.string().nullable().catch(null),
+  last_cooked_at: z.string().nullable(),
   cuisine_count: count,
   cuisines: z
     .array(z.object({ cuisine: z.string(), count: z.number() }))

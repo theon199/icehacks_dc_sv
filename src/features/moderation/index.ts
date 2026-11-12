@@ -8,6 +8,7 @@ export {
   useIsModerator,
   useUnblockUser,
   type BlockTarget,
+  type BlockUserOptions,
   type ModeratorStatus,
 } from './queries';
 export { reasonsFor, type ReasonOption } from './reasons';

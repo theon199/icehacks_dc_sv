@@ -34,7 +34,10 @@ function PhotoGrid({ photos }: { photos: readonly ReviewPhoto[] }) {
         return photo.uri ? (
           <Image
             key={photo.path}
-            source={{ uri: photo.uri }}
+            // Signed links change on every refetch; the storage path keeps the cache entry stable,
+            // and reported photos are kept in memory only, never written to the disk cache.
+            source={{ uri: photo.uri, cacheKey: photo.path }}
+            cachePolicy="memory"
             placeholder={photo.blurhash ? { blurhash: photo.blurhash } : null}
             style={[styles.photo, { aspectRatio, backgroundColor: theme.colors.surfaceSunken }]}
             contentFit="contain"

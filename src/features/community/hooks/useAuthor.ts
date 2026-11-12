@@ -1,12 +1,13 @@
 /** Author pages: profile summary, follow/unfollow and block. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useBlockUser as useModerationBlockUser, type BlockTarget } from '@/features/moderation';
 import { haptics } from '@/lib/haptics';
 import { toast } from '@/ui';
 
 import { removePosts } from './postCache';
 import { communityKeys, useViewer } from './queryKeys';
-import { blockUser, getProfileSummary, setFollowing } from '../api/communityApi';
+import { getProfileSummary, setFollowing } from '../api/communityApi';
 import { retryUnlessMissing } from '../api/rpcError';
 import type { ProfileSummary } from '../api/schemas';
 import { publishErrorMessage } from '../logic/publishMessages';
@@ -57,16 +58,19 @@ export function useFollow(userId: string) {
   });
 }
 
-/** Blocks someone: their posts disappear from every cached list straight away. */
+/** Who is being blocked: the id plus the name the blocked list will show for them. */
+export type BlockPerson = BlockTarget;
+
+/**
+ * Blocks someone through the safety feature (so they are listed under Blocked people with their
+ * name) and drops their posts from every cached Community list straight away.
+ */
 export function useBlockUser() {
   const client = useQueryClient();
   const viewer = useViewer();
-  return useMutation({
-    mutationFn: (userId: string) => blockUser(userId),
-    onSuccess: (_result, userId) => {
-      removePosts(client, viewer, (post) => post.author_id === userId);
-      // Only social data changes when someone is blocked; catalog lookups stay cached.
-      void client.invalidateQueries({ queryKey: communityKeys.social(viewer) });
+  return useModerationBlockUser({
+    onBlocked: (target) => {
+      removePosts(client, viewer, (post) => post.author_id === target.userId);
       toast.success("Blocked. You won't see each other's posts or comments.");
     },
     onError: (error) => toast.error(publishErrorMessage(error)),
