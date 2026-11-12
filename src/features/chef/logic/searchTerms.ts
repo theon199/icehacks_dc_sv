@@ -19,14 +19,15 @@ const FILLER = new Set(
     'over please quick really recipe recipes right should show some something suggest suggestion ' +
     'take than thank thanks that the their them then there these they thing things think this ' +
     'those today tomorrow tonight too try under use using very want week what when where which ' +
-    'while who why will with without would yes yet you your'
+    'while who why will with without would yes yet you your all and ask did had has was were'
   ).split(' '),
 );
 
 export function searchTermsFrom(text: string): string[] {
   const terms: string[] = [];
   for (const token of tokenize(text)) {
-    if (token.length < MIN_LENGTH || /^\d+$/.test(token) || FILLER.has(token)) continue;
+    const filler = FILLER.has(token) || FILLER.has(token.replace(/s$/, ''));
+    if (token.length < MIN_LENGTH || /^\d+$/.test(token) || filler) continue;
     if (!terms.includes(token)) terms.push(token);
     if (terms.length === MAX_SEARCH_TERMS) break;
   }
