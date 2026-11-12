@@ -1,5 +1,5 @@
 import { resetCatalogForTests } from '../db/catalog';
-import { nodeSqliteAvailable, stats } from './__fixtures__/nodeCatalogDb';
+import { describeCatalogDb, stats } from './__fixtures__/nodeCatalogDb';
 import {
   clearCatalogCaches,
   getCatalogMeta,
@@ -22,14 +22,12 @@ jest.mock(
 );
 jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
 
-const describeDb = nodeSqliteAvailable ? describe : describe.skip;
-
 beforeEach(() => {
   resetCatalogForTests();
   clearCatalogCaches();
 });
 
-describeDb('recipe summaries', () => {
+describeCatalogDb('recipe summaries', () => {
   it('maps a row into a typed summary with parsed JSON columns', async () => {
     const recipe = await getRecipeSummary('mealdb:52764');
     expect(recipe).toMatchObject({
@@ -86,7 +84,7 @@ describeDb('recipe summaries', () => {
   });
 });
 
-describeDb('recipe detail', () => {
+describeCatalogDb('recipe detail', () => {
   it('returns ordered ingredients, steps and tutorials', async () => {
     const detail = await getRecipeDetail('mealdb:52764');
     expect(detail?.ingredients.length).toBeGreaterThan(3);
@@ -102,10 +100,10 @@ describeDb('recipe detail', () => {
   });
 });
 
-describeDb('listCandidates', () => {
+describeCatalogDb('listCandidates', () => {
   it('requires every diet bit in the mask', async () => {
     const mask = dietMask(['vegetarian', 'dairy_free']);
-    const candidates = await listCandidates({ excludeDietMask: mask, limit: 500 });
+    const candidates = await listCandidates({ dietMask: mask, limit: 500 });
     expect(candidates.length).toBeGreaterThan(0);
     for (const c of candidates) expect(satisfiesDiets(c.dietFlags, mask)).toBe(true);
     expect(mask).toBe(DietFlag.vegetarian | DietFlag.dairy_free);
@@ -153,7 +151,7 @@ describeDb('listCandidates', () => {
   });
 });
 
-describeDb('searchRecipes', () => {
+describeCatalogDb('searchRecipes', () => {
   it('ranks title matches first using prefix matching', async () => {
     const page = await searchRecipes('chick curr');
     expect(page.items.length).toBeGreaterThan(0);
@@ -226,7 +224,7 @@ describeDb('searchRecipes', () => {
   });
 });
 
-describeDb('ingredients and substitutions', () => {
+describeCatalogDb('ingredients and substitutions', () => {
   it('fetches ingredients by id with parsed fields', async () => {
     const [onion, missing] = await getIngredients(['onion', 'nope']);
     expect(missing).toBeUndefined();
@@ -254,7 +252,7 @@ describeDb('ingredients and substitutions', () => {
   });
 });
 
-describeDb('catalog metadata', () => {
+describeCatalogDb('catalog metadata', () => {
   it('lists cuisines with counts and reads build info', async () => {
     const cuisines = await getCuisines();
     expect(cuisines[0]?.recipeCount).toBeGreaterThanOrEqual(cuisines[1]?.recipeCount ?? 0);
