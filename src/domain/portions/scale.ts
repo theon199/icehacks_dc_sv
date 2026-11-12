@@ -1,0 +1,256 @@
+/**
+ * Scaling a recipe to a number of servings, including small-appetite half portions.
+ *
+ * Linear scaling is right for flour and stock but wrong for eggs and tortillas: nobody cracks half
+ * an egg. Count-based lines are rounded to amounts a cook can actually use, and tiny measured
+ * amounts are held at a usable minimum so a pinch of salt never scales to nothing.
+ */
+import { lookupUnit, toBase, UNITS, type UnitId } from '../units';
+
+/** One ingredient line, shaped like a `recipe_ingredients` row (see docs/DATA.md). */
+export interface PortionLine {
+  readonly ingredient_id: string | null;
+  readonly text: string;
+  readonly quantity: number | null;
+  readonly unit: string | null;
+  readonly grams?: number | null | undefined;
+  readonly optional?: boolean | number | null | undefined;
+}
+
+export interface PortionRecipe<L extends PortionLine = PortionLine> {
+  /** How many servings the recipe's quantities make. */
+  readonly servings: number;
+  readonly ingredients: readonly L[];
+}
+
+/** How a count line may be divided. */
+export type Divisibility = 'whole' | 'half' | 'free';
+
+export interface ScaleOptions {
+  /** Small appetite mode: every serving is a half portion. */
+  readonly smallAppetite?: boolean;
+  /** Override how an ingredient's count can be split. Defaults to `defaultDivisibility`. */
+  readonly divisibility?: (ingredientId: string | null, unit: UnitId | null) => Divisibility;
+}
+
+export interface ScaledLine<L extends PortionLine = PortionLine> {
+  readonly line: L;
+  /** Quantity after scaling and rounding; `null` when the line had no quantity ("to taste"). */
+  readonly quantity: number | null;
+  readonly unit: UnitId | null;
+  /** Weight after scaling, kept proportional to the rounded quantity. */
+  readonly grams: number | null;
+  /** Exact linear quantity before rounding, for "about" hints. */
+  readonly exactQuantity: number | null;
+  /** True when rounding or a minimum moved the amount by more than 10%. */
+  readonly adjusted: boolean;
+}
+
+export interface ScaledRecipe<L extends PortionLine = PortionLine> {
+  readonly servings: number;
+  /** Size of one serving relative to a standard one: 0.5 in small appetite mode. */
+  readonly portion: number;
+  /** Multiplier applied to every line before rounding. */
+  readonly factor: number;
+  readonly lines: readonly ScaledLine<L>[];
+}
+
+// Ingredients that come in one piece and do not keep once opened or cut.
+const WHOLE_ITEM_WORDS = [
+  'egg',
+  'tortilla',
+  'pita',
+  'bun',
+  'roll',
+  'bagel',
+  'wrap',
+  'naan',
+  'roti',
+  'chapati',
+  'flatbread',
+  'muffin',
+  'taco',
+  'cracker',
+  'sausage',
+  'patty',
+  'bread',
+  'tea_bag',
+  'bouillon',
+  'stock_cube',
+];
+
+/** Count units that are always whole: you buy and use a can, a slice, a clove, a stick. */
+const WHOLE_UNITS: ReadonlySet<UnitId> = new Set<UnitId>([
+  'can',
+  'slice',
+  'clove',
+  'package',
+  'sprig',
+  'leaf',
+  'stalk',
+  'stick',
+  'bunch',
+  'head',
+  'handful',
+]);
+
+/**
+ * Default rule for splitting counted ingredients: whole-item foods (eggs, tortillas, buns …) and
+ * whole-only units (cans, cloves …) round to whole numbers; other counted produce (an onion, a lemon,
+ * an avocado) may be halved. Measured units (volume, mass) are split freely.
+ */
+export function defaultDivisibility(
+  ingredientId: string | null,
+  unit: UnitId | null,
+): Divisibility {
+  if (unit !== null && UNITS[unit].dimension !== 'count') return 'free';
+  if (unit !== null && WHOLE_UNITS.has(unit)) return 'whole';
+  const id = (ingredientId ?? '').toLowerCase();
+  if (WHOLE_ITEM_WORDS.some((w) => id === w || id.startsWith(`${w}_`) || id.endsWith(`_${w}`))) {
+    return 'whole';
+  }
+  if (/(^|_)eggs?($|_)/.test(id)) return 'whole';
+  return 'half';
+}
+
+/**
+ * Smallest amount worth writing down when scaling down: ⅛ tsp for volumes, 1 g for weights. A line
+ * that already asks for less (a pinch, half a gram of saffron) is floored at its own amount instead,
+ * so scaling never asks for more than the recipe itself does.
+ */
+const MIN_VOLUME_ML = UNITS.tsp.base / 8;
+const MIN_MASS_G = 1;
+
+function roundCount(value: number, step: number): number {
+  // Never round a needed item to zero: one egg is the least an egg dish can use.
+  return Math.max(step, Math.round(value / step) * step);
+}
+
+/** Steps a counted line may round to, coarsest first: whole items, then halves, thirds and quarters. */
+const COUNT_STEPS = [1, 1 / 2, 1 / 3, 1 / 4] as const;
+
+function isMultipleOf(value: number, step: number): boolean {
+  const n = value / step;
+  return Math.round(n) >= 1 && Math.abs(n - Math.round(n)) < 1e-6;
+}
+
+/**
+ * The coarsest step, no coarser than the rule allows, that the recipe's own amount sits on. A
+ * recipe asking for ½ stick of butter or ¼ head of cabbage keeps that granularity, so scaling by 1
+ * returns the recipe unchanged. An amount on none of the steps (0.4 of an onion) has no step: it
+ * is scaled exactly.
+ */
+function countStep(original: number, ruleStep: number): number | null {
+  for (const step of COUNT_STEPS) {
+    if (step <= ruleStep && isMultipleOf(original, step)) return step;
+  }
+  return null;
+}
+
+function scaleLine<L extends PortionLine>(
+  line: L,
+  factor: number,
+  divisibility: NonNullable<ScaleOptions['divisibility']>,
+): ScaledLine<L> {
+  // Some unit spellings are scaled units ("cl" is 10 ml): apply that multiplier to the quantity.
+  const found = lookupUnit(line.unit);
+  const unit = found?.unit ?? null;
+  const aliasScale = found?.scale ?? 1;
+  const grams = line.grams ?? null;
+  if (line.quantity == null || !Number.isFinite(line.quantity) || line.quantity <= 0) {
+    return {
+      line,
+      quantity: null,
+      unit,
+      grams: grams === null ? null : grams * factor,
+      exactQuantity: null,
+      adjusted: false,
+    };
+  }
+  const original = line.quantity * aliasScale;
+  const exact = original * factor;
+  let rounded = exact;
+  // A unit word we do not know ("heaping cup") has no step to round to, so its exact amount is kept.
+  // The shopping list adds these lines up unrounded as well, so both screens agree.
+  const unknownWord = unit === null && line.unit != null && line.unit.trim() !== '';
+  if (unit !== null && UNITS[unit].dimension !== 'count') {
+    const floor = Math.min(
+      UNITS[unit].dimension === 'volume' ? MIN_VOLUME_ML : MIN_MASS_G,
+      toBase(original, unit),
+    );
+    if (toBase(exact, unit) < floor) rounded = floor / UNITS[unit].base;
+  } else if (!unknownWord) {
+    const rule = divisibility(line.ingredient_id, unit);
+    if (rule !== 'free') {
+      const step = countStep(original, rule === 'whole' ? 1 : 0.5);
+      if (step !== null) rounded = roundCount(exact, step);
+    }
+  }
+  const ratio = rounded / original;
+  return {
+    line,
+    quantity: rounded,
+    unit,
+    grams: grams === null ? null : grams * ratio,
+    exactQuantity: exact,
+    adjusted: Math.abs(rounded - exact) > exact * 0.1,
+  };
+}
+
+/**
+ * Scale ingredient lines by an explicit factor (planned servings × portion ÷ recipe servings),
+ * with the same whole-item rounding and minimums as `scaleRecipe`. The shopping list uses this so
+ * each recipe is rounded on its own before amounts from different recipes are added up.
+ */
+export function scaleLines<L extends PortionLine>(
+  lines: readonly L[],
+  factor: number,
+  options: { readonly divisibility?: ScaleOptions['divisibility'] | undefined } = {},
+): ScaledLine<L>[] {
+  const f = Number.isFinite(factor) && factor > 0 ? factor : 1;
+  const divisibility = options.divisibility ?? defaultDivisibility;
+  return lines.map((line) => scaleLine(line, f, divisibility));
+}
+
+/**
+ * Scale `recipe` to `servings` servings. With `smallAppetite`, each serving is a half portion, so
+ * two small-appetite servings use the same ingredients as one standard serving (before rounding).
+ */
+export function scaleRecipe<L extends PortionLine>(
+  recipe: PortionRecipe<L>,
+  servings: number,
+  options: ScaleOptions = {},
+): ScaledRecipe<L> {
+  const base = recipe.servings > 0 && Number.isFinite(recipe.servings) ? recipe.servings : 1;
+  const wanted = Number.isFinite(servings) && servings > 0 ? servings : base;
+  const portion = options.smallAppetite ? 0.5 : 1;
+  const factor = (wanted * portion) / base;
+  const divisibility = options.divisibility ?? defaultDivisibility;
+  return {
+    servings: wanted,
+    portion,
+    factor,
+    lines: recipe.ingredients.map((line) => scaleLine(line, factor, divisibility)),
+  };
+}
+
+/** The same number of servings, each a half portion. */
+export function halfPortion<L extends PortionLine>(
+  recipe: PortionRecipe<L>,
+  options: Omit<ScaleOptions, 'smallAppetite'> = {},
+): ScaledRecipe<L> {
+  return scaleRecipe(recipe, recipe.servings, { ...options, smallAppetite: true });
+}
+
+/** Multiply per-serving nutrition by a portion size, keeping missing values missing. */
+export function scaleNutrition<N extends Readonly<Record<string, number | null | undefined>>>(
+  perServing: N,
+  portion: number,
+): { [K in keyof N]: number | null } {
+  const out = {} as { [K in keyof N]: number | null };
+  for (const key of Object.keys(perServing) as (keyof N)[]) {
+    const v = perServing[key];
+    out[key] = typeof v === 'number' && Number.isFinite(v) ? v * portion : null;
+  }
+  return out;
+}
