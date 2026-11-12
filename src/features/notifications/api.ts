@@ -36,6 +36,14 @@ export async function fetchInboxPage(
   };
 }
 
+/** Badge names by id from `public.badges` (readable by every member). */
+export async function fetchBadgeNames(): Promise<Map<string, string>> {
+  const { data, error } = await supabase.from('badges').select('id, name');
+  if (error) throw toApiError('badges', error);
+  const rows = parseResult('badges', z.array(z.object({ id: z.string(), name: z.string() })), data);
+  return new Map(rows.map((row) => [row.id, row.name]));
+}
+
 export function fetchUnreadCount(): Promise<number> {
   return callRpc('unread_notification_count', {}, z.number().int().nonnegative());
 }

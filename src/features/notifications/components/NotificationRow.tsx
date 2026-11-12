@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase/client';
 import { Avatar, Icon, PressableScale, Text, useTheme } from '@/ui';
 import { space } from '@/ui/tokens';
 
-import { iconFor, notificationText } from '../describe';
+import { iconFor, notificationText, type BadgeNames } from '../describe';
 import type { NotificationItem } from '../model';
 
 export interface NotificationRowProps {
@@ -14,6 +14,7 @@ export interface NotificationRowProps {
   onPress: (item: NotificationItem) => void;
   /** Reference time for "5 minutes ago", passed in so a whole list agrees. */
   now: number;
+  badgeNames?: BadgeNames | undefined;
 }
 
 function avatarUrl(path: string | null): string | null {
@@ -27,10 +28,10 @@ function avatarUrl(path: string | null): string | null {
 
 const AVATAR_SIZE = 44;
 
-function NotificationRowView({ item, onPress, now }: NotificationRowProps) {
+function NotificationRowView({ item, onPress, now, badgeNames }: NotificationRowProps) {
   const theme = useTheme();
   const unread = item.read_at == null;
-  const text = notificationText(item);
+  const text = notificationText(item, badgeNames);
   const when = formatRelativeTime(item.created_at, now);
   const actorName = item.actor_display_name?.trim();
 

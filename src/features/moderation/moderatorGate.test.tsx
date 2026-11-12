@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 
 import { useSessionStore } from '@/features/auth';
@@ -31,7 +31,9 @@ beforeEach(() => {
   mockSelect.mockReset();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Unmount first so clearing the caches cannot notify (or keep polling for) live observers.
+  await cleanup();
   clients.splice(0).forEach((client) => client.clear());
   useSessionStore.setState(initialSession, true);
 });

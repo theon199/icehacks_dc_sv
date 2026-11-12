@@ -17,18 +17,6 @@ export interface NotificationTargetInput {
   action_id: string | null;
 }
 
-export const BADGE_NAMES: Readonly<Record<string, string>> = {
-  first_cook: 'First dish cooked',
-  cooks_10: 'Ten dishes cooked',
-  cooks_50: 'Fifty dishes cooked',
-  streak_3: 'Three-day streak',
-  streak_7: 'Seven-day streak',
-  streak_30: 'Thirty-day streak',
-  cuisines_5: 'Five cuisines explored',
-  cuisines_10: 'Ten cuisines explored',
-  first_post: 'First community post',
-};
-
 const ICONS: Record<NotificationItem['kind'], IconName> = {
   like: 'heart.fill',
   comment: 'bubble.left.fill',
@@ -109,8 +97,14 @@ function moderationText(item: NotificationItem): string {
   }
 }
 
-/** One-line description, with the actor's name first when there is one. */
-export function notificationText(item: NotificationItem): string {
+/** Badge display names by badge id, as stored in `public.badges`. */
+export type BadgeNames = ReadonlyMap<string, string>;
+
+/**
+ * One-line description, with the actor's name first when there is one. Badge entries are named
+ * from `badgeNames` (loaded from `public.badges`); without a name the text stays generic.
+ */
+export function notificationText(item: NotificationItem, badgeNames?: BadgeNames): string {
   const actor = item.actor_display_name?.trim() || 'Someone';
   switch (item.kind) {
     case 'like':
@@ -130,7 +124,7 @@ export function notificationText(item: NotificationItem): string {
         ? 'Your appeal was accepted and the decision reversed.'
         : 'Your appeal was reviewed. The decision stands.';
     case 'badge': {
-      const name = BADGE_NAMES[dataString(item, 'badge_id') ?? ''];
+      const name = badgeNames?.get(dataString(item, 'badge_id') ?? '');
       return name ? `New badge: ${name}.` : 'You earned a new badge.';
     }
   }

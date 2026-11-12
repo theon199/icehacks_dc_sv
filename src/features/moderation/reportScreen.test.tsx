@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { cleanup, fireEvent, screen } from '@testing-library/react-native';
 
 import { useSessionStore } from '@/features/auth';
 import { renderWithTheme } from '@/test/render';
@@ -19,7 +19,11 @@ const initialSession = useSessionStore.getState();
 const clients: QueryClient[] = [];
 
 async function renderReport(kind = 'post', id = POST_ID) {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  // Finished mutations keep a garbage-collection timer that clear() does not cancel; without
+  // one, no timer outlives the test.
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false, gcTime: Infinity } },
+  });
   clients.push(client);
   return renderWithTheme(
     <QueryClientProvider client={client}>
@@ -36,7 +40,9 @@ beforeEach(() => {
   mockRpc.mockReset();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Unmount first so clearing the caches cannot notify (or keep polling for) live observers.
+  await cleanup();
   clients.splice(0).forEach((client) => client.clear());
   useSessionStore.setState(initialSession, true);
 });

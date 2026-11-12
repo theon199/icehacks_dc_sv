@@ -79,8 +79,12 @@ describe('notificationText', () => {
   });
 
   it('names known badges', () => {
-    expect(notificationText(item({ kind: 'badge', data: { badge_id: 'streak_7' } }))).toBe(
-      'New badge: Seven-day streak.',
+    const names = new Map([['streak_7', 'Week of cooking']]);
+    expect(notificationText(item({ kind: 'badge', data: { badge_id: 'streak_7' } }), names)).toBe(
+      'New badge: Week of cooking.',
+    );
+    expect(notificationText(item({ kind: 'badge', data: { badge_id: 'unknown' } }), names)).toBe(
+      'You earned a new badge.',
     );
   });
 });

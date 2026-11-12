@@ -24,7 +24,7 @@ const COPY: Record<PushMoment, { title: string; body: string }> = {
 
 /** Famara's own ask before the system dialog. Renders nothing when an offer would not help. */
 export function PushOptInCard({ moment }: PushOptInCardProps) {
-  const offer = usePushOffer(moment);
+  const offer = usePushOffer();
   if (!offer.visible) return null;
   const copy = COPY[moment];
   return (

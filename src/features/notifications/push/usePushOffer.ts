@@ -13,7 +13,7 @@ import {
   syncPushRegistration,
   type PermissionSnapshot,
 } from './pushDevice';
-import { recordDismissal, shouldOfferPush, type PushMoment } from './pushPolicy';
+import { recordDismissal, shouldOfferPush } from './pushPolicy';
 import { usePushState } from './pushState';
 
 export interface PushOffer {
@@ -24,7 +24,7 @@ export interface PushOffer {
   dismiss: (forever?: boolean) => void;
 }
 
-export function usePushOffer(moment: PushMoment): PushOffer {
+export function usePushOffer(): PushOffer {
   const userId = useSessionStore((s) => (s.status === 'ready' ? s.userId : null));
   const pushEnabled = usePushEnabled();
   const history = usePushState((s) => s.prompt);
@@ -55,7 +55,6 @@ export function usePushOffer(moment: PushMoment): PushOffer {
       canAskAgain: permission.canAskAgain,
       pushEnabled,
       history,
-      moment,
       now: permission.at,
     });
 

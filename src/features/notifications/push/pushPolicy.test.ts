@@ -17,7 +17,6 @@ function input(overrides: Partial<OfferInput> = {}): OfferInput {
     canAskAgain: true,
     pushEnabled: true,
     history: EMPTY_PROMPT_HISTORY,
-    moment: 'inbox_has_activity',
     now: NOW,
     ...overrides,
   };

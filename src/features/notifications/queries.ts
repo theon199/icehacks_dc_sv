@@ -10,13 +10,15 @@ import {
 
 import { useSessionStore } from '@/features/auth';
 
-import { fetchInboxPage, fetchUnreadCount, markNotificationsRead } from './api';
+import { fetchBadgeNames, fetchInboxPage, fetchUnreadCount, markNotificationsRead } from './api';
+import type { BadgeNames } from './describe';
 import type { NotificationPage } from './model';
 
 export const notificationKeys = {
   all: ['notifications'] as const,
   inbox: (userId: string | null) => ['notifications', 'inbox', userId] as const,
   unread: (userId: string | null) => ['notifications', 'unread', userId] as const,
+  badges: ['notifications', 'badge-names'] as const,
 };
 
 /** The signed-in user id once the app is unlocked, otherwise null (queries stay idle). */
@@ -41,6 +43,18 @@ export function useUnreadCount(): number {
     refetchInterval: UNREAD_REFRESH_MS,
   });
   return userId == null ? 0 : (data ?? 0);
+}
+
+/** Badge names for inbox copy. Rarely changes, so it is read once per session. */
+export function useBadgeNames(): BadgeNames | undefined {
+  const userId = useReadyUserId();
+  const { data } = useQuery({
+    queryKey: notificationKeys.badges,
+    queryFn: fetchBadgeNames,
+    enabled: userId != null,
+    staleTime: Infinity,
+  });
+  return data;
 }
 
 export function useInbox() {

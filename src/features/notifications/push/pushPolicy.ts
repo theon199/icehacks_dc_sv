@@ -36,7 +36,6 @@ export interface OfferInput {
   /** Famara's own push switch. */
   pushEnabled: boolean;
   history: PromptHistory;
-  moment: PushMoment;
   now: number;
 }
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import { useSessionStore } from '@/features/auth';
@@ -25,13 +25,20 @@ function signIn(userId = 'user-1') {
 
 const clients: QueryClient[] = [];
 
-afterEach(() => {
+afterEach(async () => {
+  // Unmount first so clearing the caches cannot notify (or keep polling for) live observers.
+  await cleanup();
   clients.splice(0).forEach((client) => client.clear());
 });
 
 function setup() {
+  // Finished mutations keep a garbage-collection timer that clear() does not cancel; without
+  // one, no timer outlives the test.
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, gcTime: Infinity },
+      mutations: { retry: false, gcTime: Infinity },
+    },
   });
   clients.push(client);
   const wrapper = ({ children }: { children: ReactNode }) => (

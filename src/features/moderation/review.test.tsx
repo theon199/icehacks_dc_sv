@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { useState, type ReactElement } from 'react';
 
 import { useSessionStore } from '@/features/auth';
@@ -55,8 +55,10 @@ const initialSession = useSessionStore.getState();
 const clients: QueryClient[] = [];
 
 function renderWithClient(ui: ReactElement) {
+  // Finished mutations keep a garbage-collection timer that clear() does not cancel; without
+  // one, no timer outlives the test.
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false, gcTime: Infinity } },
   });
   clients.push(client);
   return renderWithTheme(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
@@ -122,7 +124,9 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Unmount first so clearing the caches cannot notify (or keep polling for) live observers.
+  await cleanup();
   clients.splice(0).forEach((client) => client.clear());
   useSessionStore.setState(initialSession, true);
 });

@@ -19,7 +19,7 @@ import { NotificationRow } from '../components/NotificationRow';
 import { PushOptInCard } from '../components/PushOptInCard';
 import { notificationTarget, targetInputOf } from '../describe';
 import type { NotificationItem } from '../model';
-import { useInbox, useMarkRead, useUnreadCount } from '../queries';
+import { useBadgeNames, useInbox, useMarkRead, useUnreadCount } from '../queries';
 import { toInboxRows, type InboxRow } from '../sections';
 
 function InboxSkeleton() {
@@ -44,21 +44,25 @@ export function NotificationsScreen() {
   const inbox = useInbox();
   const unread = useUnreadCount();
   const markRead = useMarkRead();
+  // `mutate` is stable; the mutation object is not, and depending on it re-renders every row.
+  const markReadMutate = markRead.mutate;
+  const badgeNames = useBadgeNames();
 
   const items = useMemo(() => inbox.data?.pages.flatMap((page) => page.items) ?? [], [inbox.data]);
-  // Relative times are measured from the last fetch, so rows do not change between renders.
-  const now = inbox.dataUpdatedAt;
+  // Relative times are measured from the last fetch, rounded to the minute: optimistic updates
+  // also move dataUpdatedAt, and an unrounded value would re-render every row on each tap.
+  const now = Math.floor(inbox.dataUpdatedAt / 60_000) * 60_000;
   const rows = useMemo(() => toInboxRows(items, new Date(now)), [items, now]);
   const hasUnreadLoaded = items.some((item) => item.read_at == null);
 
   const openItem = useCallback(
     (item: NotificationItem) => {
-      if (item.read_at == null) markRead.mutate([item.id]);
+      if (item.read_at == null) markReadMutate([item.id]);
       const target = notificationTarget(targetInputOf(item));
       if (target) router.push(target);
       else toast.show({ message: 'That content is no longer available.' });
     },
-    [markRead, router],
+    [markReadMutate, router],
   );
 
   const renderItem: ListRenderItem<InboxRow> = useCallback(
@@ -68,9 +72,9 @@ export function NotificationsScreen() {
           {row.title}
         </Text>
       ) : (
-        <NotificationRow item={row.item} onPress={openItem} now={now} />
+        <NotificationRow item={row.item} onPress={openItem} now={now} badgeNames={badgeNames} />
       ),
-    [openItem, now],
+    [openItem, now, badgeNames],
   );
 
   const markAllButton =
