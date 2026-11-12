@@ -325,7 +325,7 @@ describe('an account write that never answers', () => {
     expect(mockAuth.updateUser).not.toHaveBeenCalled();
   });
 
-  it('sends a newer yes again once a stuck withdrawal finally lands', async () => {
+  it('never resends a yes after a stuck withdrawal lands; it follows the account instead', async () => {
     signIn('user-t3', true);
     const hung = oneHungWrite();
     const withdraw = setAiConsent(false, at('2026-11-02T10:00:00Z'));
@@ -338,21 +338,36 @@ describe('an account write that never answers', () => {
     expect(useSessionStore.getState().aiConsent).toBe(true);
     expect(sentAnswers()).toEqual([false, true]);
 
-    // The stuck withdrawal lands after the yes, so the account now holds that older record; the
-    // yes goes out again so the account matches.
+    // The stuck withdrawal lands after the yes. The account record it leaves cannot show whether
+    // another device withdrew in the meantime, so the yes is not replayed: this device closes AI
+    // to match the account, and the person can agree again.
     accountRecord('user-t3', decided(false, '2026-11-02T10:00:00Z'));
     hung.release();
     await jest.advanceTimersByTimeAsync(0);
-    expect(sentAnswers()).toEqual([false, true, true]);
-    expect(useSessionStore.getState().aiConsent).toBe(true);
-    expect(sentAnswers().at(-1)).toBe(useSessionStore.getState().aiConsent);
+    expect(sentAnswers()).toEqual([false, true]);
+    expect(useSessionStore.getState().aiConsent).toBe(false);
 
-    // The device no longer holds a withdrawal to resend.
+    // Nothing is left to resend, and a reconcile keeps following the account.
     mockAuth.updateUser.mockClear();
-    accountRecord('user-t3', granted);
     await reconcileAiConsent();
     expect(mockAuth.updateUser).not.toHaveBeenCalled();
-    expect(useSessionStore.getState().aiConsent).toBe(true);
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+  });
+
+  it('does not undo a withdrawal made on another device when a stuck withdrawal lands late', async () => {
+    signIn('user-t14', true);
+    const hung = oneHungWrite();
+    const withdraw = setAiConsent(false, at('2026-11-02T11:00:00Z'));
+    await jest.advanceTimersByTimeAsync(AI_CONSENT_WRITE_TIMEOUT_MS);
+    await withdraw;
+    await setAiConsent(true, at('2026-11-02T11:01:00Z'));
+    // Another device withdraws; then this device's stuck withdrawal lands over that record.
+    accountRecord('user-t14', decided(false, '2026-11-02T11:00:00Z'));
+    hung.release();
+    await jest.advanceTimersByTimeAsync(0);
+    // No yes is sent again, so the other device's withdrawal stands.
+    expect(sentAnswers()).toEqual([false, true]);
+    expect(useSessionStore.getState().aiConsent).toBe(false);
   });
 
   it('does not resend a yes over a newer withdrawal from another device', async () => {
@@ -478,10 +493,11 @@ describe('an account write that never answers', () => {
       await agree;
       await server.settleRest();
 
-      expect(useSessionStore.getState().aiConsent).toBe(true);
+      // When the stuck withdrawal is applied last the account says no, and this device follows
+      // it rather than replaying the yes, which could undo a withdrawal made elsewhere.
+      expect(useSessionStore.getState().aiConsent).toBe(!withdrawalLast);
       expect(server.account()?.granted).toBe(useSessionStore.getState().aiConsent);
-      // The yes is only sent again when the account lost it.
-      expect(sentAnswers()).toEqual(withdrawalLast ? [false, true, true] : [false, true]);
+      expect(sentAnswers()).toEqual([false, true]);
     },
   );
 
