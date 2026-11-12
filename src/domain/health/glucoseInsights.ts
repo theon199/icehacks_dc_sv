@@ -49,7 +49,10 @@ export function median(values: readonly number[]): number | null {
   return (lower + upper) / 2;
 }
 
-/** Drops pairs past retention or from the future, and keeps one pair per meal (the newest). */
+/**
+ * Drops pairs past retention or from the future, and keeps one pair per meal: when a meal appears
+ * more than once, the one that comes last in `pairs` wins.
+ */
 export function prunePairs(pairs: readonly GlucosePair[], now: number): GlucosePair[] {
   const cutoff = now - GLUCOSE_INSIGHT_RULES.retentionMs;
   const byMeal = new Map<string, GlucosePair>();
@@ -61,17 +64,26 @@ export function prunePairs(pairs: readonly GlucosePair[], now: number): GlucoseP
 }
 
 /**
- * Replaces the stored pairs for every meal that was evaluated again (paired or not) with the fresh
- * result, keeps the rest, and applies retention.
+ * Combines stored pairs with a fresh pairing run. Every stored pair from `reevaluatedFrom` onwards
+ * is replaced by the fresh result, so a meal that was removed from the cook log (or no longer pairs
+ * cleanly) loses its pair. Older pairs are kept, unless `olderMealIds` is given: then only older
+ * pairs whose meal is still in the cook log survive. Retention applies last.
  */
 export function mergePairs(input: {
   stored: readonly GlucosePair[];
   fresh: readonly GlucosePair[];
-  reevaluatedMealIds: ReadonlySet<string>;
+  reevaluatedFrom: number;
+  olderMealIds?: ReadonlySet<string> | undefined;
   now: number;
 }): GlucosePair[] {
-  const kept = input.stored.filter((pair) => !input.reevaluatedMealIds.has(pair.mealId));
-  return prunePairs([...kept, ...input.fresh], input.now);
+  const { reevaluatedFrom, olderMealIds } = input;
+  const kept = input.stored.filter(
+    (pair) =>
+      pair.startedAt < reevaluatedFrom &&
+      (olderMealIds === undefined || olderMealIds.has(pair.mealId)),
+  );
+  const fresh = input.fresh.filter((pair) => pair.startedAt >= reevaluatedFrom);
+  return prunePairs([...kept, ...fresh], input.now);
 }
 
 export function summarizeGlucose(pairs: readonly GlucosePair[], now: number): GlucoseSummary {

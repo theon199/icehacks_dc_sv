@@ -125,17 +125,83 @@ describe('prunePairs', () => {
 });
 
 describe('mergePairs', () => {
-  it('replaces re-evaluated meals and keeps older history', () => {
+  const from = NOW - 7 * DAY_MS;
+
+  it('replaces everything from the re-evaluation start and keeps older history', () => {
     const kept = pair('x', 10, 20);
-    const dropped = pair('y', 30, 2);
-    const fresh = pair('z', 25, 1);
+    const repaired = pair('y', 30, 2);
+    const fresh = { ...repaired, riseMgdl: 12 };
     const merged = mergePairs({
-      stored: [kept, dropped],
+      stored: [kept, repaired],
       fresh: [fresh],
-      reevaluatedMealIds: new Set([dropped.mealId, fresh.mealId]),
+      reevaluatedFrom: from,
       now: NOW,
     });
     expect(merged).toEqual([kept, fresh]);
+  });
+
+  it('drops the stored pair of a meal that is gone from the cook log', () => {
+    const older = pair('x', 10, 20);
+    const deleted = pair('y', 30, 2);
+    const merged = mergePairs({
+      stored: [older, deleted],
+      fresh: [],
+      reevaluatedFrom: from,
+      now: NOW,
+    });
+    expect(merged).toEqual([older]);
+  });
+
+  it('drops the stored pair of a meal that no longer pairs cleanly', () => {
+    const noLongerClean = pair('y', 30, 3);
+    const stillClean = pair('z', 20, 1);
+    const merged = mergePairs({
+      stored: [noLongerClean, stillClean],
+      fresh: [stillClean],
+      reevaluatedFrom: from,
+      now: NOW,
+    });
+    expect(merged).toEqual([stillClean]);
+  });
+
+  it('keeps only older pairs whose meal is still logged when the log was checked', () => {
+    const logged = pair('x', 10, 20);
+    const removed = pair('x', 12, 40);
+    const merged = mergePairs({
+      stored: [removed, logged],
+      fresh: [],
+      reevaluatedFrom: from,
+      olderMealIds: new Set([logged.mealId]),
+      now: NOW,
+    });
+    expect(merged).toEqual([logged]);
+  });
+
+  it('ignores fresh pairs from before the re-evaluation start', () => {
+    const early = pair('x', 10, 9);
+    expect(mergePairs({ stored: [], fresh: [early], reevaluatedFrom: from, now: NOW })).toEqual([]);
+  });
+
+  it('stops deleted meals from counting towards paired days and dish labels', () => {
+    // Twelve older days, one pair each; soup has one of them.
+    const older = Array.from({ length: 12 }, (_, i) =>
+      pair(i === 0 ? 'soup' : i % 2 === 0 ? 'pasta' : 'rice', i === 0 ? 10 : 50, 8 + i),
+    );
+    // Two recent soup meals that were later deleted from the cook log.
+    const deleted = [pair('soup', 10, 2), pair('soup', 10, 3)];
+    const stored = [...older, ...deleted];
+    const before = summarizeGlucose(stored, NOW);
+    expect(before.dishes.find((dish) => dish.recipeRef === 'soup')).toMatchObject({
+      steadier: true,
+    });
+
+    const after = summarizeGlucose(
+      mergePairs({ stored, fresh: [], reevaluatedFrom: from, now: NOW }),
+      NOW,
+    );
+    expect(after.pairCount).toBe(12);
+    expect(after.pairedDays).toBe(12);
+    expect(after.dishes.find((dish) => dish.recipeRef === 'soup')).toBeUndefined();
   });
 });
 
