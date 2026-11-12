@@ -122,6 +122,8 @@ export function checkRecipes(gates: GateReport, recipes: readonly RecipeRow[], i
     const unmatched = r.ingredients.some((i) => i.ingredient_id === null);
     gates.check(!unmatched || ALLERGEN_IDS.every((a) => r.allergens[a] !== 'free'), () => `${at}: unmatched line but an allergen is "free"`);
     gates.check(!unmatched || r.diet_flags === 0, () => `${at}: unmatched line but diet flags set`);
+    gates.check(r.partial_lines === 0 || ALLERGEN_IDS.every((a) => r.allergens[a] !== 'free'), () => `${at}: unidentified choice but an allergen is "free"`);
+    gates.check(r.partial_lines === 0 || r.diet_flags === 0, () => `${at}: unidentified choice but diet flags set`);
     for (const line of r.ingredients) {
       gates.check(line.ingredient_id === null || ingredientIds.has(line.ingredient_id), () => `${at}: unknown ingredient ${line.ingredient_id}`);
       gates.check(line.text.trim().length > 0, () => `${at}: empty ingredient text`);
