@@ -12,6 +12,7 @@ import { newId } from '@/lib/id';
 import { describeError, logger } from '@/lib/logger';
 import { defineKvKey } from '@/lib/storage/kv';
 import { supabase } from '@/lib/supabase/client';
+import type { Json } from '@/lib/supabase/database.types';
 
 import type { TimeRange } from './healthKit';
 
@@ -111,7 +112,7 @@ export async function pushHealthDocs(docs: readonly HealthSyncDoc[]): Promise<bo
     const payload = docs.map((doc) => ({
       collection: HEALTH_SYNC_COLLECTION,
       doc_id: doc.docId,
-      data: doc.data ?? {},
+      data: (doc.data ?? {}) as Json,
       updated_at: new Date(doc.updatedAt).toISOString(),
       device_id: device,
       ...(doc.data === null ? { deleted_at: new Date(doc.updatedAt).toISOString() } : {}),

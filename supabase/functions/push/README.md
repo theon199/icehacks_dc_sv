@@ -5,6 +5,7 @@ Registers devices for push notifications and delivers inbox notifications throug
 | Route                 | Caller                  | Auth                             | Body                                                                                   |
 | --------------------- | ----------------------- | -------------------------------- | -------------------------------------------------------------------------------------- |
 | `POST /push`          | the app                 | member session (`Authorization`) | `{ action: "register", token, platform }` or `{ action: "unregister", token }`         |
+| `POST /push`          | the app                 | member session (`Authorization`) | `{ action: "categories", social?, follows? }` → `{ categories: { social, follows } }`  |
 | `POST /push/dispatch` | the database via pg_net | `x-famara-push-secret` header    | `{ messages: PushJob[] }`, built by `private.push_batch` for each notifications insert |
 
 Both routes authenticate inside the function, so deploy it without the gateway JWT check:
@@ -36,6 +37,10 @@ notification inserts are unaffected.
 - Every device gets its own message; messages go out in batches of 100 (the Expo limit per request),
   with retries and backoff on throttling and server errors.
 - Tickets that report `DeviceNotRegistered` remove that token from `private.push_tokens`.
+- Likes, comments and replies (`social`) and new followers and friend accepts (`follows`) are only
+  pushed when the recipient turned that category on (`private.notification_preferences`, both off
+  until chosen). `private.push_batch` leaves the others out, so they never reach the push service.
+  Moderation outcomes, appeal decisions and badges are always pushed.
 - Lock-screen copy never contains moderation reasons; the app shows those after opening.
 - Each message's `data` carries only ids (`notification_id`, `recipient_id`, `kind`, `actor_id`,
   `post_id`, `comment_id`, `action_id`); the app routes taps from them.
