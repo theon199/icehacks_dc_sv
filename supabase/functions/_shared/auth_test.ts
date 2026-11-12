@@ -70,7 +70,7 @@ Deno.test("createUserClient forwards the caller's token", () => {
   assertEquals(options.global.headers["Authorization"], "Bearer user-jwt");
 });
 
-Deno.test("publishable keys are preferred over legacy anon keys", () => {
+Deno.test("publishable keys are preferred over anon keys", () => {
   const { calls, factory } = fakeFactory();
   createUserClient(authed(), {
     env: env({

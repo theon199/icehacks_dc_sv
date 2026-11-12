@@ -1,2 +1,1886 @@
-export type Json = unknown;
-export type Database = { public: { Tables: {}; Views: {}; Functions: {}; Enums: {}; CompositeTypes: {} } };
+/**
+ * Supabase types for the Famara database (`public` schema).
+ *
+ * The `Database` type mirrors supabase/migrations exactly and is what `createClient<Database>()`
+ * expects. CI regenerates it from the migrated schema and fails if this file drifts
+ * (supabase/types-check/drift.check.ts). To refresh it after a migration, with a local stack:
+ *
+ *   supabase db reset
+ *   supabase gen types typescript --local --schema public > src/lib/supabase/database.types.ts
+ *
+ * then restore this header and re-append everything below the "Famara aliases" marker.
+ * See docs/BACKEND.md for what each table, view and RPC does.
+ */
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
+export type Database = {
+  public: {
+    Tables: {
+      ai_usage: {
+        Row: {
+          count: number;
+          feature: string;
+          updated_at: string;
+          user_id: string;
+          window_seconds: number;
+          window_start: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          count?: number;
+          feature: string;
+          updated_at?: string;
+          user_id: string;
+          window_seconds: number;
+          window_start: string;
+        };
+        Update: {
+          count?: number;
+          feature?: string;
+          updated_at?: string;
+          user_id?: string;
+          window_seconds?: number;
+          window_start?: string;
+        };
+        Relationships: [];
+      };
+      badge_awards: {
+        Row: {
+          awarded_at: string;
+          badge_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          awarded_at?: string;
+          badge_id: string;
+          user_id: string;
+        };
+        Update: {
+          awarded_at?: string;
+          badge_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "badge_awards_badge_id_fkey";
+            columns: ["badge_id"];
+            isOneToOne: false;
+            referencedRelation: "badges";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "badge_awards_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      badges: {
+        Row: {
+          description: string;
+          id: string;
+          metric: string;
+          name: string;
+          sort_order: number;
+          threshold: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          description: string;
+          id: string;
+          metric: string;
+          name: string;
+          sort_order?: number;
+          threshold: number;
+        };
+        Update: {
+          description?: string;
+          id?: string;
+          metric?: string;
+          name?: string;
+          sort_order?: number;
+          threshold?: number;
+        };
+        Relationships: [];
+      };
+      blocks: {
+        Row: {
+          blocked_id: string;
+          blocker_id: string;
+          created_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          blocked_id: string;
+          blocker_id: string;
+          created_at?: string;
+        };
+        Update: {
+          blocked_id?: string;
+          blocker_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "blocks_blocked_id_fkey";
+            columns: ["blocked_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "blocks_blocker_id_fkey";
+            columns: ["blocker_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      comments: {
+        Row: {
+          author_id: string;
+          body: string;
+          created_at: string;
+          id: string;
+          parent_comment_id: string | null;
+          post_id: string;
+          status: Database["public"]["Enums"]["content_status"];
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          author_id: string;
+          body: string;
+          created_at?: string;
+          id?: string;
+          parent_comment_id?: string | null;
+          post_id: string;
+          status?: Database["public"]["Enums"]["content_status"];
+          updated_at?: string;
+        };
+        Update: {
+          author_id?: string;
+          body?: string;
+          created_at?: string;
+          id?: string;
+          parent_comment_id?: string | null;
+          post_id?: string;
+          status?: Database["public"]["Enums"]["content_status"];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "comments_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "comments_parent_comment_id_fkey";
+            columns: ["parent_comment_id"];
+            isOneToOne: false;
+            referencedRelation: "comment_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "comments_parent_comment_id_fkey";
+            columns: ["parent_comment_id"];
+            isOneToOne: false;
+            referencedRelation: "comments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "comments_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "comments_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      cook_events: {
+        Row: {
+          client_event_id: string | null;
+          cooked_at: string;
+          created_at: string;
+          cuisine: string | null;
+          id: string;
+          local_date: string;
+          rating: number | null;
+          recipe_ref: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          client_event_id?: string | null;
+          cooked_at?: string;
+          created_at?: string;
+          cuisine?: string | null;
+          id?: string;
+          local_date: string;
+          rating?: number | null;
+          recipe_ref: string;
+          user_id: string;
+        };
+        Update: {
+          client_event_id?: string | null;
+          cooked_at?: string;
+          created_at?: string;
+          cuisine?: string | null;
+          id?: string;
+          local_date?: string;
+          rating?: number | null;
+          recipe_ref?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      dish_confirmations: {
+        Row: {
+          created_at: string;
+          dish_key: string;
+          had_it: boolean;
+          place_id: string;
+          updated_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          dish_key: string;
+          had_it: boolean;
+          place_id: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          dish_key?: string;
+          had_it?: boolean;
+          place_id?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      follows: {
+        Row: {
+          created_at: string;
+          followee_id: string;
+          follower_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          followee_id: string;
+          follower_id: string;
+        };
+        Update: {
+          created_at?: string;
+          followee_id?: string;
+          follower_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "follows_followee_id_fkey";
+            columns: ["followee_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "follows_follower_id_fkey";
+            columns: ["follower_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      friend_invites: {
+        Row: {
+          code: string;
+          created_at: string;
+          expires_at: string;
+          inviter_id: string;
+          redeemed_at: string | null;
+          redeemed_by: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          code: string;
+          created_at?: string;
+          expires_at?: string;
+          inviter_id: string;
+          redeemed_at?: string | null;
+          redeemed_by?: string | null;
+        };
+        Update: {
+          code?: string;
+          created_at?: string;
+          expires_at?: string;
+          inviter_id?: string;
+          redeemed_at?: string | null;
+          redeemed_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "friend_invites_inviter_id_fkey";
+            columns: ["inviter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "friend_invites_redeemed_by_fkey";
+            columns: ["redeemed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ingredient_price_cache: {
+        Row: {
+          cache_key: string;
+          confidence: string;
+          currency: string;
+          expires_at: string;
+          fetched_at: string;
+          ingredient_id: string;
+          price_cents: number;
+          region: string;
+          source_name: string;
+          source_url: string | null;
+          unit: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          cache_key: string;
+          confidence?: string;
+          currency?: string;
+          expires_at: string;
+          fetched_at?: string;
+          ingredient_id: string;
+          price_cents: number;
+          region?: string;
+          source_name: string;
+          source_url?: string | null;
+          unit: string;
+        };
+        Update: {
+          cache_key?: string;
+          confidence?: string;
+          currency?: string;
+          expires_at?: string;
+          fetched_at?: string;
+          ingredient_id?: string;
+          price_cents?: number;
+          region?: string;
+          source_name?: string;
+          source_url?: string | null;
+          unit?: string;
+        };
+        Relationships: [];
+      };
+      moderation_actions: {
+        Row: {
+          action: Database["public"]["Enums"]["moderation_action_kind"];
+          automated: boolean;
+          created_at: string;
+          id: string;
+          moderator_id: string | null;
+          reason: string;
+          report_id: string | null;
+          suspended_until: string | null;
+          target_id: string;
+          target_kind: Database["public"]["Enums"]["report_target"];
+          target_owner_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          action: Database["public"]["Enums"]["moderation_action_kind"];
+          automated?: boolean;
+          created_at?: string;
+          id?: string;
+          moderator_id?: string | null;
+          reason: string;
+          report_id?: string | null;
+          suspended_until?: string | null;
+          target_id: string;
+          target_kind: Database["public"]["Enums"]["report_target"];
+          target_owner_id?: string | null;
+        };
+        Update: {
+          action?: Database["public"]["Enums"]["moderation_action_kind"];
+          automated?: boolean;
+          created_at?: string;
+          id?: string;
+          moderator_id?: string | null;
+          reason?: string;
+          report_id?: string | null;
+          suspended_until?: string | null;
+          target_id?: string;
+          target_kind?: Database["public"]["Enums"]["report_target"];
+          target_owner_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "moderation_actions_moderator_id_fkey";
+            columns: ["moderator_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "moderation_actions_report_id_fkey";
+            columns: ["report_id"];
+            isOneToOne: false;
+            referencedRelation: "reports";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "moderation_actions_target_owner_id_fkey";
+            columns: ["target_owner_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      moderation_appeals: {
+        Row: {
+          action_id: string;
+          appellant_id: string;
+          created_at: string;
+          decided_at: string | null;
+          decided_by: string | null;
+          decision_note: string | null;
+          id: string;
+          message: string;
+          status: Database["public"]["Enums"]["appeal_status"];
+        };
+        ComputedFields: never;
+        Insert: {
+          action_id: string;
+          appellant_id: string;
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_note?: string | null;
+          id?: string;
+          message: string;
+          status?: Database["public"]["Enums"]["appeal_status"];
+        };
+        Update: {
+          action_id?: string;
+          appellant_id?: string;
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_note?: string | null;
+          id?: string;
+          message?: string;
+          status?: Database["public"]["Enums"]["appeal_status"];
+        };
+        Relationships: [
+          {
+            foreignKeyName: "moderation_appeals_action_id_fkey";
+            columns: ["action_id"];
+            isOneToOne: false;
+            referencedRelation: "moderation_actions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "moderation_appeals_appellant_id_fkey";
+            columns: ["appellant_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "moderation_appeals_decided_by_fkey";
+            columns: ["decided_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notifications: {
+        Row: {
+          actor_id: string | null;
+          comment_id: string | null;
+          created_at: string;
+          data: NonNullable<Json>;
+          id: string;
+          kind: Database["public"]["Enums"]["notification_kind"];
+          post_id: string | null;
+          read_at: string | null;
+          recipient_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          actor_id?: string | null;
+          comment_id?: string | null;
+          created_at?: string;
+          data?: NonNullable<Json>;
+          id?: string;
+          kind: Database["public"]["Enums"]["notification_kind"];
+          post_id?: string | null;
+          read_at?: string | null;
+          recipient_id: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          comment_id?: string | null;
+          created_at?: string;
+          data?: NonNullable<Json>;
+          id?: string;
+          kind?: Database["public"]["Enums"]["notification_kind"];
+          post_id?: string | null;
+          read_at?: string | null;
+          recipient_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_comment_id_fkey";
+            columns: ["comment_id"];
+            isOneToOne: false;
+            referencedRelation: "comment_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_comment_id_fkey";
+            columns: ["comment_id"];
+            isOneToOne: false;
+            referencedRelation: "comments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      places_cache: {
+        Row: {
+          cache_key: string;
+          expires_at: string;
+          fetched_at: string;
+          lat_rounded: number;
+          lng_rounded: number;
+          payload: NonNullable<Json>;
+          query: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          cache_key: string;
+          expires_at: string;
+          fetched_at?: string;
+          lat_rounded: number;
+          lng_rounded: number;
+          payload: NonNullable<Json>;
+          query: string;
+        };
+        Update: {
+          cache_key?: string;
+          expires_at?: string;
+          fetched_at?: string;
+          lat_rounded?: number;
+          lng_rounded?: number;
+          payload?: NonNullable<Json>;
+          query?: string;
+        };
+        Relationships: [];
+      };
+      post_likes: {
+        Row: {
+          created_at: string;
+          post_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          post_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          post_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "post_likes_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_likes_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_likes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      post_media: {
+        Row: {
+          blurhash: string | null;
+          created_at: string;
+          height: number;
+          id: string;
+          owner_id: string;
+          path: string;
+          position: number;
+          post_id: string;
+          width: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          blurhash?: string | null;
+          created_at?: string;
+          height: number;
+          id?: string;
+          owner_id: string;
+          path: string;
+          position: number;
+          post_id: string;
+          width: number;
+        };
+        Update: {
+          blurhash?: string | null;
+          created_at?: string;
+          height?: number;
+          id?: string;
+          owner_id?: string;
+          path?: string;
+          position?: number;
+          post_id?: string;
+          width?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "post_media_owner_id_fkey";
+            columns: ["owner_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_media_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_media_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      post_saves: {
+        Row: {
+          created_at: string;
+          post_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          post_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          post_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "post_saves_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_saves_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_saves_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      posts: {
+        Row: {
+          author_id: string;
+          body: string;
+          comment_count: number;
+          created_at: string;
+          id: string;
+          kind: Database["public"]["Enums"]["post_kind"];
+          like_count: number;
+          parent_post_id: string | null;
+          rating: number | null;
+          recipe_ref: string | null;
+          status: Database["public"]["Enums"]["content_status"];
+          title: string;
+          updated_at: string;
+          visibility: Database["public"]["Enums"]["post_visibility"];
+        };
+        ComputedFields: never;
+        Insert: {
+          author_id: string;
+          body?: string;
+          comment_count?: number;
+          created_at?: string;
+          id?: string;
+          kind: Database["public"]["Enums"]["post_kind"];
+          like_count?: number;
+          parent_post_id?: string | null;
+          rating?: number | null;
+          recipe_ref?: string | null;
+          status?: Database["public"]["Enums"]["content_status"];
+          title: string;
+          updated_at?: string;
+          visibility?: Database["public"]["Enums"]["post_visibility"];
+        };
+        Update: {
+          author_id?: string;
+          body?: string;
+          comment_count?: number;
+          created_at?: string;
+          id?: string;
+          kind?: Database["public"]["Enums"]["post_kind"];
+          like_count?: number;
+          parent_post_id?: string | null;
+          rating?: number | null;
+          recipe_ref?: string | null;
+          status?: Database["public"]["Enums"]["content_status"];
+          title?: string;
+          updated_at?: string;
+          visibility?: Database["public"]["Enums"]["post_visibility"];
+        };
+        Relationships: [
+          {
+            foreignKeyName: "posts_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "posts_parent_post_id_fkey";
+            columns: ["parent_post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "posts_parent_post_id_fkey";
+            columns: ["parent_post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      profiles: {
+        Row: {
+          avatar_path: string | null;
+          bio: string;
+          created_at: string;
+          cuisines: string[];
+          display_name: string;
+          handle: string;
+          id: string;
+          is_team: boolean;
+          suspended_until: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          avatar_path?: string | null;
+          bio?: string;
+          created_at?: string;
+          cuisines?: string[];
+          display_name: string;
+          handle: string;
+          id: string;
+          is_team?: boolean;
+          suspended_until?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          avatar_path?: string | null;
+          bio?: string;
+          created_at?: string;
+          cuisines?: string[];
+          display_name?: string;
+          handle?: string;
+          id?: string;
+          is_team?: boolean;
+          suspended_until?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      reports: {
+        Row: {
+          automated: boolean;
+          created_at: string;
+          details: string;
+          id: string;
+          reason: Database["public"]["Enums"]["report_reason"];
+          reporter_id: string | null;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          status: Database["public"]["Enums"]["report_status"];
+          target_id: string;
+          target_kind: Database["public"]["Enums"]["report_target"];
+          target_owner_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          automated?: boolean;
+          created_at?: string;
+          details?: string;
+          id?: string;
+          reason: Database["public"]["Enums"]["report_reason"];
+          reporter_id?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          status?: Database["public"]["Enums"]["report_status"];
+          target_id: string;
+          target_kind: Database["public"]["Enums"]["report_target"];
+          target_owner_id?: string | null;
+        };
+        Update: {
+          automated?: boolean;
+          created_at?: string;
+          details?: string;
+          id?: string;
+          reason?: Database["public"]["Enums"]["report_reason"];
+          reporter_id?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          status?: Database["public"]["Enums"]["report_status"];
+          target_id?: string;
+          target_kind?: Database["public"]["Enums"]["report_target"];
+          target_owner_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reports_reporter_id_fkey";
+            columns: ["reporter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reports_resolved_by_fkey";
+            columns: ["resolved_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reports_target_owner_id_fkey";
+            columns: ["target_owner_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      user_documents: {
+        Row: {
+          collection: string;
+          data: NonNullable<Json>;
+          deleted_at: string | null;
+          device_id: string;
+          doc_id: string;
+          revision: number;
+          server_updated_at: string;
+          updated_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          collection: string;
+          data?: NonNullable<Json>;
+          deleted_at?: string | null;
+          device_id: string;
+          doc_id: string;
+          revision?: number;
+          server_updated_at?: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Update: {
+          collection?: string;
+          data?: NonNullable<Json>;
+          deleted_at?: string | null;
+          device_id?: string;
+          doc_id?: string;
+          revision?: number;
+          server_updated_at?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      user_roles: {
+        Row: {
+          granted_at: string;
+          granted_by: string | null;
+          role: Database["public"]["Enums"]["app_role"];
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          granted_at?: string;
+          granted_by?: string | null;
+          role: Database["public"]["Enums"]["app_role"];
+          user_id: string;
+        };
+        Update: {
+          granted_at?: string;
+          granted_by?: string | null;
+          role?: Database["public"]["Enums"]["app_role"];
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+    };
+    Views: {
+      comment_cards: {
+        Row: {
+          author_avatar_path: string | null;
+          author_display_name: string;
+          author_handle: string | null;
+          author_id: string;
+          body: string;
+          created_at: string;
+          id: string;
+          parent_comment_id: string | null;
+          post_id: string;
+          status: Database["public"]["Enums"]["content_status"];
+        };
+        ComputedFields: never;
+        Relationships: [
+          {
+            foreignKeyName: "comments_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "comments_parent_comment_id_fkey";
+            columns: ["parent_comment_id"];
+            isOneToOne: false;
+            referencedRelation: "comment_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "comments_parent_comment_id_fkey";
+            columns: ["parent_comment_id"];
+            isOneToOne: false;
+            referencedRelation: "comments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "comments_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "comments_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notification_cards: {
+        Row: {
+          actor_avatar_path: string | null;
+          actor_display_name: string | null;
+          actor_handle: string | null;
+          actor_id: string | null;
+          comment_id: string | null;
+          created_at: string;
+          data: NonNullable<Json>;
+          id: string;
+          kind: Database["public"]["Enums"]["notification_kind"];
+          post_id: string | null;
+          read_at: string | null;
+          recipient_id: string;
+        };
+        ComputedFields: never;
+        Relationships: [
+          {
+            foreignKeyName: "notifications_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_comment_id_fkey";
+            columns: ["comment_id"];
+            isOneToOne: false;
+            referencedRelation: "comment_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_comment_id_fkey";
+            columns: ["comment_id"];
+            isOneToOne: false;
+            referencedRelation: "comments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      post_cards: {
+        Row: {
+          author_avatar_path: string | null;
+          author_display_name: string;
+          author_handle: string | null;
+          author_id: string;
+          author_is_team: boolean;
+          body: string;
+          comment_count: number;
+          created_at: string;
+          id: string;
+          kind: Database["public"]["Enums"]["post_kind"];
+          like_count: number;
+          liked_by_me: boolean | null;
+          media: Json | null;
+          parent_post_id: string | null;
+          rating: number | null;
+          recipe_ref: string | null;
+          saved_by_me: boolean | null;
+          status: Database["public"]["Enums"]["content_status"];
+          title: string;
+          visibility: Database["public"]["Enums"]["post_visibility"];
+        };
+        ComputedFields: never;
+        Relationships: [
+          {
+            foreignKeyName: "posts_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "posts_parent_post_id_fkey";
+            columns: ["parent_post_id"];
+            isOneToOne: false;
+            referencedRelation: "post_cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "posts_parent_post_id_fkey";
+            columns: ["parent_post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+    };
+    Functions: {
+      add_comment: {
+        Args: {
+          p_body: string;
+          p_parent_comment_id?: string;
+          p_post_id: string;
+        };
+        Returns: {
+          author_id: string;
+          body: string;
+          created_at: string;
+          id: string;
+          parent_comment_id: string | null;
+          post_id: string;
+          status: Database["public"]["Enums"]["content_status"];
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "comments";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      age_years: { Args: Record<PropertyKey, never>; Returns: number };
+      appeal: {
+        Args: { p_action_id: string; p_message: string };
+        Returns: string;
+      };
+      appeal_queue: { Args: { p_limit?: number }; Returns: Json };
+      block_user: { Args: { p_user_id: string }; Returns: undefined };
+      claim_storage_purge: {
+        Args: { p_limit?: number };
+        Returns: {
+          bucket_id: string;
+          id: number;
+          object_name: string;
+        }[];
+      };
+      complete_storage_purge: { Args: { p_ids: number[] }; Returns: number };
+      confirm_dish: {
+        Args: { p_dish_key: string; p_had_it: boolean; p_place_id: string };
+        Returns: Json;
+      };
+      consume_ai_quota: {
+        Args: { p_feature: string; p_limit: number; p_window_seconds?: number };
+        Returns: {
+          allowed: boolean;
+          remaining: number;
+          reset_at: string;
+        }[];
+      };
+      create_friend_invite: { Args: Record<PropertyKey, never>; Returns: Json };
+      decide_appeal: {
+        Args: {
+          p_appeal_id: string;
+          p_note?: string;
+          p_outcome: Database["public"]["Enums"]["appeal_status"];
+        };
+        Returns: undefined;
+      };
+      delete_my_account: { Args: Record<PropertyKey, never>; Returns: Json };
+      dish_confirmation_summary: {
+        Args: { p_dish_key: string; p_place_ids: string[] };
+        Returns: {
+          my_answer: boolean;
+          no_count: number;
+          place_id: string;
+          yes_count: number;
+        }[];
+      };
+      export_my_data: { Args: Record<PropertyKey, never>; Returns: Json };
+      follow_user: { Args: { p_user_id: string }; Returns: undefined };
+      get_feed: {
+        Args: {
+          p_author_id?: string;
+          p_cursor?: string;
+          p_limit?: number;
+          p_mode?: Database["public"]["Enums"]["feed_mode"];
+        };
+        Returns: Json;
+      };
+      get_profile_summary: { Args: { p_user_id: string }; Returns: Json };
+      is_adult: { Args: Record<PropertyKey, never>; Returns: boolean };
+      mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number };
+      moderate: {
+        Args: {
+          p_action: Database["public"]["Enums"]["moderation_action_kind"];
+          p_reason: string;
+          p_suspend_days?: number;
+          p_target_id: string;
+          p_target_kind: Database["public"]["Enums"]["report_target"];
+        };
+        Returns: string;
+      };
+      moderation_queue: {
+        Args: {
+          p_after?: string;
+          p_limit?: number;
+          p_status?: Database["public"]["Enums"]["report_status"];
+        };
+        Returns: Json;
+      };
+      my_account_status: { Args: Record<PropertyKey, never>; Returns: Json };
+      my_ai_usage: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          count: number;
+          feature: string;
+          window_seconds: number;
+          window_start: string;
+        }[];
+      };
+      my_stats: { Args: { p_today?: string }; Returns: Json };
+      publish_post: {
+        Args: {
+          p_body?: string;
+          p_kind: Database["public"]["Enums"]["post_kind"];
+          p_media?: Json;
+          p_parent_post_id?: string;
+          p_rating?: number;
+          p_recipe_ref?: string;
+          p_title: string;
+          p_visibility?: Database["public"]["Enums"]["post_visibility"];
+        };
+        Returns: {
+          author_id: string;
+          body: string;
+          comment_count: number;
+          created_at: string;
+          id: string;
+          kind: Database["public"]["Enums"]["post_kind"];
+          like_count: number;
+          parent_post_id: string | null;
+          rating: number | null;
+          recipe_ref: string | null;
+          status: Database["public"]["Enums"]["content_status"];
+          title: string;
+          updated_at: string;
+          visibility: Database["public"]["Enums"]["post_visibility"];
+        };
+        SetofOptions: {
+          from: "*";
+          to: "posts";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      record_cook_event: {
+        Args: {
+          p_client_event_id?: string;
+          p_cooked_at?: string;
+          p_cuisine?: string;
+          p_local_date: string;
+          p_rating?: number;
+          p_recipe_ref: string;
+        };
+        Returns: Json;
+      };
+      redeem_friend_invite: { Args: { p_code: string }; Returns: Json };
+      report_content: {
+        Args: {
+          p_details?: string;
+          p_reason: Database["public"]["Enums"]["report_reason"];
+          p_target_id: string;
+          p_target_kind: Database["public"]["Enums"]["report_target"];
+        };
+        Returns: string;
+      };
+      set_birth_year: { Args: { p_birth_year: number }; Returns: Json };
+      sync_pull: {
+        Args: { p_limit?: number; p_since?: number };
+        Returns: Json;
+      };
+      sync_push: { Args: { p_docs: Json }; Returns: Json };
+      toggle_like: { Args: { p_post_id: string }; Returns: Json };
+      toggle_save: { Args: { p_post_id: string }; Returns: Json };
+      unblock_user: { Args: { p_user_id: string }; Returns: undefined };
+      unfollow_user: { Args: { p_user_id: string }; Returns: undefined };
+      unread_notification_count: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      weekly_top_dishes: {
+        Args: { p_limit?: number; p_min_cooks?: number };
+        Returns: {
+          avg_rating: number;
+          cook_count: number;
+          cooks: number;
+          post_count: number;
+          recipe_ref: string;
+        }[];
+      };
+    };
+    Enums: {
+      app_role: "moderator" | "admin";
+      appeal_status: "pending" | "upheld" | "reversed";
+      content_status: "visible" | "hidden" | "removed";
+      feed_mode: "following" | "popular" | "new" | "author" | "saved";
+      moderation_action_kind:
+        | "hide"
+        | "restore"
+        | "remove"
+        | "warn"
+        | "suspend"
+        | "unsuspend"
+        | "dismiss";
+      notification_kind:
+        | "like"
+        | "comment"
+        | "reply"
+        | "follow"
+        | "friend_accept"
+        | "moderation"
+        | "appeal_decision"
+        | "badge";
+      post_kind: "cook" | "remix" | "tip";
+      post_visibility: "public" | "followers";
+      report_reason:
+        | "spam"
+        | "harassment"
+        | "hate"
+        | "sexual"
+        | "violence"
+        | "self_harm"
+        | "misinformation"
+        | "unsafe_food"
+        | "impersonation"
+        | "other";
+      report_status: "open" | "actioned" | "dismissed";
+      report_target: "post" | "comment" | "user" | "recipe";
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
+};
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<
+  keyof Database,
+  "public"
+>];
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R;
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
+      }
+      ? R
+      : never
+    : never;
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I;
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I;
+      }
+      ? I
+      : never
+    : never;
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U;
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U;
+      }
+      ? U
+      : never
+    : never;
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never;
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never;
+
+export const Constants = {
+  public: {
+    Enums: {
+      app_role: ["moderator", "admin"],
+      appeal_status: ["pending", "upheld", "reversed"],
+      content_status: ["visible", "hidden", "removed"],
+      feed_mode: ["following", "popular", "new", "author", "saved"],
+      moderation_action_kind: [
+        "hide",
+        "restore",
+        "remove",
+        "warn",
+        "suspend",
+        "unsuspend",
+        "dismiss",
+      ],
+      notification_kind: [
+        "like",
+        "comment",
+        "reply",
+        "follow",
+        "friend_accept",
+        "moderation",
+        "appeal_decision",
+        "badge",
+      ],
+      post_kind: ["cook", "remix", "tip"],
+      post_visibility: ["public", "followers"],
+      report_reason: [
+        "spam",
+        "harassment",
+        "hate",
+        "sexual",
+        "violence",
+        "self_harm",
+        "misinformation",
+        "unsafe_food",
+        "impersonation",
+        "other",
+      ],
+      report_status: ["open", "actioned", "dismissed"],
+      report_target: ["post", "comment", "user", "recipe"],
+    },
+  },
+} as const;
+
+// -------------------------------------------------------------------------------------------------
+// Famara aliases (maintained by hand; keep when regenerating the section above)
+// -------------------------------------------------------------------------------------------------
+
+export type Profile = Tables<"profiles">;
+export type Post = Tables<"posts">;
+export type PostComment = Tables<"comments">;
+export type InboxNotification = Tables<"notifications">;
+export type CookEvent = Tables<"cook_events">;
+export type Badge = Tables<"badges">;
+export type UserDocument = Tables<"user_documents">;
+export type CommentCard = Tables<"comment_cards">;
+export type NotificationCard = Tables<"notification_cards">;
+
+export type PostKind = Enums<"post_kind">;
+export type PostVisibility = Enums<"post_visibility">;
+export type ContentStatus = Enums<"content_status">;
+export type FeedMode = Enums<"feed_mode">;
+export type NotificationKind = Enums<"notification_kind">;
+export type ReportTarget = Enums<"report_target">;
+export type ReportReason = Enums<"report_reason">;
+export type ModerationActionKind = Enums<"moderation_action_kind">;
+export type AppRole = Enums<"app_role">;
+
+/** One photo on a post card (`post_cards.media`). */
+export interface PostMediaItem {
+  path: string;
+  width: number;
+  height: number;
+  blurhash: string | null;
+  position: number;
+}
+
+/** A `post_cards` row as returned inside `get_feed` items (view columns are never null there). */
+export interface PostCard {
+  id: string;
+  author_id: string;
+  author_handle: string;
+  author_display_name: string;
+  author_avatar_path: string | null;
+  author_is_team: boolean;
+  kind: PostKind;
+  recipe_ref: string | null;
+  title: string;
+  body: string;
+  rating: number | null;
+  visibility: PostVisibility;
+  status: ContentStatus;
+  parent_post_id: string | null;
+  like_count: number;
+  comment_count: number;
+  created_at: string;
+  liked_by_me: boolean;
+  saved_by_me: boolean;
+  media: PostMediaItem[];
+}
+
+/** `get_feed` result. */
+export interface FeedPage {
+  items: PostCard[];
+  next_cursor: string | null;
+}
+
+/** `my_account_status` / `set_birth_year` result. */
+export interface AccountStatus {
+  user_id: string;
+  handle: string;
+  has_birth_year: boolean;
+  age_years: number | null;
+  is_adult: boolean;
+  is_underage: boolean;
+  suspended_until: string | null;
+  roles: AppRole[];
+}
+
+/** A document as sent to `sync_push`. */
+export interface SyncDocument {
+  collection: string;
+  doc_id: string;
+  data: { [key: string]: Json | undefined };
+  updated_at: string;
+  device_id: string;
+  deleted_at?: string | null;
+}
+
+/** A document as stored on the server (`sync_pull` items, stale-write rejections). */
+export interface StoredSyncDocument {
+  collection: string;
+  doc_id: string;
+  data: { [key: string]: Json | undefined };
+  updated_at: string;
+  device_id: string;
+  deleted_at: string | null;
+  revision: number;
+}
+
+export interface SyncPushResult {
+  applied: { collection: string; doc_id: string; revision: number }[];
+  rejected: {
+    collection: string;
+    doc_id: string;
+    reason: "stale" | "future_timestamp";
+    server: Omit<StoredSyncDocument, "collection" | "doc_id"> | null;
+  }[];
+}
+
+export interface SyncPullResult {
+  documents: StoredSyncDocument[];
+  cursor: number;
+  has_more: boolean;
+}
+
+export interface EarnedBadge {
+  badge_id: string;
+  awarded_at: string;
+}
+
+/** `my_stats` result. */
+export interface MyStats {
+  cooked_count: number;
+  cooked_this_week: number;
+  current_streak: number;
+  longest_streak: number;
+  last_cooked_at: string | null;
+  cuisine_count: number;
+  cuisines: { cuisine: string; count: number }[];
+  post_count: number;
+  likes_received: number;
+  badges: EarnedBadge[];
+}
+
+/** `record_cook_event` result. */
+export interface CookEventResult {
+  event_id: string;
+  new_badges: string[];
+  stats: MyStats;
+}
+
+/** `get_profile_summary` result. */
+export interface ProfileSummary {
+  id: string;
+  handle: string;
+  display_name: string;
+  avatar_path: string | null;
+  bio: string;
+  cuisines: string[];
+  is_team: boolean;
+  created_at: string;
+  post_count: number;
+  likes_received: number;
+  follower_count: number;
+  following_count: number;
+  badges: EarnedBadge[];
+  is_self: boolean;
+  is_following: boolean;
+  follows_me: boolean;
+  is_friend: boolean;
+  blocked_by_me: boolean;
+}
+
+/** `create_friend_invite` result. */
+export interface FriendInvite {
+  code: string;
+  expires_at: string;
+}
+
+/** `redeem_friend_invite` result. */
+export interface RedeemedInvite {
+  inviter_id: string;
+  inviter_handle: string;
+}
+
+/** `toggle_like` result. */
+export interface LikeState {
+  liked: boolean;
+  like_count: number;
+}
+
+/** `toggle_save` result. */
+export interface SaveState {
+  saved: boolean;
+}
+
+/** `confirm_dish` result. */
+export interface DishConfirmationTally {
+  place_id: string;
+  dish_key: string;
+  yes_count: number;
+  no_count: number;
+  my_answer: boolean;
+}
+
+/** `delete_my_account` result. */
+export interface AccountDeletion {
+  deleted: true;
+  storage_objects_queued: number;
+}
+
+/** `data` of a `moderation` notification. */
+export interface ModerationNotice {
+  action_id: string;
+  action: ModerationActionKind;
+  target_kind: ReportTarget;
+  target_id: string;
+  reason: string;
+  automated: boolean;
+  suspended_until: string | null;
+  appealable: boolean;
+}
+
+/** One entry of `moderation_queue().items`. */
+export interface ModerationQueueItem {
+  target_kind: ReportTarget;
+  target_id: string;
+  target_owner_id: string | null;
+  owner_handle: string | null;
+  report_count: number;
+  automated_count: number;
+  first_reported_at: string;
+  last_reported_at: string;
+  reports: {
+    report_id: string;
+    reason: ReportReason;
+    details: string;
+    reporter_id: string | null;
+    automated: boolean;
+    created_at: string;
+  }[];
+  target: { [key: string]: Json | undefined } | null;
+  previous_actions: {
+    action: ModerationActionKind;
+    reason: string;
+    created_at: string;
+    automated: boolean;
+  }[];
+}
+
+/** `moderation_queue` result. */
+export interface ModerationQueuePage {
+  items: ModerationQueueItem[];
+  next_after: string | null;
+}
+
+/** Machine codes raised by Famara RPCs (the PostgREST error `message`). */
+export type RpcErrorCode =
+  | "not_authenticated"
+  | "age_gate_required"
+  | "underage"
+  | "suspended"
+  | "profile_missing"
+  | "forbidden"
+  | "rate_limited"
+  | "invalid_input"
+  | "invalid_cursor"
+  | "invalid_birth_year"
+  | "birth_year_locked"
+  | "invalid_target"
+  | "user_not_found"
+  | "post_not_found"
+  | "comment_not_found"
+  | "target_not_found"
+  | "parent_not_found"
+  | "invalid_title"
+  | "invalid_body"
+  | "invalid_rating"
+  | "invalid_media"
+  | "media_not_uploaded"
+  | "media_in_use"
+  | "recipe_required"
+  | "reply_depth_exceeded"
+  | "invalid_parent_comment"
+  | "invite_not_found"
+  | "invite_used"
+  | "invalid_document"
+  | "too_many_documents"
+  | "invalid_details"
+  | "invalid_message"
+  | "invalid_reason"
+  | "invalid_action"
+  | "invalid_suspension"
+  | "invalid_outcome"
+  | "invalid_note"
+  | "not_appealable"
+  | "appeal_window_closed"
+  | "already_appealed"
+  | "action_not_found"
+  | "appeal_not_found"
+  | "appeal_decided"
+  | "invalid_recipe"
+  | "invalid_cuisine"
+  | "invalid_cooked_at"
+  | "invalid_local_date"
+  | "invalid_feature"
+  | "invalid_limit"
+  | "invalid_window"
+  | "invalid_place"
+  | "invalid_dish";

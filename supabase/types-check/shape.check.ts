@@ -26,3 +26,9 @@ type SchemaShape = {
 
 type Expect<T extends true> = T;
 export type PublicSchemaHasClientShape = Expect<Database["public"] extends SchemaShape ? true : false>;
+
+// The hand-written PostCard must cover exactly the columns of the post_cards view.
+import type { PostCard, Tables } from "../../src/lib/supabase/database.types";
+type SameKeys<A, B> = [keyof A] extends [keyof B] ? [keyof B] extends [keyof A] ? true : false
+  : false;
+export type PostCardMatchesView = Expect<SameKeys<PostCard, Tables<"post_cards">>>;
