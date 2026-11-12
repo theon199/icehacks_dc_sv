@@ -8,7 +8,7 @@ const greetingSchema = z.object({ greeting: z.string() });
 /** Builds a fake HTTP reply. Strings are sent verbatim; anything else is serialised. */
 const reply = {
   json(payload: unknown, init: { status?: number; retryAfter?: string } = {}): Response {
-    const headers = new Headers({ 'content-type': 'application/json' });
+    const headers = new Headers([['content-type', 'application/json']]);
     if (init.retryAfter) headers.set('retry-after', init.retryAfter);
     const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
     return new Response(text, { status: init.status ?? 200, headers });
@@ -27,11 +27,16 @@ const reply = {
 
 /** A fetch that only settles when its signal aborts, like a request stuck on a dead connection. */
 const neverAnswers: typeof fetch = (_input, init) =>
-  new Promise<Response>((_resolve, reject) => {
-    const stop = () => reject(new DOMException('stopped', 'AbortError'));
+  new Promise<Response>((_never, fail) => {
+    const stop = () => fail(new DOMException('stopped', 'AbortError'));
     if (init?.signal?.aborted) stop();
     else init?.signal?.addEventListener('abort', stop);
   });
+
+interface SentRequest {
+  url: string;
+  init: RequestInit | undefined;
+}
 
 interface Harness {
   fetchImpl?: typeof fetch;
@@ -42,13 +47,13 @@ function makeClient({
   fetchImpl = async () => reply.json({ greeting: 'hi' }),
   token = async () => 'user-token',
 }: Harness = {}) {
-  const requests: { url: string; init: RequestInit | undefined }[] = [];
+  const requests: SentRequest[] = [];
   const call = createApiClient({
     baseUrl: 'https://proj.supabase.co',
     publishableKey: 'sb_publishable_key',
     getAccessToken: token,
     fetch: (input, init) => {
-      requests.push({ url: String(input), init });
+      requests.push({ init, url: String(input) });
       return fetchImpl(input, init);
     },
   });
@@ -169,19 +174,19 @@ describe('createApiClient', () => {
       ['the token is refreshing', { token: () => new Promise(() => undefined) }],
       ['the body is downloading', { fetchImpl: async () => reply.stalledBody() }],
     ])('reports cancelled when the caller aborts while %s', async (_label, harness) => {
-      const controller = new AbortController();
+      const caller = new AbortController();
       const { call } = makeClient(harness);
-      const pending = failureOf(call('slow', {}, greetingSchema, { signal: controller.signal }));
+      const pending = failureOf(call('slow', {}, greetingSchema, { signal: caller.signal }));
       await jest.advanceTimersByTimeAsync(0);
-      controller.abort();
+      caller.abort();
       expect((await pending).kind).toBe('cancelled');
     });
 
     it('never sends a request whose signal is already aborted', async () => {
-      const controller = new AbortController();
-      controller.abort();
+      const caller = new AbortController();
+      caller.abort();
       const { call, requests } = makeClient();
-      const error = await failureOf(call('x', {}, greetingSchema, { signal: controller.signal }));
+      const error = await failureOf(call('x', {}, greetingSchema, { signal: caller.signal }));
       expect(error.kind).toBe('cancelled');
       expect(requests.length).toBe(0);
     });
