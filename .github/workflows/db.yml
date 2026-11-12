@@ -3,15 +3,15 @@ name: Database
 on:
   pull_request:
     paths:
-      - "supabase/**"
-      - "src/lib/supabase/database.types.ts"
-      - ".github/workflows/db.yml"
+      - 'supabase/**'
+      - 'src/lib/supabase/database.types.ts'
+      - '.github/workflows/db.yml'
   push:
     branches: [main]
     paths:
-      - "supabase/**"
-      - "src/lib/supabase/database.types.ts"
-      - ".github/workflows/db.yml"
+      - 'supabase/**'
+      - 'src/lib/supabase/database.types.ts'
+      - '.github/workflows/db.yml'
 
 permissions:
   contents: read
