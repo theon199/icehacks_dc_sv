@@ -123,6 +123,20 @@ describe('suggestSubstitutions', () => {
   });
 });
 
+describe('suggestSubstitutions ratios', () => {
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])('drops a swap with ratio %p', (ratio) => {
+    const odd: Substitution[] = [
+      { fromId: 'white_rice', toId: 'brown_rice', ratio, goal: 'high_fiber', note: '' },
+    ];
+    const out = suggestSubstitutions(odd, ingredients, {
+      allergens: [],
+      diets: [],
+      goals: ['more_fiber'],
+    });
+    expect(out.get('white_rice') ?? []).toEqual([]);
+  });
+});
+
 describe('ratioLabel', () => {
   it('describes common ratios plainly', () => {
     expect(ratioLabel(1)).toBe('Swap 1 for 1');

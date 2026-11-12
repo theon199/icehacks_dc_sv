@@ -24,9 +24,9 @@ export function makeoverHref(recipeId: string): Href {
 
 export const aiConsentHref: Href = '/ai-consent';
 
-/** Restaurants nearby that may serve the dish, searched by its name. */
-export function nearbyHref(recipe: { id: string; title: string }): Href {
-  return { pathname: '/nearby/[dish]', params: { dish: recipe.title, recipe: recipe.id } };
+/** Restaurants nearby that may serve the dish. The nearby search goes by the dish name only. */
+export function nearbyHref(recipe: { title: string }): Href {
+  return { pathname: '/nearby/[dish]', params: { dish: recipe.title } };
 }
 
 /** Share a cooked dish or a remix of it with the community. */

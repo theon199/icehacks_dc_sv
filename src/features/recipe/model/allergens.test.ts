@@ -1,6 +1,6 @@
-import { DietFlag } from '@/domain';
+import { DietFlag, type AllergenId } from '@/domain';
 
-import { dietBadges, summariseAllergens } from './allergens';
+import { dietBadges, lineAllergenNotes, summariseAllergens } from './allergens';
 import { allergenMap } from '../test/fixtures';
 
 describe('summariseAllergens', () => {
@@ -73,5 +73,23 @@ describe('dietBadges', () => {
   it('drops a diet the allergen data contradicts', () => {
     const badges = dietBadges(DietFlag.gluten_free, allergenMap({ wheat: 'contains' }));
     expect(badges.find((b) => b.diet === 'gluten_free')).toBeUndefined();
+  });
+});
+
+describe('lineAllergenNotes', () => {
+  const ingredients = new Map([
+    ['satay_sauce', { allergens: ['peanut', 'soy', 'milk'] as AllergenId[] }],
+    ['rice', { allergens: [] as AllergenId[] }],
+  ]);
+
+  it('notes declared allergens a line contains, in vocabulary order', () => {
+    const notes = lineAllergenNotes(ingredients, ['peanut', 'milk']);
+    expect(notes.get('satay_sauce')).toBe('Contains milk and peanuts');
+    expect(notes.has('rice')).toBe(false);
+  });
+
+  it('adds nothing when no allergens are declared or the question is unanswered', () => {
+    expect(lineAllergenNotes(ingredients, []).size).toBe(0);
+    expect(lineAllergenNotes(ingredients, null).size).toBe(0);
   });
 });

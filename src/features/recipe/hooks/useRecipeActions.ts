@@ -77,7 +77,7 @@ export function useRecipeActions(recipe: Pick<RecipeSummary, 'id' | 'title'> | n
       openWhy: () => go(whyHref(id)),
       compare: () => go(compareHref(id)),
       makeHealthier: () => go(canUseAi ? makeoverHref(id) : aiConsentHref),
-      nearby: () => go(nearbyHref({ id, title })),
+      nearby: () => go(nearbyHref({ title })),
       share: () => go(composeHref(id)),
       report: () => go(reportHref({ id, title })),
     };

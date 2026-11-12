@@ -17,6 +17,7 @@ import { RecipeHero } from '../components/RecipeHero';
 import { useDailyTargets, useDomainPreferences, usePantryIds } from '../hooks/usePersonalContext';
 import { useRecipeActions } from '../hooks/useRecipeActions';
 import { useRecipeFit, useRecipeIngredients, useSwapSuggestions } from '../hooks/useRecipeInsights';
+import { lineAllergenNotes } from '../model/allergens';
 import { buildDetailItems, type DetailItem } from '../model/detailItems';
 import { buildIngredientRows, clampServings } from '../model/ingredients';
 import { tutorialItems } from '../model/tutorials';
@@ -89,6 +90,11 @@ export function RecipeDetailScreen({ recipeId }: RecipeDetailScreenProps) {
   const changeServings = useCallback((next: number) => setServings(clampServings(next)), []);
   const toggleSteps = useCallback(() => setShowAllSteps((value) => !value), []);
 
+  const allergenNotes = useMemo(
+    () => lineAllergenNotes(ingredients.byId, prefs.allergens),
+    [ingredients.byId, prefs.allergens],
+  );
+
   const context = useMemo(
     () =>
       recipe && built
@@ -101,6 +107,7 @@ export function RecipeDetailScreen({ recipeId }: RecipeDetailScreenProps) {
             smallAppetite,
             targets,
             suggestions,
+            allergenNotes,
             declared: prefs.allergens,
             actions,
             changeServings,
@@ -117,6 +124,7 @@ export function RecipeDetailScreen({ recipeId }: RecipeDetailScreenProps) {
       smallAppetite,
       targets,
       suggestions,
+      allergenNotes,
       prefs.allergens,
       actions,
       changeServings,

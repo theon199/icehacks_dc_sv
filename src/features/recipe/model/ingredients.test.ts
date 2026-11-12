@@ -28,6 +28,12 @@ describe('ingredientName', () => {
     expect(ingredientName('500g Raw king prawns')).toBe('Raw king prawns');
   });
 
+  it('keeps a package size given with the amount', () => {
+    expect(ingredientName('1 (400g) tin Chopped tomatoes')).toBe('Chopped tomatoes (400g)');
+    expect(ingredientName('2 (14 oz) cans black beans')).toBe('Black beans (14 oz)');
+    expect(ingredientName('2 (200g) chicken breasts')).toBe('Chicken breasts (200g)');
+  });
+
   it('drops a bare leading unit word', () => {
     expect(ingredientName('pinch Freshly chopped parsley')).toBe('Freshly chopped parsley');
   });

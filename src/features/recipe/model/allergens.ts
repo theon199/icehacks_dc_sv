@@ -129,3 +129,29 @@ export function dietBadges(
   }
   return out;
 }
+
+/**
+ * Short notes for ingredient lines that contain one of the person's declared allergens, keyed by
+ * catalog ingredient id: "Contains peanuts", "Contains milk and egg". Lines for other ingredients
+ * get no note; the allergen panel covers unverified data for the recipe as a whole.
+ */
+export function lineAllergenNotes(
+  ingredients: ReadonlyMap<string, { readonly allergens: readonly AllergenId[] }>,
+  declared: readonly AllergenId[] | null,
+): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  if (!declared || declared.length === 0) return out;
+  for (const [id, ingredient] of ingredients) {
+    const hits = ALLERGEN_IDS.filter(
+      (allergen) => declared.includes(allergen) && ingredient.allergens.includes(allergen),
+    );
+    if (hits.length === 0) continue;
+    const names = hits.map((allergen) => ALLERGEN_LABELS[allergen].toLowerCase());
+    const list =
+      names.length === 1
+        ? names[0]!
+        : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]!}`;
+    out.set(id, `Contains ${list}`);
+  }
+  return out;
+}

@@ -10,10 +10,16 @@ import { ratioLabel, type SubstitutionSuggestion } from '../model/substitutions'
 export interface IngredientRowProps {
   row: Row;
   suggestions: readonly SubstitutionSuggestion[] | undefined;
+  /** "Contains peanuts" when the line holds one of the person's declared allergens. */
+  allergenNote?: string | undefined;
 }
 
 /** One ingredient: pantry check, amount, name and, when relevant, swaps that suit the person. */
-export const IngredientRow = memo(function IngredientRow({ row, suggestions }: IngredientRowProps) {
+export const IngredientRow = memo(function IngredientRow({
+  row,
+  suggestions,
+  allergenNote,
+}: IngredientRowProps) {
   const theme = useTheme();
   // Rows are recycled by the list; the open state belongs to this line only.
   const [open, setOpen] = useRecyclingState(false, [row.key]);
@@ -22,6 +28,7 @@ export const IngredientRow = memo(function IngredientRow({ row, suggestions }: I
     row.amount,
     row.name,
     row.optional ? 'optional' : null,
+    allergenNote ?? null,
     row.owned ? 'in your pantry' : null,
   ]
     .filter(Boolean)
@@ -48,6 +55,24 @@ export const IngredientRow = memo(function IngredientRow({ row, suggestions }: I
               </Text>
             ) : null}
           </Text>
+          {allergenNote ? (
+            <View
+              style={[
+                styles.allergen,
+                { backgroundColor: theme.colors.dangerSoft, borderRadius: theme.radii.pill },
+              ]}
+            >
+              <Icon
+                name="exclamationmark.triangle.fill"
+                android="warning"
+                size={12}
+                color="onDangerSoft"
+              />
+              <Text variant="caption" color="onDangerSoft">
+                {allergenNote}
+              </Text>
+            </View>
+          ) : null}
           {row.rounded ? (
             <Text variant="caption" tone="subtle">
               Rounded to a usable amount
@@ -108,6 +133,14 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, minHeight: 28 },
   amount: { minWidth: 76, maxWidth: 110 },
   name: { flex: 1, gap: 2 },
+  allergen: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: space.xxs,
+    paddingHorizontal: space.sm,
+    paddingVertical: 2,
+  },
   swaps: { paddingLeft: 28, gap: space.xs },
   swapToggle: {
     flexDirection: 'row',

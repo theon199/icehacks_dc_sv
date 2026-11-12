@@ -136,7 +136,8 @@ export function suggestSubstitutions(
 ): Map<string, SubstitutionSuggestion[]> {
   const byLine = new Map<string, SubstitutionSuggestion[]>();
   for (const sub of subs) {
-    if (sub.fromId === sub.toId) continue;
+    // A swap without a usable amount would read as 1 for 1 and could mislead; leave it out.
+    if (sub.fromId === sub.toId || !isUsableRatio(sub.ratio)) continue;
     const replacement = ingredients.get(sub.toId);
     if (!safeReplacement(replacement, prefs)) continue;
     const reason = reasonFor(sub, ingredients.get(sub.fromId), replacement, prefs);
@@ -167,9 +168,17 @@ export function suggestSubstitutions(
   return byLine;
 }
 
-/** "Use 1:1", "Use ¾ as much", "Use twice as much". */
+/** A ratio a swap can be followed with: a positive, finite multiple of the original amount. */
+export function isUsableRatio(ratio: number): boolean {
+  return Number.isFinite(ratio) && ratio > 0;
+}
+
+/**
+ * "Swap 1 for 1", "Use twice as much", "Use half as much", otherwise "Use 75% of the amount".
+ * Only meaningful for a usable ratio; suggestions with any other ratio are never made.
+ */
 export function ratioLabel(ratio: number): string {
-  if (!Number.isFinite(ratio) || ratio <= 0 || Math.abs(ratio - 1) < 0.01) return 'Swap 1 for 1';
+  if (Math.abs(ratio - 1) < 0.01) return 'Swap 1 for 1';
   if (Math.abs(ratio - 2) < 0.01) return 'Use twice as much';
   if (Math.abs(ratio - 0.5) < 0.01) return 'Use half as much';
   const percent = Math.round(ratio * 100);

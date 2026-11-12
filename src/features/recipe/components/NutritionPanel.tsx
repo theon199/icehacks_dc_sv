@@ -37,7 +37,8 @@ export const NutritionPanel = memo(function NutritionPanel({
   portion,
 }: NutritionPanelProps) {
   const theme = useTheme();
-  const label = confidenceLabel(nutrition ? confidence : 'none');
+  const effective: NutritionConfidence = nutrition ? confidence : 'none';
+  const label = confidenceLabel(effective);
   const rows = useMemo(
     () => (nutrition ? nutritionRows(nutrition, targets, portion) : []),
     [nutrition, targets, portion],
@@ -52,14 +53,14 @@ export const NutritionPanel = memo(function NutritionPanel({
             styles.confidence,
             {
               backgroundColor:
-                confidence === 'computed' ? theme.colors.successSoft : theme.colors.warningSoft,
+                effective === 'computed' ? theme.colors.successSoft : theme.colors.warningSoft,
               borderRadius: theme.radii.pill,
             },
           ]}
         >
           <Text
             variant="caption"
-            color={confidence === 'computed' ? 'onSuccessSoft' : 'onWarningSoft'}
+            color={effective === 'computed' ? 'onSuccessSoft' : 'onWarningSoft'}
           >
             {label.title}
           </Text>

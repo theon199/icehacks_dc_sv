@@ -40,6 +40,8 @@ export interface IngredientRow {
 }
 
 const LEADING_WORD = /^\s*([A-Za-z]+\.?)(?![-'’\w])\s*/;
+/** A package-size note right after the leading number: the "(400g)" in "1 (400g) tin tomatoes". */
+const PACKAGE_NOTE = /^[^A-Za-z(]*(\([^)]*\))/;
 
 function capitalise(text: string): string {
   return text.length === 0 ? text : text[0]!.toUpperCase() + text.slice(1);
@@ -48,12 +50,20 @@ function capitalise(text: string): string {
 /**
  * The ingredient part of a catalog line. Lines start with an amount ("2 cups flour") or, in some
  * sources, with a bare unit word ("pinch chopped parsley"); both are removed so the amount column
- * is the only place an amount appears.
+ * is the only place an amount appears. A package size given with the amount is kept with the name
+ * ("1 (400g) tin tomatoes" → "Tomatoes (400g)"), since it says how big each tin or pack is and does
+ * not change with servings.
  */
 export function ingredientName(text: string): string {
   const parsed = parseAmount(text);
   let rest = parsed.rest;
-  if (parsed.quantity === null) {
+  if (parsed.quantity !== null) {
+    const note = PACKAGE_NOTE.exec(text)?.[1];
+    if (note) {
+      const name = rest.trim();
+      rest = `${name.startsWith(note) ? name.slice(note.length).trim() : name} ${note}`;
+    }
+  } else {
     const word = LEADING_WORD.exec(rest);
     if (word && lookupUnit(word[1]) !== null) {
       rest = rest
