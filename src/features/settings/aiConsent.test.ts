@@ -501,6 +501,54 @@ describe('an account write that never answers', () => {
     },
   );
 
+  it('settles a deferred late write when the agreement it waited for fails', async () => {
+    signIn('user-t15', false);
+    const server = modelledServer('user-t15');
+    const confirmAll = () => {
+      for (const write of server.take()) {
+        write.apply();
+        write.respond();
+      }
+    };
+
+    // A yes that times out and stays on its way.
+    const first = setAiConsent(true, at('2026-11-07T09:00:00Z'));
+    const firstOutcome = expect(first).rejects.toThrow('timed out');
+    await jest.advanceTimersByTimeAsync(AI_CONSENT_WRITE_TIMEOUT_MS);
+    await firstOutcome;
+    const [stuckYes] = server.take();
+
+    // A retried yes and then a withdrawal, both confirmed.
+    const retry = setAiConsent(true, at('2026-11-07T09:01:00Z'));
+    await jest.advanceTimersByTimeAsync(0);
+    confirmAll();
+    await retry;
+    const withdraw = setAiConsent(false, at('2026-11-07T09:02:00Z'));
+    await jest.advanceTimersByTimeAsync(0);
+    confirmAll();
+    await withdraw;
+    expect(server.account()?.granted).toBe(false);
+
+    // Another yes starts; meanwhile the first stuck yes lands; then the new yes fails.
+    const last = setAiConsent(true, at('2026-11-07T09:03:00Z'));
+    const lastOutcome = expect(last).rejects.toThrow('timed out');
+    await jest.advanceTimersByTimeAsync(0);
+    stuckYes?.apply();
+    stuckYes?.respond();
+    await jest.advanceTimersByTimeAsync(AI_CONSENT_WRITE_TIMEOUT_MS);
+    await lastOutcome;
+    // The failed yes never reaches the account; anything sent after it is applied.
+    for (const write of server.take()) {
+      if (write.granted) continue;
+      write.apply();
+      write.respond();
+    }
+    await server.settleRest();
+
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+    expect(server.account()?.granted).toBe(false);
+  });
+
   it('keeps a confirmed no on both sides when a timed-out yes is applied later', async () => {
     signIn('user-t13', true);
     const server = modelledServer('user-t13');

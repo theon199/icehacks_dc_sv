@@ -293,6 +293,9 @@ export async function setAiConsent(granted: boolean, now: Date = new Date()): Pr
         // A previous withdrawal is also kept on the device until it is confirmed again, so a
         // later reconcile resends it instead of adopting a yes the person was told had failed.
         if (!latestDecision.record.granted) rememberUnsent(userId, latestDecision.record);
+        // A stale write that settled while this agreement was on its way deferred its follow-up
+        // to it; with the agreement failed, settle it now from the restored answer.
+        if (lateSettles !== settlesBefore) void resendDecision(latestDecision);
       }
       throw error;
     }
