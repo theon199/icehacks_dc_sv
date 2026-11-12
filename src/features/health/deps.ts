@@ -8,10 +8,10 @@ import { z } from 'zod';
 
 import type { CookedMeal } from '@/domain/health';
 import { catalogQuery } from '@/lib/db/catalog';
-import { newId } from '@/lib/id';
 import { describeError, logger } from '@/lib/logger';
-import { defineKvKey } from '@/lib/storage/kv';
 import { supabase } from '@/lib/supabase/client';
+import { getDeviceId } from '@/lib/sync/deviceId';
+import type { OutgoingDoc, SyncData } from '@/lib/sync/types';
 
 import type { TimeRange } from './healthKit';
 
@@ -84,16 +84,6 @@ export interface HealthSyncDoc {
   updatedAt: number;
 }
 
-const deviceIdKey = defineKvKey('health.syncDeviceId', z.string().min(8).max(64));
-
-function deviceId(): string {
-  const existing = deviceIdKey.getSync();
-  if (existing) return existing;
-  const created = newId();
-  deviceIdKey.setSync(created);
-  return created;
-}
-
 const pushResult = z.object({
   applied: z.array(z.object({ doc_id: z.string() })),
   rejected: z.array(z.object({ doc_id: z.string(), reason: z.string() })),
@@ -107,15 +97,19 @@ const pushResult = z.object({
 export async function pushHealthDocs(docs: readonly HealthSyncDoc[]): Promise<boolean> {
   if (docs.length === 0) return true;
   try {
-    const device = deviceId();
-    const payload = docs.map((doc) => ({
-      collection: HEALTH_SYNC_COLLECTION,
-      doc_id: doc.docId,
-      data: doc.data ?? {},
-      updated_at: new Date(doc.updatedAt).toISOString(),
-      device_id: device,
-      ...(doc.data === null ? { deleted_at: new Date(doc.updatedAt).toISOString() } : {}),
-    }));
+    const device = getDeviceId();
+    const payload: OutgoingDoc[] = docs.map((doc) => {
+      const updatedAt = new Date(doc.updatedAt).toISOString();
+      return {
+        collection: HEALTH_SYNC_COLLECTION,
+        doc_id: doc.docId,
+        // Health summaries are plain JSON values built in this feature, so they fit the RPC's type.
+        data: (doc.data ?? {}) as SyncData,
+        updated_at: updatedAt,
+        device_id: device,
+        deleted_at: doc.data === null ? updatedAt : null,
+      };
+    });
     const { data, error } = await supabase.rpc('sync_push', { p_docs: payload });
     if (error) throw new Error(error.message);
     const result = pushResult.parse(data);
