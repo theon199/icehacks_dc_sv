@@ -2,46 +2,51 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from './useDebouncedValue';
 
+interface Probe {
+  readonly type: (text: string) => Promise<void>;
+  readonly wait: (ms: number) => Promise<void>;
+  readonly shown: () => string;
+}
+
+/** Mounts the hook with a starting text and returns small helpers to drive it like a search box. */
+async function mountDebounced(initial: string): Promise<Probe> {
+  let text = initial;
+  const hook = await renderHook(() => useDebouncedValue(text));
+  return {
+    type: async (next) => {
+      text = next;
+      await hook.rerender(undefined);
+    },
+    wait: async (ms) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+    },
+    shown: () => hook.result.current,
+  };
+}
+
 beforeEach(() => jest.useFakeTimers());
 afterEach(() => jest.useRealTimers());
 
 describe('useDebouncedValue', () => {
-  it('waits 150 ms after the last change', async () => {
+  it('settles only once typing has paused for the full delay', async () => {
     expect(SEARCH_DEBOUNCE_MS).toBe(150);
-    const { result, rerender } = await renderHook(
-      ({ value }: { value: string }) => useDebouncedValue(value),
-      {
-        initialProps: { value: '' },
-      },
-    );
-    await rerender({ value: 'l' });
-    await act(async () => {
-      jest.advanceTimersByTime(100);
-    });
-    await rerender({ value: 'le' });
-    await act(async () => {
-      jest.advanceTimersByTime(100);
-    });
-    await rerender({ value: 'len' });
-    await act(async () => {
-      jest.advanceTimersByTime(149);
-    });
-    // Each keystroke restarted the wait, so nothing has settled yet.
-    expect(result.current).toBe('');
-    await act(async () => {
-      jest.advanceTimersByTime(1);
-    });
-    expect(result.current).toBe('len');
+    const box = await mountDebounced('');
+    for (const text of ['l', 'le']) {
+      await box.type(text);
+      await box.wait(100);
+    }
+    await box.type('len');
+    await box.wait(SEARCH_DEBOUNCE_MS - 1);
+    expect(box.shown()).toBe('');
+    await box.wait(1);
+    expect(box.shown()).toBe('len');
   });
 
-  it('applies clearing at once', async () => {
-    const { result, rerender } = await renderHook(
-      ({ value }: { value: string }) => useDebouncedValue(value),
-      {
-        initialProps: { value: 'soup' },
-      },
-    );
-    await rerender({ value: '' });
-    expect(result.current).toBe('');
+  it('passes an emptied box through without waiting', async () => {
+    const box = await mountDebounced('soup');
+    await box.type('');
+    expect(box.shown()).toBe('');
   });
 });
