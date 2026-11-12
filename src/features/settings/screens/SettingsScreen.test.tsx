@@ -43,6 +43,7 @@ const mockNotifications = {
   requestPermissionsAsync: jest.fn(),
 };
 jest.mock('expo-notifications', () => ({
+  IosAuthorizationStatus: { DENIED: 1, AUTHORIZED: 2, PROVISIONAL: 3, EPHEMERAL: 4 },
   getPermissionsAsync: () => mockNotifications.getPermissionsAsync(),
   requestPermissionsAsync: () => mockNotifications.requestPermissionsAsync(),
 }));
@@ -288,6 +289,83 @@ describe('SettingsScreen', () => {
     // AppState is already a mock here; put its usual behaviour back for the other tests.
     if (usual) subscribe.mockImplementation(usual);
     else subscribe.mockRestore();
+  });
+
+  it('holds chosen switches at the choice until the permission has been read', async () => {
+    mockNotifications.getPermissionsAsync.mockReturnValue(new Promise(() => undefined));
+    await renderWithTheme(<SettingsScreen />);
+    expect(notificationSettings().cookTimers).toBe(true);
+    expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true);
+    expect(screen.queryByTestId('settings-notify-askable')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('settings-notify-blocked')).not.toBeOnTheScreen();
+  });
+
+  it('explains a chosen alert that waits for permission, and asks when it is tapped', async () => {
+    serverCategories['user-1'] = { social: true, follows: false };
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: true });
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() => expect(screen.getByTestId('settings-notify-askable')).toBeOnTheScreen());
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-social')).toHaveProp(
+        'accessibilityHint',
+        expect.stringContaining('cannot arrive until notifications are allowed'),
+      ),
+    );
+    expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', false);
+    expect(screen.queryByTestId('settings-notify-blocked')).not.toBeOnTheScreen();
+    // A choice that is off says nothing extra.
+    expect(screen.getByTestId('settings-notify-follows')).toHaveProp(
+      'accessibilityHint',
+      expect.not.stringContaining('cannot arrive'),
+    );
+
+    // Tapping asks for permission; once allowed, the chosen alert shows on.
+    mockNotifications.requestPermissionsAsync.mockImplementation(async () => {
+      mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
+      return { granted: true };
+    });
+    await fireEvent(screen.getByTestId('settings-notify-social'), 'valueChange', true);
+    expect(mockNotifications.requestPermissionsAsync).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', true),
+    );
+    expect(screen.queryByTestId('settings-notify-askable')).not.toBeOnTheScreen();
+    expect(serverCategories['user-1']).toEqual({ social: true, follows: false });
+  });
+
+  it('lets a chosen alert be turned off while the system blocks notifications', async () => {
+    serverCategories['user-1'] = { social: true, follows: false };
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() => expect(notificationSettings().social).toBe(true));
+    await waitFor(() => expect(screen.getByTestId('settings-notify-blocked')).toBeOnTheScreen());
+    expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', false);
+
+    // The switch reads off, so a tap arrives as "on"; it offers to stop the choice instead.
+    await fireEvent(screen.getByTestId('settings-notify-social'), 'valueChange', true);
+    await waitFor(() => expect(alert).toHaveBeenCalledTimes(1));
+    expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    const buttons = alert.mock.calls[0]?.[2] as AlertButton[];
+    await act(async () => buttons.find((button) => button.text === 'Turn off')?.onPress?.());
+
+    await waitFor(() => expect(mockPushApi.save).toHaveBeenLastCalledWith({ social: false }));
+    expect(serverCategories['user-1']).toEqual({ social: false, follows: false });
+    expect(notificationSettings().social).toBe(false);
+    alert.mockRestore();
+  });
+
+  it('treats iOS provisional permission as allowed', async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({
+      granted: false,
+      canAskAgain: true,
+      ios: { status: 3 },
+    });
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() => expect(mockNotifications.getPermissionsAsync).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true);
+    expect(screen.queryByTestId('settings-notify-askable')).not.toBeOnTheScreen();
   });
 
   it('keeps cook timer alerts in the shared settings, not on the push server', async () => {
