@@ -90,6 +90,36 @@ describe('mark bought → pantry', () => {
     expect(buildPlannedList({ ...input, pantry }).items).toEqual([]);
   });
 
+  it.each([
+    ['a weighed amount', 'salt', 200, 'g'],
+    ['a whole count', 'egg', 3, null],
+  ] as const)(
+    'clears an item used both as %s and "to taste" once it is bought',
+    (_label, id, qty, unit) => {
+      const input = {
+        meals: [{ date: '2026-11-12', meal: 'dinner', recipeId: 'test:mixed', servings: 1 }],
+        recipes: new Map([
+          [
+            'test:mixed',
+            {
+              id: 'test:mixed',
+              servings: 1,
+              ingredients: [line(1, id, qty, unit), line(2, id, null, null, `${id} to taste`)],
+            },
+          ],
+        ]),
+        ingredients: INGREDIENTS,
+        portion: 1,
+      } as const;
+      const before = buildPlannedList({ ...input, pantry: [] });
+      expect(before.items).toEqual([expect.objectContaining({ key: `i:${id}`, asNeeded: true })]);
+      const pantry = pantryFrom(pantryInputsForItems(before.items, before.ingredientsById));
+      const after = buildPlannedList({ ...input, pantry });
+      expect(after.items).toEqual([]);
+      expect(after.inPantry.map((i) => i.key)).toEqual([`i:${id}`]);
+    },
+  );
+
   it('tops up what was already there instead of adding a second entry', () => {
     let items: Readonly<Record<string, PantryItem>> = {};
     items = addPantryItem(

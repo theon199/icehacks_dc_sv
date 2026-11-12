@@ -31,8 +31,20 @@ function pantryUnit(amount: Amount): string | null {
 }
 
 /**
+ * A "to taste" use has no amount, so whatever was bought for it counts as a little more than the
+ * measured uses need: one more whole item, or a tenth more by weight or volume (at least 1 g or
+ * 1 ml). Without that margin the pantry would hold exactly the measured amount, nothing would be
+ * left for the "to taste" use, and the item would come straight back onto the list.
+ */
+function withTasteMargin(amount: Amount, quantity: number): number {
+  if (amount.unit === 'g' || amount.unit === 'ml') return tidy(quantity + Math.max(quantity * 0.1, 1));
+  return quantity + 1;
+}
+
+/**
  * Pantry entries for bought list items: one per amount still to buy, or a single "have some"
- * entry when the list had no measurable amount ("salt, as needed").
+ * entry when the list had no measurable amount ("salt, as needed"). An item that is also used
+ * "to taste" gets a margin on its first amount, so the pantry covers that use too.
  */
 export function pantryInputsForItems(
   items: readonly ShoppingItem[],
@@ -51,9 +63,14 @@ export function pantryInputsForItems(
       out.push({ ...base, qty: null, unit: null });
       continue;
     }
-    for (const amount of measured) {
-      out.push({ ...base, qty: tidy(amount.quantity), unit: pantryUnit(amount) });
-    }
+    measured.forEach((amount, index) => {
+      const qty = tidy(amount.quantity);
+      out.push({
+        ...base,
+        qty: item.asNeeded && index === 0 ? withTasteMargin(amount, qty) : qty,
+        unit: pantryUnit(amount),
+      });
+    });
   }
   return out;
 }
