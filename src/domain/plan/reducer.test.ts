@@ -252,6 +252,46 @@ describe('planReducer', () => {
       expect(Object.keys(s.weeks[WEEK]?.cells ?? {}).sort()).toEqual(['0:dinner', '2:lunch']);
     });
 
+    it('ignores malformed meals and missing cell references without throwing', () => {
+      const badMeals = [
+        {},
+        null,
+        { servings: 2, portion: 1 },
+        { recipeId: 42, servings: 2, portion: 1 },
+        { recipeId: 'b', servings: '2', portion: 1 },
+        { recipeId: 'b', servings: 2 },
+      ] as unknown as PlannedMeal[];
+      for (const bad of badMeals) {
+        const action: PlanAction = { type: 'place', at: AT, cell: cell(1, 'lunch'), meal: bad };
+        expect(() => planReducer(base, action)).not.toThrow();
+        expect(planReducer(base, action)).toBe(base);
+      }
+      const missing = [null, undefined, 'monday'] as unknown as CellRef[];
+      for (const ref of missing) {
+        const actions: PlanAction[] = [
+          { type: 'place', at: AT, cell: ref, meal: meal('b') },
+          { type: 'clear', at: AT, cell: ref },
+          { type: 'setServings', at: AT, cell: ref, servings: 3 },
+          { type: 'move', at: AT, from: ref, to: cell(0, 'dinner') },
+          { type: 'swap', at: AT, a: cell(0, 'dinner'), b: ref },
+        ];
+        for (const action of actions) {
+          expect(() => planReducer(base, action)).not.toThrow();
+          expect(planReducer(base, action)).toBe(base);
+        }
+      }
+      const fill = {
+        type: 'applyFill',
+        at: AT,
+        week: WEEK,
+        assignments: [null, { day: 1, slot: 'lunch', meal: {} }],
+      } as unknown as PlanAction;
+      expect(() => planReducer(base, fill)).not.toThrow();
+      expect(planReducer(base, fill)).toBe(base);
+      const notArray = { ...fill, assignments: 'all' } as unknown as PlanAction;
+      expect(planReducer(base, notArray)).toBe(base);
+    });
+
     it('clearDay ignores an out-of-range day', () => {
       expect(planReducer(base, { type: 'clearDay', at: AT, week: WEEK, day: badDay })).toBe(base);
     });

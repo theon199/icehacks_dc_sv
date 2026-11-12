@@ -85,17 +85,28 @@ function isValidSlot(slot: unknown): slot is MealSlot {
 }
 
 /** True when the reference names a real Monday week, a day 0–6 and a known meal slot. */
-export function isValidCellRef(ref: CellRef): boolean {
-  return isValidWeekStart(ref.week) && isValidDay(ref.day) && isValidSlot(ref.slot);
+export function isValidCellRef(ref: CellRef | null | undefined): ref is CellRef {
+  return (
+    typeof ref === 'object' &&
+    ref !== null &&
+    isValidWeekStart(ref.week) &&
+    isValidDay(ref.day) &&
+    isValidSlot(ref.slot)
+  );
 }
 
-function isValidMeal(meal: PlannedMeal): boolean {
+function isPositiveNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function isValidMeal(meal: PlannedMeal | null | undefined): meal is PlannedMeal {
   return (
+    typeof meal === 'object' &&
+    meal !== null &&
+    typeof meal.recipeId === 'string' &&
     meal.recipeId.length > 0 &&
-    Number.isFinite(meal.servings) &&
-    meal.servings > 0 &&
-    Number.isFinite(meal.portion) &&
-    meal.portion > 0
+    isPositiveNumber(meal.servings) &&
+    isPositiveNumber(meal.portion)
   );
 }
 
@@ -184,7 +195,7 @@ export function planReducer(state: PlannerState, action: PlanAction): PlannerSta
     case 'setServings': {
       if (!isValidCellRef(action.cell)) return state;
       const meal = getMeal(state, action.cell);
-      if (!meal || !Number.isFinite(action.servings) || action.servings <= 0) return state;
+      if (!meal || !isPositiveNumber(action.servings)) return state;
       if (meal.servings === action.servings) return state;
       const { week, day, slot } = action.cell;
       return editCells(state, action.at, [
@@ -192,10 +203,17 @@ export function planReducer(state: PlannerState, action: PlanAction): PlannerSta
       ]);
     }
     case 'applyFill': {
-      if (!isValidWeekStart(action.week)) return state;
+      if (!isValidWeekStart(action.week) || !Array.isArray(action.assignments)) return state;
       const existing = state.weeks[action.week]?.cells ?? {};
       const edits = action.assignments
-        .filter((a) => isValidDay(a.day) && isValidSlot(a.slot) && isValidMeal(a.meal))
+        .filter(
+          (a: FillAssignment | null | undefined): a is FillAssignment =>
+            typeof a === 'object' &&
+            a !== null &&
+            isValidDay(a.day) &&
+            isValidSlot(a.slot) &&
+            isValidMeal(a.meal),
+        )
         .filter((a) => action.overwrite === true || existing[cellKey(a.day, a.slot)] === undefined)
         .map((a) => ({ week: action.week, key: cellKey(a.day, a.slot), meal: a.meal }));
       return editCells(state, action.at, edits);
