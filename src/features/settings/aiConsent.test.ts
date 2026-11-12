@@ -2,6 +2,7 @@ import { useSessionStore } from '@/features/auth';
 
 import {
   AI_TERMS_VERSION,
+  forgetAiConsentOnDevice,
   readConsentRecord,
   reconcileAiConsent,
   resetAiConsentForTests,
@@ -121,6 +122,150 @@ describe('reconcileAiConsent', () => {
     });
     await pending;
     expect(useSessionStore.getState().aiConsent).toBe(false);
+  });
+});
+
+describe('ordering of account writes', () => {
+  /** Lets queued writes start: each one begins on a later microtask. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  /** updateUser calls that wait until released, so writes can overlap on purpose. */
+  function heldWrites() {
+    const releases: (() => void)[] = [];
+    mockAuth.updateUser.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(() => resolve({ data: {}, error: null }));
+        }),
+    );
+    return {
+      releaseNext: async () => {
+        await settle();
+        releases.shift()?.();
+        await settle();
+      },
+      sent: () =>
+        mockAuth.updateUser.mock.calls.map(
+          (call) => (call[0] as { data: { ai_consent: { granted: boolean } } }).data.ai_consent,
+        ),
+    };
+  }
+
+  beforeEach(() => mockAuth.updateUser.mockReset());
+
+  it('never sends an old withdrawal after a newer yes', async () => {
+    signIn('user-o1', true);
+    mockAuth.updateUser.mockRejectedValueOnce(new Error('offline'));
+    await setAiConsent(false);
+    const writes = heldWrites();
+
+    // A reconcile starts resending the withdrawal, then the person says yes again.
+    const reconcile = reconcileAiConsent();
+    await settle();
+    const agree = setAiConsent(true);
+    await writes.releaseNext();
+    await writes.releaseNext();
+    await Promise.all([reconcile, agree]);
+
+    // The resend was already on its way, so it went first; the yes landed last.
+    expect(writes.sent().map((record) => record.granted)).toEqual([false, false, true]);
+    expect(useSessionStore.getState().aiConsent).toBe(true);
+  });
+
+  it('drops a queued resend once a newer answer has been given', async () => {
+    signIn('user-o2', true);
+    mockAuth.updateUser.mockRejectedValueOnce(new Error('offline'));
+    await setAiConsent(false);
+    const writes = heldWrites();
+
+    // Something else is being written, so the reconcile's resend waits its turn.
+    const first = setAiConsent(false);
+    const reconcile = reconcileAiConsent();
+    const agree = setAiConsent(true);
+    await writes.releaseNext();
+    await writes.releaseNext();
+    await Promise.all([first, reconcile, agree]);
+
+    expect(writes.sent().map((record) => record.granted)).toEqual([false, false, true]);
+    expect(useSessionStore.getState().aiConsent).toBe(true);
+  });
+
+  it('does not reopen AI when a yes finishes after a newer withdrawal', async () => {
+    signIn('user-o3', false);
+    const writes = heldWrites();
+    const agree = setAiConsent(true);
+    const withdraw = setAiConsent(false);
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+
+    await writes.releaseNext();
+    await agree;
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+    await writes.releaseNext();
+    await withdraw;
+    expect(writes.sent().map((record) => record.granted)).toEqual([true, false]);
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+  });
+
+  it('keeps a newer unsent withdrawal when an older write finishes', async () => {
+    signIn('user-o4', true);
+    let releaseOlder = () => undefined as void;
+    mockAuth.updateUser
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseOlder = () => resolve({ data: {}, error: null });
+          }),
+      )
+      .mockRejectedValueOnce(new Error('offline'));
+    const older = setAiConsent(false);
+    const newer = setAiConsent(false);
+    await settle();
+    // The older withdrawal reaches the server; the newer one then fails.
+    releaseOlder();
+    await Promise.all([older, newer]);
+
+    // The newer withdrawal is still on the device, so the next reconcile sends it.
+    mockAuth.updateUser.mockResolvedValue({ data: {}, error: null });
+    await reconcileAiConsent();
+    expect(mockAuth.updateUser).toHaveBeenCalledTimes(3);
+    expect(mockAuth.updateUser).toHaveBeenLastCalledWith({
+      data: { ai_consent: expect.objectContaining({ granted: false }) },
+    });
+    expect(mockAuth.getUser).not.toHaveBeenCalled();
+  });
+
+  it('never writes one account’s answer into the next account', async () => {
+    signIn('user-o5', true);
+    const writes = heldWrites();
+    const first = setAiConsent(false);
+    await settle();
+    const agree = setAiConsent(true).then(
+      () => 'saved',
+      () => 'refused',
+    );
+    signIn('user-o6', false);
+    await writes.releaseNext();
+    await first;
+    await expect(agree).resolves.toBe('refused');
+    expect(writes.sent()).toHaveLength(1);
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+  });
+});
+
+describe('forgetAiConsentOnDevice', () => {
+  it('drops the account’s unsent withdrawal so nothing is resent', async () => {
+    signIn('user-f', true);
+    mockAuth.updateUser.mockReset();
+    mockAuth.updateUser.mockRejectedValueOnce(new Error('offline'));
+    await setAiConsent(false);
+    await forgetAiConsentOnDevice('user-f');
+
+    mockAuth.getUser.mockClear();
+    accountRecord('user-f', withdrawn);
+    mockAuth.updateUser.mockClear();
+    await reconcileAiConsent();
+    expect(mockAuth.updateUser).not.toHaveBeenCalled();
+    expect(mockAuth.getUser).toHaveBeenCalled();
   });
 });
 

@@ -1,3 +1,5 @@
+import Storage from 'expo-sqlite/kv-store';
+
 import { useSessionStore } from '@/features/auth';
 // The auth feature exports this class as a type only; the test needs a real instance.
 import { AccountError as AuthAccountError } from '@/features/auth/accountApi';
@@ -266,6 +268,13 @@ describe('signOutLocally', () => {
 
 describe('deleteAccount', () => {
   let stored = true;
+  const unsentWithdrawalKey = (userId: string) => `famara:settings.ai-consent.unsent.${userId}`;
+  const withdrawal = { granted: false, terms_version: 1, decided_at: '2026-11-01T00:00:00.000Z' };
+
+  afterEach(() => {
+    Storage.removeItemSync(unsentWithdrawalKey('user-1'));
+    Storage.removeItemSync(unsentWithdrawalKey('user-2'));
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -296,10 +305,21 @@ describe('deleteAccount', () => {
   });
 
   it('stays signed in and explains when the server did not delete the account', async () => {
+    Storage.setItemSync(unsentWithdrawalKey('user-1'), JSON.stringify(withdrawal));
     mockDeleteAccount.mockRejectedValueOnce(new AuthAccountError('offline', 'offline'));
     await expect(deleteAccount()).rejects.toMatchObject({ code: 'offline' });
     expect(mockAuth.signOut).not.toHaveBeenCalled();
     expect(mockDiscard).not.toHaveBeenCalled();
     expect(useSessionStore.getState().status).toBe('ready');
+    // The account still exists, so its unsent withdrawal must still reach it.
+    expect(Storage.getItemSync(unsentWithdrawalKey('user-1'))).not.toBeNull();
+  });
+
+  it('forgets the deleted account’s unsent AI withdrawal, and only that account’s', async () => {
+    Storage.setItemSync(unsentWithdrawalKey('user-1'), JSON.stringify(withdrawal));
+    Storage.setItemSync(unsentWithdrawalKey('user-2'), JSON.stringify(withdrawal));
+    await deleteAccount();
+    expect(Storage.getItemSync(unsentWithdrawalKey('user-1'))).toBeNull();
+    expect(Storage.getItemSync(unsentWithdrawalKey('user-2'))).not.toBeNull();
   });
 });
