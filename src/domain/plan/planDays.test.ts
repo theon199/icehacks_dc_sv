@@ -1,6 +1,7 @@
 import { dailyTargets, type DailyTargets } from '../nutrition';
 import {
   dayDistance,
+  DEFAULT_PREFERENCE_WEIGHT,
   explainPlan,
   planDays,
   planDaysSteps,
@@ -81,6 +82,26 @@ function naivePlan(
 
 function mealsOf(result: PlanDaysResult) {
   return result.days.map((d) => d.meals.map((m) => ({ recipeId: m.recipeId, portion: m.portion })));
+}
+
+/**
+ * The objective exactly as the module docs define it:
+ * Σ_days distance(day) + (λ / S) · Σ_slots p(slot), with p = 1 − score (filled) or 1 (empty).
+ */
+function documentedObjective(
+  result: PlanDaysResult,
+  cands: readonly DayPlanCandidate[],
+  t: DailyTargets,
+  lambda = DEFAULT_PREFERENCE_WEIGHT,
+): number {
+  const byId = new Map(cands.map((c) => [c.id, c]));
+  const meals = result.days.flatMap((d) => d.meals);
+  const penalty = meals.reduce((sum, m) => {
+    if (m.recipeId === null) return sum + 1;
+    const score = byId.get(m.recipeId)?.score ?? 0.5;
+    return sum + (1 - Math.min(1, Math.max(0, score)));
+  }, 0);
+  return planDistance(mealsOf(result), cands, t) + (lambda / meals.length) * penalty;
 }
 
 const targets: DailyTargets = dailyTargets({
@@ -304,5 +325,41 @@ describe('planDays', () => {
     const result = planDays({ candidates: [], targets });
     expect(result.days.every((d) => d.meals.every((m) => m.recipeId === null))).toBe(true);
     expect(Number.isFinite(result.objective)).toBe(true);
+  });
+  it('reports the objective defined in the module docs (property)', () => {
+    for (const seed of [21, 22, 23]) {
+      const cands = catalog(seed);
+      for (const smallAppetite of [false, true]) {
+        const result = planDays({ candidates: cands, targets, smallAppetite });
+        expect(result.objective).toBeCloseTo(documentedObjective(result, cands, targets), 10);
+      }
+    }
+    const weighted = planDays({ candidates: catalog(24), targets, preferenceWeight: 0.6 });
+    expect(weighted.objective).toBeCloseTo(
+      documentedObjective(weighted, catalog(24), targets, 0.6),
+      10,
+    );
+  });
+
+  it('counts an empty slot as a preference penalty of 1 in the objective', () => {
+    const cands = catalog(9, 60).filter((c) => c.course !== 'breakfast');
+    const result = planDays({ candidates: cands, targets });
+    const empty = result.days.flatMap((d) => d.meals).filter((m) => m.recipeId === null);
+    expect(empty.length).toBe(2);
+    expect(result.objective).toBeCloseTo(documentedObjective(result, cands, targets), 10);
+  });
+
+  it('keeps the same candidate for a duplicated id whatever the input order', () => {
+    const cands = catalog(25, 60);
+    const first = cands[0] as DayPlanCandidate;
+    const twin: DayPlanCandidate = {
+      ...first,
+      score: 0,
+      nutrition: { ...first.nutrition, kcal: 1 },
+    };
+    const a = planDays({ candidates: [...cands, twin], targets });
+    const b = planDays({ candidates: [twin, ...cands], targets });
+    expect(a).toEqual(b);
+    expect(a.search.candidatesConsidered).toBe(cands.length);
   });
 });

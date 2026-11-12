@@ -11,10 +11,21 @@
  *   protein, fiber (min)          w · (max(0, G − T) / G)²       only a shortfall counts
  *   sodium, sat fat, added sugar  w · (max(0, T − G) / G)²       only an excess counts
  *
- * with weights kcal 3, protein 2, fiber 1.5, sodium 1.5, saturated fat 1, added sugar 1. The plan's
- * objective is the sum over days, plus a preference term λ · mean(1 − score) over filled slots
- * (λ = 0.15 by default) so that, between nutritionally similar plans, better-liked recipes win.
- * An empty slot adds a fixed penalty of 1.
+ * with weights kcal 3, protein 2, fiber 1.5, sodium 1.5, saturated fat 1, added sugar 1.
+ *
+ * The plan's objective is
+ *
+ *   Σ_days distance(day)  +  (λ / S) · Σ_slots p(slot)
+ *
+ * where S is the number of slots in the whole plan (slots per day × days), p(slot) = 1 − score for
+ * a filled slot and p(slot) = 1 for an empty slot, and λ = 0.15 by default. The second term is the
+ * mean preference penalty over all S slots, so between nutritionally similar plans better-liked
+ * recipes win. An empty slot therefore costs λ / S in the preference term; its real cost is the
+ * nutritional shortfall it leaves in that day's distance.
+ *
+ * Candidates must already be filtered for the person's allergens and diet upstream (fail-closed:
+ * a recipe with unknown allergen data must not reach this function). This module only optimises
+ * nutrition and preference; it never checks safety.
  *
  * Missing nutrient values: recipes without energy are excluded. A missing limit nutrient is
  * assumed to sit exactly at the limit's density (neutral); a missing protein or fiber value counts
@@ -28,13 +39,15 @@
  * candidates — half the best-liked, half the best single-meal fits for that slot — sized so the
  * whole search stays within about 4,000 expansions. If the budget still runs out, the best state
  * is completed greedily. No recipe is used twice in the plan. Ordering ties break on recipe ids,
- * so the same input always yields the same plan.
+ * so the same input always yields the same plan. When several candidates share an id, the one
+ * whose content sorts first (score, course, nutrition) is kept, so input order never matters.
  *
  * The search is a generator that yields progress every `chunkSize` expansions, so a UI can spread
  * it over several frames; `planDays` runs it to completion synchronously.
  */
 import {
   compareToTargets,
+  type NutrientKey,
   sumNutrition,
   TARGET_KIND,
   type DailyTargets,
@@ -196,7 +209,7 @@ export interface PlannedDay {
   readonly index: number;
   readonly meals: readonly PlannedDayMeal[];
   readonly totals: NutrientTotals;
-  readonly incomplete: readonly string[];
+  readonly incomplete: readonly NutrientKey[];
   readonly status: { readonly [K in TargetNutrient]: TargetStatus };
   readonly distance: number;
 }
@@ -242,6 +255,28 @@ function compareStates(a: State, b: State): number {
   return a.cost - b.cost || compareSeq(a.picks, b.picks);
 }
 
+/** Read an index that the search guarantees exists; a miss is a programming error. */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`planDays invariant broken: missing ${what}`);
+  return value;
+}
+
+/** Stable text form of a candidate, used to pick one deterministically among duplicate ids. */
+function contentKey(c: DayPlanCandidate): string {
+  const nutrition = Object.keys(c.nutrition)
+    .sort()
+    .map((k) => `${k}=${String(c.nutrition[k as NutrientKey])}`)
+    .join(',');
+  return `${String(c.score)}|${c.course}|${nutrition}`;
+}
+
+function compareCandidates(a: DayPlanCandidate, b: DayPlanCandidate): number {
+  if (a.id !== b.id) return a.id < b.id ? -1 : 1;
+  const ka = contentKey(a);
+  const kb = contentKey(b);
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+}
+
 function clampInt(n: number | undefined, lo: number, hi: number, fallback: number): number {
   if (!finite(n)) return fallback;
   return Math.min(hi, Math.max(lo, Math.floor(n)));
@@ -262,8 +297,9 @@ export function* planDaysSteps(
   const perDay = layout.length;
   const totalDepth = perDay * dayCount;
 
-  // Sort by id so indices — and therefore every tie-break — are independent of input order.
-  const sorted = [...input.candidates].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  // Sort by id (then content, for duplicate ids) so indices — and therefore every tie-break — are
+  // independent of input order.
+  const sorted = [...input.candidates].sort(compareCandidates);
   const prepared: Prepared[] = [];
   const excluded: string[] = [];
   const seen = new Set<string>();
@@ -313,7 +349,7 @@ export function* planDaysSteps(
   const child = (state: State, pick: number): State => {
     const depth = state.picks.length;
     const k = depth % perDay;
-    const spec = layout[k] as DaySlotSpec;
+    const spec = must(layout[k], 'slot spec');
     const p = pick >= 0 ? prepared[pick] : undefined;
     const dayTotals = p
       ? state.dayTotals.map((v, i) => v + (p.vector[i] ?? 0) * spec.portion)
@@ -358,13 +394,13 @@ export function* planDaysSteps(
   for (let depth = 0; depth < totalDepth; depth += 1) {
     if (truncated) {
       // Out of budget: extend the single best state greedily.
-      const best = beam[0] as State;
-      let next: State | null = null;
+      const best = must(beam[0], 'beam state');
+      let next: State | undefined;
       for (const pick of options(best)) {
         const s = child(best, pick);
-        if (next === null || compareStates(s, next) < 0) next = s;
+        if (next === undefined || compareStates(s, next) < 0) next = s;
       }
-      beam = [next as State];
+      beam = [must(next, 'greedy state')];
       continue;
     }
     const children: State[] = [];
@@ -402,7 +438,7 @@ export function* planDaysSteps(
     beam = kept;
   }
 
-  const best = beam[0] as State;
+  const best = must(beam[0], 'final state');
   return buildResult(best, {
     prepared,
     layout,
@@ -438,7 +474,7 @@ function buildResult(best: State, ctx: ResultContext): PlanDaysResult {
     const entries: { nutrition: NutritionFacts; portion: number }[] = [];
     const vector = OBJECTIVE_TERMS.map(() => 0);
     for (let k = 0; k < perDay; k += 1) {
-      const spec = layout[k] as DaySlotSpec;
+      const spec = must(layout[k], 'slot spec');
       const pick = best.picks[d * perDay + k] ?? -1;
       const p = pick >= 0 ? prepared[pick] : undefined;
       meals.push({ slot: spec.slot, recipeId: p ? p.c.id : null, portion: spec.portion });
