@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
-import { AccessibilityInfo, StyleSheet, View } from 'react-native';
+import { Fragment, useEffect, type ReactNode } from 'react';
+import { AccessibilityInfo, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FullWindowOverlay } from 'react-native-screens';
 
 import { haptics } from '@/lib/haptics';
 
@@ -18,7 +19,25 @@ const toneIcon: Record<ToastTone, IconName> = {
   danger: 'exclamationmark.circle.fill',
 };
 
-/** Renders the current toast at the top of the screen. Mount once, at the root. */
+/**
+ * On iOS, form sheets and modals are presented as separate view controllers above the root view,
+ * so anything rendered in the root view would sit behind them. A full-window overlay lives in its
+ * own layer on top of every presented screen. It is not modal for VoiceOver, so the screen
+ * underneath stays reachable while a toast is up.
+ */
+function ToastLayer({ children }: { children: ReactNode }) {
+  if (Platform.OS !== 'ios') return <Fragment>{children}</Fragment>;
+  return (
+    <FullWindowOverlay unstable_accessibilityContainerViewIsModal={false}>
+      {children}
+    </FullWindowOverlay>
+  );
+}
+
+/**
+ * Renders the current toast at the top of the screen, above sheets and modals. Mount once, at
+ * the root.
+ */
 export function ToastHost() {
   const current = useToastStore((s) => s.queue[0]);
   const dismiss = useToastStore((s) => s.dismiss);
@@ -38,41 +57,43 @@ export function ToastHost() {
     current.tone === 'danger' ? 'danger' : current.tone === 'success' ? 'success' : 'primary';
 
   return (
-    <View pointerEvents="box-none" style={[styles.overlay, { top: insets.top + space.sm }]}>
-      <Animated.View key={current.id} entering={FadeInUp} exiting={FadeOutUp}>
-        <GlassSurface radius="lg" style={styles.toast}>
-          <PressableScale
-            accessibilityRole="alert"
-            accessibilityLabel={current.message}
-            accessibilityHint="Double tap to dismiss"
-            pressedScale={1}
-            onPress={() => dismiss(current.id)}
-            style={styles.row}
-          >
-            <Icon name={toneIcon[current.tone]} size={20} color={iconColor} />
-            <Text variant="subhead" style={styles.message} numberOfLines={3}>
-              {current.message}
-            </Text>
-          </PressableScale>
-          {current.action ? (
+    <ToastLayer>
+      <View pointerEvents="box-none" style={[styles.overlay, { top: insets.top + space.sm }]}>
+        <Animated.View key={current.id} entering={FadeInUp} exiting={FadeOutUp}>
+          <GlassSurface radius="lg" style={styles.toast}>
             <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel={current.action.label}
-              onPress={() => {
-                current.action?.onPress();
-                dismiss(current.id);
-              }}
-              hitSlop={10}
-              style={styles.action}
+              accessibilityRole="alert"
+              accessibilityLabel={current.message}
+              accessibilityHint="Double tap to dismiss"
+              pressedScale={1}
+              onPress={() => dismiss(current.id)}
+              style={styles.row}
             >
-              <Text variant="label" tone="primary">
-                {current.action.label}
+              <Icon name={toneIcon[current.tone]} size={20} color={iconColor} />
+              <Text variant="subhead" style={styles.message} numberOfLines={3}>
+                {current.message}
               </Text>
             </PressableScale>
-          ) : null}
-        </GlassSurface>
-      </Animated.View>
-    </View>
+            {current.action ? (
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel={current.action.label}
+                onPress={() => {
+                  current.action?.onPress();
+                  dismiss(current.id);
+                }}
+                hitSlop={10}
+                style={styles.action}
+              >
+                <Text variant="label" tone="primary">
+                  {current.action.label}
+                </Text>
+              </PressableScale>
+            ) : null}
+          </GlassSurface>
+        </Animated.View>
+      </View>
+    </ToastLayer>
   );
 }
 
