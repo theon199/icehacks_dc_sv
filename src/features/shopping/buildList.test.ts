@@ -1,10 +1,11 @@
 import { itemText } from '@/domain/shopping';
 
-import { INGREDIENTS, RECIPES, ingredient, pantryItem } from './__fixtures__/catalog';
+import { INGREDIENTS, RECIPES, ingredient, line, pantryItem } from './__fixtures__/catalog';
 import {
   buildPlannedList,
   ingredientIdsOf,
   pantryEntries,
+  type ListRecipe,
   type PlannedListInput,
 } from './buildList';
 import { catalogNameIndex } from './pantryLink';
@@ -119,6 +120,40 @@ describe('subtracting the pantry', () => {
     ]);
     expect(names.get('onion')).toBeNull();
     expect(pantryEntries([{ ...pantryItem('p1', null, 2), name: 'onion' }], names)).toEqual([]);
+  });
+
+  describe('an unmatched line naming a planned catalog ingredient', () => {
+    const sideSalad: ListRecipe = {
+      id: 'test:side',
+      servings: 1,
+      ingredients: [line(1, null, 1, null, '1 onion, sliced')],
+    };
+    const withSide = (pantry: PlannedListInput['pantry']) =>
+      build({
+        meals: [meal('test:curry', 2), meal('test:fried-rice', 4), meal('test:side', 1)],
+        recipes: new Map([...RECIPES, [sideSalad.id, sideSalad]]),
+        pantry,
+      });
+
+    it('merges into the catalog item instead of listing the same thing twice', () => {
+      const list = withSide([]);
+      expect(amountsOf(list, 'i:onion')).toEqual([[4, 'each']]);
+      expect(list.items.map((i) => i.key)).not.toContain('t:onion');
+      expect(list.items.find((i) => i.key === 'i:onion')?.recipeIds).toContain('test:side');
+    });
+
+    it('is covered by a linked free-text pantry entry with enough stock', () => {
+      const list = withSide([{ ...pantryItem('p1', null, 10), name: 'onion' }]);
+      const keys = list.items.map((i) => i.key);
+      expect(keys).not.toContain('t:onion');
+      expect(keys).not.toContain('i:onion');
+      expect(list.inPantry.map((i) => i.key)).toContain('i:onion');
+    });
+
+    it('counts the pantry entry once across both lines', () => {
+      const list = withSide([{ ...pantryItem('p1', null, 3), name: 'Onions' }]);
+      expect(amountsOf(list, 'i:onion')).toEqual([[1, 'each']]);
+    });
   });
 
   it('links only to ingredients the plan uses, so other names still cover unmatched lines', () => {
