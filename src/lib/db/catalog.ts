@@ -12,6 +12,7 @@ import {
   openDatabaseAsync,
   type SQLiteBindValue,
   type SQLiteDatabase,
+  type SQLiteStatement,
 } from 'expo-sqlite';
 import { z } from 'zod';
 
@@ -22,7 +23,12 @@ import { defineKvKey } from '../storage/kv';
 /** Must equal `meta.schema_version` of the bundled catalog. Bump together with docs/DATA.md. */
 export const CATALOG_SCHEMA_VERSION = 1;
 
-export type CatalogErrorKind = 'missing' | 'open_failed' | 'schema_mismatch' | 'query_failed';
+/**
+ * `query_failed`: SQLite could not prepare or run the statement. `bad_rows`: it ran, but the rows
+ * do not match this build's contract (a catalog/app mismatch, never caused by user input).
+ */
+export type CatalogErrorKind =
+  'missing' | 'open_failed' | 'schema_mismatch' | 'query_failed' | 'bad_rows';
 
 export class CatalogError extends Error {
   readonly kind: CatalogErrorKind;
@@ -134,6 +140,17 @@ export function resetCatalogForTests(): void {
   catalogPromise = null;
 }
 
+/** Validates rows against the contract; a mismatch means this build and the catalog disagree. */
+function validateRows<S extends z.ZodType>(rows: unknown[], schema: S): z.infer<S>[] {
+  const parsed = z.array(schema).safeParse(rows);
+  if (!parsed.success) {
+    throw new CatalogError('bad_rows', 'Catalog rows did not match the expected shape.', {
+      cause: parsed.error,
+    });
+  }
+  return parsed.data;
+}
+
 export type CatalogParams = readonly SQLiteBindValue[];
 
 /**
@@ -152,13 +169,7 @@ export async function catalogQuery<S extends z.ZodType>(
   } catch (cause) {
     throw new CatalogError('query_failed', 'A catalog query failed.', { cause });
   }
-  const parsed = z.array(schema).safeParse(rows);
-  if (!parsed.success) {
-    throw new CatalogError('query_failed', 'Catalog rows did not match the expected shape.', {
-      cause: parsed.error,
-    });
-  }
-  return parsed.data;
+  return validateRows(rows, schema);
 }
 
 /** Like `catalogQuery` but returns the first row or null. */
@@ -168,5 +179,98 @@ export async function catalogQueryFirst<S extends z.ZodType>(
   schema: S,
 ): Promise<z.infer<S> | null> {
   const rows = await catalogQuery(sql, params, schema);
+  return rows[0] ?? null;
+}
+
+/**
+ * Prepared statements are kept per connection and per SQL text, so hot queries skip parsing and
+ * planning. A statement can only run one execution at a time, so runs of the same statement are
+ * queued; different statements still run concurrently. Callers must pass fixed SQL text (bind
+ * every variable part) or the cache would churn.
+ */
+interface PreparedEntry {
+  statement: Promise<SQLiteStatement>;
+  tail: Promise<unknown>;
+}
+
+const MAX_PREPARED_STATEMENTS = 48;
+const preparedByDb = new WeakMap<SQLiteDatabase, Map<string, PreparedEntry>>();
+
+function preparedEntry(db: SQLiteDatabase, sql: string): PreparedEntry {
+  let cache = preparedByDb.get(db);
+  if (!cache) {
+    cache = new Map();
+    preparedByDb.set(db, cache);
+  }
+  const existing = cache.get(sql);
+  if (existing) {
+    // Re-insert so the map stays ordered from least to most recently used.
+    cache.delete(sql);
+    cache.set(sql, existing);
+    return existing;
+  }
+
+  const entry: PreparedEntry = { statement: db.prepareAsync(sql), tail: Promise.resolve() };
+  const owner = cache;
+  entry.statement.catch(() => {
+    if (owner.get(sql) === entry) owner.delete(sql);
+  });
+  cache.set(sql, entry);
+
+  while (cache.size > MAX_PREPARED_STATEMENTS) {
+    const oldest = cache.entries().next();
+    if (oldest.done) break;
+    const [oldSql, evicted] = oldest.value;
+    cache.delete(oldSql);
+    void evicted.tail
+      .then(() => evicted.statement)
+      .then((statement) => statement.finalizeAsync())
+      .catch(() => undefined);
+  }
+  return entry;
+}
+
+async function runPrepared(
+  db: SQLiteDatabase,
+  sql: string,
+  params: CatalogParams,
+): Promise<unknown[]> {
+  const entry = preparedEntry(db, sql);
+  const run = entry.tail.then(async () => {
+    const statement = await entry.statement;
+    const result = await statement.executeAsync<unknown>([...params]);
+    try {
+      return await result.getAllAsync();
+    } finally {
+      await result.resetAsync().catch(() => undefined);
+    }
+  });
+  entry.tail = run.catch(() => undefined);
+  return run;
+}
+
+/** Like `catalogQuery`, through a cached prepared statement. */
+export async function catalogPreparedQuery<S extends z.ZodType>(
+  sql: string,
+  params: CatalogParams,
+  schema: S,
+): Promise<z.infer<S>[]> {
+  const db = await getCatalogDb();
+  let rows: unknown[];
+  try {
+    rows = await runPrepared(db, sql, params);
+  } catch (cause) {
+    throw new CatalogError('query_failed', 'A catalog query failed.', { cause });
+  }
+  return validateRows(rows, schema);
+}
+
+/** Like `catalogPreparedQuery` but returns the first row or null. */
+export async function catalogPreparedQueryFirst<S extends z.ZodType>(
+  sql: string,
+  params: CatalogParams,
+  schema: S,
+): Promise<z.infer<S> | null> {
+  const rows = await catalogPreparedQuery(sql, params, schema);
   return rows[0] ?? null;
 }

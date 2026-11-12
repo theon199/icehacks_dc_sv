@@ -9,7 +9,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AppState, Platform, type AppStateStatus } from 'react-native';
 
 import { getPublicEnv } from '../env';
+import type { Database } from './database.types';
 import { createChunkedSecureStorage, type AsyncKeyValueStore } from './secureStorage';
+
+/** The app's Supabase client, typed against the migrated schema. */
+export type FamaraSupabaseClient = SupabaseClient<Database>;
 
 function webStorage(): AsyncKeyValueStore {
   return {
@@ -19,9 +23,9 @@ function webStorage(): AsyncKeyValueStore {
   };
 }
 
-let client: SupabaseClient | null = null;
+let client: FamaraSupabaseClient | null = null;
 
-function bindAutoRefresh(instance: SupabaseClient): void {
+function bindAutoRefresh(instance: FamaraSupabaseClient): void {
   if (Platform.OS === 'web') return;
   const apply = (state: AppStateStatus) => {
     if (state === 'active') void instance.auth.startAutoRefresh();
@@ -33,10 +37,10 @@ function bindAutoRefresh(instance: SupabaseClient): void {
 }
 
 /** Returns the shared client, creating it on first call. Throws `EnvError` when unconfigured. */
-export function getSupabase(): SupabaseClient {
+export function getSupabase(): FamaraSupabaseClient {
   if (client) return client;
   const env = getPublicEnv();
-  client = createClient(env.supabaseUrl, env.supabasePublishableKey, {
+  client = createClient<Database>(env.supabaseUrl, env.supabasePublishableKey, {
     auth: {
       storage: Platform.OS === 'web' ? webStorage() : createChunkedSecureStorage(),
       persistSession: true,
@@ -56,7 +60,7 @@ export function getSupabase(): SupabaseClient {
  * Convenience handle that forwards to `getSupabase()` on each property access, so modules can
  * `import { supabase }` without forcing client creation at import time.
  */
-export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+export const supabase: FamaraSupabaseClient = new Proxy({} as FamaraSupabaseClient, {
   get(_target, property) {
     const instance = getSupabase();
     const value: unknown = Reflect.get(instance, property, instance);
