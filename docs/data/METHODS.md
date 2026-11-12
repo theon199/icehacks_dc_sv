@@ -228,16 +228,15 @@ otherwise `free`. When every choice is known, the recipe contains the union of t
 Diet flags are the intersection of every named ingredient's flags; an unmatched line, or one with an
 unidentified choice, clears all of them. A diet that an allergen can disprove is then kept only
 while that allergen is `free` in the recipe roll-up: vegan needs milk, egg, fish and shellfish,
-vegetarian needs fish and shellfish, dairy-free needs milk and gluten-free needs gluten and wheat.
-A store-bought product of unknown composition (a stock cube, curry paste, ice cream or bread) makes
-those allergens unknown, so it clears vegan and vegetarian even when its own entry names no
-animal, because a brand may add fish sauce, shrimp paste or other ingredients the line does not
-show. Flags read the ingredient list only: a serving suggestion
-in the method (*top with prawns or salmon*) is optional and does not change them, so a recipe can be
-vegetarian as written while a step mentions a non-vegetarian variation. Vegan is never claimed for
-variable products; *no pork* / *no beef* / *halal-friendly* are never claimed with gelatin or
-unspecified meat. Halal-friendly means no pork, no alcohol and no gelatin or unspecified meat — informational
-only, not a certification.
+vegetarian needs fish and shellfish, dairy-free needs milk and gluten-free needs gluten and wheat. A
+store-bought product of unknown composition (a stock cube, curry paste, ice cream or bread) makes
+those allergens unknown, so it clears vegan and vegetarian even when its own entry names no animal,
+because a brand may add fish sauce, shrimp paste or other ingredients the line does not show. Flags
+read the ingredient list only: a serving suggestion in the method (*top with prawns or salmon*) is
+optional and does not change them, so a recipe can be vegetarian as written while a step mentions a
+non-vegetarian variation. Vegan is never claimed for variable products; *no pork* / *no beef* /
+*halal-friendly* are never claimed with gelatin or unspecified meat. Halal-friendly means no pork,
+no alcohol and no gelatin or unspecified meat — informational only, not a certification.
 
 **Title cross-check.** Some source lists omit the main ingredient (*… Pork Belly* with no pork
 line). Proteins, dairy, nuts and seeds named in the title whose diet or allergen effect is missing
@@ -349,20 +348,21 @@ matching and similarity without aggregating `recipe_ingredients` per recipe.
 ## 9. Quality gates
 
 `npm run build` fails unless all of these hold: knowledge tables validate; every FDC id exists and
-its description matches; no synonym maps to two ingredients; no "A or B" synonym is less
-restrictive than an alternative it hides; every `preparedAs` names an ingredient; no word indexed
-from a search alias is a cuisine label, cuisine place name or listed descriptor, and every alias
-entry names a known ingredient and indexes at least one word; substitutions reference known
-ingredients, are unique and have notes; unique recipe ids and slugs; every recipe has ≥ 1
-ingredient and ≥ 1 step; enums are valid (course, cuisine, region, confidence, goal tags, allergen
-states, diet bits, effort 1–3); servings 1–48; active ≤ total minutes; health score 0–1; nutrient
-values non-negative, saturated fat ≤ fat, sodium ≤ 8,000 mg, protein energy ≤ total energy, energy
-within the ranges above; no `free` allergen or diet flag on a recipe with an unmatched line or an
-unidentified choice; no diet bit that the recipe's allergen statuses contradict (vegan with milk,
-egg, fish or shellfish not `free`, vegetarian with fish or shellfish not `free`, dairy-free with
-milk not `free`, gluten-free with gluten or wheat not `free`); every `ingredient_id` exists; ≥ 98 % of ingredient lines matched; SQLite
-`integrity_check` and `foreign_key_check` pass; one FTS row per recipe; every recipe's stored
-`ingredient_ids` and `core_ingredient_ids` equal what SQL recomputes from its lines; database < 15 MB.
+its description matches; no synonym maps to two ingredients; no "A or B" synonym is less restrictive
+than an alternative it hides; every `preparedAs` names an ingredient; no word indexed from a search
+alias is a cuisine label, cuisine place name or listed descriptor, and every alias entry names a
+known ingredient and indexes at least one word; substitutions reference known ingredients, are
+unique and have notes; unique recipe ids and slugs; every recipe has ≥ 1 ingredient and ≥ 1 step;
+enums are valid (course, cuisine, region, confidence, goal tags, allergen states, diet bits, effort
+1–3); servings 1–48; active ≤ total minutes; health score 0–1; nutrient values non-negative,
+saturated fat ≤ fat, sodium ≤ 8,000 mg, protein energy ≤ total energy, energy within the ranges
+above; no `free` allergen or diet flag on a recipe with an unmatched line or an unidentified choice;
+no diet bit that the recipe's allergen statuses contradict (vegan with milk, egg, fish or shellfish
+not `free`, vegetarian with fish or shellfish not `free`, dairy-free with milk not `free`,
+gluten-free with gluten or wheat not `free`); every `ingredient_id` exists; ≥ 98 % of ingredient
+lines matched; SQLite `integrity_check` and `foreign_key_check` pass; one FTS row per recipe; every
+recipe's stored `ingredient_ids` and `core_ingredient_ids` equal what SQL recomputes from its lines;
+database < 15 MB.
 
 The database and manifest are written to `*.staging` files next to the assets and moved into place
 only after every gate, including the post-write SQLite checks and the size limit, has passed, so a
