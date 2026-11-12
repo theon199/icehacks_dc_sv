@@ -66,9 +66,10 @@ export function formatDistance(meters: number, unit: DistanceUnit): string {
     if (miles < 0.1) return `${Math.max(50, Math.round((meters * 3.28084) / 50) * 50)} ft`;
     return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi`;
   }
-  if (meters < 1000) return `${Math.max(50, Math.round(meters / 50) * 50)} m`;
+  const roundedMeters = Math.max(50, Math.round(meters / 50) * 50);
+  if (roundedMeters < 1000) return `${roundedMeters} m`;
   const km = meters / 1000;
-  return `${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
+  return `${km < 10 ? km.toFixed(1).replace(/\.0$/, '') : Math.round(km)} km`;
 }
 
 export interface MapRegion extends LatLng {
