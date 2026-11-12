@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+
+# Expo / Metro
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# generated native projects (continuous native generation)
+ios/
+android/
+
+# test output
+coverage/
+
+# environment (only the example is tracked)
+.env*
+!.env.example
+
+# data pipeline cache
+tools/data/.cache
+
+# signing material
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# logs and OS noise
+*.log
+npm-debug.*
+.DS_Store
+*.tsbuildinfo

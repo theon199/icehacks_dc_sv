@@ -1,0 +1,18 @@
+{
+  "plugins": [
+    "expo-router",
+    "expo-image",
+    "expo-sqlite",
+    "expo-secure-store",
+    "expo-web-browser",
+    "expo-font",
+    "expo-splash-screen",
+    "expo-status-bar",
+    "expo-sharing",
+    "expo-localization",
+    "expo-asset",
+    "expo-build-properties",
+    "expo-speech-recognition",
+    "@kingstinct/react-native-healthkit"
+  ]
+}

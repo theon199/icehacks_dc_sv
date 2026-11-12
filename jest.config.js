@@ -1,0 +1,15 @@
+/** @type {import('jest').Config} */
+module.exports = {
+  preset: 'jest-expo/ios',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '\.db$': '<rootDir>/test/assetStub.js',
+  },
+  testPathIgnorePatterns: ['/node_modules/', '/supabase/', '/tools/data/', '/dist/'],
+  transformIgnorePatterns: [
+    'node_modules/(?!(?:.pnpm/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|@shopify/flash-list|@kingstinct/.*|react-native-nitro-modules|@tanstack/.*|zustand))',
+  ],
+  collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/app/**', '!**/*.test.{ts,tsx}'],
+  clearMocks: true,
+};
