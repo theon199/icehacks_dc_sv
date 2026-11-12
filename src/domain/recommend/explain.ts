@@ -6,7 +6,14 @@
 import { type RankContext } from './context';
 import { isNovel, pantryOwned, type FeatureVector } from './score';
 import { cuisineLabel, REGION_LABELS } from '../types/cuisines';
-import { GOAL_DETAILS, recipeGoalMask, type Goal, type GoalTag } from '../types/goals';
+import {
+  GOAL_DETAILS,
+  GOAL_TAGS,
+  goalTagMask,
+  recipeGoalMask,
+  type Goal,
+  type GoalTag,
+} from '../types/goals';
 import { type Effort, type RecipeSummary } from '../types/recipe';
 
 export type FitReasonCode =
@@ -41,6 +48,35 @@ const GOAL_REASON: Readonly<Record<Goal, string>> = {
   plant_forward: 'Plant-forward, like you wanted',
   steady_energy: 'Fiber and protein for steadier energy',
 };
+
+/**
+ * Narrower wording for goals that more than one tag can serve, keyed by the single tag a recipe
+ * has. A card must only claim what the recipe carries: a dish tagged only `high_protein` serves
+ * steadier energy, but saying it brings fiber too would be untrue.
+ */
+const PARTIAL_GOAL_REASON: Partial<Record<Goal, Partial<Record<GoalTag, string>>>> = {
+  steady_energy: {
+    high_protein: 'Protein for steadier energy',
+    high_fiber: 'Fiber for steadier energy',
+  },
+  heart_friendly: {
+    lower_sat_fat: 'Lower in saturated fat, for your goal',
+  },
+};
+
+/** Each goal tag's bit in a recipe goal mask, worked out once. */
+const TAG_BIT = Object.fromEntries(GOAL_TAGS.map((tag) => [tag, goalTagMask([tag])])) as Readonly<
+  Record<GoalTag, number>
+>;
+
+/** The goal's reason, worded from the serving tags the recipe actually carries. */
+function goalReason(goal: Goal, recipeMask: number): string {
+  const partial = PARTIAL_GOAL_REASON[goal];
+  if (!partial) return GOAL_REASON[goal];
+  const carried = GOAL_DETAILS[goal].servedBy.filter((tag) => (recipeMask & TAG_BIT[tag]) !== 0);
+  const only = carried.length === 1 ? carried[0] : undefined;
+  return (only !== undefined ? partial[only] : undefined) ?? GOAL_REASON[goal];
+}
 
 /** Plain facts from the catalog's nutrition tags, used when nothing personal applies. */
 const GOAL_TAG_FACT: Readonly<Record<GoalTag, string>> = {
@@ -104,7 +140,7 @@ export function explainRecipe(
 
   const tagMask = recipeGoalMask(recipe.goalTags);
   const servedGoal = ctx.goals.find((goal) => tagMask & GOAL_DETAILS[goal].mask);
-  if (servedGoal) push('goal', GOAL_REASON[servedGoal], w.goalMatch * features.goalMatch);
+  if (servedGoal) push('goal', goalReason(servedGoal, tagMask), w.goalMatch * features.goalMatch);
 
   const minutes = recipe.totalMinutes;
   const stated = ctx.prefs.timeBudgetMinutes;

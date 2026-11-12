@@ -153,6 +153,26 @@ describe('MakeoverScreen', () => {
     expect(screen.getByTestId('makeover-save')).toBeDisabled();
   });
 
+  it('warns softly when the note names an ingredient a swap took out', async () => {
+    makeover.mockResolvedValue(answer({ note: 'Finish with a splash of cream if you like.' }));
+    await renderMakeover();
+    await runMakeover();
+
+    expect(await screen.findByTestId('makeover-note-warning')).toHaveTextContent(
+      'The note mentions cream. This version swaps it out to keep it free of milk, so leave it out when you cook.',
+    );
+    expect(screen.getByTestId('makeover-save')).toBeEnabled();
+  });
+
+  it('shows no note warning when the note names nothing you avoid', async () => {
+    makeover.mockResolvedValue(answer({ note: 'Ready in 20 minutes.' }));
+    await renderMakeover();
+    await runMakeover();
+
+    await screen.findByTestId('makeover-save');
+    expect(screen.queryByTestId('makeover-note-warning')).toBeNull();
+  });
+
   it('explains when the daily makeover limit is spent', async () => {
     makeover.mockRejectedValue(
       new ApiError({

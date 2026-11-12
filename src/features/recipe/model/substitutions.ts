@@ -68,15 +68,20 @@ function allergenConflicts(
   return found.length > 0 ? found : null;
 }
 
-/** A replacement is only offered when it is verified safe for every declared allergen. */
+/**
+ * A replacement is only offered when it is verified safe for every declared allergen. Before the
+ * person has answered the allergen questions any allergen could matter to them, so only a
+ * replacement verified free of every allergen qualifies (the same rule Compare applies).
+ */
 function safeReplacement(
   replacement: IngredientFacts | undefined,
   prefs: Pick<UserPreferences, 'allergens' | 'diets'>,
 ): replacement is IngredientFacts {
   if (!replacement) return false;
-  // Unanswered allergens: nothing can be verified as safe, so only fully resolved items qualify.
   if (replacement.allergenStatus !== 'resolved') return false;
-  if (prefs.allergens && prefs.allergens.some((a) => replacement.allergens.includes(a))) {
+  if (prefs.allergens === null) {
+    if (replacement.allergens.length > 0) return false;
+  } else if (prefs.allergens.some((a) => replacement.allergens.includes(a))) {
     return false;
   }
   const diets = prefs.diets ?? [];
