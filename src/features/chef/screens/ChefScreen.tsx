@@ -59,7 +59,15 @@ function ChefChat({ initialThreadId }: { initialThreadId: string | null }) {
     setThreadId(id);
     setDrawerOpen(false);
   }, []);
-  const ask = useCallback((question: string) => send({ text: question }), [send]);
+  // Suggestion chips skip the Composer, so they need their own check: while today's allowance is
+  // spent the server would only refuse the question, and it would still land in the synced thread.
+  const ask = useCallback(
+    (question: string) => {
+      if (limited) return;
+      send({ text: question });
+    },
+    [limited, send],
+  );
 
   const empty = messages.length === 0 && !sending;
   const heading = title ? readPhotoMark(title).text : 'New chat';
