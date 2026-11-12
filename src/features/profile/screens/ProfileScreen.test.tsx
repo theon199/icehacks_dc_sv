@@ -5,7 +5,7 @@ import type { MyStats } from '@/lib/supabase/database.types';
 
 import { ProfileScreen } from './ProfileScreen';
 import { fetchBadgeCatalog, fetchMyStats, fetchProfile } from '../api/profileApi';
-import { fetchAuthorPosts } from '../deps';
+import { fetchAuthorPosts, listCatalogCuisines } from '../deps';
 import { renderWithQuery, signInForTest, TEST_USER_ID } from '../testing';
 
 jest.mock('../api/profileApi', () => ({
@@ -128,9 +128,12 @@ describe('ProfileScreen', () => {
   });
 
   it('opens the edit sheet', async () => {
+    jest.mocked(listCatalogCuisines).mockResolvedValue(['thai', 'west_african']);
     await renderWithQuery(<ProfileScreen />);
     await fireEvent.press(await screen.findByRole('button', { name: 'Edit profile' }));
     expect(screen.getByTestId('edit-profile-sheet')).toBeOnTheScreen();
+    // The sheet loads the cuisine list; wait for it so the update lands inside the test.
+    expect(await screen.findByTestId('cuisine-thai')).toBeOnTheScreen();
   });
 
   it('offers a retry when the profile fails to load', async () => {
