@@ -14,7 +14,7 @@ import { toast } from '@/ui';
 import { useCookTimers } from './useCookTimers';
 import { useVoiceCommands } from './useVoiceCommands';
 import { stepTimerLabel } from '../logic/session';
-import { stepTimerId, type CookTimer } from '../logic/timers';
+import { MAX_TIMERS, stepTimerId, type CookTimer, type NewTimer } from '../logic/timers';
 import type { VoiceCommand } from '../logic/voiceCommands';
 
 const ALERT_PATTERN = [0, 500, 250, 500];
@@ -26,9 +26,9 @@ const COMMAND_WORDS: Record<VoiceCommand['type'], string> = {
   start_timer: 'start timer',
 };
 
-function alertTimerDone(timer: CookTimer, whileAway: boolean) {
+function alertTimerDone(timer: CookTimer, notified: boolean) {
   // A notification already told them while Famara was in the background.
-  if (whileAway) return;
+  if (notified) return;
   const message = `${timer.label} timer is done`;
   haptics.warning();
   Vibration.vibrate(ALERT_PATTERN);
@@ -48,7 +48,27 @@ export function useCookControls(recipe: RecipeDetail, step: number, goTo: (index
     notificationsEnabled,
     onFinish: alertTimerDone,
   });
-  const startTimer = timers.start;
+  const { start: startTimer, byId } = timers;
+
+  /** Starts a timer with feedback either way, so a voice command never fails silently. */
+  const startWithFeedback = useCallback(
+    (input: NewTimer): boolean => {
+      if (startTimer(input)) {
+        haptics.success();
+        return true;
+      }
+      haptics.warning();
+      const existing = byId[input.id];
+      toast.show({
+        message:
+          existing && existing.status !== 'done'
+            ? `The ${existing.label} timer is already going.`
+            : `You already have ${MAX_TIMERS} timers. Dismiss one to start another.`,
+      });
+      return false;
+    },
+    [byId, startTimer],
+  );
 
   // The echo of a heard command fades after a moment.
   useEffect(() => {
@@ -57,30 +77,34 @@ export function useCookControls(recipe: RecipeDetail, step: number, goTo: (index
     return () => clearTimeout(timeout);
   }, [heard]);
 
-  const next = useCallback(() => {
-    haptics.selection();
-    goTo(step + 1);
-  }, [goTo, step]);
+  /** Moves by one step; false (and no haptic) when already at that end of the recipe. */
+  const move = useCallback(
+    (delta: 1 | -1): boolean => {
+      const target = step + delta;
+      if (target < 0 || target >= steps.length) return false;
+      haptics.selection();
+      goTo(target);
+      return true;
+    },
+    [goTo, step, steps.length],
+  );
+  const next = useCallback(() => void move(1), [move]);
+  const back = useCallback(() => void move(-1), [move]);
 
-  const back = useCallback(() => {
-    haptics.selection();
-    goTo(step - 1);
-  }, [goTo, step]);
-
-  /** Starts the recipe's timer for a step; false when the step has none. */
+  /** Starts the recipe's timer for a step; 'none' when the step has no timer. */
   const startStepTimer = useCallback(
-    (index: number) => {
+    (index: number): 'started' | 'refused' | 'none' => {
       const seconds = steps[index]?.timerSeconds;
-      if (!seconds) return false;
-      startTimer({
+      if (!seconds) return 'none';
+      const started = startWithFeedback({
         id: stepTimerId(index),
         label: stepTimerLabel(index),
         stepIndex: index,
         durationMs: seconds * 1000,
       });
-      return true;
+      return started ? 'started' : 'refused';
     },
-    [startTimer, steps],
+    [startWithFeedback, steps],
   );
 
   const handleCommand = useCallback(
@@ -88,9 +112,12 @@ export function useCookControls(recipe: RecipeDetail, step: number, goTo: (index
       setHeard(COMMAND_WORDS[command.type]);
       switch (command.type) {
         case 'next':
-          return next();
+          if (!move(1))
+            toast.show({ message: 'This is the last step. Tap Finish when you are done.' });
+          return;
         case 'back':
-          return back();
+          if (!move(-1)) toast.show({ message: 'This is the first step.' });
+          return;
         case 'repeat': {
           haptics.selection();
           setReplayKey((key) => key + 1);
@@ -100,20 +127,18 @@ export function useCookControls(recipe: RecipeDetail, step: number, goTo: (index
         }
         case 'start_timer':
           if (command.seconds !== null) {
-            startTimer({
+            startWithFeedback({
               id: `voice-${Date.now()}`,
               label: formatClock(command.seconds),
               stepIndex: null,
               durationMs: command.seconds * 1000,
             });
-          } else if (!startStepTimer(step)) {
+          } else if (startStepTimer(step) === 'none') {
             toast.show({ message: 'This step has no timer. Try “set a timer for 5 minutes”.' });
-            return;
           }
-          haptics.success();
       }
     },
-    [back, next, startStepTimer, startTimer, step, steps],
+    [move, startStepTimer, startWithFeedback, step, steps],
   );
 
   const voice = useVoiceCommands(handleCommand);

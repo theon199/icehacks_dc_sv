@@ -4,11 +4,11 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { formatClock } from '@/lib/format';
 import { Icon, PressableScale, Text, useTheme } from '@/ui';
 
+import { useNow } from '../hooks/useNow';
 import { remainingMs, type CookTimer } from '../logic/timers';
 
 export interface TimerTrayProps {
   timers: readonly CookTimer[];
-  now: number;
   /** Step on screen; its own timer shows in the step card instead. */
   currentStep: number;
   onOpenStep: (stepIndex: number) => void;
@@ -21,13 +21,13 @@ export interface TimerTrayProps {
  */
 export const TimerTray = memo(function TimerTray({
   timers,
-  now,
   currentStep,
   onOpenStep,
   onDismiss,
 }: TimerTrayProps) {
   const theme = useTheme();
   const others = timers.filter((timer) => timer.stepIndex !== currentStep);
+  const now = useNow(others.some((timer) => timer.status === 'running'));
   if (others.length === 0) return null;
 
   return (

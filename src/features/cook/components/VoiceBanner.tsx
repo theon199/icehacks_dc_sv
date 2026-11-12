@@ -57,8 +57,15 @@ export function VoiceBanner({ status, heard, onDismiss }: VoiceBannerProps) {
           size="sm"
           onPress={() => void Linking.openSettings().catch(() => undefined)}
         />
-      ) : blocked ? (
-        <Button label="OK" variant="ghost" size="sm" onPress={onDismiss} />
+      ) : null}
+      {blocked ? (
+        <Button
+          label="OK"
+          variant="ghost"
+          size="sm"
+          onPress={onDismiss}
+          testID="cook-voice-banner-dismiss"
+        />
       ) : null}
     </View>
   );

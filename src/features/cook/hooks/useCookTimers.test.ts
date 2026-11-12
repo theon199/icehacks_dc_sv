@@ -218,4 +218,45 @@ describe('useCookTimers', () => {
     await flush();
     expect(notifier.cancel).toHaveBeenCalledWith('notification-1');
   });
+
+  it('asks the screen to alert when a timer ended away with no notification scheduled', async () => {
+    const { result, notifier, appState, onFinish } = await setup({ permission: 'denied' });
+    await run(() => result.current.start(stepTimer(0, 30)));
+    await run(() => appState.set('background'));
+    await flush();
+    await run(() => jest.advanceTimersByTime(60_000));
+    await run(() => appState.set('active'));
+    await flush();
+
+    expect(notifier.schedule).not.toHaveBeenCalled();
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onFinish).toHaveBeenCalledWith(expect.objectContaining({ id: 'step-0' }), false);
+  });
+
+  it('treats a timer as unannounced when cook-timer notifications are off', async () => {
+    const { result, appState, onFinish } = await setup({
+      permission: 'granted',
+      notificationsEnabled: false,
+    });
+    await run(() => result.current.start(stepTimer(0, 30)));
+    await run(() => appState.set('background'));
+    await run(() => jest.advanceTimersByTime(60_000));
+    await run(() => appState.set('active'));
+    await flush();
+    expect(onFinish).toHaveBeenCalledWith(expect.objectContaining({ id: 'step-0' }), false);
+  });
+
+  it('says whether a timer actually started', async () => {
+    const { result } = await setup({ permission: 'granted' });
+    let first = false;
+    let repeat = true;
+    await run(() => {
+      first = result.current.start(stepTimer(0, 60));
+    });
+    await run(() => {
+      repeat = result.current.start(stepTimer(0, 60));
+    });
+    expect(first).toBe(true);
+    expect(repeat).toBe(false);
+  });
 });

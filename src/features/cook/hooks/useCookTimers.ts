@@ -1,8 +1,11 @@
 /**
- * Drives cook-mode timers: several can run at once, they tick while the screen is open, and when
- * Famara goes to the background each running timer becomes a scheduled local notification. Coming
- * back cancels those notifications (the screen takes over again) and marks any timer that ran out
- * meanwhile as done.
+ * Drives cook-mode timers: several can run at once, they are checked once a second while the
+ * screen is open, and when Famara goes to the background each running timer becomes a scheduled
+ * local notification. Coming back cancels those notifications (the screen takes over again) and
+ * marks any timer that ran out meanwhile as done.
+ *
+ * The hook re-renders only when a timer changes state, never per second: the countdown text reads
+ * its own clock (see `useNow`), so the rest of cook mode stays still while a pot simmers.
  *
  * Notification permission is asked for the first time a timer starts, never on screen entry.
  */
@@ -51,13 +54,19 @@ const rnAppState: AppStateSource = {
   },
 };
 
+const NOBODY_NOTIFIED: ReadonlySet<string> = new Set();
+
 export interface UseCookTimersOptions {
   recipeId: string;
   recipeTitle: string;
   /** The person's "cook timer" notification setting. */
   notificationsEnabled: boolean;
-  /** Called when a timer runs out; `whileAway` is true if Famara was in the background then. */
-  onFinish?: (timer: CookTimer, whileAway: boolean) => void;
+  /**
+   * Called once when a timer runs out. `notified` is true only when it ended while Famara was in
+   * the background and a local notification had actually been scheduled for it, i.e. the person
+   * has already been told; otherwise the screen should alert them itself.
+   */
+  onFinish?: (timer: CookTimer, notified: boolean) => void;
   notifier?: TimerNotifier;
   appState?: AppStateSource;
   now?: () => number;
@@ -98,7 +107,6 @@ export function useCookTimers({
   tickMs = 1000,
 }: UseCookTimersOptions) {
   const [timers, dispatch] = useReducer(reducer, {});
-  const [clock, setClock] = useState(now);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
 
   const live = useRef({ timers, onFinish, notifier, notificationsEnabled, recipeId, recipeTitle });
@@ -107,15 +115,16 @@ export function useCookTimers({
     live.current = { timers, onFinish, notifier, notificationsEnabled, recipeId, recipeTitle };
   });
   const scheduled = useRef(new Map<string, Promise<string | null>>());
+  /** Timers whose background notification is confirmed scheduled during the current absence. */
+  const notifiedIds = useRef(new Set<string>());
   const asked = useRef(false);
   /** `id@endsAt` of timers already reported, so a tick racing a re-render cannot report twice. */
   const reported = useRef(new Set<string>());
 
   /** Marks due timers done and reports each one once. */
   const settle = useCallback(
-    (whileAway: boolean) => {
+    (notified: ReadonlySet<string>) => {
       const at = now();
-      setClock(at);
       const due = dueTimerIds(live.current.timers, at);
       if (due.length === 0) return;
       dispatch({ type: 'finish', id: '', at });
@@ -126,19 +135,20 @@ export function useCookTimers({
         reported.current.add(key);
         live.current.onFinish?.(
           { ...timer, status: 'done', endsAt: null, remainingMs: 0 },
-          whileAway,
+          notified.has(id),
         );
       }
     },
     [now],
   );
 
-  // Tick once a second while anything is running and Famara is in front.
+  // Check once a second while anything is running and Famara is in front. Nothing re-renders
+  // unless a timer actually ran out.
   const running = hasRunningTimers(timers);
   useEffect(() => {
     if (!running) return undefined;
     const interval = setInterval(() => {
-      if (appState.current() !== 'background') settle(false);
+      if (appState.current() !== 'background') settle(NOBODY_NOTIFIED);
     }, tickMs);
     return () => clearInterval(interval);
   }, [running, appState, settle, tickMs]);
@@ -174,6 +184,10 @@ export function useCookTimers({
               })
             : null,
         )
+        .then((notificationId) => {
+          if (notificationId) notifiedIds.current.add(timer.id);
+          return notificationId;
+        })
         .catch(() => null);
       scheduled.current.set(timer.id, request);
     }
@@ -183,8 +197,11 @@ export function useCookTimers({
     const unsubscribe = appState.subscribe((status) => {
       if (status === 'background') scheduleRunning();
       else if (status === 'active') {
+        // Only timers with a confirmed notification count as already announced.
+        const notified = new Set(notifiedIds.current);
+        notifiedIds.current.clear();
         void cancelScheduled();
-        settle(true);
+        settle(notified);
       }
     });
     return () => {
@@ -204,43 +221,37 @@ export function useCookTimers({
       .catch(() => setPermission('denied'));
   }, []);
 
+  /**
+   * Starts a timer. Returns false when nothing started: the same timer is already going, or the
+   * session is at its limit of concurrent timers.
+   */
   const start = useCallback(
-    (input: NewTimer) => {
+    (input: NewTimer): boolean => {
       const at = now();
-      setClock(at);
+      const current = live.current.timers;
+      if (startTimer(current, input, at) === current) return false;
       dispatch({ type: 'start', input, at });
       askPermissionOnce();
+      return true;
     },
     [askPermissionOnce, now],
-  );
-
-  const act = useCallback(
-    (type: 'pause' | 'resume', id: string) => {
-      const at = now();
-      setClock(at);
-      dispatch({ type, id, at });
-    },
-    [now],
   );
 
   const actions = useMemo(
     () => ({
       start,
-      pause: (id: string) => act('pause', id),
-      resume: (id: string) => act('resume', id),
-      extend: (id: string, ms: number) => {
-        const at = now();
-        setClock(at);
-        dispatch({ type: 'extend', id, ms, at });
-      },
+      pause: (id: string) => dispatch({ type: 'pause', id, at: now() }),
+      resume: (id: string) => dispatch({ type: 'resume', id, at: now() }),
+      extend: (id: string, ms: number) => dispatch({ type: 'extend', id, ms, at: now() }),
       remove: (id: string) => dispatch({ type: 'remove', id }),
     }),
-    [act, now, start],
+    [now, start],
   );
 
-  const ordered = useMemo(() => orderTimers(timers, clock), [timers, clock]);
+  // Running timers sort by their end time, which does not move, so any moment orders them right.
+  const ordered = useMemo(() => orderTimers(timers, now()), [timers, now]);
 
-  return { timers: ordered, byId: timers, now: clock, permission, ...actions };
+  return { timers: ordered, byId: timers, permission, ...actions };
 }
 
 export type CookTimersApi = ReturnType<typeof useCookTimers>;

@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { formatClock } from '@/lib/format';
 import { Button, Icon, IconButton, Text, useTheme } from '@/ui';
 
+import { useNow } from '../hooks/useNow';
 import { remainingMs, type CookTimer } from '../logic/timers';
 
 export interface StepTimerCardProps {
@@ -11,7 +12,6 @@ export interface StepTimerCardProps {
   seconds: number;
   /** The step's timer once started. */
   timer: CookTimer | undefined;
-  now: number;
   onStart: () => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
@@ -23,7 +23,6 @@ export interface StepTimerCardProps {
 export const StepTimerCard = memo(function StepTimerCard({
   seconds,
   timer,
-  now,
   onStart,
   onPause,
   onResume,
@@ -31,6 +30,8 @@ export const StepTimerCard = memo(function StepTimerCard({
   onRemove,
 }: StepTimerCardProps) {
   const theme = useTheme();
+  // Only this card re-renders each second while its timer counts down.
+  const now = useNow(timer?.status === 'running');
 
   if (!timer) {
     return (

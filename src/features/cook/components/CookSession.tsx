@@ -53,14 +53,26 @@ export function CookSession({ recipe }: CookSessionProps) {
     });
   }, []);
 
+  const hasActiveTimers = timers.timers.some((timer) => timer.status !== 'done');
+
+  /** Runs `proceed` straight away, or after the cook agrees to drop their running timers. */
+  const confirmStoppingTimers = useCallback(
+    (title: string, actionLabel: string, proceed: () => void) => {
+      if (!hasActiveTimers) return proceed();
+      Alert.alert(title, 'Your timers will stop.', [
+        { text: 'Keep cooking', style: 'cancel' },
+        { text: actionLabel, style: 'destructive', onPress: proceed },
+      ]);
+    },
+    [hasActiveTimers],
+  );
+
   const leave = useCallback(() => {
-    const active = timers.timers.some((timer) => timer.status !== 'done');
-    if (!active) return router.back();
-    Alert.alert('Leave cook mode?', 'Your timers will stop.', [
-      { text: 'Keep cooking', style: 'cancel' },
-      { text: 'Leave', style: 'destructive', onPress: () => router.back() },
-    ]);
-  }, [router, timers.timers]);
+    confirmStoppingTimers('Leave cook mode?', 'Leave', () =>
+      // Opened straight from a link there may be nothing to go back to.
+      router.canGoBack() ? router.back() : router.replace('/'),
+    );
+  }, [confirmStoppingTimers, router]);
 
   // Android's back button goes through the same check as the close button.
   useEffect(() => {
@@ -72,10 +84,12 @@ export function CookSession({ recipe }: CookSessionProps) {
   }, [leave]);
 
   const finish = useCallback(() => {
-    clear();
-    voice.stop();
-    router.replace({ pathname: '/cook/[id]/done', params: { id: recipe.id } });
-  }, [clear, recipe.id, router, voice]);
+    confirmStoppingTimers('Finish cooking?', 'Finish', () => {
+      clear();
+      voice.stop();
+      router.replace({ pathname: '/cook/[id]/done', params: { id: recipe.id } });
+    });
+  }, [clear, confirmStoppingTimers, recipe.id, router, voice]);
 
   const swipe = useMemo(
     () =>
@@ -116,7 +130,6 @@ export function CookSession({ recipe }: CookSessionProps) {
         <VoiceBanner status={voice.status} heard={heard} onDismiss={voice.stop} />
         <TimerTray
           timers={timers.timers}
-          now={timers.now}
           currentStep={step}
           onOpenStep={goTo}
           onDismiss={timers.remove}
@@ -134,8 +147,7 @@ export function CookSession({ recipe }: CookSessionProps) {
               <StepTimerCard
                 seconds={current.timerSeconds}
                 timer={stepTimer}
-                now={timers.now}
-                onStart={() => startStepTimer(step)}
+                onStart={() => void startStepTimer(step)}
                 onPause={timers.pause}
                 onResume={timers.resume}
                 onAddMinute={(id) => timers.extend(id, 60_000)}
