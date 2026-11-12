@@ -2,15 +2,12 @@
  * The narrow set of things Community needs from other parts of the app, behind one file.
  *
  * Recipes come from the bundled catalog (`@/lib/catalog`), saved and cooked lists from the
- * person's own synced stores, safety answers from the preferences store, and posts and comments go
- * through the `publish` edge function client in src/lib/api/community.ts, which runs the text
- * review, rate and image limits. There is deliberately no direct database path for publishing:
- * every post and comment is reviewed.
+ * person's own synced stores, and posts and comments go through the `publish` edge function
+ * client in src/lib/api/community.ts, which runs the text review, rate and image limits. There is
+ * deliberately no direct database path for publishing: every post and comment is reviewed.
  */
 import { useMemo } from 'react';
 
-import { compileSafetyRules, type SafetyRules } from '@/domain/safety';
-import { safetyPrefsFrom } from '@/features/chef';
 import { ESTIMATED_MEAL_PREFIX } from '@/features/snap';
 import {
   publishComment as sendComment,
@@ -22,13 +19,7 @@ import {
   searchRecipes as searchCatalog,
   type RecipeSummary as CatalogRecipe,
 } from '@/lib/catalog';
-import {
-  selectCookEntries,
-  selectSavedIds,
-  useCookLogStore,
-  usePreferencesStore,
-  useSavedStore,
-} from '@/stores';
+import { selectCookEntries, selectSavedIds, useCookLogStore, useSavedStore } from '@/stores';
 
 import type { PostKind, PublishedComment, PublishedPost } from './api/schemas';
 import { recentCookedRecipeIds } from './logic/myRecipes';
@@ -61,7 +52,7 @@ export async function searchRecipes(text: string): Promise<CatalogRecipe[]> {
 }
 
 // -------------------------------------------------------------------------------------------------
-// The person's own recipe lists and safety answers
+// The person's own recipe lists
 // -------------------------------------------------------------------------------------------------
 
 /** How many recently cooked recipes the picker considers. */
@@ -82,15 +73,6 @@ export function useCookedRecipeIds(): readonly string[] {
     () => recentCookedRecipeIds(entries, COOKED_LOOKBACK, [ESTIMATED_MEAL_PREFIX]),
     [entries],
   );
-}
-
-/**
- * The signed-in person's allergen and diet rules, compiled once per change. Until the allergen
- * question is answered the rules mark nothing as safe (fail-closed).
- */
-export function useSafetyRules(): SafetyRules {
-  const prefs = usePreferencesStore((state) => state.prefs);
-  return useMemo(() => compileSafetyRules(safetyPrefsFrom(prefs)), [prefs]);
 }
 
 // -------------------------------------------------------------------------------------------------

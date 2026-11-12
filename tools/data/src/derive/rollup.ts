@@ -52,19 +52,23 @@ export function rollupAllergens(lines: readonly MatchedLine[]): Record<AllergenI
  * Allergens whose status can disprove a diet. A recipe keeps the diet only while each of them is
  * `free`: `contains` rules it out, and `unknown` (an unmatched line, an unidentified choice or a
  * store-bought product whose recipe varies by brand) means the claim cannot be backed up.
+ *
+ * The app applies the same requirements when it shows recipes (DIET_ALLERGEN_CHECKS in
+ * src/domain/safety/checkRecipe.ts), so a diet bit set here is never rejected there.
  */
-export const DIET_ALLERGEN_REQUIREMENTS: Readonly<Partial<Record<DietFlagName, readonly AllergenId[]>>> = {
-  vegan: ['milk', 'egg', 'fish', 'shellfish'],
-  vegetarian: ['fish', 'shellfish'],
-  dairy_free: ['milk'],
-  gluten_free: ['gluten', 'wheat'],
-};
+export const DIET_ALLERGEN_REQUIREMENT_LIST: readonly (readonly [DietFlagName, readonly AllergenId[]])[] = [
+  ['vegan', ['milk', 'egg', 'fish', 'shellfish']],
+  ['vegetarian', ['fish', 'shellfish']],
+  ['dairy_free', ['milk']],
+  ['gluten_free', ['gluten', 'wheat']],
+];
 
-const DIET_REQUIREMENT_ENTRIES = Object.entries(DIET_ALLERGEN_REQUIREMENTS) as [DietFlagName, readonly AllergenId[]][];
+/** The same requirements keyed by diet. */
+export const DIET_ALLERGEN_REQUIREMENTS: Readonly<Partial<Record<DietFlagName, readonly AllergenId[]>>> = Object.fromEntries(DIET_ALLERGEN_REQUIREMENT_LIST);
 
-/** Diet bits in `flags` that the allergen map does not back up (see DIET_ALLERGEN_REQUIREMENTS). */
+/** Diet bits in `flags` that the allergen map does not back up (see DIET_ALLERGEN_REQUIREMENT_LIST). */
 export function unbackedDietFlags(flags: number, allergens: Readonly<Record<AllergenId, AllergenState>>): DietFlagName[] {
-  return DIET_REQUIREMENT_ENTRIES.filter(([diet, needed]) => (flags & DietFlag[diet]) !== 0 && needed.some((a) => allergens[a] !== 'free')).map(([diet]) => diet);
+  return DIET_ALLERGEN_REQUIREMENT_LIST.filter(([diet, needed]) => (flags & DietFlag[diet]) !== 0 && needed.some((a) => allergens[a] !== 'free')).map(([diet]) => diet);
 }
 
 /**

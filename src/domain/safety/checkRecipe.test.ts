@@ -125,6 +125,11 @@ describe('checkRecipe diets', () => {
     });
     expect(checkRecipe(makeRecipe({ dietFlags: DietFlag.vegan }), rules).eligible).toBe(true);
   });
+
+  it('compiles the fish and shellfish checks for vegetarians once', () => {
+    const rules = compileSafetyRules({ allergens: ['fish'], diets: ['vegetarian', 'vegan'] });
+    expect(rules.mustBeFree).toEqual(['fish', 'shellfish', 'milk', 'egg']);
+  });
 });
 
 describe('checkRecipe diet cross-checks', () => {
@@ -133,6 +138,8 @@ describe('checkRecipe diet cross-checks', () => {
     ['vegan', 'egg'],
     ['vegan', 'fish'],
     ['vegan', 'shellfish'],
+    ['vegetarian', 'fish'],
+    ['vegetarian', 'shellfish'],
     ['dairy_free', 'milk'],
     ['gluten_free', 'gluten'],
     ['gluten_free', 'wheat'],
@@ -157,6 +164,40 @@ describe('checkRecipe diet cross-checks', () => {
         message: 'May not be vegan: ingredient data incomplete',
       },
     ]);
+  });
+
+  it('explains an unverified vegetarian flag in plain words', () => {
+    const recipe = makeRecipe({ dietFlags: DietFlag.vegetarian, allergens: { fish: 'unknown' } });
+    expect(checkRecipe(recipe, { allergens: [], diets: ['vegetarian'] })).toEqual({
+      eligible: false,
+      reasons: [
+        {
+          code: 'diet_unverified',
+          diet: 'vegetarian',
+          message: 'May not be vegetarian: ingredient data incomplete',
+        },
+      ],
+    });
+  });
+
+  it('checks a vegan flag against fish and shellfish for vegetarians too', () => {
+    const recipe = makeRecipe({ dietFlags: DietFlag.vegan, allergens: { shellfish: 'contains' } });
+    expect(checkRecipe(recipe, { allergens: [], diets: ['vegetarian'] }).reasons).toEqual([
+      { code: 'diet_mismatch', diet: 'vegetarian', message: 'Not vegetarian' },
+    ]);
+  });
+
+  it('does not ask milk or egg of a vegetarian dish', () => {
+    const recipe = makeRecipe({
+      dietFlags: DietFlag.vegetarian,
+      allergens: { milk: 'contains', egg: 'unknown' },
+    });
+    expect(checkRecipe(recipe, { allergens: [], diets: ['vegetarian'] }).eligible).toBe(true);
+  });
+
+  it('leaves pescatarians to the catalog flag', () => {
+    const recipe = makeRecipe({ dietFlags: DietFlag.pescatarian, allergens: { fish: 'contains' } });
+    expect(checkRecipe(recipe, { allergens: [], diets: ['pescatarian'] }).eligible).toBe(true);
   });
 
   it('treats a contradicting allergen as a diet mismatch', () => {
