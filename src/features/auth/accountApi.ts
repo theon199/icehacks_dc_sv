@@ -112,17 +112,26 @@ export async function identityFor(userId: string): Promise<AccountIdentity> {
   return { userId, accessToken: session.access_token };
 }
 
-interface RpcCall {
-  name: string;
-  args?: Record<string, unknown>;
+/** The account RPCs this module calls, with the arguments each one takes. */
+type AccountRpc =
+  | { name: 'my_account_status' }
+  | { name: 'delete_my_account' }
+  | { name: 'set_birth_year'; args: { p_birth_year: number } };
+
+type RpcCall = AccountRpc & {
   /** Run with this identity's token instead of whichever session is current. */
   as?: AccountIdentity | undefined;
+};
+
+function startRpc(call: AccountRpc) {
+  const client = getSupabase();
+  return call.name === 'set_birth_year' ? client.rpc(call.name, call.args) : client.rpc(call.name);
 }
 
 async function callRpc<S extends z.ZodType>(call: RpcCall, schema: S): Promise<z.infer<S>> {
   let response: { data: unknown; error: RpcFailure | null; status?: number };
   try {
-    const request = getSupabase().rpc(call.name, call.args);
+    const request = startRpc(call);
     response = await (call.as
       ? request.setHeader('Authorization', `Bearer ${call.as.accessToken}`)
       : request);
@@ -158,10 +167,21 @@ export async function fetchAccountStatus(as?: AccountIdentity): Promise<AccountS
   return toStatus(await callRpc({ name: 'my_account_status', as }, accountStatusSchema));
 }
 
-/** Records the birth year. It can later move only to a more recent year. */
-export async function saveBirthYear(birthYear: number): Promise<AccountStatus> {
-  const call = { name: 'set_birth_year', args: { p_birth_year: birthYear } };
-  return toStatus(await callRpc(call, accountStatusSchema));
+/**
+ * Records the birth year for the account `as` names. It can later move only to a more recent
+ * year. Binding the call to an identity keeps one person's year from landing on another account
+ * if someone else signs in while the request is being made.
+ */
+export async function saveBirthYear(
+  birthYear: number,
+  as: AccountIdentity,
+): Promise<AccountStatus> {
+  const call: RpcCall = { name: 'set_birth_year', args: { p_birth_year: birthYear }, as };
+  const status = toStatus(await callRpc(call, accountStatusSchema));
+  if (status.userId !== as.userId) {
+    throw new AccountError('account_changed', accountMessages.account_changed);
+  }
+  return status;
 }
 
 /**
