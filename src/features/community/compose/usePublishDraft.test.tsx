@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import { useSessionStore } from '@/features/auth';
+import { profileKeys } from '@/features/profile';
 import { ApiError } from '@/lib/api/errors';
 
 import { blurhashFor, preparePhoto, uploadPhoto } from './photoUpload';
@@ -62,7 +63,7 @@ async function setup() {
     });
     return failed;
   };
-  return { attempt };
+  return { attempt, client };
 }
 
 const sentPaths = (call: number) =>
@@ -102,6 +103,24 @@ describe('usePublishDraft', () => {
     expect(uploadMock).toHaveBeenCalledTimes(2);
     expect(sentPaths(0)).toEqual(['cook-1/upload-1.jpg']);
     expect(sentPaths(1)).toEqual(['cook-1/upload-2.jpg']);
+  });
+
+  it("refreshes the author's profile posts, stats and badges after publishing", async () => {
+    publishMock.mockResolvedValueOnce({ id: 'p3', status: 'visible', kind: 'tip', title: 'x' });
+    const { attempt, client } = await setup();
+    const keys = [
+      profileKeys.posts('cook-1'),
+      profileKeys.stats('cook-1', '2026-11-11'),
+      profileKeys.badges(),
+    ];
+    for (const key of keys) client.setQueryData(key, { seeded: true });
+    const someoneElse = profileKeys.posts('cook-2');
+    client.setQueryData(someoneElse, { seeded: true });
+
+    expect(await attempt()).toBe(false);
+
+    for (const key of keys) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(someoneElse)?.isInvalidated).toBe(false);
   });
 
   it('reports what is missing without uploading anything', async () => {
