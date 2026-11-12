@@ -5,6 +5,10 @@
 -- is notified and may appeal hide, remove, warn and suspend decisions -> a moderator upholds or
 -- reverses. Text that trips the pre-publication check and content reported by several people
 -- is hidden automatically by a system action (automated = true) and queued for review.
+--
+-- Only moderators read moderation_actions and moderation_appeals directly. Members see the
+-- decisions about their own content through public.my_moderation_decisions(), which leaves out
+-- who made the decision and which report triggered it.
 
 create table public.reports (
   id uuid default gen_random_uuid() primary key,
@@ -42,7 +46,8 @@ create table public.moderation_actions (
   reason text not null constraint moderation_actions_reason_length check (char_length(btrim(reason)) between 1 and 500),
   report_id uuid references public.reports (id) on delete set null,
   suspended_until timestamptz,
-  created_at timestamptz default now() not null
+  -- Wall-clock time, so actions taken within one transaction still sort in the order they ran.
+  created_at timestamptz default clock_timestamp() not null
 );
 create index moderation_actions_target_idx on public.moderation_actions (target_kind, target_id, created_at desc);
 create index moderation_actions_owner_idx on public.moderation_actions (target_owner_id, created_at desc) where target_owner_id is not null;
@@ -117,6 +122,20 @@ begin
 end;
 $$;
 
+-- A target id as uuid, or null when it is not one (catalog recipes use text ids).
+create function private.target_uuid(p_target_id text)
+returns uuid
+language plpgsql
+immutable
+set search_path = ''
+as $$
+begin
+  return p_target_id::uuid;
+exception when invalid_text_representation then
+  return null;
+end;
+$$;
+
 -- Canonical text form of a target id so one target never appears under two spellings.
 create function private.normalize_target(p_kind public.report_target, p_target_id text)
 returns text
@@ -132,6 +151,28 @@ begin
 exception when invalid_text_representation then
   return p_target_id;
 end;
+$$;
+
+-- The post / comment a target refers to, or null when the target is something else or has been
+-- deleted since. Used for notification links, which must not point at missing rows.
+create function private.existing_post(p_kind public.report_target, p_target_id text)
+returns uuid
+language sql
+stable
+set search_path = ''
+as $$
+  select p.id from public.posts p
+  where p_kind = 'post' and p.id = private.target_uuid(p_target_id);
+$$;
+
+create function private.existing_comment(p_kind public.report_target, p_target_id text)
+returns uuid
+language sql
+stable
+set search_path = ''
+as $$
+  select c.id from public.comments c
+  where p_kind = 'comment' and c.id = private.target_uuid(p_target_id);
 $$;
 
 create function private.set_content_status(
@@ -199,6 +240,18 @@ begin
 end;
 $$;
 
+-- Serialises report handling for one target until the current transaction ends.
+create function private.lock_report_target(p_kind public.report_target, p_target_id text)
+returns void
+language sql
+volatile
+set search_path = ''
+as $$
+  select pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('famara.report.' || p_kind::text || '.' || p_target_id, 0)
+  );
+$$;
+
 -- Tell the owner about decisions on their content or account.
 create function private.moderation_actions_after_insert()
 returns trigger
@@ -215,8 +268,8 @@ begin
     new.target_owner_id,
     null,
     'moderation',
-    case when new.target_kind = 'post' then new.target_id::uuid end,
-    case when new.target_kind = 'comment' then new.target_id::uuid end,
+    private.existing_post(new.target_kind, new.target_id),
+    private.existing_comment(new.target_kind, new.target_id),
     jsonb_build_object(
       'action_id', new.id,
       'action', new.action,
@@ -290,6 +343,11 @@ begin
     end if;
   end if;
 
+  -- Reports on one target are handled one at a time, so the duplicate check and the reporter
+  -- count below always see every earlier report (three people reporting at once still reach the
+  -- auto-hide threshold).
+  perform private.lock_report_target(p_target_kind, v_target);
+
   select r.id into v_report_id
   from public.reports r
   where r.reporter_id = v_uid and r.target_kind = p_target_kind and r.target_id = v_target and r.status = 'open';
@@ -297,10 +355,8 @@ begin
     return v_report_id;
   end if;
 
-  perform private.assert_rate(
-    (select count(*) from public.reports r
-     where r.reporter_id = v_uid and r.created_at > now() - interval '24 hours'),
-    20, 'You have sent a lot of reports today. Our team is reviewing them.');
+  perform private.take_rate(v_uid, 'report', 20, interval '24 hours',
+    'You have sent a lot of reports today. Our team is reviewing them.');
 
   insert into public.reports (reporter_id, target_kind, target_id, target_owner_id, reason, details)
   values (v_uid, p_target_kind, v_target, v_owner, p_reason, v_details)
@@ -368,17 +424,62 @@ begin
 end;
 $$;
 
+-- Decisions about the caller's content or account, newest first. Deliberately leaves out the
+-- moderator, the triggering report and the appeal reviewer so nobody can find out who acted.
+create function public.my_moderation_decisions(p_limit integer default 50)
+returns table (
+  action_id uuid,
+  action public.moderation_action_kind,
+  reason text,
+  target_kind public.report_target,
+  target_id text,
+  automated boolean,
+  suspended_until timestamptz,
+  created_at timestamptz,
+  appealable boolean,
+  appeal_status public.appeal_status,
+  appeal_note text
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    a.id,
+    a.action,
+    a.reason,
+    a.target_kind,
+    a.target_id,
+    a.automated,
+    a.suspended_until,
+    a.created_at,
+    a.action in ('hide', 'remove', 'warn', 'suspend')
+      and a.created_at >= now() - interval '30 days'
+      and ap.id is null,
+    ap.status,
+    ap.decision_note
+  from public.moderation_actions a
+  left join public.moderation_appeals ap
+    on ap.action_id = a.id and ap.appellant_id = a.target_owner_id
+  where a.target_owner_id = private.require_uid()
+    and a.action <> 'dismiss'
+  order by a.created_at desc, a.id desc
+  limit least(greatest(coalesce(p_limit, 50), 1), 200);
+$$;
+
+
 -- ---------------------------------------------------------------------------------------------
 -- Moderator RPCs
 -- ---------------------------------------------------------------------------------------------
 
 -- Reports grouped by target, oldest first, with a snapshot of the target for review.
--- Returns { "items": [...], "next_before": timestamptz | null } where items are ordered by the
--- first report time; pass next_before back as p_after to continue.
+-- Returns { "items": [...], "next_cursor": text | null }. Items are ordered by
+-- (first report time, target kind, target id); pass next_cursor back as p_cursor to continue.
 create function public.moderation_queue(
   p_status public.report_status default 'open',
   p_limit integer default 50,
-  p_after timestamptz default null
+  p_cursor text default null
 )
 returns jsonb
 language plpgsql
@@ -388,11 +489,32 @@ set search_path = ''
 as $$
 declare
   v_limit integer := least(greatest(coalesce(p_limit, 50), 1), 100);
+  v_after_ts timestamptz;
+  v_after_kind public.report_target;
+  v_after_id text;
   v_items jsonb;
-  v_last timestamptz;
+  v_next text;
   v_count integer;
 begin
   perform private.require_moderator();
+
+  -- Cursor "<epoch microseconds>.<target kind>.<target id>"; the id is everything after the
+  -- second dot, so recipe ids may contain dots themselves.
+  if nullif(p_cursor, '') is not null then
+    begin
+      v_after_ts := private.from_epoch_us(split_part(p_cursor, '.', 1)::bigint);
+      v_after_kind := split_part(p_cursor, '.', 2)::public.report_target;
+      v_after_id := substr(
+        p_cursor,
+        char_length(split_part(p_cursor, '.', 1)) + char_length(split_part(p_cursor, '.', 2)) + 3
+      );
+      if v_after_id = '' then
+        raise exception using errcode = '22023';
+      end if;
+    exception when others then
+      raise exception 'invalid_cursor' using errcode = '22023', detail = 'Cursor is not valid for this queue.';
+    end;
+  end if;
 
   with grouped as (
     select
@@ -418,7 +540,8 @@ begin
   page as (
     select g.*
     from grouped g
-    where p_after is null or g.first_reported_at > p_after
+    where v_after_ts is null
+       or (g.first_reported_at, g.target_kind, g.target_id) > (v_after_ts, v_after_kind, v_after_id)
     order by g.first_reported_at, g.target_kind, g.target_id
     limit v_limit + 1
   ),
@@ -438,19 +561,25 @@ begin
         'first_reported_at', n.first_reported_at,
         'last_reported_at', n.last_reported_at,
         'reports', n.reports,
+        -- Ids of posts, comments and users are stored in canonical uuid text, so the casts
+        -- below hit the primary keys.
         'target', case n.target_kind
           when 'post' then (
             select jsonb_build_object('title', p.title, 'body', p.body, 'status', p.status,
                                       'recipe_ref', p.recipe_ref, 'created_at', p.created_at)
-            from public.posts p where p.id::text = n.target_id)
+            from public.posts p where p.id = private.target_uuid(n.target_id))
           when 'comment' then (
             select jsonb_build_object('body', c.body, 'status', c.status, 'post_id', c.post_id,
                                       'created_at', c.created_at)
-            from public.comments c where c.id::text = n.target_id)
+            from public.comments c where c.id = private.target_uuid(n.target_id))
           when 'user' then (
-            select jsonb_build_object('handle', pr.handle::text, 'display_name', pr.display_name,
-                                      'bio', pr.bio, 'suspended_until', pr.suspended_until)
-            from public.profiles pr where pr.id::text = n.target_id)
+            select jsonb_build_object(
+              'handle', pr.handle::text, 'display_name', pr.display_name, 'bio', pr.bio,
+              'suspended_until', (
+                select s.suspended_until from private.account_suspensions s
+                where s.user_id = pr.id and s.suspended_until > now()
+              ))
+            from public.profiles pr where pr.id = private.target_uuid(n.target_id))
           else jsonb_build_object('recipe_ref', n.target_id)
         end,
         'previous_actions', coalesce((
@@ -462,14 +591,17 @@ begin
         ), '[]'::jsonb)
       ) order by n.rn
     ) filter (where n.rn <= v_limit), '[]'::jsonb),
-    max(n.first_reported_at) filter (where n.rn = v_limit),
+    max(
+      private.to_epoch_us(n.first_reported_at)::text
+      || '.' || n.target_kind::text || '.' || n.target_id
+    ) filter (where n.rn = v_limit),
     count(*)::integer
-  into v_items, v_last, v_count
+  into v_items, v_next, v_count
   from numbered n;
 
   return jsonb_build_object(
     'items', v_items,
-    'next_after', case when v_count > v_limit then v_last end
+    'next_cursor', case when v_count > v_limit then v_next end
   );
 end;
 $$;
@@ -512,6 +644,20 @@ begin
     raise exception 'target_not_found' using errcode = 'PT404', detail = 'That target no longer exists.';
   end if;
 
+  -- Conflicts of interest: nobody moderates their own content or account, admins cannot be
+  -- suspended through the app, and only admins can suspend another moderator.
+  if v_owner = v_moderator then
+    raise exception 'forbidden' using errcode = 'PT403', detail = 'Another moderator has to handle this.';
+  end if;
+  if p_action = 'suspend' and v_owner is not null then
+    if private.has_role(v_owner, 'admin') then
+      raise exception 'forbidden' using errcode = 'PT403', detail = 'Admins cannot be suspended here.';
+    end if;
+    if private.has_role(v_owner, 'moderator') and not private.has_role(v_moderator, 'admin') then
+      raise exception 'forbidden' using errcode = 'PT403', detail = 'Only an admin can suspend a moderator.';
+    end if;
+  end if;
+
   if p_action in ('hide', 'remove', 'restore') and p_target_kind not in ('post', 'comment') then
     if not (p_target_kind = 'recipe' and p_action = 'remove') then
       raise exception 'invalid_action' using errcode = '22023',
@@ -534,9 +680,11 @@ begin
         raise exception 'invalid_suspension' using errcode = '22023', detail = 'Suspend for 1 to 365 days.';
       end if;
       v_until := now() + make_interval(days => p_suspend_days);
-      update public.profiles set suspended_until = v_until where id = v_owner;
+      insert into private.account_suspensions (user_id, suspended_until)
+      values (v_owner, v_until)
+      on conflict (user_id) do update set suspended_until = excluded.suspended_until;
     when 'unsuspend' then
-      update public.profiles set suspended_until = null where id = v_owner;
+      delete from private.account_suspensions s where s.user_id = v_owner;
     else
       null;
   end case;
@@ -596,8 +744,11 @@ begin
 end;
 $$;
 
--- Upholds or reverses an appealed decision. Reversal undoes the effect of the original action
--- and is itself recorded in the audit log.
+-- Upholds or reverses an appealed decision. A reversal undoes the original action only while
+-- that action still decides the current state: a later hide/remove/restore on the same content,
+-- or a later suspend/unsuspend of the same account, is left alone (the reversal is still
+-- recorded and the appellant is told the decision was overturned). Every state change made here
+-- is written to the audit log.
 create function public.decide_appeal(
   p_appeal_id uuid,
   p_outcome public.appeal_status,
@@ -613,6 +764,8 @@ declare
   v_appeal public.moderation_appeals%rowtype;
   v_action public.moderation_actions%rowtype;
   v_note text := nullif(btrim(coalesce(p_note, '')), '');
+  v_latest uuid;
+  v_restored boolean := false;
 begin
   if p_outcome is null or p_outcome = 'pending' then
     raise exception 'invalid_outcome' using errcode = '22023', detail = 'Choose upheld or reversed.';
@@ -628,33 +781,68 @@ begin
   if v_appeal.status <> 'pending' then
     raise exception 'appeal_decided' using errcode = 'PT409', detail = 'This appeal has already been decided.';
   end if;
+  if v_appeal.appellant_id = v_moderator then
+    raise exception 'forbidden' using errcode = 'PT403', detail = 'Another moderator has to decide your appeal.';
+  end if;
   select * into v_action from public.moderation_actions a where a.id = v_appeal.action_id;
 
   if p_outcome = 'reversed' then
-    perform set_config('famara.quiet_moderation', 'on', true);
     if v_action.action in ('hide', 'remove') then
-      perform private.set_content_status(v_action.target_kind, v_action.target_id, 'visible');
-      insert into public.moderation_actions (moderator_id, target_kind, target_id, target_owner_id, action, reason)
-      values (v_moderator, v_action.target_kind, v_action.target_id, v_action.target_owner_id, 'restore',
-              coalesce(v_note, 'Appeal granted.'));
+      select a.id into v_latest
+      from public.moderation_actions a
+      where a.target_kind = v_action.target_kind
+        and a.target_id = v_action.target_id
+        and a.action in ('hide', 'remove', 'restore')
+      order by a.created_at desc, a.id desc
+      limit 1;
+
+      if v_latest = v_action.id then
+        perform private.set_content_status(v_action.target_kind, v_action.target_id, 'visible');
+        v_restored := true;
+      end if;
     elsif v_action.action = 'suspend' then
-      update public.profiles set suspended_until = null where id = v_action.target_owner_id;
-      insert into public.moderation_actions (moderator_id, target_kind, target_id, target_owner_id, action, reason)
-      values (v_moderator, v_action.target_kind, v_action.target_id, v_action.target_owner_id, 'unsuspend',
-              coalesce(v_note, 'Appeal granted.'));
+      select a.id into v_latest
+      from public.moderation_actions a
+      where a.target_owner_id = v_action.target_owner_id
+        and a.action in ('suspend', 'unsuspend')
+      order by a.created_at desc, a.id desc
+      limit 1;
+
+      if v_latest = v_action.id then
+        delete from private.account_suspensions s where s.user_id = v_action.target_owner_id;
+        v_restored := true;
+      end if;
     end if;
-    perform set_config('famara.quiet_moderation', 'off', true);
+
+    if v_restored then
+      -- The appellant hears about this through the appeal_decision notice below instead.
+      perform set_config('famara.quiet_moderation', 'on', true);
+      insert into public.moderation_actions (moderator_id, target_kind, target_id, target_owner_id, action, reason)
+      values (
+        v_moderator, v_action.target_kind, v_action.target_id, v_action.target_owner_id,
+        case when v_action.action = 'suspend' then 'unsuspend' else 'restore' end::public.moderation_action_kind,
+        coalesce(v_note, 'Appeal granted.')
+      );
+      perform set_config('famara.quiet_moderation', 'off', true);
+    end if;
   end if;
 
   update public.moderation_appeals
   set status = p_outcome, decided_by = v_moderator, decided_at = now(), decision_note = v_note
   where id = p_appeal_id;
 
+  -- The post or comment may have been deleted by its author since; link it only if it exists.
   perform private.notify(
     v_appeal.appellant_id, null, 'appeal_decision',
-    case when v_action.target_kind = 'post' then v_action.target_id::uuid end,
-    case when v_action.target_kind = 'comment' then v_action.target_id::uuid end,
-    jsonb_build_object('appeal_id', p_appeal_id, 'action_id', v_action.id, 'outcome', p_outcome, 'note', v_note)
+    private.existing_post(v_action.target_kind, v_action.target_id),
+    private.existing_comment(v_action.target_kind, v_action.target_id),
+    jsonb_build_object(
+      'appeal_id', p_appeal_id,
+      'action_id', v_action.id,
+      'outcome', p_outcome,
+      'note', v_note,
+      'state_restored', v_restored
+    )
   );
 end;
 $$;
@@ -675,15 +863,15 @@ create policy reports_select_own_or_moderator
   for select to authenticated
   using (reporter_id = (select auth.uid()) or (select private.is_moderator()));
 
-create policy moderation_actions_select_owner_or_moderator
+create policy moderation_actions_select_moderator
   on public.moderation_actions
   for select to authenticated
-  using (target_owner_id = (select auth.uid()) or (select private.is_moderator()));
+  using ((select private.is_moderator()));
 
-create policy moderation_appeals_select_own_or_moderator
+create policy moderation_appeals_select_moderator
   on public.moderation_appeals
   for select to authenticated
-  using (appellant_id = (select auth.uid()) or (select private.is_moderator()));
+  using ((select private.is_moderator()));
 
 grant select on public.reports, public.moderation_actions, public.moderation_appeals to authenticated;
 grant select, insert, update, delete on public.reports, public.moderation_actions, public.moderation_appeals to service_role;
@@ -691,6 +879,10 @@ grant select, insert, update, delete on public.reports, public.moderation_action
 revoke all on function private.require_moderator() from public;
 revoke all on function private.target_owner(public.report_target, text) from public;
 revoke all on function private.normalize_target(public.report_target, text) from public;
+revoke all on function private.target_uuid(text) from public;
+revoke all on function private.lock_report_target(public.report_target, text) from public;
+revoke all on function private.existing_post(public.report_target, text) from public;
+revoke all on function private.existing_comment(public.report_target, text) from public;
 revoke all on function private.set_content_status(public.report_target, text, public.content_status) from public;
 revoke all on function private.system_hide(public.report_target, text, text, uuid) from public;
 revoke all on function private.hold_for_review(public.report_target, text, uuid, text) from public;
@@ -698,7 +890,8 @@ revoke all on function private.moderation_actions_after_insert() from public;
 
 grant execute on function public.report_content(public.report_target, text, public.report_reason, text) to authenticated;
 grant execute on function public.appeal(uuid, text) to authenticated;
-grant execute on function public.moderation_queue(public.report_status, integer, timestamptz) to authenticated;
+grant execute on function public.my_moderation_decisions(integer) to authenticated;
+grant execute on function public.moderation_queue(public.report_status, integer, text) to authenticated;
 grant execute on function public.moderate(public.report_target, text, public.moderation_action_kind, text, integer) to authenticated;
 grant execute on function public.appeal_queue(integer) to authenticated;
 grant execute on function public.decide_appeal(uuid, public.appeal_status, text) to authenticated;

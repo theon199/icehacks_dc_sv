@@ -54,8 +54,13 @@ grant select, insert, update, delete on public.user_documents to service_role;
 -- Output:
 --   { "applied":  [{ collection, doc_id, revision }],
 --     "rejected": [{ collection, doc_id, reason, server }] }
--- `reason` is 'stale' (server copy is newer or equal from another device) and `server` carries
--- the winning copy. Re-sending a document that is already stored is reported as applied.
+-- `reason` is 'stale' (the server copy is newer, or equally new from another device) or
+-- 'conflict' (same updated_at and device_id as the server copy but different content, which only
+-- a device bug can produce); `server` carries the copy the server keeps. Re-sending exactly the
+-- document that is already stored is reported as applied.
+--
+-- Per account the server keeps at most 10 000 documents (tombstones included) and 50 MB of
+-- document data; a push that would exceed either fails as a whole with PT413 'sync_quota'.
 
 create function public.sync_push(p_docs jsonb)
 returns jsonb
@@ -67,6 +72,8 @@ declare
   v_uid uuid := private.require_uid();
   v_count integer;
   v_result jsonb;
+  v_total_docs bigint;
+  v_total_bytes bigint;
 begin
   if p_docs is null or jsonb_typeof(p_docs) <> 'array' then
     raise exception 'invalid_input' using errcode = '22023', detail = 'docs must be a JSON array.';
@@ -150,7 +157,9 @@ begin
       s.data as server_data,
       s.deleted_at as server_deleted,
       c.updated_at,
-      c.device_id
+      c.device_id,
+      c.data,
+      c.deleted_at
     from checked c
     left join written w on w.collection = c.collection and w.doc_id = c.doc_id
     left join public.user_documents s
@@ -166,13 +175,19 @@ begin
       ) filter (
         where o.invalid_reason is null
           and (o.written_revision is not null
-               or (o.server_updated = o.updated_at and o.server_device = o.device_id))
+               or (o.server_updated = o.updated_at and o.server_device = o.device_id
+                   and o.server_data = o.data
+                   and o.server_deleted is not distinct from o.deleted_at))
       ), '[]'::jsonb),
     'rejected', coalesce(jsonb_agg(
         jsonb_build_object(
           'collection', o.collection,
           'doc_id', o.doc_id,
-          'reason', coalesce(o.invalid_reason, 'stale'),
+          'reason', coalesce(
+            o.invalid_reason,
+            case when o.server_updated = o.updated_at and o.server_device = o.device_id
+                 then 'conflict' else 'stale' end
+          ),
           'server', case when o.invalid_reason is null then jsonb_build_object(
             'data', o.server_data,
             'updated_at', o.server_updated,
@@ -184,11 +199,22 @@ begin
       ) filter (
         where o.invalid_reason is not null
            or (o.written_revision is null
-               and not (o.server_updated = o.updated_at and o.server_device = o.device_id))
+               and not (o.server_updated = o.updated_at and o.server_device = o.device_id
+                        and o.server_data = o.data
+                        and o.server_deleted is not distinct from o.deleted_at))
       ), '[]'::jsonb)
   )
   into v_result
   from outcome o;
+
+  select count(*), coalesce(sum(pg_catalog.pg_column_size(d.data)), 0)
+  into v_total_docs, v_total_bytes
+  from public.user_documents d
+  where d.user_id = v_uid;
+  if v_total_docs > 10000 or v_total_bytes > 52428800 then
+    raise exception 'sync_quota' using errcode = 'PT413',
+      detail = 'Synced data is over the per-account limit (10 000 documents or 50 MB).';
+  end if;
 
   return v_result;
 exception

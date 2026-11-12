@@ -64,8 +64,15 @@ select throws_ok(
   '42501', null, 'members cannot grant themselves the team badge'
 );
 select throws_ok(
-  $$update public.profiles set suspended_until = null where id = auth.uid()$$,
+  $$delete from private.account_suspensions where user_id = auth.uid()$$,
   '42501', null, 'members cannot clear their own suspension'
+);
+select is(
+  (select count(*)::integer
+   from information_schema.columns c
+   where (c.table_schema, c.table_name, c.column_name) = ('public', 'profiles', 'suspended_until')),
+  0,
+  'suspension status is not part of the readable profile'
 );
 select is(public.is_adult(), true, 'ana is an adult');
 select ok(public.age_years() >= 18, 'age_years reports a minimum age');

@@ -57,18 +57,19 @@ insert into public.badges (id, name, description, metric, threshold, sort_order)
 -- ---------------------------------------------------------------------------------------------
 
 -- Current and longest streak of consecutive local days with at least one cook event.
--- The current streak counts only if it reaches p_today or the day before.
-create function private.streaks(p_user uuid, p_today date)
+-- The current streak counts only if it reaches p_today or the day before. With p_live_only, only
+-- cooks logged within two days of happening count, so back-filled history cannot mint badges.
+create function private.streaks(p_user uuid, p_today date, p_live_only boolean default false)
 returns table (current_streak integer, longest_streak integer)
 language sql
 stable
-security definer
 set search_path = ''
 as $$
   with days as (
     select distinct e.local_date as d
     from public.cook_events e
     where e.user_id = p_user
+      and (not p_live_only or e.created_at - e.cooked_at <= interval '2 days')
   ),
   islands as (
     select max(d) as last_day, count(*)::integer as len
@@ -81,18 +82,24 @@ as $$
   from islands;
 $$;
 
+-- Badge inputs. Cook-based metrics only use cooks logged live (see private.streaks), so a member
+-- cannot earn streak or count badges by back-filling a month of history in one sitting.
 create function private.badge_metrics(p_user uuid)
 returns table (cook_count integer, streak_days integer, cuisine_count integer, post_count integer)
 language sql
 stable
-security definer
 set search_path = ''
 as $$
+  with live as (
+    select e.cuisine
+    from public.cook_events e
+    where e.user_id = p_user
+      and e.created_at - e.cooked_at <= interval '2 days'
+  )
   select
-    (select count(*)::integer from public.cook_events e where e.user_id = p_user),
-    (select s.longest_streak from private.streaks(p_user, (now() at time zone 'utc')::date) s),
-    (select count(distinct e.cuisine)::integer from public.cook_events e
-      where e.user_id = p_user and e.cuisine is not null),
+    (select count(*)::integer from live),
+    (select s.longest_streak from private.streaks(p_user, (now() at time zone 'utc')::date, true) s),
+    (select count(distinct l.cuisine)::integer from live l where l.cuisine is not null),
     (select count(*)::integer from public.posts p where p.author_id = p_user and p.status <> 'removed');
 $$;
 
@@ -173,7 +180,6 @@ create function public.my_stats(p_today date default null)
 returns jsonb
 language plpgsql
 stable
-security definer
 set search_path = ''
 as $$
 declare
@@ -183,6 +189,7 @@ declare
   v_current integer;
   v_longest integer;
 begin
+  -- Runs as the caller: RLS limits every table read here to the caller's own rows.
   -- The device's local date may differ from UTC by up to a day either way.
   if v_today not between v_utc_today - 1 and v_utc_today + 1 then
     v_today := v_utc_today;
@@ -222,6 +229,8 @@ end;
 $$;
 
 -- Logs a cook. Idempotent per p_client_event_id so offline retries never double count.
+-- cooked_at may be back-filled by up to 30 days (offline devices); such cooks count towards
+-- stats but not badges (see private.badge_metrics).
 -- Returns { "event_id": uuid, "new_badges": text[], "stats": my_stats() }.
 create function public.record_cook_event(
   p_recipe_ref text,
@@ -252,8 +261,9 @@ begin
   if p_cuisine is not null and p_cuisine !~ '^[a-z][a-z_]{0,39}$' then
     raise exception 'invalid_cuisine' using errcode = '22023', detail = 'Cuisine must be a catalog cuisine id.';
   end if;
-  if v_cooked_at > now() + interval '1 hour' or v_cooked_at < now() - interval '1 year' then
-    raise exception 'invalid_cooked_at' using errcode = '22023', detail = 'cooked_at must be within the last year.';
+  if v_cooked_at > now() + interval '1 hour' or v_cooked_at < now() - interval '30 days' then
+    raise exception 'invalid_cooked_at' using errcode = '22023',
+      detail = 'cooked_at must be within the last 30 days.';
   end if;
   if p_local_date is null
      or p_local_date not between (v_cooked_at at time zone 'utc')::date - 1
@@ -262,6 +272,10 @@ begin
       detail = 'local_date must be the cook''s calendar day for cooked_at.';
   end if;
 
+  -- Serialise this member's cook logging so the idempotency lookup and the rate check below
+  -- both see every earlier call.
+  perform private.rate_lock(v_uid, 'cook');
+
   if p_client_event_id is not null then
     select e.id into v_event_id
     from public.cook_events e
@@ -269,10 +283,8 @@ begin
   end if;
 
   if v_event_id is null then
-    perform private.assert_rate(
-      (select count(*) from public.cook_events e
-       where e.user_id = v_uid and e.created_at > now() - interval '24 hours'),
-      30, 'That is a lot of cooking for one day. Try again tomorrow.');
+    perform private.check_rate(v_uid, 'cook', 30, interval '24 hours',
+      'That is a lot of cooking for one day. Try again tomorrow.');
 
     select coalesce(array_agg(a.badge_id), '{}'::text[]) into v_badges_before
     from public.badge_awards a where a.user_id = v_uid;
@@ -287,6 +299,7 @@ begin
       from public.cook_events e
       where e.user_id = v_uid and e.client_event_id = p_client_event_id;
     else
+      perform private.record_rate(v_uid, 'cook');
       select coalesce(array_agg(a.badge_id order by a.badge_id), '{}'::text[]) into v_new_badges
       from public.badge_awards a
       where a.user_id = v_uid and a.badge_id <> all (v_badges_before);
@@ -435,12 +448,14 @@ grant select, delete on public.cook_events to authenticated;
 grant select on public.badges, public.badge_awards to authenticated;
 grant select, insert, update, delete on public.cook_events, public.badges, public.badge_awards to service_role;
 
-revoke all on function private.streaks(uuid, date) from public;
+revoke all on function private.streaks(uuid, date, boolean) from public;
 revoke all on function private.badge_metrics(uuid) from public;
 revoke all on function private.award_badges(uuid) from public;
 revoke all on function private.cook_events_award_badges() from public;
 revoke all on function private.posts_award_badges() from public;
 grant execute on function private.award_badges(uuid) to service_role;
+-- my_stats runs as the caller and reads streaks through this helper (RLS still applies).
+grant execute on function private.streaks(uuid, date, boolean) to authenticated, service_role;
 
 grant execute on function public.my_stats(date) to authenticated;
 grant execute on function public.record_cook_event(text, date, timestamptz, text, integer, uuid) to authenticated;

@@ -157,10 +157,8 @@ begin
     raise exception 'invalid_input' using errcode = '22023', detail = 'had_it is required.';
   end if;
 
-  perform private.assert_rate(
-    (select count(*) from public.dish_confirmations d
-     where d.user_id = v_uid and d.updated_at > now() - interval '1 hour'),
-    60, 'Too many confirmations in a short time.');
+  perform private.take_rate(v_uid, 'dish_confirm', 60, interval '1 hour',
+    'Too many confirmations in a short time.');
 
   insert into public.dish_confirmations as d (place_id, dish_key, user_id, had_it)
   values (p_place_id, p_dish_key, v_uid, p_had_it)

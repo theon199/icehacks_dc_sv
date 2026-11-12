@@ -136,7 +136,9 @@ begin
     from storage.objects o
     where o.bucket_id in ('avatars', 'post-media', 'snap-uploads')
       and (storage.foldername(o.name))[1] = v_uid::text
-    on conflict (bucket_id, object_name) do nothing
+    -- An entry queued earlier for another reason becomes an account deletion, which
+    -- reclaim_storage_object and claim_storage_purge never cancel.
+    on conflict (bucket_id, object_name) do update set reason = excluded.reason
     returning 1
   )
   select count(*)::integer into v_queued from objects;

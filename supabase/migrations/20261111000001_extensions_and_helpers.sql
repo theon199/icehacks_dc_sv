@@ -78,6 +78,129 @@ begin
 end;
 $$;
 
+-- Pagination cursors carry timestamps as integer microseconds since the Unix epoch. Both
+-- directions are exact (no detour through double precision), so a keyset cursor built from a row
+-- always compares equal to that row.
+create function private.to_epoch_us(p_ts timestamptz)
+returns bigint
+language sql
+immutable
+set search_path = ''
+as $$
+  select (extract(epoch from p_ts) * 1000000)::bigint;
+$$;
+
+create function private.from_epoch_us(p_us bigint)
+returns timestamptz
+language sql
+immutable
+set search_path = ''
+as $$
+  select pg_catalog.to_timestamp((p_us / 1000000)::double precision)
+    + (p_us % 1000000) * interval '1 microsecond';
+$$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Rate limiting
+-- ---------------------------------------------------------------------------------------------
+-- Every rate-limited write records one row here. Counting these rows, rather than the content a
+-- member can later delete, means "publish then delete" never frees up allowance. Checks take a
+-- per-user, per-action transaction lock first, so parallel requests from one account are counted
+-- one after another instead of all passing against the same committed total.
+
+create table private.rate_events (
+  user_id uuid not null references auth.users on delete cascade,
+  action text not null
+    constraint rate_events_action_format check (action ~ '^[a-z][a-z_]{1,39}$'),
+  occurred_at timestamptz default now() not null
+);
+
+create index rate_events_user_action_idx on private.rate_events (user_id, action, occurred_at desc);
+create index rate_events_occurred_idx on private.rate_events (occurred_at);
+
+alter table private.rate_events
+  enable row level security;
+
+-- Serialises one member's calls for one action until the current transaction ends.
+create function private.rate_lock(p_user uuid, p_action text)
+returns void
+language sql
+volatile
+set search_path = ''
+as $$
+  select pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('famara.rate.' || p_action || '.' || p_user::text, 0)
+  );
+$$;
+
+-- Raises PT429 when p_user already has p_max events for p_action inside p_window.
+create function private.check_rate(
+  p_user uuid,
+  p_action text,
+  p_max integer,
+  p_window interval,
+  p_detail text
+)
+returns void
+language plpgsql
+volatile
+set search_path = ''
+as $$
+declare
+  v_used bigint;
+begin
+  perform private.rate_lock(p_user, p_action);
+  select count(*) into v_used
+  from private.rate_events e
+  where e.user_id = p_user
+    and e.action = p_action
+    and e.occurred_at > now() - p_window;
+  if v_used >= p_max then
+    raise exception 'rate_limited' using errcode = 'PT429', detail = p_detail;
+  end if;
+end;
+$$;
+
+-- Records one use of p_action. Call it after the write it pays for has succeeded.
+create function private.record_rate(p_user uuid, p_action text)
+returns void
+language sql
+volatile
+set search_path = ''
+as $$
+  insert into private.rate_events (user_id, action) values (p_user, p_action);
+$$;
+
+-- check_rate + record_rate for actions with a single window.
+create function private.take_rate(
+  p_user uuid,
+  p_action text,
+  p_max integer,
+  p_window interval,
+  p_detail text
+)
+returns void
+language plpgsql
+volatile
+set search_path = ''
+as $$
+begin
+  perform private.check_rate(p_user, p_action, p_max, p_window, p_detail);
+  perform private.record_rate(p_user, p_action);
+end;
+$$;
+
+grant select, insert, delete on private.rate_events to service_role;
+
 revoke all on function private.touch_updated_at() from public;
 revoke all on function private.require_uid() from public;
+revoke all on function private.to_epoch_us(timestamptz) from public;
+revoke all on function private.from_epoch_us(bigint) from public;
+-- get_feed runs as the caller and builds its cursor with these.
+grant execute on function private.to_epoch_us(timestamptz) to authenticated, service_role;
+grant execute on function private.from_epoch_us(bigint) to authenticated, service_role;
+revoke all on function private.rate_lock(uuid, text) from public;
+revoke all on function private.check_rate(uuid, text, integer, interval, text) from public;
+revoke all on function private.record_rate(uuid, text) from public;
+revoke all on function private.take_rate(uuid, text, integer, interval, text) from public;
 grant execute on function private.require_uid() to authenticated, service_role;

@@ -141,8 +141,8 @@ select is((select count(*)::integer from public.posts where author_id = auth.uid
 reset role;
 
 -- Suspended members cannot post.
-update public.profiles set suspended_until = now() + interval '1 day'
-where id = 'aaaaaaaa-0000-4000-8000-000000000001';
+insert into private.account_suspensions (user_id, suspended_until)
+values ('aaaaaaaa-0000-4000-8000-000000000001', now() + interval '1 day');
 set local role authenticated;
 select tests.login('aaaaaaaa-0000-4000-8000-000000000001');
 select throws_ok(

@@ -6,18 +6,24 @@
 --                                 the post the file is attached to (clients use signed URLs)
 --   snap-uploads/<uid>/<file>     private bucket, 5 MB, images; owner only; purged after 24 h
 --
+-- Uploads are JPEG, PNG or WebP. The app converts HEIC camera photos to JPEG before uploading,
+-- because the Claude API (snaps) and Android clients (post media) cannot read HEIC.
+--
 -- Postgres cannot delete storage objects itself (the Storage API owns the files), so anything
 -- that must disappear is written to private.storage_purge_queue and removed by a service-role
--- worker through the Storage API (claim_storage_purge / complete_storage_purge).
+-- worker through the Storage API (claim_storage_purge / complete_storage_purge). That worker is
+-- not part of this baseline yet; until it ships, purges are only queued.
+--
+-- A queued path can come back into use (an avatar switched back, an orphaned upload attached to a
+-- post after all). Attaching a path removes its queue entry (private.reclaim_storage_object), and
+-- claim_storage_purge drops entries whose object is referenced again, so the worker never deletes
+-- a file that something still shows.
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values
-  ('avatars', 'avatars', true, 2097152,
-    array['image/jpeg', 'image/png', 'image/webp', 'image/heic']),
-  ('post-media', 'post-media', false, 5242880,
-    array['image/jpeg', 'image/png', 'image/webp', 'image/heic']),
-  ('snap-uploads', 'snap-uploads', false, 5242880,
-    array['image/jpeg', 'image/png', 'image/webp', 'image/heic'])
+  ('avatars', 'avatars', true, 2097152, array['image/jpeg', 'image/png', 'image/webp']),
+  ('post-media', 'post-media', false, 5242880, array['image/jpeg', 'image/png', 'image/webp']),
+  ('snap-uploads', 'snap-uploads', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update
   set public = excluded.public,
       file_size_limit = excluded.file_size_limit,
@@ -56,7 +62,7 @@ create policy famara_post_media_read
     bucket_id = 'post-media'
     and (
       (storage.foldername(name))[1] = (select auth.uid())::text
-      or exists (select 1 from public.post_media m where m.path = name)
+      or exists (select 1 from public.post_media m where m.path = objects.name)
     )
   );
 
@@ -112,6 +118,31 @@ as $$
   on conflict (bucket_id, object_name) do nothing;
 $$;
 
+-- Takes a path back out of the purge queue because it is being attached again. Entries queued
+-- for a deleted account are never revived. If a worker claimed the entry in the last 10 minutes
+-- the file may already be gone, so the caller is told to upload it again instead.
+create function private.reclaim_storage_object(p_bucket text, p_name text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_claimed_at timestamptz;
+begin
+  delete from private.storage_purge_queue q
+  where q.bucket_id = p_bucket
+    and q.object_name = p_name
+    and q.reason <> 'account_deleted'
+  returning q.last_attempt_at into v_claimed_at;
+
+  if v_claimed_at is not null and v_claimed_at > now() - interval '10 minutes' then
+    raise exception 'media_unavailable' using errcode = 'PT409',
+      detail = 'This photo was just cleaned up. Upload it again.';
+  end if;
+end;
+$$;
+
 create function private.post_media_after_delete()
 returns trigger
 language plpgsql
@@ -138,6 +169,10 @@ begin
   if old.avatar_path is not null and old.avatar_path is distinct from new.avatar_path then
     perform private.enqueue_storage_purge('avatars', old.avatar_path, 'avatar_replaced');
   end if;
+  -- Switching back to an earlier avatar cancels its pending purge.
+  if new.avatar_path is not null and new.avatar_path is distinct from old.avatar_path then
+    perform private.reclaim_storage_object('avatars', new.avatar_path);
+  end if;
   return new;
 end;
 $$;
@@ -147,7 +182,9 @@ create trigger profiles_after_avatar_change
   for each row execute function private.profiles_after_avatar_change();
 
 -- Worker API (service role only). Claimed rows are hidden from other workers for 10 minutes;
--- rows that keep failing stop being offered after 10 attempts.
+-- rows that keep failing stop being offered after 10 attempts. Before claiming, entries whose
+-- object is referenced again (a current avatar, attached post media) are dropped; entries for
+-- deleted accounts are always honoured.
 create function public.claim_storage_purge(p_limit integer default 100)
 returns table (id bigint, bucket_id text, object_name text)
 language plpgsql
@@ -155,6 +192,15 @@ security definer
 set search_path = ''
 as $$
 begin
+  delete from private.storage_purge_queue q
+  where q.reason <> 'account_deleted'
+    and (
+      (q.bucket_id = 'post-media'
+        and exists (select 1 from public.post_media m where m.path = q.object_name))
+      or (q.bucket_id = 'avatars'
+        and exists (select 1 from public.profiles p where p.avatar_path = q.object_name))
+    );
+
   return query
   update private.storage_purge_queue q
   set attempts = q.attempts + 1, last_attempt_at = now()
@@ -189,6 +235,7 @@ $$;
 grant select, insert, update, delete on private.storage_purge_queue to service_role;
 
 revoke all on function private.enqueue_storage_purge(text, text, text) from public;
+revoke all on function private.reclaim_storage_object(text, text) from public;
 revoke all on function private.post_media_after_delete() from public;
 revoke all on function private.profiles_after_avatar_change() from public;
 

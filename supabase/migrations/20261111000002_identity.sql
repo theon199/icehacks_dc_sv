@@ -27,13 +27,22 @@ create table public.profiles (
     ),
   -- Set only by staff: marks the clearly labelled "Famara Team" account.
   is_team boolean not null default false,
-  -- Set only by moderators through public.moderate().
-  suspended_until timestamptz,
   created_at timestamptz default now() not null,
   updated_at timestamptz default now() not null
 );
 
 comment on table public.profiles is 'Public face of an account. One row per auth user, created by trigger.';
+
+-- Avatar lookups by path keep the storage purge queue from deleting a file that is in use.
+create index profiles_avatar_path_idx on public.profiles (avatar_path) where avatar_path is not null;
+
+-- Community suspensions. Private so that other members cannot read anyone's moderation status;
+-- the account owner sees their own through public.my_account_status().
+create table private.account_suspensions (
+  user_id uuid references public.profiles (id) on delete cascade primary key,
+  suspended_until timestamptz not null,
+  updated_at timestamptz default now() not null
+);
 
 -- Birth year is sensitive and never readable directly; see public.age_years() / public.is_adult().
 create table private.account_ages (
@@ -70,12 +79,20 @@ create trigger account_ages_touch_updated_at
   before update on private.account_ages
   for each row execute function private.touch_updated_at();
 
+create trigger account_suspensions_touch_updated_at
+  before update on private.account_suspensions
+  for each row execute function private.touch_updated_at();
+
 -- ---------------------------------------------------------------------------------------------
 -- Access helpers
 -- ---------------------------------------------------------------------------------------------
 
 -- Ages are derived from the birth year only, so the result is the *minimum* age the person can
 -- be today. Gates therefore fail closed: nobody is treated as older than they might be.
+-- Consequence for the under-13 rule: someone born in (current year - 13) is reported as 12 until
+-- 1 January even if their birthday has passed. Because that person may already be 13, the app
+-- must treat is_underage as "not yet eligible" and block community features until the next
+-- calendar year; it must never delete an account on this signal alone.
 create function private.age_of(p_user uuid)
 returns integer
 language sql
@@ -182,13 +199,14 @@ begin
       detail = 'Famara is available to people aged 13 and over.';
   end if;
 
-  select p.suspended_until into v_suspended_until
-  from public.profiles p
-  where p.id = v_uid;
-
-  if not found then
+  if not exists (select 1 from public.profiles p where p.id = v_uid) then
     raise exception 'profile_missing' using errcode = 'PT404', detail = 'Profile not found.';
   end if;
+
+  select s.suspended_until into v_suspended_until
+  from private.account_suspensions s
+  where s.user_id = v_uid;
+
   if v_suspended_until is not null and v_suspended_until > now() then
     raise exception 'suspended' using errcode = 'PT403',
       detail = format('Community actions are paused until %s.', v_suspended_until);
@@ -280,8 +298,13 @@ begin
     'has_birth_year', v_age is not null,
     'age_years', v_age,
     'is_adult', coalesce(v_age >= 18, false),
+    -- True while the person may still be under 13 (see private.age_of). Block, never delete.
     'is_underage', coalesce(v_age < 13, false),
-    'suspended_until', v_profile.suspended_until,
+    'suspended_until', (
+      select s.suspended_until
+      from private.account_suspensions s
+      where s.user_id = v_uid and s.suspended_until > now()
+    ),
     'roles', coalesce(
       (select jsonb_agg(r.role order by r.role) from public.user_roles r where r.user_id = v_uid),
       '[]'::jsonb
@@ -373,6 +396,8 @@ alter table public.profiles
   enable row level security;
 alter table private.account_ages
   enable row level security;
+alter table private.account_suspensions
+  enable row level security;
 alter table public.user_roles
   enable row level security;
 alter table public.blocks
@@ -408,7 +433,7 @@ grant select on public.user_roles to authenticated;
 grant select on public.blocks to authenticated;
 
 grant select, insert, update, delete on public.profiles, public.user_roles, public.blocks to service_role;
-grant select, insert, update, delete on private.account_ages to service_role;
+grant select, insert, update, delete on private.account_ages, private.account_suspensions to service_role;
 
 revoke all on function private.age_of(uuid) from public;
 revoke all on function private.has_role(uuid, public.app_role) from public;

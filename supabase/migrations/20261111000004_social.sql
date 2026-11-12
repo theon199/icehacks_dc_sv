@@ -184,25 +184,12 @@ as $$
   );
 $$;
 
-create function private.assert_rate(p_used bigint, p_max integer, p_detail text)
-returns void
-language plpgsql
-set search_path = ''
-as $$
-begin
-  if p_used >= p_max then
-    raise exception 'rate_limited' using errcode = 'PT429', detail = p_detail;
-  end if;
-end;
-$$;
-
 -- Heuristic pre-publication check. Text that matches a review term or carries several links is
 -- held (status 'hidden') for a moderator instead of being published immediately.
 create function private.needs_review(p_text text)
 returns boolean
 language sql
 stable
-security definer
 set search_path = ''
 as $$
   select
@@ -401,7 +388,7 @@ create trigger follows_after_insert
   after insert on public.follows
   for each row execute function private.follows_after_insert();
 
--- Blocking someone severs the follow graph in both directions.
+-- Blocking someone severs the follow graph in both directions and clears their notifications.
 create function private.blocks_after_insert()
 returns trigger
 language plpgsql
@@ -412,6 +399,10 @@ begin
   delete from public.follows f
   where (f.follower_id = new.blocker_id and f.followee_id = new.blocked_id)
      or (f.follower_id = new.blocked_id and f.followee_id = new.blocker_id);
+  -- Earlier likes, comments and follows between the two stop showing in either inbox.
+  delete from public.notifications n
+  where (n.recipient_id = new.blocker_id and n.actor_id = new.blocked_id)
+     or (n.recipient_id = new.blocked_id and n.actor_id = new.blocker_id);
   return new;
 end;
 $$;
@@ -530,14 +521,24 @@ as $$
 declare
   v_uid uuid := private.require_uid();
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
-  v_cursor_ts timestamptz;
-  v_cursor_id uuid;
+  -- Keyset cursor "<epoch microseconds>_<post id>"; the defaults sort after every real row so
+  -- the first page needs no special case (and no OR that would hide the index from the planner).
+  v_before_ts timestamptz := 'infinity';
+  v_before_id uuid := 'ffffffff-ffff-ffff-ffff-ffffffffffff';
   v_offset integer := 0;
+  v_ids uuid[];
+  v_keys timestamptz[];
   v_items jsonb;
   v_next text;
-  v_count integer;
 begin
-  if p_cursor is not null and p_cursor <> '' then
+  if p_mode is null then
+    raise exception 'invalid_input' using errcode = '22023', detail = 'mode is required.';
+  end if;
+  if p_mode = 'author' and p_author_id is null then
+    raise exception 'invalid_input' using errcode = '22023', detail = 'author mode needs p_author_id.';
+  end if;
+
+  if nullif(p_cursor, '') is not null then
     begin
       if p_mode = 'popular' then
         v_offset := p_cursor::integer;
@@ -545,107 +546,130 @@ begin
           raise exception using errcode = '22023';
         end if;
       else
-        v_cursor_ts := to_timestamp(split_part(p_cursor, '_', 1)::numeric / 1000000);
-        v_cursor_id := split_part(p_cursor, '_', 2)::uuid;
+        v_before_ts := private.from_epoch_us(split_part(p_cursor, '_', 1)::bigint);
+        v_before_id := split_part(p_cursor, '_', 2)::uuid;
       end if;
     exception when others then
       raise exception 'invalid_cursor' using errcode = '22023', detail = 'Cursor is not valid for this feed.';
     end;
   end if;
 
-  if p_mode = 'author' and p_author_id is null then
-    raise exception 'invalid_input' using errcode = '22023', detail = 'author mode needs p_author_id.';
-  end if;
-
-  if p_mode = 'popular' then
-    with ranked as (
-      select c.*,
-        (c.like_count + 2 * c.comment_count + 1)::double precision
-          / power(extract(epoch from (now() - c.created_at))::double precision / 3600.0 + 2.0, 1.5) as score
-      from public.post_cards c
-      where c.status = 'visible'
-        and c.created_at > now() - interval '14 days'
-        and not private.is_blocked_pair(v_uid, c.author_id)
-      order by score desc, c.id
-      offset v_offset
+  -- Each mode is its own statement so every one gets a plan that walks a matching index in
+  -- order and stops after v_limit + 1 rows. Row-level security on posts still applies (this
+  -- function runs as the caller); the explicit status and block filters keep the plans sargable.
+  if p_mode = 'new' then
+    select array_agg(t.id order by t.created_at desc, t.id desc),
+           array_agg(t.created_at order by t.created_at desc, t.id desc)
+    into v_ids, v_keys
+    from (
+      select p.id, p.created_at
+      from public.posts p
+      where p.status = 'visible'
+        and (p.created_at, p.id) < (v_before_ts, v_before_id)
+        and not private.is_blocked_pair(v_uid, p.author_id)
+      order by p.created_at desc, p.id desc
       limit v_limit + 1
-    ),
-    numbered as (
-      select ranked.*, row_number() over (order by ranked.score desc, ranked.id) as rn from ranked
-    )
-    select
-      coalesce(jsonb_agg(to_jsonb(n) - 'rn' - 'score' order by n.rn) filter (where n.rn <= v_limit), '[]'::jsonb),
-      count(*)::integer
-    into v_items, v_count
-    from numbered n;
+    ) t;
 
-    v_next := case when v_count > v_limit then (v_offset + v_limit)::text end;
+  elsif p_mode = 'following' then
+    select array_agg(t.id order by t.created_at desc, t.id desc),
+           array_agg(t.created_at order by t.created_at desc, t.id desc)
+    into v_ids, v_keys
+    from (
+      select p.id, p.created_at
+      from public.posts p
+      where p.status = 'visible'
+        and (p.created_at, p.id) < (v_before_ts, v_before_id)
+        and p.author_id in (
+          select f.followee_id from public.follows f where f.follower_id = v_uid
+          union all
+          select v_uid
+        )
+        and not private.is_blocked_pair(v_uid, p.author_id)
+      order by p.created_at desc, p.id desc
+      limit v_limit + 1
+    ) t;
+
+  elsif p_mode = 'author' and p_author_id = v_uid then
+    -- Your own profile also lists posts that are held for review.
+    select array_agg(t.id order by t.created_at desc, t.id desc),
+           array_agg(t.created_at order by t.created_at desc, t.id desc)
+    into v_ids, v_keys
+    from (
+      select p.id, p.created_at
+      from public.posts p
+      where p.author_id = v_uid
+        and p.status in ('visible', 'hidden')
+        and (p.created_at, p.id) < (v_before_ts, v_before_id)
+      order by p.created_at desc, p.id desc
+      limit v_limit + 1
+    ) t;
+
+  elsif p_mode = 'author' then
+    select array_agg(t.id order by t.created_at desc, t.id desc),
+           array_agg(t.created_at order by t.created_at desc, t.id desc)
+    into v_ids, v_keys
+    from (
+      select p.id, p.created_at
+      from public.posts p
+      where p.author_id = p_author_id
+        and p.status = 'visible'
+        and (p.created_at, p.id) < (v_before_ts, v_before_id)
+        and not private.is_blocked_pair(v_uid, p.author_id)
+      order by p.created_at desc, p.id desc
+      limit v_limit + 1
+    ) t;
 
   elsif p_mode = 'saved' then
-    with page as (
-      select c.*, s.created_at as saved_at
+    select array_agg(t.post_id order by t.created_at desc, t.post_id desc),
+           array_agg(t.created_at order by t.created_at desc, t.post_id desc)
+    into v_ids, v_keys
+    from (
+      select s.post_id, s.created_at
       from public.post_saves s
-      join public.post_cards c on c.id = s.post_id
+      join public.posts p on p.id = s.post_id
       where s.user_id = v_uid
-        and c.status = 'visible'
-        and not private.is_blocked_pair(v_uid, c.author_id)
-        and (v_cursor_ts is null or (s.created_at, s.post_id) < (v_cursor_ts, v_cursor_id))
+        and (s.created_at, s.post_id) < (v_before_ts, v_before_id)
+        and p.status = 'visible'
+        and not private.is_blocked_pair(v_uid, p.author_id)
       order by s.created_at desc, s.post_id desc
       limit v_limit + 1
-    ),
-    numbered as (
-      select page.*, row_number() over (order by page.saved_at desc, page.id desc) as rn from page
-    )
-    select
-      coalesce(jsonb_agg(to_jsonb(n) - 'rn' - 'saved_at' order by n.rn) filter (where n.rn <= v_limit), '[]'::jsonb),
-      count(*)::integer,
-      max(case when n.rn = v_limit then
-        (floor(extract(epoch from n.saved_at) * 1000000))::bigint::text || '_' || n.id::text end)
-    into v_items, v_count, v_next
-    from numbered n;
-
-    if v_count <= v_limit then
-      v_next := null;
-    end if;
+    ) t;
 
   else
-    with page as (
-      select c.*
-      from public.post_cards c
-      where (
-          c.status = 'visible'
-          or (p_mode = 'author' and c.author_id = v_uid and c.status = 'hidden')
-        )
-        and not private.is_blocked_pair(v_uid, c.author_id)
-        and (
-          p_mode = 'new'
-          or (p_mode = 'author' and c.author_id = p_author_id)
-          or (p_mode = 'following' and (
-                c.author_id = v_uid
-                or exists (
-                  select 1 from public.follows f
-                  where f.follower_id = v_uid and f.followee_id = c.author_id
-                )))
-        )
-        and (v_cursor_ts is null or (c.created_at, c.id) < (v_cursor_ts, v_cursor_id))
-      order by c.created_at desc, c.id desc
+    -- popular: the last 14 days ranked by engagement with time decay; offset cursor.
+    select array_agg(t.id order by t.score desc, t.id)
+    into v_ids
+    from (
+      select p.id,
+        (p.like_count + 2 * p.comment_count + 1)::double precision
+          / power(extract(epoch from (now() - p.created_at))::double precision / 3600.0 + 2.0, 1.5)
+          as score
+      from public.posts p
+      where p.status = 'visible'
+        and p.created_at > now() - interval '14 days'
+        and not private.is_blocked_pair(v_uid, p.author_id)
+      order by score desc, p.id
+      offset v_offset
       limit v_limit + 1
-    ),
-    numbered as (
-      select page.*, row_number() over (order by page.created_at desc, page.id desc) as rn from page
-    )
-    select
-      coalesce(jsonb_agg(to_jsonb(n) - 'rn' order by n.rn) filter (where n.rn <= v_limit), '[]'::jsonb),
-      count(*)::integer,
-      max(case when n.rn = v_limit then
-        (floor(extract(epoch from n.created_at) * 1000000))::bigint::text || '_' || n.id::text end)
-    into v_items, v_count, v_next
-    from numbered n;
-
-    if v_count <= v_limit then
-      v_next := null;
-    end if;
+    ) t;
   end if;
+
+  v_ids := coalesce(v_ids, '{}'::uuid[]);
+  if cardinality(v_ids) > v_limit then
+    if p_mode = 'popular' then
+      v_next := (v_offset + v_limit)::text;
+    else
+      v_next := private.to_epoch_us(v_keys[v_limit])::text
+                || '_' || v_ids[v_limit]::text;
+    end if;
+    v_ids := v_ids[1:v_limit];
+  end if;
+
+  select coalesce(jsonb_agg(to_jsonb(c) order by u.ord), '[]'::jsonb)
+  into v_items
+  from unnest(v_ids) with ordinality as u (id, ord)
+  join public.post_cards c on c.id = u.id;
 
   return jsonb_build_object('items', v_items, 'next_cursor', v_next);
 end;
@@ -704,14 +728,10 @@ begin
     raise exception 'parent_not_found' using errcode = 'PT404', detail = 'The original post is not available.';
   end if;
 
-  perform private.assert_rate(
-    (select count(*) from public.posts p
-     where p.author_id = v_uid and p.created_at > now() - interval '10 minutes'),
-    5, 'You can share up to 5 posts every 10 minutes.');
-  perform private.assert_rate(
-    (select count(*) from public.posts p
-     where p.author_id = v_uid and p.created_at > now() - interval '24 hours'),
-    25, 'You can share up to 25 posts a day.');
+  perform private.check_rate(v_uid, 'post', 5, interval '10 minutes',
+    'You can share up to 5 posts every 10 minutes.');
+  perform private.check_rate(v_uid, 'post', 25, interval '24 hours',
+    'You can share up to 25 posts a day.');
 
   v_held := private.needs_review(v_title || ' ' || v_body);
 
@@ -737,6 +757,9 @@ begin
     ) then
       raise exception 'media_not_uploaded' using errcode = '22023', detail = 'A photo has not finished uploading.';
     end if;
+    -- An upload the cleanup job already queued (say, a compose sheet left open overnight) is
+    -- taken back out of the purge queue now that a post uses it.
+    perform private.reclaim_storage_object('post-media', v_path);
     insert into public.post_media (post_id, owner_id, path, width, height, blurhash, position)
     values (
       v_post.id, v_uid, v_path, (v_item ->> 'width')::integer, (v_item ->> 'height')::integer,
@@ -744,6 +767,8 @@ begin
     );
     v_position := v_position + 1;
   end loop;
+
+  perform private.record_rate(v_uid, 'post');
 
   if v_held then
     perform private.hold_for_review('post', v_post.id::text, v_uid, 'Held for review before publishing.');
@@ -771,15 +796,17 @@ begin
     raise exception 'post_not_found' using errcode = 'PT404', detail = 'This post is not available.';
   end if;
 
+  -- One toggle per member at a time; this also makes the rate check below race-free.
+  perform private.rate_lock(v_uid, 'like');
+
   delete from public.post_likes l where l.post_id = p_post_id and l.user_id = v_uid;
   if found then
     v_liked := false;
   else
-    perform private.assert_rate(
-      (select count(*) from public.post_likes l
-       where l.user_id = v_uid and l.created_at > now() - interval '1 minute'),
-      60, 'Slow down a little.');
-    insert into public.post_likes (post_id, user_id) values (p_post_id, v_uid);
+    perform private.check_rate(v_uid, 'like', 60, interval '1 minute', 'Slow down a little.');
+    insert into public.post_likes (post_id, user_id) values (p_post_id, v_uid)
+    on conflict do nothing;
+    perform private.record_rate(v_uid, 'like');
     v_liked := true;
   end if;
 
@@ -798,6 +825,8 @@ declare
   v_uid uuid := private.require_uid();
   v_saved boolean;
 begin
+  perform private.rate_lock(v_uid, 'save');
+
   delete from public.post_saves s where s.post_id = p_post_id and s.user_id = v_uid;
   if found then
     v_saved := false;
@@ -805,7 +834,8 @@ begin
     if not private.can_view_post(v_uid, p_post_id) then
       raise exception 'post_not_found' using errcode = 'PT404', detail = 'This post is not available.';
     end if;
-    insert into public.post_saves (user_id, post_id) values (v_uid, p_post_id);
+    insert into public.post_saves (user_id, post_id) values (v_uid, p_post_id)
+    on conflict do nothing;
     v_saved := true;
   end if;
   return jsonb_build_object('saved', v_saved);
@@ -846,10 +876,8 @@ begin
     end if;
   end if;
 
-  perform private.assert_rate(
-    (select count(*) from public.comments c
-     where c.author_id = v_uid and c.created_at > now() - interval '10 minutes'),
-    20, 'You can post up to 20 comments every 10 minutes.');
+  perform private.take_rate(v_uid, 'comment', 20, interval '10 minutes',
+    'You can post up to 20 comments every 10 minutes.');
 
   v_held := private.needs_review(v_body);
 
@@ -882,10 +910,12 @@ begin
      or private.is_blocked_pair(v_uid, p_user_id) then
     raise exception 'user_not_found' using errcode = 'PT404', detail = 'That account is not available.';
   end if;
-  perform private.assert_rate(
-    (select count(*) from public.follows f
-     where f.follower_id = v_uid and f.created_at > now() - interval '1 hour'),
-    100, 'You are following people too quickly.');
+  perform private.rate_lock(v_uid, 'follow');
+  if private.is_following(v_uid, p_user_id) then
+    return;
+  end if;
+  perform private.take_rate(v_uid, 'follow', 100, interval '1 hour',
+    'You are following people too quickly.');
 
   insert into public.follows (follower_id, followee_id) values (v_uid, p_user_id)
   on conflict do nothing;
@@ -917,10 +947,14 @@ declare
   v_expires timestamptz;
   v_attempt integer := 0;
 begin
-  perform private.assert_rate(
-    (select count(*) from public.friend_invites i
-     where i.inviter_id = v_uid and i.redeemed_by is null and i.expires_at > now()),
-    20, 'You already have 20 open invites.');
+  -- The durable daily allowance also takes the per-member lock, so the open-invite count that
+  -- follows cannot be raced either.
+  perform private.check_rate(v_uid, 'invite', 50, interval '24 hours',
+    'You have created a lot of invites today. Try again tomorrow.');
+  if (select count(*) from public.friend_invites i
+      where i.inviter_id = v_uid and i.redeemed_by is null and i.expires_at > now()) >= 20 then
+    raise exception 'rate_limited' using errcode = 'PT429', detail = 'You already have 20 open invites.';
+  end if;
 
   loop
     v_code := private.new_invite_code();
@@ -937,6 +971,7 @@ begin
     end;
   end loop;
 
+  perform private.record_rate(v_uid, 'invite');
   return jsonb_build_object('code', v_code, 'expires_at', v_expires);
 end;
 $$;
@@ -1146,7 +1181,6 @@ grant select, insert, update, delete on private.review_terms to service_role;
 
 revoke all on function private.is_following(uuid, uuid) from public;
 revoke all on function private.can_view_post(uuid, uuid) from public;
-revoke all on function private.assert_rate(bigint, integer, text) from public;
 revoke all on function private.needs_review(text) from public;
 revoke all on function private.notify(uuid, uuid, public.notification_kind, uuid, uuid, jsonb) from public;
 revoke all on function private.new_invite_code() from public;

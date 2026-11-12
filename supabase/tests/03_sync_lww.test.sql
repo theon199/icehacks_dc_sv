@@ -98,6 +98,12 @@ select is(
   1,
   're-sending the stored version is idempotent'
 );
+select is(
+  tests.push_one('2026-03-01T11:00:00Z', 'watch', 7) -> 'rejected' -> 0 ->> 'reason',
+  'conflict',
+  'same version stamp with different content is reported as a conflict, not applied'
+);
+select is(tests.server_qty(), 5, 'the conflicting write did not change the document');
 
 select is(
   tests.push_one('2099-01-01T00:00:00Z', 'phone', 6) -> 'rejected' -> 0 ->> 'reason',

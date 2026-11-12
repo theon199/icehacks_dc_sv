@@ -107,6 +107,22 @@ begin
 end;
 $$;
 
+-- Rate-limit records outlive the longest window (24 hours) by a day.
+create function private.job_purge_rate_events()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_count integer;
+begin
+  delete from private.rate_events e where e.occurred_at < now() - interval '2 days';
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
 -- Purge-queue rows that exhausted their retries are dropped after 30 days.
 create function private.job_prune_purge_queue()
 returns integer
@@ -130,13 +146,15 @@ revoke all on function private.job_purge_ai_usage() from public;
 revoke all on function private.job_purge_caches() from public;
 revoke all on function private.job_purge_notifications() from public;
 revoke all on function private.job_prune_purge_queue() from public;
+revoke all on function private.job_purge_rate_events() from public;
 grant execute on function
   private.job_purge_friend_invites(),
   private.job_queue_stale_uploads(),
   private.job_purge_ai_usage(),
   private.job_purge_caches(),
   private.job_purge_notifications(),
-  private.job_prune_purge_queue()
+  private.job_prune_purge_queue(),
+  private.job_purge_rate_events()
   to service_role;
 
 do $$
@@ -154,5 +172,6 @@ begin
   perform cron.schedule('famara-purge-caches', '7 * * * *', 'select private.job_purge_caches()');
   perform cron.schedule('famara-purge-notifications', '47 3 * * *', 'select private.job_purge_notifications()');
   perform cron.schedule('famara-prune-purge-queue', '57 3 * * 0', 'select private.job_prune_purge_queue()');
+  perform cron.schedule('famara-purge-rate-events', '27 * * * *', 'select private.job_purge_rate_events()');
 end;
 $$;

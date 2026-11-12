@@ -6,9 +6,11 @@
  * (supabase/types-check/drift.check.ts). To refresh it after a migration, with a local stack:
  *
  *   supabase db reset
- *   supabase gen types typescript --local --schema public > src/lib/supabase/database.types.ts
+ *   supabase gen types typescript --local --schema public > supabase/.generated/database.generated.ts
  *
- * then restore this header and re-append everything below the "Famara aliases" marker.
+ * then copy the generated `Database` type over the one below (CI also uploads that file as the
+ * `database-types` artifact). Everything else here is maintained by hand: the lookup helpers,
+ * `Constants` (update it when an enum changes) and the Famara aliases at the end.
  * See docs/BACKEND.md for what each table, view and RPC does.
  */
 
@@ -862,7 +864,6 @@ export type Database = {
           handle: string;
           id: string;
           is_team: boolean;
-          suspended_until: string | null;
           updated_at: string;
         };
         ComputedFields: never;
@@ -875,7 +876,6 @@ export type Database = {
           handle: string;
           id: string;
           is_team?: boolean;
-          suspended_until?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -887,7 +887,6 @@ export type Database = {
           handle?: string;
           id?: string;
           is_team?: boolean;
-          suspended_until?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -1246,7 +1245,10 @@ export type Database = {
       };
       delete_my_account: { Args: Record<PropertyKey, never>; Returns: Json };
       dish_confirmation_summary: {
-        Args: { p_dish_key: string; p_place_ids: string[] };
+        Args: {
+          p_dish_key: string;
+          p_place_ids: string[];
+        };
         Returns: {
           my_answer: boolean;
           no_count: number;
@@ -1280,7 +1282,7 @@ export type Database = {
       };
       moderation_queue: {
         Args: {
-          p_after?: string;
+          p_cursor?: string;
           p_limit?: number;
           p_status?: Database["public"]["Enums"]["report_status"];
         };
@@ -1294,6 +1296,22 @@ export type Database = {
           feature: string;
           window_seconds: number;
           window_start: string;
+        }[];
+      };
+      my_moderation_decisions: {
+        Args: { p_limit?: number };
+        Returns: {
+          action: Database["public"]["Enums"]["moderation_action_kind"];
+          action_id: string;
+          appeal_note: string;
+          appeal_status: Database["public"]["Enums"]["appeal_status"];
+          appealable: boolean;
+          automated: boolean;
+          created_at: string;
+          reason: string;
+          suspended_until: string;
+          target_id: string;
+          target_kind: Database["public"]["Enums"]["report_target"];
         }[];
       };
       my_stats: { Args: { p_today?: string }; Returns: Json };
@@ -1421,125 +1439,33 @@ export type Database = {
   };
 };
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
+// -------------------------------------------------------------------------------------------------
+// Lookup helpers. Famara exposes one schema, so these index `public` directly:
+// Tables<"posts">, TablesInsert<"posts">, TablesUpdate<"posts">, Enums<"feed_mode">.
+// -------------------------------------------------------------------------------------------------
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<
-  keyof Database,
-  "public"
->];
+type PublicSchema = Database["public"];
+type PublicTableName = keyof PublicSchema["Tables"];
+type PublicViewName = keyof PublicSchema["Views"];
 
-export type Tables<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
-  }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R;
-    }
-    ? R
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R;
-      }
-      ? R
-      : never
-    : never;
+/** Row of a table or view. */
+export type Tables<Name extends PublicTableName | PublicViewName> = Name extends PublicTableName
+  ? PublicSchema["Tables"][Name]["Row"]
+  : Name extends PublicViewName ? PublicSchema["Views"][Name]["Row"]
+  : never;
 
-export type TablesInsert<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I;
-    }
-    ? I
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I;
-      }
-      ? I
-      : never
-    : never;
+/** Insert payload of a table. */
+export type TablesInsert<Name extends PublicTableName> = PublicSchema["Tables"][Name]["Insert"];
 
-export type TablesUpdate<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U;
-    }
-    ? U
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U;
-      }
-      ? U
-      : never
-    : never;
+/** Update payload of a table. */
+export type TablesUpdate<Name extends PublicTableName> = PublicSchema["Tables"][Name]["Update"];
 
-export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never;
+/** Values of an enum. */
+export type Enums<Name extends keyof PublicSchema["Enums"]> = PublicSchema["Enums"][Name];
 
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals;
-  }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never;
+/** A composite type (none are defined yet). */
+export type CompositeTypes<Name extends keyof PublicSchema["CompositeTypes"]> =
+  PublicSchema["CompositeTypes"][Name];
 
 export const Constants = {
   public: {
@@ -1688,7 +1614,7 @@ export interface SyncPushResult {
   rejected: {
     collection: string;
     doc_id: string;
-    reason: "stale" | "future_timestamp";
+    reason: "stale" | "conflict" | "future_timestamp";
     server: Omit<StoredSyncDocument, "collection" | "doc_id"> | null;
   }[];
 }
@@ -1824,10 +1750,24 @@ export interface ModerationQueueItem {
   }[];
 }
 
-/** `moderation_queue` result. */
+/** `moderation_queue` result. Pass `next_cursor` back as `p_cursor` for the next page. */
 export interface ModerationQueuePage {
   items: ModerationQueueItem[];
-  next_after: string | null;
+  next_cursor: string | null;
+}
+
+/** One row of `my_moderation_decisions()`: what was decided about your content, not by whom. */
+export type ModerationDecision =
+  Database["public"]["Functions"]["my_moderation_decisions"]["Returns"][number];
+
+/** `data` of an `appeal_decision` notification. */
+export interface AppealDecisionNotice {
+  appeal_id: string;
+  action_id: string;
+  outcome: "upheld" | "reversed";
+  note: string | null;
+  /** False when a newer decision on the same content or account still applies. */
+  state_restored: boolean;
 }
 
 /** Machine codes raised by Famara RPCs (the PostgREST error `message`). */
@@ -1855,6 +1795,7 @@ export type RpcErrorCode =
   | "invalid_media"
   | "media_not_uploaded"
   | "media_in_use"
+  | "media_unavailable"
   | "recipe_required"
   | "reply_depth_exceeded"
   | "invalid_parent_comment"
@@ -1862,6 +1803,7 @@ export type RpcErrorCode =
   | "invite_used"
   | "invalid_document"
   | "too_many_documents"
+  | "sync_quota"
   | "invalid_details"
   | "invalid_message"
   | "invalid_reason"
