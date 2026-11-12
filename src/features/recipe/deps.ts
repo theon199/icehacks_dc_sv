@@ -8,19 +8,8 @@ import { selectAge, selectCanUseAi, useSessionStore } from '@/features/auth';
 
 import type { CompareSide } from './model/compare';
 
-export interface CostSummaryProps {
-  recipeId: string;
-  /** Servings the estimate should cover. */
-  servings?: number;
-}
-
-/**
- * Estimated cost of a recipe, provided by the grocery feature. Renders nothing until that feature
- * exports it.
- */
-export function CostSummary(_props: CostSummaryProps): null {
-  return null;
-}
+/** Estimated grocery cost of a recipe (`recipeId`, optional `servings`). */
+export { CostSummary } from '@/features/grocery';
 
 /** Whether AI features may open for this person (18+ and agreed to the AI terms). */
 export function useCanUseAi(): boolean {

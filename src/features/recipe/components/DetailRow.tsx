@@ -32,6 +32,8 @@ export interface DetailContext {
   smallAppetite: boolean;
   targets: DailyTargets;
   suggestions: ReadonlyMap<string, SubstitutionSuggestion[]>;
+  /** "Contains peanuts" notes for lines with a declared allergen, by ingredient id. */
+  allergenNotes: ReadonlyMap<string, string>;
   declared: readonly AllergenId[] | null;
   actions: ReturnType<typeof useRecipeActions>;
   changeServings: (servings: number) => void;
@@ -113,6 +115,9 @@ export const DetailRow = memo(function DetailRow({
             suggestions={
               item.row.ingredientId ? context.suggestions.get(item.row.ingredientId) : undefined
             }
+            allergenNote={
+              item.row.ingredientId ? context.allergenNotes.get(item.row.ingredientId) : undefined
+            }
           />
         </View>
       );
@@ -163,7 +168,7 @@ export const DetailRow = memo(function DetailRow({
     case 'cost':
       return (
         <View style={[styles.padded, styles.block]}>
-          <CostSummary recipeId={recipe.id} servings={context.servings} />
+          <CostSummary recipeId={recipe.id} servings={context.servings * context.built.portion} />
         </View>
       );
     case 'more':
