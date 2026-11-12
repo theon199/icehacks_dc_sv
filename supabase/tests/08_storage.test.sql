@@ -49,6 +49,35 @@ as $fn$
 $fn$;
 grant execute on function tests.visible_objects(text) to authenticated;
 
+-- Row counts of an update / delete attempted as the caller (RLS hides rows rather than failing).
+create function tests.overwrite_object(p_bucket text, p_name text)
+returns integer
+language plpgsql
+as $fn$
+declare
+  v_rows integer;
+begin
+  update storage.objects set metadata = '{"swapped": true}'::jsonb
+  where bucket_id = p_bucket and name = p_name;
+  get diagnostics v_rows = row_count;
+  return v_rows;
+end;
+$fn$;
+
+create function tests.remove_object(p_bucket text, p_name text)
+returns integer
+language plpgsql
+as $fn$
+declare
+  v_rows integer;
+begin
+  delete from storage.objects where bucket_id = p_bucket and name = p_name;
+  get diagnostics v_rows = row_count;
+  return v_rows;
+end;
+$fn$;
+grant execute on function tests.overwrite_object(text, text), tests.remove_object(text, text) to authenticated;
+
 set local role authenticated;
 select tests.login('aaaaaaaa-0000-4000-8000-000000000001');
 
@@ -92,20 +121,12 @@ select is(tests.visible_objects('post-media'), 1, 'attached media is readable wi
 -- Published photos cannot be swapped or deleted from under their post.
 select tests.login('aaaaaaaa-0000-4000-8000-000000000001');
 select is(
-  (with changed as (
-     update storage.objects set metadata = '{"swapped": true}'::jsonb
-     where bucket_id = 'post-media' and name = 'aaaaaaaa-0000-4000-8000-000000000001/plate.jpg'
-     returning 1)
-   select count(*)::integer from changed),
+  tests.overwrite_object('post-media', 'aaaaaaaa-0000-4000-8000-000000000001/plate.jpg'),
   0,
   'authors cannot overwrite an attached photo'
 );
 select is(
-  (with removed as (
-     delete from storage.objects
-     where bucket_id = 'post-media' and name = 'aaaaaaaa-0000-4000-8000-000000000001/plate.jpg'
-     returning 1)
-   select count(*)::integer from removed),
+  tests.remove_object('post-media', 'aaaaaaaa-0000-4000-8000-000000000001/plate.jpg'),
   0,
   'authors cannot delete an attached photo'
 );
@@ -115,11 +136,7 @@ select lives_ok(
   'ana uploads a photo she does not use'
 );
 select is(
-  (with removed as (
-     delete from storage.objects
-     where bucket_id = 'post-media' and name = 'aaaaaaaa-0000-4000-8000-000000000001/draft.jpg'
-     returning 1)
-   select count(*)::integer from removed),
+  tests.remove_object('post-media', 'aaaaaaaa-0000-4000-8000-000000000001/draft.jpg'),
   1,
   'authors can delete photos that are not attached'
 );
