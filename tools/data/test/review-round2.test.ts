@@ -2,27 +2,16 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ingredientDietFlags } from '../src/derive/ingredients.ts';
 import { estimateServings, isGentle, type GentleInputs } from '../src/derive/recipe.ts';
-import { rollupAllergens, rollupDiet, type MatchedLine } from '../src/derive/rollup.ts';
-import type { IngredientDef } from '../src/knowledge/define.ts';
+import { rollupAllergens, rollupDiet } from '../src/derive/rollup.ts';
 import { INGREDIENTS, INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
 import { SEARCH_ALIASES } from '../src/knowledge/searchAliases.ts';
-import { IngredientMatcher } from '../src/match/matcher.ts';
 import { parseMeasure } from '../src/parse/measure.ts';
 import { detectTimerSeconds, splitSteps } from '../src/parse/steps.ts';
 import { SearchIndexer } from '../src/pipeline/search.ts';
 import { DietFlag } from '../src/types.ts';
+import { def, defsOf, matchedLine, matcher } from './support/lines.ts';
 
-const matcher = new IngredientMatcher(INGREDIENTS);
-const def = (id: string): IngredientDef => {
-  const found = INGREDIENT_BY_ID.get(id);
-  assert.ok(found, `missing ingredient ${id}`);
-  return found;
-};
 const matchId = (text: string): string | null => matcher.matchLine(parseMeasure(text).rest).id;
-const matchedLine = (text: string): MatchedLine => {
-  const result = matcher.matchLine(parseMeasure(text).rest);
-  return result.id === null ? null : result.all.map(def);
-};
 const has = (flags: number, bit: number) => (flags & bit) !== 0;
 
 describe('ribbon pasta and gnocchi allergens', () => {
@@ -105,7 +94,7 @@ describe('search index words', () => {
     const name = parseMeasure(text).rest;
     const line = matchedLine(text);
     assert.ok(line, `unmatched ${text}`);
-    return line.flatMap((d) => indexer.lineWords(d, name));
+    return defsOf(line).flatMap((d) => indexer.lineWords(d, name));
   };
 
   it('does not index another food named in a synonym ("beef tomatoes")', () => {
