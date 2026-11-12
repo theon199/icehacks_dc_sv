@@ -171,6 +171,12 @@ function functionMissing(error: unknown): boolean {
   );
 }
 
+function mediaPayload(item: PublishMediaInput) {
+  const { blurhash, ...rest } = item;
+  return blurhash ? { ...rest, blurhash } : rest;
+}
+
+/** The function answers `{ post, held }` / `{ comment, held }`; a bare row is accepted too. */
 const publishPostResponse = z.union([
   z.object({ post: publishedPostSchema }).transform((value) => value.post),
   publishedPostSchema,
@@ -190,12 +196,12 @@ export async function publishPost(input: PublishPostInput): Promise<PublishedPos
         type: 'post',
         kind: input.kind,
         title: input.title,
-        body: input.body,
-        recipe_ref: input.recipeRef,
-        rating: input.rating,
-        parent_post_id: input.parentPostId,
-        visibility: 'public',
-        media: input.media,
+        // Optional fields are left out rather than sent as null.
+        ...(input.body ? { body: input.body } : {}),
+        ...(input.recipeRef ? { recipe_ref: input.recipeRef } : {}),
+        ...(input.rating != null ? { rating: input.rating } : {}),
+        ...(input.parentPostId ? { parent_post_id: input.parentPostId } : {}),
+        ...(input.media.length > 0 ? { media: input.media.map(mediaPayload) } : {}),
       },
       publishPostResponse,
       { timeoutMs: PUBLISH_TIMEOUT_MS },
@@ -210,7 +216,7 @@ export async function publishPost(input: PublishPostInput): Promise<PublishedPos
     ...(input.recipeRef ? { p_recipe_ref: input.recipeRef } : {}),
     ...(input.rating != null ? { p_rating: input.rating } : {}),
     ...(input.parentPostId ? { p_parent_post_id: input.parentPostId } : {}),
-    p_media: input.media.map((item) => ({ ...item })),
+    p_media: input.media.map(mediaPayload),
   });
   if (error) throw toApiError('publish_post', error);
   return publishedPostSchema.parse(data);
@@ -225,7 +231,7 @@ export async function publishComment(input: PublishCommentInput): Promise<Publis
         type: 'comment',
         post_id: input.postId,
         body: input.body,
-        parent_comment_id: input.parentCommentId,
+        ...(input.parentCommentId ? { parent_comment_id: input.parentCommentId } : {}),
       },
       publishCommentResponse,
       { timeoutMs: PUBLISH_TIMEOUT_MS },
