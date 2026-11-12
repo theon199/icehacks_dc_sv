@@ -418,6 +418,33 @@ Deno.test("runTools stops after the turn limit", async () => {
   assertEquals(error.kind, "tool_loop_limit");
 });
 
+Deno.test("runTools shares one deadline across all rounds", async () => {
+  const tool = defineTool("ping", "Ping.", z.object({}));
+  const toolTurn = () =>
+    message([{ type: "tool_use", id: crypto.randomUUID(), name: "ping", input: {} }], "tool_use");
+  let clock = 0;
+  // Every round trip takes 6 s on the client clock; the budget for the whole loop is 10 s.
+  const slow = (reply: Response) => () => {
+    clock += 6_000;
+    return Promise.resolve(reply);
+  };
+  const { client: c, calls } = client(
+    [slow(toolTurn()), slow(toolTurn()), slow(toolTurn())],
+    { timeoutMs: 10_000, now: () => clock },
+  );
+  const error = await assertRejects(
+    () =>
+      c.runTools(
+        { messages: [{ role: "user", content: "x" }] },
+        [toolHandler(tool, () => Promise.resolve("pong"))],
+        { maxTurns: 6 },
+      ),
+    AnthropicError,
+  );
+  assertEquals(error.kind, "timeout");
+  assertEquals(calls.length, 2);
+});
+
 Deno.test("defineTool builds a strict, closed input schema", () => {
   const tool = defineTool(
     "add_to_pantry",

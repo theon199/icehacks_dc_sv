@@ -33,17 +33,41 @@ const STATUS_BY_SQLSTATE: Record<string, ErrorCode> = {
   "42501": "forbidden",
 };
 
+/**
+ * Postgres' own errors (constraint violations, bad casts, missing privileges) describe the
+ * schema in their message and echo row values in `details`. They are replaced by fixed text
+ * and a stable reason; only errors Famara raises on purpose pass their text through.
+ */
+const GENERIC_BY_SQLSTATE: Record<string, { reason: string; message: string }> = {
+  "22P02": { reason: "invalid_value", message: "A value in the request has the wrong format." },
+  "23514": { reason: "invalid_value", message: "A value in the request is not allowed." },
+  "23505": { reason: "already_exists", message: "That already exists." },
+  "42501": { reason: "not_allowed", message: "You are not allowed to do that." },
+};
+
+/** Errors raised deliberately by Famara's SQL: their message is a machine code, safe to show. */
+function isFamaraError(code: string): boolean {
+  return code.startsWith("PT") || code === "22023";
+}
+
 /** Maps a PostgREST error to an HttpError, keeping the SQL error code as `details.reason`. */
 export function rpcErrorToHttp(error: PostgrestLikeError): HttpError {
-  const code: ErrorCode = (error.code ? STATUS_BY_SQLSTATE[error.code] : undefined) ??
-    "upstream_error";
-  const message = code === "upstream_error"
-    ? "The database request failed."
-    : error.details ?? "The request could not be completed.";
-  if (code === "upstream_error") {
+  const sqlstate = error.code ?? "";
+  const code: ErrorCode | undefined = sqlstate ? STATUS_BY_SQLSTATE[sqlstate] : undefined;
+  if (!code) {
     console.error("rpc failed", error);
+    return new HttpError("upstream_error", "The database request failed.", {
+      details: { reason: "database_error" },
+    });
   }
-  return new HttpError(code, message, { details: { reason: error.message } });
+  if (isFamaraError(sqlstate)) {
+    return new HttpError(code, error.details ?? "The request could not be completed.", {
+      details: { reason: error.message },
+    });
+  }
+  const generic = GENERIC_BY_SQLSTATE[sqlstate] ??
+    { reason: "invalid_request", message: "The request could not be completed." };
+  return new HttpError(code, generic.message, { details: { reason: generic.reason } });
 }
 
 /**

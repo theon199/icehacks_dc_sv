@@ -466,6 +466,16 @@ export interface AnthropicClientOptions {
   url?: string;
 }
 
+/** The deadline of one public call: an abort signal plus the same instant on the client clock. */
+interface CallBudget {
+  deadline: AbortSignal;
+  giveUpAt: number;
+}
+
+function timeoutError(cause?: unknown): AnthropicError {
+  return new AnthropicError("timeout", "The Claude API did not answer in time.", { cause });
+}
+
 /** Backoff waits shorter than this before the deadline are skipped: the retry could not finish. */
 const MIN_ATTEMPT_MS = 1_000;
 
@@ -583,11 +593,21 @@ export class AnthropicClient {
    * Sends one Messages request within the client deadline, retrying transient failures. Throws
    * AnthropicError; a `stop_reason` of "refusal" is raised as kind "refusal".
    */
-  async createMessage(req: MessageRequest): Promise<Message> {
+  createMessage(req: MessageRequest): Promise<Message> {
+    return this.send(req, this.startBudget());
+  }
+
+  /** A fresh time budget of `timeoutMs`, shared by everything one public call does. */
+  private startBudget(): CallBudget {
+    return { deadline: AbortSignal.timeout(this.timeoutMs), giveUpAt: this.now() + this.timeoutMs };
+  }
+
+  /** Sends one Messages request, retrying transient failures, within an existing budget. */
+  private async send(req: MessageRequest, budget: CallBudget): Promise<Message> {
     const { body, headers } = this.buildRequest(req);
     const payload = JSON.stringify(body);
-    const deadline = AbortSignal.timeout(this.timeoutMs);
-    const giveUpAt = this.now() + this.timeoutMs;
+    const { deadline, giveUpAt } = budget;
+    if (deadline.aborted || this.now() >= giveUpAt) throw timeoutError();
     const signal = req.signal ? AbortSignal.any([req.signal, deadline]) : deadline;
 
     for (let attempt = 0;; attempt++) {
@@ -651,11 +671,7 @@ export class AnthropicClient {
     if (callerSignal?.aborted) {
       return new AnthropicError("aborted", "The request was cancelled.", { cause: error });
     }
-    if (deadline.aborted) {
-      return new AnthropicError("timeout", "The Claude API did not answer in time.", {
-        cause: error,
-      });
-    }
+    if (deadline.aborted) return timeoutError(error);
     if (error instanceof AnthropicError) return error;
     // fetch() rejections and broken response streams: the connection failed, try again.
     return new AnthropicError("network", "Could not reach the Claude API.", {
@@ -705,6 +721,8 @@ export class AnthropicClient {
   /**
    * Runs a tool-use loop: call Claude, execute the tools it asks for (in parallel), send all
    * results back in one user turn, repeat until it stops asking or `maxTurns` is reached.
+   * The whole loop (every round, retry and tool run) shares one `timeoutMs` deadline, so it
+   * always ends inside the edge-function time limit.
    */
   async runTools(
     req: Omit<MessageRequest, "tools">,
@@ -715,9 +733,10 @@ export class AnthropicClient {
     const tools = handlers.map((h) => h.tool.definition);
     const messages: MessageParam[] = [...req.messages];
     const maxTurns = options.maxTurns ?? 6;
+    const budget = this.startBudget();
 
     for (let turn = 0; turn < maxTurns; turn++) {
-      const message = await this.createMessage({ ...req, tools, messages });
+      const message = await this.send({ ...req, tools, messages }, budget);
       if (message.stop_reason !== "tool_use") return { message, messages };
 
       messages.push({ role: "assistant", content: message.content });
