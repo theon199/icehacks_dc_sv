@@ -3,9 +3,9 @@ import Database from 'better-sqlite3';
 import type { SubstitutionDef } from '../knowledge/substitutions.ts';
 import type { IngredientRow, RecipeRow } from './types.ts';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
-/** Schema v1, exactly as specified in docs/DATA.md. */
+/** Schema v2, exactly as specified in docs/DATA.md. */
 export const SCHEMA_SQL = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
@@ -43,11 +43,15 @@ CREATE TABLE recipes (
   goal_tags TEXT NOT NULL,
   gentle INTEGER NOT NULL DEFAULT 0,
   health_score REAL NOT NULL,
-  family_id TEXT NOT NULL
+  family_id TEXT NOT NULL,
+  ingredient_ids TEXT NOT NULL,
+  core_ingredient_ids TEXT NOT NULL
 );
 CREATE INDEX recipes_cuisine ON recipes(cuisine);
 CREATE INDEX recipes_course ON recipes(course);
 CREATE INDEX recipes_diet ON recipes(diet_flags);
+CREATE INDEX recipes_family ON recipes(family_id);
+CREATE INDEX recipes_rank ON recipes(health_score DESC, id);
 
 CREATE TABLE recipe_ingredients (
   recipe_id TEXT NOT NULL REFERENCES recipes(id),
@@ -102,7 +106,28 @@ export interface DbCheck {
   integrity: string;
   foreignKeyViolations: number;
   ftsRows: number;
+  /** Recipes whose stored ingredient id lists differ from what their `recipe_ingredients` give. */
+  ingredientListMismatches: number;
 }
+
+/**
+ * Recomputes both stored id lists from `recipe_ingredients` in SQL, independently of the code that
+ * wrote them, and counts the recipes where either differs. Each id is placed by its first
+ * qualifying line, so the order matches the stored lists too.
+ */
+const INGREDIENT_LIST_MISMATCH_SQL = `
+SELECT count(*) AS n FROM recipes r
+WHERE r.ingredient_ids IS NOT (
+    SELECT json_group_array(ingredient_id ORDER BY first_position) FROM (
+      SELECT ri.ingredient_id, min(ri.position) AS first_position FROM recipe_ingredients ri
+      WHERE ri.recipe_id = r.id AND ri.ingredient_id IS NOT NULL
+      GROUP BY ri.ingredient_id))
+  OR r.core_ingredient_ids IS NOT (
+    SELECT json_group_array(ingredient_id ORDER BY first_position) FROM (
+      SELECT ri.ingredient_id, min(ri.position) AS first_position FROM recipe_ingredients ri
+      JOIN ingredients i ON i.id = ri.ingredient_id
+      WHERE ri.recipe_id = r.id AND ri.optional = 0 AND i.pantry_staple = 0
+      GROUP BY ri.ingredient_id))`;
 
 export function writeCatalog(input: WriteInput): DbCheck {
   rmSync(input.path, { force: true });
@@ -122,10 +147,12 @@ export function writeCatalog(input: WriteInput): DbCheck {
     const insertRecipe = db.prepare(
       `INSERT INTO recipes (id, slug, title, summary, cuisine, region, course, total_minutes, active_minutes, servings, effort,
          image_url, image_credit, source_name, source_url, license, kcal, protein_g, carbs_g, fat_g, sat_fat_g, fiber_g, sugar_g,
-         added_sugar_g, sodium_mg, nutrition_confidence, allergens, diet_flags, goal_tags, gentle, health_score, family_id)
+         added_sugar_g, sodium_mg, nutrition_confidence, allergens, diet_flags, goal_tags, gentle, health_score, family_id,
+         ingredient_ids, core_ingredient_ids)
        VALUES (@id, @slug, @title, @summary, @cuisine, @region, @course, @total_minutes, @active_minutes, @servings, @effort,
          @image_url, @image_credit, @source_name, @source_url, @license, @kcal, @protein_g, @carbs_g, @fat_g, @sat_fat_g, @fiber_g,
-         @sugar_g, @added_sugar_g, @sodium_mg, @nutrition_confidence, @allergens, @diet_flags, @goal_tags, @gentle, @health_score, @family_id)`,
+         @sugar_g, @added_sugar_g, @sodium_mg, @nutrition_confidence, @allergens, @diet_flags, @goal_tags, @gentle, @health_score, @family_id,
+         @ingredient_ids, @core_ingredient_ids)`,
     );
     const insertLine = db.prepare(
       `INSERT INTO recipe_ingredients (recipe_id, position, ingredient_id, text, quantity, unit, grams, section, optional)
@@ -174,6 +201,8 @@ export function writeCatalog(input: WriteInput): DbCheck {
           gentle: r.gentle,
           health_score: r.health_score,
           family_id: r.family_id,
+          ingredient_ids: JSON.stringify(r.ingredient_ids),
+          core_ingredient_ids: JSON.stringify(r.core_ingredient_ids),
         });
         for (const line of r.ingredients) {
           insertLine.run(r.id, line.position, line.ingredient_id, line.text, line.quantity, line.unit, line.grams, line.section, line.optional);
@@ -190,8 +219,9 @@ export function writeCatalog(input: WriteInput): DbCheck {
     const integrity = String(db.pragma('integrity_check', { simple: true }));
     const foreignKeyViolations = (db.pragma('foreign_key_check') as unknown[]).length;
     const ftsRows = (db.prepare('SELECT count(*) AS n FROM recipes_fts').get() as { n: number }).n;
+    const ingredientListMismatches = (db.prepare(INGREDIENT_LIST_MISMATCH_SQL).get() as { n: number }).n;
     db.exec('VACUUM');
-    return { integrity, foreignKeyViolations, ftsRows };
+    return { integrity, foreignKeyViolations, ftsRows, ingredientListMismatches };
   } finally {
     db.close();
   }

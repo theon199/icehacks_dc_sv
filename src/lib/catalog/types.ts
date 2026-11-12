@@ -147,10 +147,9 @@ export interface RecipeSummary {
 /**
  * A summary plus the matched ingredient ids, for pantry matching and diversity in ranking.
  *
- * Both id lists come out in recipe (line position) order, but only because SQLite walks a recipe's
- * lines through the `(recipe_id, position)` primary key while aggregating: `json_group_array` has no
- * ORDER BY of its own. Callers should treat the order as a convenience, not a contract; nothing in
- * ranking or pantry matching depends on it.
+ * The catalog build stores both id lists in recipe (line position) order, each id at its first
+ * qualifying line. Callers should still treat the order as a convenience, not a contract; nothing
+ * in ranking or pantry matching depends on it.
  */
 export interface RecipeCandidate extends RecipeSummary {
   /** Every matched ingredient id, once each (staples and optional lines included). */
