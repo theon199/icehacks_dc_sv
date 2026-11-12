@@ -10,6 +10,7 @@ import { Composer } from '../components/Composer';
 import { ConversationFooter } from '../components/ConversationFooter';
 import { MessageList } from '../components/MessageList';
 import { ThreadDrawer } from '../components/ThreadDrawer';
+import { useChefSession } from '../hooks/chefSession';
 import { useChefConversation } from '../hooks/useChefConversation';
 import { awaitsReply, readPhotoMark } from '../logic/conversation';
 
@@ -46,6 +47,7 @@ function ChefChat({ initialThreadId }: { initialThreadId: string | null }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const title = useChefStore((state) => (threadId ? state.threads[threadId]?.title : undefined));
   const conversation = useChefConversation(threadId, setThreadId);
+  const limitedUntil = useChefSession((state) => state.limitedUntil);
   const { messages, sending, busy, limited, problem, followUps, quotaNote, send, retry } =
     conversation;
 
@@ -57,7 +59,15 @@ function ChefChat({ initialThreadId }: { initialThreadId: string | null }) {
     setThreadId(id);
     setDrawerOpen(false);
   }, []);
-  const ask = useCallback((question: string) => send({ text: question }), [send]);
+  // Suggestion chips skip the Composer, so they need their own check: while today's allowance is
+  // spent the server would only refuse the question, and it would still land in the synced thread.
+  const ask = useCallback(
+    (question: string) => {
+      if (limited) return;
+      send({ text: question });
+    },
+    [limited, send],
+  );
 
   const empty = messages.length === 0 && !sending;
   const heading = title ? readPhotoMark(title).text : 'New chat';
@@ -108,7 +118,7 @@ function ChefChat({ initialThreadId }: { initialThreadId: string | null }) {
           />
         )}
       </View>
-      <Composer busy={busy} onSend={send} />
+      <Composer busy={busy} limitedUntil={limitedUntil} onSend={send} />
       <ThreadDrawer
         visible={drawerOpen}
         activeThreadId={threadId}
