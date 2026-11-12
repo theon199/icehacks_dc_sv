@@ -138,7 +138,7 @@ export function useCookTimers({
   useEffect(() => {
     if (!running) return undefined;
     const interval = setInterval(() => {
-      if (appState.current() === 'active') settle(false);
+      if (appState.current() !== 'background') settle(false);
     }, tickMs);
     return () => clearInterval(interval);
   }, [running, appState, settle, tickMs]);

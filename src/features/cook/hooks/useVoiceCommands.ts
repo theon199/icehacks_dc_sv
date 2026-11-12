@@ -67,7 +67,7 @@ export function useVoiceCommands(onCommand: (command: VoiceCommand) => void) {
 
   const begin = useCallback(() => {
     clearRestart();
-    if (!wanted.current || AppState.currentState !== 'active') return;
+    if (!wanted.current || AppState.currentState === 'background') return;
     stream.current.reset();
     try {
       ExpoSpeechRecognitionModule.start({
