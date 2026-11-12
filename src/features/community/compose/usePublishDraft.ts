@@ -1,7 +1,9 @@
 /**
  * Publishing a draft: validate, upload photos with progress, call the publish function, refresh
- * the feeds. Uploaded photos are remembered for the session, so retrying after a failed publish
- * does not upload them again (unless the server says one is no longer usable).
+ * the feeds. Uploaded photos are remembered while the screen is open, so retrying after a network
+ * or server hiccup does not upload them again. When the server rejects the post itself (400/409,
+ * e.g. a photo it can no longer use), the remembered uploads are dropped and the next attempt
+ * uploads fresh copies.
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
@@ -11,7 +13,7 @@ import { isApiError } from '@/lib/api/errors';
 import type { PublishedPost } from '../api/schemas';
 import { publishPost, type PublishMediaInput } from '../deps';
 import { blurhashFor, preparePhoto, uploadPhoto } from './photoUpload';
-import { communityKeys } from '../hooks/queryKeys';
+import { communityKeys, useViewer } from '../hooks/queryKeys';
 import {
   buildPublishInput,
   hasErrors,
@@ -26,11 +28,18 @@ export type PublishPhase = 'idle' | 'uploading' | 'publishing';
 export type PublishOutcome =
   { kind: 'invalid'; errors: DraftErrors } | { kind: 'published'; post: PublishedPost };
 
-/** Codes after which previously uploaded photos must be uploaded again. */
-const STALE_MEDIA_CODES = new Set(['media_unavailable', 'media_not_uploaded', 'media_in_use']);
+/**
+ * Whether a failed publish means the uploaded photos should not be sent again. The publish
+ * function reports SQL reasons only inside its error details, which the API client does not
+ * surface, so this goes by status: any rejection of the request itself starts the photos over.
+ */
+export function shouldReuploadAfter(error: unknown): boolean {
+  return isApiError(error) && (error.status === 400 || error.status === 409);
+}
 
 export function usePublishDraft(userId: string | null) {
   const client = useQueryClient();
+  const viewer = useViewer();
   const [phase, setPhase] = useState<PublishPhase>('idle');
   const [progress, setProgress] = useState(0);
   const uploaded = useRef(new Map<string, PublishMediaInput>());
@@ -77,27 +86,30 @@ export function usePublishDraft(userId: string | null) {
         setPhase('uploading');
         const media = await uploadAll(draft, userId);
         setPhase('publishing');
-        const post = await publishPost(buildPublishInput(draft, media));
+        let post: PublishedPost;
+        try {
+          post = await publishPost(buildPublishInput(draft, media));
+        } catch (error) {
+          if (shouldReuploadAfter(error)) uploaded.current.clear();
+          throw error;
+        }
         uploaded.current.clear();
         await Promise.all([
-          client.invalidateQueries({ queryKey: communityKeys.feeds() }),
-          client.invalidateQueries({ queryKey: communityKeys.profile(userId) }),
+          client.invalidateQueries({ queryKey: communityKeys.feeds(viewer) }),
+          client.invalidateQueries({ queryKey: communityKeys.profile(viewer, userId) }),
           draft.parentPostId
-            ? client.invalidateQueries({ queryKey: communityKeys.remixes(draft.parentPostId) })
+            ? client.invalidateQueries({
+                queryKey: communityKeys.remixes(viewer, draft.parentPostId),
+              })
             : Promise.resolve(),
         ]);
         return { kind: 'published', post };
-      } catch (error) {
-        if (isApiError(error) && error.code && STALE_MEDIA_CODES.has(error.code)) {
-          uploaded.current.clear();
-        }
-        throw error;
       } finally {
         setPhase('idle');
         setProgress(0);
       }
     },
-    [client, uploadAll, userId],
+    [client, uploadAll, userId, viewer],
   );
 
   return { publish, phase, progress, busy: phase !== 'idle' };

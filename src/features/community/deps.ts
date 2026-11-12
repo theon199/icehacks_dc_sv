@@ -176,6 +176,11 @@ function mediaPayload(item: PublishMediaInput) {
   return blurhash ? { ...rest, blurhash } : rest;
 }
 
+/** An RPC returning one row answers with the row itself or, from some servers, a one-row array. */
+function firstRow(data: unknown): unknown {
+  return Array.isArray(data) ? (data as unknown[])[0] : data;
+}
+
 /** The function answers `{ post, held }` / `{ comment, held }`; a bare row is accepted too. */
 const publishPostResponse = z.union([
   z.object({ post: publishedPostSchema }).transform((value) => value.post),
@@ -219,7 +224,9 @@ export async function publishPost(input: PublishPostInput): Promise<PublishedPos
     p_media: input.media.map(mediaPayload),
   });
   if (error) throw toApiError('publish_post', error);
-  return publishedPostSchema.parse(data);
+  // The row is already written by now. Reading the answer too strictly would report a failure
+  // and invite a retry that posts twice, so the object and one-row array forms are both accepted.
+  return publishedPostSchema.parse(firstRow(data));
 }
 
 /** Publishes a comment or a reply. A `status` of `hidden` means it is held for review. */
@@ -245,5 +252,5 @@ export async function publishComment(input: PublishCommentInput): Promise<Publis
     ...(input.parentCommentId ? { p_parent_comment_id: input.parentCommentId } : {}),
   });
   if (error) throw toApiError('add_comment', error);
-  return publishedCommentSchema.parse(Array.isArray(data) ? data[0] : data);
+  return publishedCommentSchema.parse(firstRow(data));
 }

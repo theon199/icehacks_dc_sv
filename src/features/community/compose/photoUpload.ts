@@ -90,7 +90,7 @@ export async function uploadPhoto({
         apikey: env.supabasePublishableKey,
         'Content-Type': 'image/jpeg',
         'x-upsert': 'false',
-        'cache-control': '31536000',
+        'cache-control': 'max-age=31536000',
       },
       onProgress: ({ bytesSent, totalBytes }) => {
         if (totalBytes > 0) onProgress?.(bytesSent / totalBytes);

@@ -16,20 +16,22 @@ jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
 }));
 
-jest.mock('expo-speech-recognition', () => ({
-  ExpoSpeechRecognitionModule: {
+// Dictation is unavailable in these tests, so the mic button stays hidden.
+jest.mock('expo-speech-recognition', () => {
+  const speech = {
     isRecognitionAvailable: () => false,
     requestPermissionsAsync: jest.fn(),
     start: jest.fn(),
     stop: jest.fn(),
-  },
-  useSpeechRecognitionEvent: jest.fn(),
-}));
+    abort: jest.fn(),
+  };
+  return { ExpoSpeechRecognitionModule: speech, useSpeechRecognitionEvent: () => undefined };
+});
 
 jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(),
   launchCameraAsync: jest.fn(),
-  requestCameraPermissionsAsync: jest.fn(),
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: false })),
 }));
 
 jest.mock('../compose/photoUpload', () => ({
@@ -52,6 +54,7 @@ jest.mock('../deps', () => ({
 }));
 
 const publishMock = jest.mocked(publishPost);
+const goBackMock = jest.mocked(router.back);
 
 beforeEach(() => {
   useSessionStore.setState({ userId: 'me', status: 'ready' });
@@ -92,7 +95,7 @@ describe('ComposeScreen', () => {
       parentPostId: null,
       media: [],
     });
-    await waitFor(() => expect(router.back).toHaveBeenCalled());
+    await waitFor(() => expect(goBackMock).toHaveBeenCalled());
     expect(useComposeDraftStore.getState().draft).toEqual(emptyDraft);
   });
 

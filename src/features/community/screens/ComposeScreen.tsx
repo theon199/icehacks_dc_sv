@@ -1,5 +1,5 @@
 import { router, Stack } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
@@ -9,6 +9,7 @@ import { Button, IconButton, Screen, SegmentedControl, Text, TextField, toast } 
 
 import type { PostKind } from '../api/schemas';
 import { RatingInput } from '../components/RatingStars';
+import { keepAvailablePhotos } from '../compose/draftPhotos';
 import { useComposeDraftStore } from '../compose/draftStore';
 import { PhotoPicker } from '../compose/PhotoPicker';
 import { RecipePicker } from '../compose/RecipePicker';
@@ -37,7 +38,7 @@ const KINDS = (['cook', 'remix', 'tip'] as const).map((kind) => ({
   label: KIND_COPY[kind].label,
 }));
 
-function close() {
+function goBack() {
   if (router.canGoBack()) router.back();
   else router.replace('/community');
 }
@@ -55,7 +56,17 @@ export function ComposeScreen({ recipeId, remixOf }: ComposeScreenProps) {
   const { publish, phase, progress, busy } = usePublishDraft(userId);
 
   useEffect(() => {
-    if (userId) useComposeDraftStore.getState().claim(userId);
+    if (!userId) return;
+    const store = useComposeDraftStore.getState();
+    store.claim(userId);
+    const saved = useComposeDraftStore.getState().draft.photos;
+    const available = keepAvailablePhotos(saved);
+    if (available.length !== saved.length) {
+      store.update({ photos: available });
+      toast.show({
+        message: 'Some photos in your draft are no longer on this phone. Add them again.',
+      });
+    }
   }, [userId]);
 
   const parent = usePost(remixOf ?? '');
@@ -71,6 +82,21 @@ export function ComposeScreen({ recipeId, remixOf }: ComposeScreenProps) {
   useComposePresets(presets);
 
   const dictation = useDictation(draft.body, (body) => update({ body }));
+  const { cancel: cancelDictation } = dictation;
+
+  // A publish can outlive the sheet; once it is gone, report the outcome without navigating.
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
+
+  const close = useCallback(() => {
+    cancelDictation();
+    goBack();
+  }, [cancelDictation]);
 
   const edit = (patch: Parameters<typeof update>[0]) => {
     update(patch);
@@ -78,23 +104,35 @@ export function ComposeScreen({ recipeId, remixOf }: ComposeScreenProps) {
   };
 
   const submit = async () => {
-    dictation.stop();
+    // What is on screen is what gets posted; a phrase still being recognised is dropped.
+    cancelDictation();
     try {
       const outcome = await publish(draft);
       if (outcome.kind === 'invalid') {
+        if (!mounted.current) return;
         setErrors(outcome.errors);
         haptics.warning();
         return;
       }
       reset();
-      if (outcome.post.status === 'visible') {
+      const held = outcome.post.status !== 'visible';
+      if (!mounted.current) {
+        if (held) toast.show({ message: HELD_POST_MESSAGE, durationMs: 6000 });
+        else toast.success('Shared with the community.');
+        return;
+      }
+      if (held) {
+        Alert.alert('Waiting for review', HELD_POST_MESSAGE, [{ text: 'OK', onPress: goBack }]);
+      } else {
         haptics.success();
         toast.success('Shared with the community.');
-        close();
-      } else {
-        Alert.alert('Waiting for review', HELD_POST_MESSAGE, [{ text: 'OK', onPress: close }]);
+        goBack();
       }
     } catch (error) {
+      if (!mounted.current) {
+        toast.error(`Your post wasn't shared. ${publishErrorMessage(error)}`);
+        return;
+      }
       haptics.error();
       Alert.alert("Couldn't post", publishErrorMessage(error));
     }
@@ -133,6 +171,8 @@ export function ComposeScreen({ recipeId, remixOf }: ComposeScreenProps) {
     >
       <Stack.Screen
         options={{
+          // No swiping the sheet away while photos upload or the post is being sent.
+          gestureEnabled: !busy,
           headerLeft: () => (
             <Button label="Close" variant="ghost" size="sm" onPress={close} disabled={busy} />
           ),
