@@ -142,12 +142,13 @@ describeDb('PantryScreen', () => {
     await waitFor(() => expect(screen.queryByTestId('staple-salt')).toBeNull());
   });
 
-  it('opens Snap to add from a photo', async () => {
+  it('opens the Snap camera, not its results screen, to add from a photo', async () => {
     useSessionStore.setState({ birthYear: 1990, aiConsent: true });
     const user = userEvent.setup();
     await renderPantry();
     await user.press(screen.getByTestId('pantry-snap'));
-    expect(router.push).toHaveBeenCalledWith('/snap/pantry');
+    expect(router.push).toHaveBeenCalledWith('/snap');
+    expect(router.push).not.toHaveBeenCalledWith('/snap/pantry');
   });
 
   it('asks for the AI agreement before Snap', async () => {
@@ -156,7 +157,7 @@ describeDb('PantryScreen', () => {
     await renderPantry();
     await user.press(screen.getByTestId('pantry-snap'));
     expect(router.push).toHaveBeenCalledWith('/ai-consent');
-    expect(router.push).not.toHaveBeenCalledWith('/snap/pantry');
+    expect(router.push).not.toHaveBeenCalledWith('/snap');
   });
 
   it('does not offer Snap to anyone under the AI age', async () => {

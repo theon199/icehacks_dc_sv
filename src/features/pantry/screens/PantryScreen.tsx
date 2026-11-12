@@ -22,6 +22,12 @@ import { restorePantryItem, useSnapAccess } from '../deps';
 import type { PantryPatch } from '../editForm';
 import { SHELF_TITLES } from '../shelves';
 
+/**
+ * The Snap camera (the Snap tab). Its pantry results screen reads the photo the camera just took,
+ * so it is only ever reached from there, never opened directly.
+ */
+const SNAP_CAMERA_HREF = '/snap';
+
 type Row =
   | { type: 'shelf'; key: string; title: string; count: number }
   | { type: 'item'; key: string; item: PantryItem };
@@ -111,10 +117,10 @@ export function PantryScreen() {
           label="Scan your shelves with Snap"
           icon="camera"
           variant="secondary"
-          onPress={() => router.push(snap === 'open' ? '/snap/pantry' : '/ai-consent')}
+          onPress={() => router.push(snap === 'open' ? SNAP_CAMERA_HREF : '/ai-consent')}
           accessibilityHint={
             snap === 'open'
-              ? 'Take a photo and add what it finds'
+              ? 'Opens the Snap camera to photograph your shelves'
               : 'Snap uses AI. Opens the AI agreement first'
           }
         />
