@@ -15,6 +15,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { useSessionStore } from '@/features/auth';
+import { unregisterPushDevice } from '@/features/notifications';
 import { logger } from '@/lib/logger';
 import { persistStorage } from '@/lib/storage/kv';
 
@@ -375,6 +376,9 @@ export async function savePersonalDetails(details: PersonalDetails): Promise<voi
 
 // ---------------------------------------------------------------------------------------------
 // Account lifecycle
+
+/** Detaches this device from the account's push notifications; never throws. */
+export { unregisterPushDevice };
 
 /** Everything this device holds for the signed-in account, for the data export. */
 export async function collectLocalData(): Promise<Record<string, unknown>> {
