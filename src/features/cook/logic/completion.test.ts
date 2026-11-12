@@ -176,6 +176,7 @@ describe('flushPendingCookEvents', () => {
     const delivered = await flushPendingCookEvents('user-1', {
       recordCookEvent: rpc,
       classifyFailure: classifyCookEventError,
+      currentUserId: () => 'user-1',
     });
 
     expect(delivered).toBe(2);
@@ -201,6 +202,7 @@ describe('flushPendingCookEvents', () => {
       recordCookEvent: rpc,
       classifyFailure: classifyCookEventError,
       now: () => now,
+      currentUserId: () => 'user-1',
     });
 
     expect(delivered).toBe(0);
@@ -237,7 +239,9 @@ describe('badgeMessage', () => {
 });
 
 describe('flushPendingCookEvents across accounts', () => {
-  it('runs a separate flush for a second account while the first is still sending', async () => {
+  it('runs a separate flush for the next account while the first is still sending', async () => {
+    let signedIn = 'user-1';
+    const currentUserId = () => signedIn;
     const at = new Date();
     const queue = usePendingCookEvents.getState();
     queue.add(
@@ -260,14 +264,19 @@ describe('flushPendingCookEvents across accounts', () => {
     const first = flushPendingCookEvents('user-1', {
       recordCookEvent: slow,
       classifyFailure: classifyCookEventError,
+      currentUserId,
     });
     const again = flushPendingCookEvents('user-1', {
       recordCookEvent: fast,
       classifyFailure: classifyCookEventError,
+      currentUserId,
     });
+    // The first account's send is already on its way when the next account signs in.
+    signedIn = 'user-2';
     const second = flushPendingCookEvents('user-2', {
       recordCookEvent: fast,
       classifyFailure: classifyCookEventError,
+      currentUserId,
     });
 
     expect(again).toBe(first);

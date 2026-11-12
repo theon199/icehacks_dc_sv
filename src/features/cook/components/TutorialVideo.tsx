@@ -1,12 +1,13 @@
 import * as WebBrowser from 'expo-web-browser';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 
 import { Button, Text, useTheme } from '@/ui';
 
-import { youtubeEmbedUrl, type TutorialVideo as Video } from '../logic/session';
+import type { TutorialVideo as Video } from '../logic/session';
 import { decideVideoLoad } from '../logic/videoNavigation';
+import { VIDEO_PAGE_URL, videoPageHtml } from '../logic/videoPage';
 
 const ALL_ORIGINS = ['*'];
 
@@ -15,17 +16,26 @@ export interface TutorialVideoProps {
 }
 
 /**
- * The recipe's tutorial video, playing inline above the step. The embed and the frames inside it
- * load in place; a link the cook taps opens in the system browser, and nothing else navigates away
- * (see `decideVideoLoad`).
+ * The recipe's tutorial video, playing inline above the step. The embed sits inside a small local
+ * page with an https base URL, so YouTube sees a referrer and agrees to play it (see `videoPage`).
+ * The page, the embed and the frames inside it load in place; a link the cook taps opens in the
+ * system browser, and nothing else navigates away (see `decideVideoLoad`).
  */
 export function TutorialVideo({ video }: TutorialVideoProps) {
   const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const label = video.title ?? 'Recipe video';
+  const source = useMemo(
+    () =>
+      video.youtubeId
+        ? { html: videoPageHtml(video.youtubeId, label), baseUrl: VIDEO_PAGE_URL }
+        : null,
+    [video.youtubeId, label],
+  );
   const openExternally = () => void WebBrowser.openBrowserAsync(video.url).catch(() => undefined);
 
-  if (!video.youtubeId || failed) {
+  if (!source || failed) {
     return (
       <View
         style={[
@@ -41,7 +51,6 @@ export function TutorialVideo({ video }: TutorialVideoProps) {
     );
   }
 
-  const embed = youtubeEmbedUrl(video.youtubeId);
   const allowNavigation = (request: WebViewNavigation & { isTopFrame?: boolean }) => {
     const decision = decideVideoLoad(request);
     if (decision === 'external') {
@@ -60,7 +69,7 @@ export function TutorialVideo({ video }: TutorialVideoProps) {
         accessibilityLabel={video.title ? `Video: ${video.title}` : 'Recipe video'}
       >
         <WebView
-          source={{ uri: embed }}
+          source={source}
           style={styles.web}
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction

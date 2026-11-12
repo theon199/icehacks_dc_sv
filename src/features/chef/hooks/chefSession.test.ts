@@ -202,3 +202,58 @@ describe('askChef daily limit', () => {
     expect(useChefSession.getState().limitedUntil).toBe(NOW + HOUR_MS);
   });
 });
+
+describe('askChef when the safety answers change during the answer', () => {
+  const satay = recipe('r:satay', { title: 'Peanut satay', allergens: { peanut: 'contains' } });
+
+  beforeEach(() => {
+    jest.mocked(listCandidates).mockResolvedValue([
+      { ...satay, ingredientIds: [], coreIngredientIds: [] },
+      { ...lentils, ingredientIds: [], coreIngredientIds: [] },
+    ]);
+    jest.mocked(searchRecipes).mockResolvedValue({ items: [], nextCursor: null });
+  });
+
+  function assistantMessage(threadId: string) {
+    return useChefStore.getState().threads[threadId]?.messages.find((m) => m.role === 'assistant');
+  }
+
+  it('stores a notice instead of wording that recommends a dish that is unsafe now', async () => {
+    const threadId = threadWithQuestion();
+    const answer = deferredAnswer();
+    const asking = askChef({ threadId, photo: null });
+    await untilAsked();
+
+    usePreferencesStore.setState({ prefs: answeredPrefs({ allergens: ['peanut'] }) });
+    answer.resolve(
+      reply({
+        reply: 'The **peanut satay** is perfect tonight.',
+        recipe_ids: ['r:satay', 'r:lentils'],
+        follow_ups: ['Can I make the satay ahead?'],
+      }),
+    );
+    await asking;
+
+    const message = assistantMessage(threadId);
+    expect(message?.text).toBe(
+      "Your food preferences changed while I was answering. Ask again and I'll use the new ones.",
+    );
+    expect(message?.text).not.toMatch(/satay/i);
+    expect(message?.recipeIds).toEqual(['r:lentils']);
+    expect(useChefSession.getState().followUps[threadId]).toEqual([]);
+    expect(useChefSession.getState().sendingIn).toBeNull();
+  });
+
+  it('keeps the answer as written when the answers stay the same', async () => {
+    const threadId = threadWithQuestion();
+    askSpy.mockResolvedValue(
+      reply({ reply: 'The peanut satay is perfect tonight.', recipe_ids: ['r:satay'] }),
+    );
+    await askChef({ threadId, photo: null });
+
+    const message = assistantMessage(threadId);
+    expect(message?.text).toBe('The peanut satay is perfect tonight.');
+    expect(message?.recipeIds).toEqual(['r:satay']);
+    expect(useChefSession.getState().followUps[threadId]).toEqual(['Make it spicier?']);
+  });
+});

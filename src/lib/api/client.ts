@@ -8,7 +8,7 @@
 import type { z } from 'zod';
 
 import { getPublicEnv } from '../env';
-import { ApiError, INVALID_RESPONSE, kindForStatus } from './errors';
+import { ApiError, INVALID_RESPONSE, kindForStatus, readErrorDetails } from './errors';
 import { getAccessToken } from '../supabase/client';
 
 export const DEFAULT_TIMEOUT_MS = 20_000;
@@ -133,14 +133,16 @@ export function createApiClient(deps: ApiClientDeps) {
       });
 
       if (!response.ok) {
-        const details = readErrorBody(body);
+        const envelope = readErrorBody(body);
+        const details = readErrorDetails(body);
         const retryAfter = parseRetryAfter(response.headers.get('retry-after'));
         throw new ApiError({
           kind: kindForStatus(response.status),
           functionName: name,
           status: response.status,
-          ...(details.code ? { code: details.code } : {}),
-          ...(details.message ? { serverMessage: details.message } : {}),
+          ...(envelope.code ? { code: envelope.code } : {}),
+          ...(envelope.message ? { serverMessage: envelope.message } : {}),
+          ...(details ? { details } : {}),
           ...(retryAfter !== undefined ? { retryAfterSeconds: retryAfter } : {}),
         });
       }

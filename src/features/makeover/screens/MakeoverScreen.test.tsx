@@ -193,6 +193,43 @@ describe('MakeoverScreen', () => {
     await waitFor(() => expect(screen.getByTestId('makeover-start')).toBeDisabled());
   });
 
+  it('names the allergens a refused makeover still contained', async () => {
+    makeover.mockRejectedValue(
+      new ApiError({
+        kind: 'server',
+        functionName: 'makeover',
+        status: 422,
+        code: 'ai_refused',
+        details: { reason: 'allergen_conflict', allergens: ['milk', 'egg', 'not-an-allergen'] },
+      }),
+    );
+    await renderMakeover();
+    await runMakeover();
+
+    const problem = await screen.findByTestId('makeover-problem');
+    expect(problem).toHaveTextContent(/That version still had milk and egg/);
+    expect(problem).toHaveTextContent(/Try again, or pick different goals/);
+    expect(screen.getByTestId('makeover-start')).toBeEnabled();
+  });
+
+  it('keeps the general wording for a refusal that is not about allergens', async () => {
+    makeover.mockRejectedValue(
+      new ApiError({
+        kind: 'server',
+        functionName: 'makeover',
+        status: 422,
+        code: 'ai_refused',
+        details: { reason: 'policy' },
+      }),
+    );
+    await renderMakeover();
+    await runMakeover();
+
+    const problem = await screen.findByTestId('makeover-problem');
+    expect(problem).toHaveTextContent(/Make it healthier couldn't answer that/);
+    expect(problem).not.toHaveTextContent(/still had/);
+  });
+
   it('asks for the allergen answer before starting', async () => {
     usePreferencesStore.setState({ prefs: answeredPrefs({ allergensAnswered: false }) });
     await renderMakeover();
