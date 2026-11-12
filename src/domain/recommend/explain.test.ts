@@ -97,13 +97,53 @@ describe('explainRecipe', () => {
     expect(texts(reasons)).toContain('Uses 1 thing in your pantry');
   });
 
-  it('always returns two or three reasons for a timed dish', () => {
+  it('always returns two or three distinct reasons', () => {
     for (const target of CATALOG) {
-      const reasons = explain(target, {});
-      if (target.totalMinutes !== null) expect(reasons.length).toBeGreaterThanOrEqual(2);
-      expect(reasons.length).toBeLessThanOrEqual(3);
-      expect(new Set(reasons.map((r) => r.code)).size).toBe(reasons.length);
+      for (const prefs of [{}, { cuisines: ['thai'], goals: ['more_fiber' as const] }]) {
+        const reasons = explain(target, prefs);
+        expect(reasons.length).toBeGreaterThanOrEqual(2);
+        expect(reasons.length).toBeLessThanOrEqual(3);
+        expect(new Set(reasons.map((r) => r.code)).size).toBe(reasons.length);
+      }
     }
+  });
+
+  it('still gives two truthful reasons when time and calories are unknown', () => {
+    const sparse = makeRecipe({
+      cuisine: 'polish',
+      totalMinutes: null,
+      effort: 2,
+      healthScore: 0.3,
+      nutrition: { ...makeRecipe().nutrition, kcal: null },
+    });
+    expect(explain(sparse, {})).toEqual([
+      { code: 'cuisine', text: 'Polish cooking' },
+      { code: 'effort', text: 'Moderate effort' },
+    ]);
+    const tagged = makeRecipe({ ...sparse, id: 'test:tagged', goalTags: ['high_fiber'] });
+    expect(texts(explain(tagged, {}))).toEqual(['Good source of fiber', 'Polish cooking']);
+  });
+
+  it('tops up a single personal reason with a fact', () => {
+    const loved = makeRecipe({
+      cuisine: 'thai',
+      totalMinutes: null,
+      effort: 3,
+      healthScore: 0.3,
+      nutrition: { ...makeRecipe().nutrition, kcal: null },
+    });
+    expect(texts(explain(loved, { cuisines: ['thai'] }))).toEqual([
+      'You love Thai food',
+      'A project worth the effort',
+    ]);
+  });
+
+  it('gives the gentle reason in gentle mode even without small appetite mode', () => {
+    const gentle = explain(recipe('miso-soup'), { smallAppetite: false }, {}, 'gentle');
+    expect(gentle[0]).toEqual({ code: 'gentle', text: 'Gentle on a small appetite' });
+    expect(texts(explain(recipe('miso-soup'), { smallAppetite: false }))).not.toContain(
+      'Gentle on a small appetite',
+    );
   });
 
   it('falls back to plain facts when nothing personal applies', () => {

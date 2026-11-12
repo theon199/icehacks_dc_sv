@@ -6,8 +6,8 @@
 import { type RankContext } from './context';
 import { isNovel, pantryOwned, type FeatureVector } from './score';
 import { cuisineLabel, REGION_LABELS } from '../types/cuisines';
-import { GOAL_DETAILS, recipeGoalMask, type Goal } from '../types/goals';
-import { type RecipeSummary } from '../types/recipe';
+import { GOAL_DETAILS, recipeGoalMask, type Goal, type GoalTag } from '../types/goals';
+import { type Effort, type RecipeSummary } from '../types/recipe';
 
 export type FitReasonCode =
   | 'goal'
@@ -20,7 +20,10 @@ export type FitReasonCode =
   | 'easy'
   | 'nutrient_dense'
   | 'gentle'
-  | 'energy';
+  | 'energy'
+  | 'nutrition_tag'
+  | 'cuisine'
+  | 'effort';
 
 export interface FitReason {
   readonly code: FitReasonCode;
@@ -37,6 +40,23 @@ const GOAL_REASON: Readonly<Record<Goal, string>> = {
   lighter_meals: 'A lighter meal, for your goal',
   plant_forward: 'Plant-forward, like you wanted',
   steady_energy: 'Fiber and protein for steadier energy',
+};
+
+/** Plain facts from the catalog's nutrition tags, used when nothing personal applies. */
+const GOAL_TAG_FACT: Readonly<Record<GoalTag, string>> = {
+  high_protein: 'High in protein',
+  high_fiber: 'Good source of fiber',
+  lower_sodium: 'Lower in sodium',
+  lower_sat_fat: 'Lower in saturated fat',
+  lower_calorie: 'On the lighter side',
+  plant_forward: 'Mostly plants',
+  heart_friendly: 'Heart-friendly',
+};
+
+const EFFORT_FACT: Readonly<Record<Effort, string>> = {
+  1: 'Easy to make',
+  2: 'Moderate effort',
+  3: 'A project worth the effort',
 };
 
 /** Boost that keeps the reason matching the current mode on top. */
@@ -126,7 +146,7 @@ export function explainRecipe(
     push('taste', "Like dishes you've enjoyed", w.tasteHistory * (features.tasteHistory - 0.5) * 2);
   }
 
-  if (ctx.prefs.smallAppetite && recipe.gentle) {
+  if (recipe.gentle && (ctx.prefs.smallAppetite || mode === 'gentle')) {
     push('gentle', 'Gentle on a small appetite', ctx.config.boosts.gentle);
   }
   if (recipe.effort === 1) push('easy', 'Easy to make', w.effortFit * 0.25);
@@ -138,13 +158,20 @@ export function explainRecipe(
   const reasons = found.slice(0, MAX_REASONS).map(({ code, text }) => ({ code, text }));
   if (reasons.length >= MIN_REASONS) return reasons;
 
-  // Every card should say something; fall back to plain facts about the dish.
-  if (minutes !== null && !reasons.some((r) => r.code === 'time')) {
-    reasons.push({ code: 'time', text: `Ready in ${formatMinutes(minutes)}` });
-  }
+  // Every card says at least two things. Fall back to plain facts about the dish, starting with
+  // the most useful; the last two (cuisine and effort) are always known, so two is guaranteed.
+  const has = (...codes: FitReasonCode[]) => reasons.some((r) => codes.includes(r.code));
+  const add = (code: FitReasonCode, text: string) => {
+    if (reasons.length < MIN_REASONS) reasons.push({ code, text });
+  };
+  if (minutes !== null && !has('time')) add('time', `Ready in ${formatMinutes(minutes)}`);
+  const tag = recipe.goalTags[0];
+  if (tag !== undefined && !has('goal', 'nutrient_dense')) add('nutrition_tag', GOAL_TAG_FACT[tag]);
   const kcal = recipe.nutrition.kcal;
-  if (reasons.length < MIN_REASONS && kcal !== null && kcal > 0) {
-    reasons.push({ code: 'energy', text: `${Math.round(kcal)} kcal per serving` });
+  if (kcal !== null && kcal > 0) add('energy', `${Math.round(kcal)} kcal per serving`);
+  if (!has('loved_cuisine', 'near_loved_cuisine', 'new_cuisine')) {
+    add('cuisine', `${cuisineLabel(recipe.cuisine)} cooking`);
   }
-  return reasons.slice(0, MAX_REASONS);
+  if (!has('easy')) add('effort', EFFORT_FACT[recipe.effort]);
+  return reasons;
 }
