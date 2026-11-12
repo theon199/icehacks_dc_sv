@@ -66,3 +66,11 @@ describe('splitSteps', () => {
     assert.deepEqual(splitSentences('Add 1 tsp. salt and stir. Serve.'), ['Add 1 tsp. salt and stir.', 'Serve.']);
   });
 });
+
+describe('single-paragraph recipes', () => {
+  it('are split into short steps', () => {
+    const steps = splitSteps(['Heat the oil in a pan. Add the onion and cook until soft. Stir in the beans and tomatoes. Simmer for 10 minutes and serve.']);
+    assert.ok(steps.length >= 2);
+    assert.ok(steps.every((s) => s.length <= 200));
+  });
+});

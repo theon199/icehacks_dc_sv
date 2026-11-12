@@ -52,7 +52,7 @@ pickles legitimately have tiny servings). Otherwise the recipe ships with `nutri
 | TheMealDB | USDA-based totals ÷ estimated servings | `estimated` |
 
 **Added sugars.** USDA FPED reports added sugars per survey food code, which does not map onto the
-SR Legacy/Foundation foods Famara uses, so it is not used. Instead, added sugar is the total sugar
+Standard Reference and Foundation foods Famara uses, so it is not used. Instead, added sugar is the total sugar
 of ingredients that are themselves sweeteners or sweetened products (sugar, syrups, honey, jams,
 sweetened condensed milk, ketchup, sweet sauces, chocolate, sweetened dried fruit …; flagged
 `addedSugar` in the knowledge tables). MedlinePlus values come from the label when it prints
@@ -81,7 +81,8 @@ Ranges use the lower bound so the cook checks early. Durations after *within*, *
 
 **Steps.** Instructions are split on line breaks; `STEP n` labels, numbering and bullets are
 removed; sub-headings ending in a colon are merged into the next step; paragraphs over 420
-characters are regrouped by sentence.
+characters are regrouped by sentence. A recipe written as a single paragraph of three or more
+sentences is regrouped into steps of at most two sentences (≤ 200 characters) for cook mode.
 
 **Effort** (1 easy … 3 involved). Points: ingredient lines > 8 → 1, > 12 → 2; steps > 5 → 1, > 8 → 2;
 active minutes > 25 → 1, > 45 → 2; +1 for an involved technique (deep-frying, kneading, proving,

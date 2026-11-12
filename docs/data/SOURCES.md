@@ -22,7 +22,7 @@ The app's **Data sources & credits** page can show the following text as-is.
 > public-domain content.
 >
 > **Nutrition data** — U.S. Department of Agriculture, Agricultural Research Service.
-> **FoodData Central** (fdc.nal.usda.gov): SR Legacy (April 2018) and Foundation Foods
+> **FoodData Central** (fdc.nal.usda.gov): Standard Reference (April 2018 release) and Foundation Foods
 > (April 2026). Public domain (CC0 1.0).
 >
 > **Video and web tutorials** — Links open the original publisher's page or video (for example
@@ -37,7 +37,7 @@ The app's **Data sources & credits** page can show the following text as-is.
 | --- | --- | --- | --- | --- |
 | TheMealDB API v1 (`https://www.themealdb.com/api/json/v1/1/`) | Every meal: name, category, area, instructions, ingredient + measure pairs, thumbnail URL, YouTube link, source link | `search.php?f=a…z`, cross-checked with `list.php` + `filter.php` by category and area, `lookup.php` for any id the letter search missed | Free API. The test key `1` is for development and education; TheMealDB asks apps released publicly on an app store to become a supporter (see Follow-ups in the PR) | "TheMealDB" on every recipe and photo |
 | MedlinePlus Healthy Recipes (`https://medlineplus.gov/recipes/`) | Category index pages and every recipe page: title, prep/cook/total time, servings, ingredients (with sub-sections), directions, photo, Nutrition Facts panel | HTML pages, robots.txt respected (no disallowed paths are fetched) | Listed by MedlinePlus as public domain ("Healthy recipes" in *Linking to and Using Content from MedlinePlus*) | "Courtesy of MedlinePlus from the National Library of Medicine"; original publisher (FoodHero.org or NHLBI) kept in `source_name` |
-| USDA FoodData Central — SR Legacy CSV (`FoodData_Central_sr_legacy_food_csv_2018-04.zip`) | `food`, `food_nutrient`, `nutrient`, `food_portion`, `measure_unit` for the ingredients Famara maps | Bulk download from `https://fdc.nal.usda.gov/download-datasets` | Public domain, CC0 1.0 | "USDA FoodData Central" |
+| USDA FoodData Central — Standard Reference CSV (`FoodData_Central_sr_legacy_food_csv_2018-04.zip`) | `food`, `food_nutrient`, `nutrient`, `food_portion`, `measure_unit` for the ingredients Famara maps | Bulk download from `https://fdc.nal.usda.gov/download-datasets` | Public domain, CC0 1.0 | "USDA FoodData Central" |
 | USDA FoodData Central — Foundation Foods CSV (`FoodData_Central_foundation_food_csv_2026-04-30.zip`) | Same tables, for foods only present in Foundation Foods | Bulk download, pinned release (see below) | Public domain, CC0 1.0 | "USDA FoodData Central" |
 | YouTube oEmbed (`https://www.youtube.com/oembed`) | Title of each linked video and whether it still exists | One request per video during `npm run fetch` | Used only to label and validate links; no video content is stored | Video titles shown with the publisher "YouTube" |
 | Recipe authors' web pages (from TheMealDB `strSource`) | Link only, checked with a HEAD request | One request per link during `npm run fetch` | Linked, never copied | Publisher shown as the site's host name |

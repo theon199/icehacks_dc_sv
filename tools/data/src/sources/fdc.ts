@@ -11,7 +11,7 @@ import { cachedDownload, fileExists, writeAtomic } from '../net/http.ts';
  * tables (some later bundles ship sample tables only).
  */
 export const FDC_DATASETS = [
-  { key: 'sr_legacy', zip: 'FoodData_Central_sr_legacy_food_csv_2018-04.zip', dataType: 'sr_legacy_food' },
+  { key: 'standard_reference', zip: 'FoodData_Central_sr_legacy_food_csv_2018-04.zip', dataType: 'sr_legacy_food' },
   { key: 'foundation', zip: 'FoodData_Central_foundation_food_csv_2026-04-30.zip', dataType: 'foundation_food' },
 ] as const;
 const DOWNLOAD_BASE = 'https://fdc.nal.usda.gov/fdc-datasets/';

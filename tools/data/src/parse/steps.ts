@@ -4,6 +4,9 @@
 
 const MAX_STEP_CHARS = 420;
 const MIN_STEP_CHARS = 12;
+/** One-paragraph recipes are regrouped into steps of at most two sentences and 200 characters. */
+const SINGLE_PARAGRAPH_STEP_CHARS = 200;
+const SINGLE_PARAGRAPH_STEP_SENTENCES = 2;
 
 const HEADING_ONLY = /^(?:step\s*\d+|method|instructions?|directions?|preparation|to serve|\d+)[\s.:)-]*$/i;
 const LEADING_LABEL = /^(?:step\s*\d+\s*[:.)-]?\s*|\d{1,2}\s*[.)]\s+|\d{1,2}\s*-\s+|[-•*▪●]\s*)/i;
@@ -40,15 +43,18 @@ export function splitSentences(text: string): string[] {
 }
 
 /** Groups sentences into steps no longer than MAX_STEP_CHARS. */
-function chunk(sentences: string[]): string[] {
+function chunk(sentences: string[], maxChars = MAX_STEP_CHARS, maxSentences = Infinity): string[] {
   const out: string[] = [];
   let current = '';
+  let count = 0;
   for (const sentence of sentences) {
-    if (current && current.length + sentence.length + 1 > MAX_STEP_CHARS) {
+    if (current && (current.length + sentence.length + 1 > maxChars || count >= maxSentences)) {
       out.push(current);
       current = sentence;
+      count = 1;
     } else {
       current = current ? `${current} ${sentence}` : sentence;
+      count++;
     }
   }
   if (current) out.push(current);
@@ -90,7 +96,14 @@ export function splitSteps(blocks: readonly string[]): string[] {
     if (cleaned.length <= MAX_STEP_CHARS) steps.push(cleaned);
     else steps.push(...chunk(splitSentences(cleaned)).map(tidy));
   }
-  return steps.filter((s) => s.replace(/[^a-z]/gi, '').length >= 3);
+  const kept = steps.filter((s) => s.replace(/[^a-z]/gi, '').length >= 3);
+  // A recipe written as one paragraph is easier to cook from in short steps.
+  const only = kept.length === 1 ? kept[0] : undefined;
+  if (only !== undefined) {
+    const sentences = splitSentences(only);
+    if (sentences.length >= 3) return chunk(sentences, SINGLE_PARAGRAPH_STEP_CHARS, SINGLE_PARAGRAPH_STEP_SENTENCES).map(tidy);
+  }
+  return kept;
 }
 
 const WORD_NUMBERS: Record<string, number> = {

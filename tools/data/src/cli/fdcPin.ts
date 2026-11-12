@@ -1,7 +1,7 @@
 /**
- * Curation helper: rewrites `fdc: [0, '<exact FDC description>']` placeholders in the knowledge
- * tables with the matching fdc_id (SR Legacy preferred, then Foundation). Descriptions that do not
- * match exactly are listed with the closest candidates so they can be fixed by hand.
+ * Curation helper: fills in `fdc: [0, '<exact FDC description>']` placeholders in the knowledge
+ * tables with the matching fdc_id (Standard Reference preferred, then Foundation Foods).
+ * Descriptions without an exact match are listed; find the right one with npm run fdc:lookup.
  *
  *   npm run fdc:pin
  */

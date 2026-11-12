@@ -160,7 +160,7 @@ export const PANTRY: IngredientDef[] = [
   ing('golden_syrup', 'sweetener', { syn: ['light corn syrup', 'corn syrup', 'sugar syrup', 'simple syrup', 'glucose syrup', 'caramelized sugar sauce', 'dutch stroop', 'sirop de liege', 'sirop de liège', 'apple syrup'], fdc: [168837, 'Syrups, corn, light'] }),
   ing('molasses', 'sweetener', { syn: ['black treacle', 'treacle', 'blackstrap molasses'], fdc: [168820, 'Molasses'] }),
   ing('jam', 'sweetener', { syn: ['jam', 'apricot jam', 'raspberry jam', 'strawberry jam', 'plum jam', 'blackcurrant jam', 'sorrel jam', 'preserves', 'marmalade', 'jelly', 'fruit preserves', 'apricot preserves'], fdc: [169641, 'Jams and preserves'] }),
-  ing('wine_jelly', 'sweetener', { syn: ['red wine jelly', 'port jelly'], alcohol: true, fdc: [169642, 'Jellies'] }),
+  ing('wine_jelly', 'sweetener', { syn: ['red wine jelly'], alcohol: true, fdc: [169642, 'Jellies'] }),
   ing('candied_fruit', 'sweetener', { syn: ['candied peel', 'mixed peel', 'glace cherry', 'glace cherries', 'candied cherries', 'maraschino cherries', 'candied orange peel'], aisle: 'baking', fdc: [167781, 'Candied fruit'] }),
   ing('mincemeat', 'sweetener', { syn: ['fruit mincemeat'], meat: 'beef', alcohol: true, variable: true, aisle: 'baking', fdc: [167781, 'Candied fruit'] }),
   // Dried fruit
@@ -206,7 +206,7 @@ export const PANTRY: IngredientDef[] = [
   ing('apple_juice', 'beverage', { syn: ['100% apple juice', 'apple juice', 'cloudy apple juice', 'acidic fruit juice', 'fruit juice'], fdc: [167771, 'Apple juice, canned or bottled, unsweetened, with added ascorbic acid'] }),
   ing('pineapple_juice', 'beverage', { syn: ['pineapple juice', 'peach juice', 'mango juice', 'frozen mango juice', 'cranberry juice', 'grape juice', 'tropical juice'], fdc: [168187, 'Pineapple juice, canned or bottled, unsweetened, with added ascorbic acid'] }),
   ing('coconut_water', 'beverage', { fdc: [170174, 'Nuts, coconut water (liquid from coconuts)'] }),
-  ing('red_wine', 'beverage', { syn: ['dry red wine', 'red wine', 'port', 'marsala', 'cooking wine', 'wine'], alcohol: true, fdc: [173190, 'Alcoholic beverage, wine, table, red'] }),
+  ing('red_wine', 'beverage', { syn: ['dry red wine', 'red wine', 'marsala', 'cooking wine', 'wine'], alcohol: true, fdc: [173190, 'Alcoholic beverage, wine, table, red'] }),
   ing('white_wine', 'beverage', { syn: ['dry white wine', 'white wine', 'vermouth', 'prosecco', 'champagne'], alcohol: true, fdc: [174837, 'Alcoholic beverage, wine, table, white'] }),
   ing('sherry', 'beverage', { syn: ['dry sherry', 'sweet sherry', 'cream sherry', 'madeira'], alcohol: true, fdc: [173176, 'Alcoholic beverage, wine, dessert, sweet'] }),
   ing('beer', 'beverage', { syn: ['lager', 'ale', 'dark beer', 'stout', 'guinness', 'porter'], alcohol: true, allergens: ['gluten'], fdc: [168746, 'Alcoholic beverage, beer, regular, all'] }),
