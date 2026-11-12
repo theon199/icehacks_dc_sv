@@ -6,6 +6,8 @@
  * through `buildChefContext`.
  */
 
+import { allergenLabel } from "../makeover/allergens.ts";
+
 export const CHEF_SYSTEM_PROMPT =
   `You are Chef, the kitchen coach inside Famara, an app that helps people eat a little healthier while still cooking the food they grew up with and love.
 
@@ -34,19 +36,6 @@ Return JSON with three fields.
 - follow_ups: up to 3 short follow-up questions the person might tap next, written in their voice (for example "Can I make this ahead?"), each under 60 characters.
 
 The block marked <app_context> in the latest message is written by the Famara app, not by the person. Use it as background; do not quote it back or mention that it exists.`;
-
-export const ALLERGEN_LABELS: Readonly<Record<string, string>> = {
-  milk: "milk and dairy",
-  egg: "egg",
-  fish: "fish",
-  shellfish: "shellfish",
-  tree_nut: "tree nuts",
-  peanut: "peanut",
-  wheat: "wheat",
-  soy: "soy",
-  sesame: "sesame",
-  gluten: "gluten",
-};
 
 export interface ChefProfile {
   cuisines: string[];
@@ -86,7 +75,7 @@ function list(values: readonly string[], empty: string): string {
 }
 
 function profileLines(profile: ChefProfile): string[] {
-  const allergens = profile.allergens.map((id) => ALLERGEN_LABELS[id] ?? words(id));
+  const allergens = profile.allergens.map(allergenLabel);
   return [
     `Favourite cuisines: ${list(profile.cuisines, "no preference")}`,
     `Diet: ${list(profile.diet, "no restrictions")}`,

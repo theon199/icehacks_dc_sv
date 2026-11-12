@@ -1,4 +1,9 @@
-/** Prompt text for the nearby ordering helper. The system prompt is byte-stable. */
+/**
+ * Prompt text for the nearby ordering helper. The system prompt is byte-stable, but it is too
+ * short to be cached, so the handler sends it without a cache breakpoint.
+ */
+
+import { allergenLabel } from "../makeover/allergens.ts";
 
 export const NEARBY_SYSTEM_PROMPT =
   `You are the ordering helper in Famara, a cooking app that helps people eat a little healthier. The person wants a dish and is looking at nearby restaurants that might serve it. Give them short, practical tips for ordering a lighter or more balanced version when they eat out.
@@ -23,21 +28,8 @@ export interface NearbyPromptInput {
   allergens: string[];
 }
 
-export const ALLERGEN_LABELS: Readonly<Record<string, string>> = {
-  milk: "milk and dairy",
-  egg: "egg",
-  fish: "fish",
-  shellfish: "shellfish",
-  tree_nut: "tree nuts",
-  peanut: "peanut",
-  wheat: "wheat",
-  soy: "soy",
-  sesame: "sesame",
-  gluten: "gluten",
-};
-
 export function buildNearbyPrompt(input: NearbyPromptInput): string {
-  const allergens = input.allergens.map((id) => ALLERGEN_LABELS[id] ?? words(id));
+  const allergens = input.allergens.map(allergenLabel);
   const places = input.places.length === 0
     ? ["(no restaurant details available)"]
     : input.places.map((place) => {

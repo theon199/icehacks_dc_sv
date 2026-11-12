@@ -27,6 +27,7 @@ import { createHandler, type Handler, HttpError, json } from "../_shared/http.ts
 import { AI_QUOTAS, enforceQuota, type QuotaPolicy } from "../_shared/quota.ts";
 import { parseBody } from "../_shared/validate.ts";
 import { buildChefContext, CHEF_SYSTEM_PROMPT, toMarkdownLite } from "./prompt.ts";
+import { ALLERGEN_IDS } from "../makeover/allergens.ts";
 
 // ---------------------------------------------------------------------------------------------
 // Limits
@@ -57,18 +58,7 @@ const QUOTA_ENV = "FAMARA_AI_LIMIT_CHEF";
 // Input
 // ---------------------------------------------------------------------------------------------
 
-export const AllergenIdSchema = z.enum([
-  "milk",
-  "egg",
-  "fish",
-  "shellfish",
-  "tree_nut",
-  "peanut",
-  "wheat",
-  "soy",
-  "sesame",
-  "gluten",
-]);
+export const AllergenIdSchema = z.enum(ALLERGEN_IDS);
 
 const SlugSchema = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "Use a lowercase identifier.");
 const shortText = (max: number) => z.string().trim().min(1).max(max);
@@ -136,6 +126,12 @@ export type ChefInput = z.output<typeof ChefInputSchema>;
 /**
  * The schema Claude must answer with. When there are candidates, `recipe_ids` is an enum of
  * exactly their ids, so structured outputs cannot produce any other value.
+ *
+ * Trade-off: candidate lists differ between calls, so most calls send a schema the API has not
+ * compiled yet and pay a one-time grammar compile. The enum is kept because it stops the model
+ * from spending its recommendation slots on ids that `finalizeChefReply` would drop. If latency
+ * after deploy shows the compile matters, send `z.string()` here instead; the server-side filter
+ * alone still guarantees that only offered ids come back.
  */
 export function chefOutputSchema(candidateIds: readonly string[]) {
   const id = candidateIds.length > 0 ? z.enum(candidateIds as [string, ...string[]]) : z.string();

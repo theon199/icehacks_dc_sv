@@ -20,6 +20,7 @@ import { createHandler, type Handler, HttpError, json } from "../_shared/http.ts
 import { AI_QUOTAS, enforceQuota, type QuotaPolicy } from "../_shared/quota.ts";
 import { parseBody } from "../_shared/validate.ts";
 import { buildNearbyPrompt, NEARBY_SYSTEM_PROMPT } from "./prompt.ts";
+import { ALLERGEN_IDS } from "../makeover/allergens.ts";
 
 export const NEARBY_LIMITS = {
   maxPlaces: 20,
@@ -50,18 +51,7 @@ export const NearbyInputSchema = z.strictObject({
   goals: z.array(SlugSchema).max(10).default([]),
   diet: z.array(SlugSchema).max(10).default([]),
   allergens: z.array(
-    z.enum([
-      "milk",
-      "egg",
-      "fish",
-      "shellfish",
-      "tree_nut",
-      "peanut",
-      "wheat",
-      "soy",
-      "sesame",
-      "gluten",
-    ]),
+    z.enum(ALLERGEN_IDS),
   ).max(10).default([]),
 });
 
@@ -153,6 +143,9 @@ export function createNearbyChatHandler(deps: NearbyDeps = {}): Handler {
       const message = await client.createMessage({
         tier: "fast",
         system: NEARBY_SYSTEM_PROMPT,
+        // About 300 tokens, below the smallest cacheable prefix, so a cache marker would only
+        // add a no-op breakpoint. Turn caching back on if the prompt grows past ~600 tokens.
+        cacheSystem: false,
         messages: [{ role: "user", content: buildNearbyPrompt(input) }],
         maxTokens: NEARBY_LIMITS.maxTokens,
         effort: "low",

@@ -1,6 +1,7 @@
 /**
- * Prompt text for Snap. One byte-stable system prompt covers both camera modes so the cached
- * prefix is shared; the mode is named in the user turn.
+ * Prompt text for Snap. One byte-stable system prompt covers both camera modes; the mode is
+ * named in the user turn. The two modes send different effort levels and output schemas, so
+ * each mode builds and reads its own cache entry for this prompt rather than sharing one.
  */
 
 export const SNAP_SYSTEM_PROMPT =
