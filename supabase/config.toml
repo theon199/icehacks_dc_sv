@@ -37,7 +37,7 @@ enabled = true
 port = 54323
 api_url = "http://127.0.0.1"
 
-[inbucket]
+[local_smtp]
 enabled = true
 port = 54324
 
@@ -70,7 +70,7 @@ token_refresh = 150
 token_verifications = 30
 
 [auth.email]
-enable_signup = true
+enabled = true
 double_confirm_changes = true
 enable_confirmations = true
 secure_password_change = true
@@ -79,7 +79,7 @@ otp_length = 6
 otp_expiry = 3600
 
 [auth.sms]
-enable_signup = false
+enabled = false
 
 [auth.mfa]
 max_enrolled_factors = 10
