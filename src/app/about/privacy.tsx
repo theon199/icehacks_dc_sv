@@ -1,5 +1,5 @@
-import { AboutScreen } from '@/features/about/screens/AboutScreen';
+import { AboutPageScreen } from '@/features/settings/screens/AboutPageScreen';
 
 export default function PrivacyAboutRoute() {
-  return <AboutScreen page="privacy" />;
+  return <AboutPageScreen page="privacy" />;
 }

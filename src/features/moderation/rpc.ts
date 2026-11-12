@@ -8,6 +8,12 @@ import type { z } from 'zod';
 
 import { ApiError, INVALID_RESPONSE, type ApiErrorKind } from '@/lib/api/errors';
 import { supabase } from '@/lib/supabase/client';
+import type { Database } from '@/lib/supabase/database.types';
+
+type PublicFunctions = Database['public']['Functions'];
+
+/** Name of a `public` RPC known to the generated schema types. */
+export type RpcName = keyof PublicFunctions;
 
 function kindForSqlState(code: string | undefined): ApiErrorKind {
   switch (code) {
@@ -56,9 +62,9 @@ export function parseResult<S extends z.ZodType>(name: string, schema: S, value:
 }
 
 /** Calls a `public` RPC and validates its result. */
-export async function callRpc<S extends z.ZodType>(
-  name: string,
-  args: Record<string, unknown>,
+export async function callRpc<N extends RpcName, S extends z.ZodType>(
+  name: N,
+  args: PublicFunctions[N]['Args'],
   schema: S,
 ): Promise<z.infer<S>> {
   const { data, error } = await supabase.rpc(name, args);
