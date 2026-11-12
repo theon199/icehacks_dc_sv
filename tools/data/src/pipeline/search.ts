@@ -1,5 +1,6 @@
 import type { IngredientDef } from '../knowledge/define.ts';
-import { SEARCH_ALIASES } from '../knowledge/searchAliases.ts';
+import { CUISINES } from '../knowledge/cuisines.ts';
+import { ALIAS_DESCRIPTORS, SEARCH_ALIASES } from '../knowledge/searchAliases.ts';
 import { foldAccents, singular, stripParentheticals } from '../match/normalize.ts';
 
 const STOP_WORDS = new Set(['or', 'and', 'of', 'with', 'for', 'the', 'to', 'in', 'on']);
@@ -14,8 +15,72 @@ function phraseWords(text: string): string[] {
 
 const wordKey = (word: string): string => singular(word);
 
+type AliasTable = Readonly<Record<string, readonly string[]>>;
+
+/**
+ * Keys of words that name a food on their own: every one-word ingredient name, plural and
+ * synonym, plus every one-word curated alias.
+ */
+export function foodWordKeys(defs: Iterable<IngredientDef>, aliases: AliasTable = SEARCH_ALIASES): Set<string> {
+  const keys = new Set<string>();
+  const add = (phrase: string) => {
+    const words = phraseWords(phrase);
+    if (words.length === 1 && words[0]) keys.add(wordKey(words[0]));
+  };
+  for (const def of defs) {
+    add(def.name);
+    if (def.plural) add(def.plural);
+    def.syn.forEach(add);
+  }
+  for (const list of Object.values(aliases)) list.forEach(add);
+  return keys;
+}
+
+const isDescriptor = (word: string): boolean => ALIAS_DESCRIPTORS.has(word) || ALIAS_DESCRIPTORS.has(wordKey(word));
+
+/**
+ * Words one curated alias adds to the index. A one-word alias is indexed as is. From a multi-word
+ * alias only words that are foods on their own are kept ("coriander" from "coriander leaves",
+ * "pepper" from "sweet pepper"); descriptors ("french", "plain", "half") and words that are not
+ * foods by themselves are dropped, so they never match unrelated recipes.
+ */
+export function aliasIndexWords(alias: string, foodKeys: ReadonlySet<string>): string[] {
+  const words = phraseWords(alias);
+  if (words.length === 1) return words;
+  return words.filter((w) => !isDescriptor(w) && foodKeys.has(wordKey(w)));
+}
+
+/** Every word curated aliases add to the index, per ingredient id. */
+export function aliasIndexWordsById(defs: readonly IngredientDef[], aliases: AliasTable = SEARCH_ALIASES): Map<string, string[]> {
+  const foodKeys = foodWordKeys(defs, aliases);
+  const out = new Map<string, string[]>();
+  for (const def of defs) {
+    const words = (aliases[def.id] ?? []).flatMap((alias) => aliasIndexWords(alias, foodKeys));
+    if (words.length > 0) out.set(def.id, [...new Set(words)]);
+  }
+  return out;
+}
+
+/** Keys of cuisine labels and the place names that identify them ("french", "thai", "greece"). */
+export function cuisineWordKeys(): Set<string> {
+  return new Set(CUISINES.flatMap((c) => [...phraseWords(c.label), ...c.names.flatMap(phraseWords)]).map(wordKey));
+}
+
+/** Alias index words that are a cuisine word or a known descriptor; empty when the table is clean. */
+export function aliasTokenViolations(defs: readonly IngredientDef[], aliases: AliasTable = SEARCH_ALIASES): { id: string; word: string; reason: string }[] {
+  const cuisineKeys = cuisineWordKeys();
+  const out: { id: string; word: string; reason: string }[] = [];
+  for (const [id, words] of aliasIndexWordsById(defs, aliases)) {
+    for (const word of words) {
+      if (cuisineKeys.has(wordKey(word))) out.push({ id, word, reason: 'is a cuisine word' });
+      if (isDescriptor(word)) out.push({ id, word, reason: 'is a descriptor, not a food on its own' });
+    }
+  }
+  return out;
+}
+
 interface IndexedIngredient {
-  /** Always indexed: the head noun of the name and plural, plus curated aliases. */
+  /** Always indexed: the head noun of the name and plural, plus the food words of curated aliases. */
   always: string[];
   alwaysKeys: Set<string>;
   /** Other words of the canonical name ("vegetable" in "vegetable oil"): indexed when the line uses them. */
@@ -28,7 +93,7 @@ interface IndexedIngredient {
  *
  * For every matched line the index holds:
  * - the head noun of the ingredient's canonical name and plural ("oil" for vegetable oil) and the
- *   ingredient's curated aliases ({@link SEARCH_ALIASES});
+ *   food words of the ingredient's curated aliases ({@link aliasIndexWords});
  * - other canonical-name words only when the line uses them ("vegetable" for "vegetable oil",
  *   not for "sunflower oil");
  * - words of the line's own wording that belong to one of the ingredient's synonyms ("penne"
@@ -43,12 +108,14 @@ export class SearchIndexer {
   /** Word key -> ids of ingredients whose whole canonical name is that one word. */
   private readonly oneWordNames = new Map<string, Set<string>>();
 
-  constructor(defs: Iterable<IngredientDef>) {
+  constructor(defList: Iterable<IngredientDef>) {
+    const defs = [...defList];
+    const aliasWords = aliasIndexWordsById(defs);
     for (const def of defs) {
       const nameWords = phraseWords(def.name);
       const pluralWords = def.plural ? phraseWords(def.plural) : [];
       const heads = [nameWords.at(-1), pluralWords.at(-1)].filter((w): w is string => w !== undefined);
-      const always = [...heads, ...(SEARCH_ALIASES[def.id] ?? []).flatMap(phraseWords)];
+      const always = [...heads, ...(aliasWords.get(def.id) ?? [])];
       const alwaysKeys = new Set(always.map(wordKey));
       const modifierKeys = new Set([...nameWords, ...pluralWords].map(wordKey).filter((k) => !alwaysKeys.has(k)));
       const synonymKeys = new Set(def.syn.flatMap(phraseWords).map(wordKey));

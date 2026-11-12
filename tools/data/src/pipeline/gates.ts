@@ -1,11 +1,13 @@
 import { ingredientDefSchema, type IngredientDef } from '../knowledge/define.ts';
 import { CUISINE_BY_ID, REGIONS } from '../knowledge/cuisines.ts';
+import { SEARCH_ALIASES } from '../knowledge/searchAliases.ts';
 import type { SubstitutionDef } from '../knowledge/substitutions.ts';
 import { compoundAliasGaps } from '../match/audit.ts';
 import type { IngredientMatcher } from '../match/matcher.ts';
 import type { FdcFood } from '../sources/fdc.ts';
 import { ALL_DIET_FLAGS, ALLERGEN_IDS, COURSES, GOAL_TAGS, NUTRITION_CONFIDENCE } from '../types.ts';
 import { kcalInRange } from './recipes.ts';
+import { aliasIndexWordsById, aliasTokenViolations } from './search.ts';
 import type { RecipeRow } from './types.ts';
 
 export const MIN_MATCH_RATE = 0.98;
@@ -54,6 +56,14 @@ export function checkKnowledge(
   }
   for (const collision of matcher.collisions) {
     gates.check(false, () => `synonym "${collision.key}" maps to both ${collision.ids[0]} and ${collision.ids[1]}`);
+  }
+  for (const v of aliasTokenViolations(defs)) {
+    gates.check(false, () => `search alias for ${v.id}: indexed word "${v.word}" ${v.reason}`);
+  }
+  const aliasWords = aliasIndexWordsById(defs);
+  for (const [id, aliases] of Object.entries(SEARCH_ALIASES)) {
+    gates.check(ids.has(id), () => `search alias for ${id}: unknown ingredient`);
+    gates.check(aliases.length === 0 || aliasWords.has(id), () => `search alias for ${id}: no alias indexes a food word`);
   }
   const keys = new Set<string>();
   for (const s of substitutions) {
