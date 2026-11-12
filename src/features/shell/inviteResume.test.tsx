@@ -192,6 +192,8 @@ describe('invite links before the app is available', () => {
     expect(await parkedInvite()).toBe(CODE);
   });
 
+  // The app mounts the navigator only after the stored session is read, so it never sees
+  // `loading`. These two cover the hook's defensive branch for a navigator mounted earlier.
   it('waits for the stored session before deciding about the launch link', async () => {
     mockInitialUrl = `famara://invite/${CODE}`;
     await renderRouter(routes, { initialUrl: '/', wrapper: Providers });

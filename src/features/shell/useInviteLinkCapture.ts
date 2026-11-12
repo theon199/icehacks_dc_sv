@@ -27,7 +27,9 @@ function park(url: string): void {
 export function useInviteLinkCapture(status: SessionStatus): void {
   const statusRef = useRef(status);
   // A link that arrived while the stored session was still being read. It may yet open normally,
-  // so it waits for the status to settle.
+  // so it waits for the status to settle. This is defensive: the root layout renders
+  // `RootNavigator` only after the stored session has been read, so today the hook never sees
+  // `loading`. It keeps links safe if the navigator is ever mounted earlier.
   const waiting = useRef<string | null>(null);
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export function useInviteLinkCapture(status: SessionStatus): void {
     const opened = (url: string | null) => {
       if (!active || !url) return;
       const current = statusRef.current;
+      // Defensive, see `waiting`: unreachable while the navigator mounts after the session read.
       if (current === 'loading') waiting.current = url;
       else if (current !== 'ready') park(url);
     };
