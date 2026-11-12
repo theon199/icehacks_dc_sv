@@ -10,7 +10,8 @@ create table public.profiles (
   handle extensions.citext not null unique
     constraint profiles_handle_format check (handle::text ~ '^[A-Za-z0-9_]{3,24}$'),
   display_name text not null
-    constraint profiles_display_name_length check (char_length(btrim(display_name)) between 1 and 50),
+    constraint profiles_display_name_length check (char_length(btrim(display_name)) between 1 and 50)
+    constraint profiles_display_name_printable check (display_name !~ '[[:cntrl:]]'),
   avatar_path text
     constraint profiles_avatar_path_owned check (
       avatar_path is null
@@ -18,8 +19,12 @@ create table public.profiles (
     ),
   bio text not null default ''
     constraint profiles_bio_length check (char_length(bio) <= 280),
+  -- Catalog cuisine ids, e.g. {indian,west_african}.
   cuisines text[] not null default '{}'
-    constraint profiles_cuisines_size check (cardinality(cuisines) <= 10),
+    constraint profiles_cuisines_size check (cardinality(cuisines) <= 10)
+    constraint profiles_cuisines_format check (
+      array_to_string(cuisines, ',') ~ '^([a-z][a-z_]{0,39}(,[a-z][a-z_]{0,39})*)?$'
+    ),
   -- Set only by staff: marks the clearly labelled "Famara Team" account.
   is_team boolean not null default false,
   -- Set only by moderators through public.moderate().
@@ -215,7 +220,10 @@ begin
     nullif(btrim(v_meta ->> 'name'), ''),
     'Famara cook'
   ));
-  v_name := left(v_name, 50);
+  v_name := coalesce(
+    nullif(btrim(left(regexp_replace(v_name, '[[:cntrl:]]', ' ', 'g'), 50)), ''),
+    'Famara cook'
+  );
 
   v_base := lower(regexp_replace(coalesce(v_meta ->> 'handle', ''), '[^A-Za-z0-9_]', '', 'g'));
   if char_length(v_base) < 3 then
@@ -309,7 +317,8 @@ begin
   for update;
 
   if v_existing is null then
-    insert into private.account_ages (user_id, birth_year) values (v_uid, p_birth_year);
+    insert into private.account_ages (user_id, birth_year) values (v_uid, p_birth_year)
+    on conflict (user_id) do nothing;
   elsif p_birth_year < v_existing then
     raise exception 'birth_year_locked' using errcode = 'PT409',
       detail = 'Birth year can only be corrected by support.';

@@ -142,5 +142,18 @@ select throws_ok($$select * from public.profiles$$, '42501', null, 'anon cannot 
 select throws_ok($$select public.get_feed()$$, '42501', null, 'anon cannot call RPCs');
 reset role;
 
+-- Profile edits are validated by constraints.
+set local role authenticated;
+select tests.login('aaaaaaaa-0000-4000-8000-000000000001');
+select lives_ok($$update public.profiles set cuisines = '{indian,west_african}' where id = auth.uid()$$, 'catalog cuisine ids are accepted');
+select throws_ok($$update public.profiles set cuisines = '{"Not A Cuisine"}' where id = auth.uid()$$, '23514', null, 'free-form cuisines are rejected');
+select throws_ok($$update public.profiles set handle = 'no spaces allowed' where id = auth.uid()$$, '23514', null, 'handles are validated');
+select throws_ok($$update public.profiles set handle = 'BEN' where id = auth.uid()$$, '23505', null, 'handles are unique regardless of case');
+select throws_ok(
+  $$update public.profiles set avatar_path = 'bbbbbbbb-0000-4000-8000-000000000002/me.jpg' where id = auth.uid()$$,
+  '23514', null, 'avatars must live in your own folder'
+);
+reset role;
+
 select * from finish();
 rollback;
