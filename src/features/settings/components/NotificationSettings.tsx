@@ -7,16 +7,18 @@ import { toast, Toggle } from '@/ui';
 import {
   fetchPushCategories,
   savePushCategories,
+  selectNotificationSettings,
   syncPushRegistration,
-  updateNotificationChoices,
-  useNotificationChoices,
-  type NotificationChoices,
+  useSettingsStore,
   type PushCategory,
 } from '../deps';
 import { ensureNotificationPermission, openSystemSettings } from '../notificationPermission';
+import { rememberPushChoices, usePushChoices } from '../pushChoices';
 import { SettingsSection } from './SettingsSection';
 
-const rows: readonly { key: keyof NotificationChoices; label: string; description: string }[] = [
+type ChoiceKey = 'cookTimers' | PushCategory;
+
+const rows: readonly { key: ChoiceKey; label: string; description: string }[] = [
   {
     key: 'cookTimers',
     label: 'Cook mode timers',
@@ -34,19 +36,22 @@ const rows: readonly { key: keyof NotificationChoices; label: string; descriptio
   },
 ];
 
-const isPushCategory = (key: keyof NotificationChoices): key is PushCategory =>
+const isPushCategory = (key: ChoiceKey): key is PushCategory =>
   key === 'social' || key === 'follows';
 
 /**
- * Notification choices. Turning one on asks for permission the first time. Likes/comments and
- * followers/friends are push categories stored on the server, which only sends what is turned on;
- * the switches show the server's answer once it arrives and put themselves back if a change
- * cannot be saved.
+ * Notification choices. Turning one on asks for permission the first time. Cook mode timers are a
+ * device setting kept in the shared settings store. Likes/comments and followers/friends are push
+ * categories stored on the server, which only sends what is turned on; those switches show the
+ * server's answer once it arrives and put themselves back if a change cannot be saved.
  */
 export function NotificationSettings() {
   const userId = useSessionStore((s) => s.userId);
-  const choices = useNotificationChoices();
-  const [pending, setPending] = useState<keyof NotificationChoices | null>(null);
+  const cookTimers = useSettingsStore((s) => selectNotificationSettings(s).cookTimers);
+  const setNotifications = useSettingsStore((s) => s.setNotifications);
+  const push = usePushChoices(userId);
+  const choices: Record<ChoiceKey, boolean> = { cookTimers, ...push };
+  const [pending, setPending] = useState<ChoiceKey | null>(null);
   // Bumped on every change so a server read that started earlier cannot overwrite it.
   const edits = useRef(0);
 
@@ -56,7 +61,7 @@ export function NotificationSettings() {
     const startedAt = edits.current;
     fetchPushCategories()
       .then((categories) => {
-        if (active && edits.current === startedAt) updateNotificationChoices(categories);
+        if (active && edits.current === startedAt) rememberPushChoices(userId, categories);
       })
       .catch((error: unknown) => {
         logger.warn('Could not load push categories', describeError(error));
@@ -67,16 +72,17 @@ export function NotificationSettings() {
   }, [userId]);
 
   const saveCategory = async (key: PushCategory, next: boolean) => {
-    updateNotificationChoices({ [key]: next });
+    if (!userId) return;
+    rememberPushChoices(userId, { [key]: next });
     try {
-      updateNotificationChoices(await savePushCategories({ [key]: next }));
+      rememberPushChoices(userId, await savePushCategories({ [key]: next }));
     } catch (error) {
       logger.warn('Could not save push category', describeError(error));
-      updateNotificationChoices({ [key]: !next });
+      rememberPushChoices(userId, { [key]: !next });
       toast.show({ message: 'Could not save that change. Try again.', tone: 'danger' });
       return;
     }
-    if (next && userId) {
+    if (next) {
       // Make sure this device is registered to receive what was just turned on.
       syncPushRegistration(userId).catch((error: unknown) => {
         logger.warn('Push registration after a category change failed', describeError(error));
@@ -84,11 +90,11 @@ export function NotificationSettings() {
     }
   };
 
-  const change = async (key: keyof NotificationChoices, next: boolean) => {
+  const change = async (key: ChoiceKey, next: boolean) => {
     edits.current += 1;
     if (!next) {
       if (!isPushCategory(key)) {
-        updateNotificationChoices({ [key]: false });
+        setNotifications({ [key]: false });
         return;
       }
       setPending(key);
@@ -110,7 +116,7 @@ export function NotificationSettings() {
       } else if (isPushCategory(key)) {
         await saveCategory(key, true);
       } else {
-        updateNotificationChoices({ [key]: true });
+        setNotifications({ [key]: true });
       }
     } catch {
       toast.show({ message: 'Could not turn on notifications. Try again.', tone: 'danger' });

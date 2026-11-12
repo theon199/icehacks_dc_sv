@@ -1,13 +1,71 @@
-import { completeCallback, requestPasswordReset, sessionRejectedByServer } from './authActions';
+import {
+  completeCallback,
+  requestPasswordReset,
+  sessionRejectedByServer,
+  signOut,
+} from './authActions';
 import { AUTH_CALLBACK_URL, callbackLinkId } from './callback';
 
 const mockAuthClient = {
   resetPasswordForEmail: jest.fn(),
   exchangeCodeForSession: jest.fn(),
   getUser: jest.fn(),
+  signOut: jest.fn(),
 };
 
 jest.mock('@/lib/supabase/client', () => ({ getSupabase: () => ({ auth: mockAuthClient }) }));
+
+/** Order of the sign-out steps, as the mocks below record them. */
+const steps: string[] = [];
+const mockSignOutCleanup = jest.fn(async () => {
+  steps.push('cleanup');
+});
+jest.mock('./deps', () => ({ signOutCleanup: () => mockSignOutCleanup() }));
+
+describe('signOut', () => {
+  beforeEach(() => {
+    steps.length = 0;
+    mockAuthClient.signOut.mockImplementation(async (options: { scope: string }) => {
+      steps.push(options.scope);
+      return { error: null };
+    });
+  });
+
+  it('ends only this device’s session by default, after wiping local data', async () => {
+    await expect(signOut()).resolves.toEqual({ everywhere: false });
+    expect(steps).toEqual(['cleanup', 'local']);
+  });
+
+  it('signs out every device when asked, and says so', async () => {
+    await expect(signOut({ scope: 'global' })).resolves.toEqual({ everywhere: true });
+    expect(steps).toEqual(['cleanup', 'global']);
+  });
+
+  it('falls back to this device when the global sign-out reports an error', async () => {
+    mockAuthClient.signOut.mockImplementation(async (options: { scope: string }) => {
+      steps.push(options.scope);
+      return { error: options.scope === 'global' ? new Error('offline') : null };
+    });
+    await expect(signOut({ scope: 'global' })).resolves.toEqual({ everywhere: false });
+    expect(steps).toEqual(['cleanup', 'global', 'local']);
+  });
+
+  it('falls back to this device when the global sign-out throws', async () => {
+    mockAuthClient.signOut.mockImplementation(async (options: { scope: string }) => {
+      steps.push(options.scope);
+      if (options.scope === 'global') throw new Error('Network request failed');
+      return { error: null };
+    });
+    await expect(signOut({ scope: 'global' })).resolves.toEqual({ everywhere: false });
+    expect(steps).toEqual(['cleanup', 'global', 'local']);
+  });
+
+  it('still ends the session when the local cleanup fails', async () => {
+    mockSignOutCleanup.mockRejectedValueOnce(new Error('disk full'));
+    await expect(signOut()).resolves.toEqual({ everywhere: false });
+    expect(steps).toEqual(['local']);
+  });
+});
 
 describe('password recovery', () => {
   it('returns to the exact allow-listed callback address', async () => {
