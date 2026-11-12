@@ -2,13 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { MAX_CUISINES } from '@/features/auth';
 import { ErrorState, Text, TextField, useTheme } from '@/ui';
 
 import { ChipGroup } from '../components/ChipGroup';
 import { StepHeader } from '../components/StepHeader';
 import { loadCuisineOptions } from '../deps';
-import { toggleCuisine } from '../onboardingModel';
+import { MAX_CUISINES, toggleCuisine } from '../onboardingModel';
 import { groupCuisines } from '../options';
 import type { StepProps } from './types';
 

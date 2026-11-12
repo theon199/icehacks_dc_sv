@@ -42,6 +42,11 @@ export interface SessionState {
   signedIn: (profile: SignedInProfile) => void;
   setBirthYear: (birthYear: number) => void;
   completeOnboarding: () => void;
+  /**
+   * Follows the preferences store: completion can also go back to false, when data another account
+   * left on this device is wiped as sync starts.
+   */
+  setOnboardingComplete: (complete: boolean) => void;
   /** Records the answer from the AI consent screen (or a later withdrawal). */
   setAiConsent: (granted: boolean) => void;
   /**
@@ -118,13 +123,12 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     set({ birthYear, status: resolveStatus({ userId, birthYear, onboardingComplete }) });
   },
 
-  completeOnboarding: () => {
+  completeOnboarding: () => get().setOnboardingComplete(true),
+
+  setOnboardingComplete: (onboardingComplete) => {
     const { userId, birthYear } = get();
-    if (!userId) return;
-    set({
-      onboardingComplete: true,
-      status: resolveStatus({ userId, birthYear, onboardingComplete: true }),
-    });
+    if (!userId || get().onboardingComplete === onboardingComplete) return;
+    set({ onboardingComplete, status: resolveStatus({ userId, birthYear, onboardingComplete }) });
   },
 
   setAiConsent: (granted) => {

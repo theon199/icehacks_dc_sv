@@ -2,16 +2,40 @@
  * The onboarding questionnaire as data: the steps, the draft answers, the rules for moving on and
  * how a finished draft becomes the saved preferences. Pure, so it is tested without rendering.
  */
-import { cuisineIdSchema } from '@/domain/types';
 import {
-  MAX_CUISINES,
-  MAX_HOUSEHOLD,
+  MAX_LOVED_CUISINES,
+  cuisineIdSchema,
   type AllergenId,
-  type DietId,
-  type EffortLevel,
-  type GoalId,
-  type OnboardingAnswers,
-} from '@/features/auth';
+  type CuisineId,
+  type DietFlagName,
+  type Effort,
+  type Goal,
+} from '@/domain/types';
+
+export const MAX_CUISINES = MAX_LOVED_CUISINES;
+/** Largest household the shared preferences accept. */
+export const MAX_HOUSEHOLD = 20;
+
+/**
+ * A finished questionnaire. Field names and value types follow the shared `UserPreferences`
+ * (src/domain/types/preferences.ts), plus the display name and the pantry starters (catalog
+ * ingredient ids). Skipped optional questions are null or empty rather than a default.
+ */
+export interface OnboardingAnswers {
+  displayName: string | null;
+  cuisines: CuisineId[];
+  diets: DietFlagName[];
+  /** An empty list is an explicit "no allergies", given on its own screen. */
+  allergens: AllergenId[];
+  goals: Goal[];
+  /** Minutes available on a typical weeknight; null for no limit. */
+  timeBudgetMinutes: number | null;
+  /** The most involved cooking the person is happy with; null when skipped. */
+  effort: Effort | null;
+  householdSize: number;
+  pantryStaples: string[];
+  smallAppetite: boolean;
+}
 
 export const STEP_IDS = [
   'name',
@@ -44,15 +68,15 @@ export function isOptional(step: StepId): boolean {
 export interface Draft {
   displayName: string;
   cuisines: string[];
-  diets: DietId[];
+  diets: DietFlagName[];
   allergens: AllergenId[];
   /** The explicit "I have no food allergies" answer. */
   noAllergens: boolean;
-  goals: GoalId[];
+  goals: Goal[];
   /** Null means "no limit" once `timeChosen` is true. */
   timeBudgetMinutes: number | null;
   timeChosen: boolean;
-  effort: EffortLevel | null;
+  effort: Effort | null;
   householdSize: number;
   pantryStaples: string[];
   smallAppetite: boolean;
@@ -157,7 +181,7 @@ export function setNoAllergens(draft: Draft, on: boolean): Draft {
 }
 
 /** Vegan already rules out everything vegetarian does, so the two are kept consistent. */
-export function toggleDiet(draft: Draft, id: DietId, on: boolean): Draft {
+export function toggleDiet(draft: Draft, id: DietFlagName, on: boolean): Draft {
   let diets = toggle(draft.diets, id, on);
   if (on && id === 'vegan') diets = toggle(diets, 'vegetarian', false);
   if (on && (id === 'vegetarian' || id === 'pescatarian')) diets = toggle(diets, 'vegan', false);

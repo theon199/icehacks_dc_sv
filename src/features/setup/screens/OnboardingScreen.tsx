@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ageBandFor,
-  preferences,
   suggestedFirstName,
   updateDisplayName,
   useSessionStore,
@@ -15,6 +14,7 @@ import { logger } from '@/lib/logger';
 import { Button, IconButton, Screen, Text, gutter, toast, useTheme } from '@/ui';
 
 import { ProgressBar } from '../components/ProgressBar';
+import { loadPantryStarters, readSavedAnswers, saveOnboarding } from '../deps';
 import {
   STEP_IDS,
   canContinue,
@@ -44,9 +44,7 @@ export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const userId = useSessionStore((s) => s.userId);
   const isTeen = useSessionStore((s) => ageBandFor(s.birthYear) === 'teen');
-  const [draft, setDraft] = useState<Draft>(() =>
-    draftFrom(preferences.readAnswers(useSessionStore.getState().userId), null),
-  );
+  const [draft, setDraft] = useState<Draft>(() => draftFrom(readSavedAnswers(), null));
   const [index, setIndex] = useState(0);
   const [finishing, setFinishing] = useState(false);
   const step = STEP_IDS[index] ?? 'name';
@@ -64,11 +62,15 @@ export function OnboardingScreen() {
     };
   }, []);
 
-  const finish = (answers: Draft) => {
+  const finish = async (answers: Draft) => {
     if (finishing || !userId) return;
     setFinishing(true);
     try {
-      preferences.completeOnboarding(userId, toAnswers(answers));
+      const saved = toAnswers(answers);
+      const starters = await loadPantryStarters(saved.pantryStaples);
+      // Someone else signed in while the catalog was read: these answers are not theirs.
+      if (useSessionStore.getState().userId !== userId) return;
+      saveOnboarding(saved, starters);
     } catch (error) {
       logger.error('Could not save onboarding answers', { error: String(error) });
       setFinishing(false);
@@ -89,7 +91,7 @@ export function OnboardingScreen() {
   const advance = (from: Draft) => {
     Keyboard.dismiss();
     if (last) {
-      finish(from);
+      void finish(from);
       return;
     }
     setIndex((i) => Math.min(i + 1, STEP_IDS.length - 1));

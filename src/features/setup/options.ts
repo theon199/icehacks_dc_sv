@@ -3,12 +3,16 @@
  * contract; this file only decides how they read on screen.
  */
 import {
+  ALLERGEN_IDS,
+  ALLERGEN_LABELS,
+  DIET_FLAG_NAMES,
+  DIET_LABELS,
   TIME_BUDGET_CHOICES,
   type AllergenId,
-  type DietId,
-  type EffortLevel,
-  type GoalId,
-} from '@/features/auth';
+  type DietFlagName,
+  type Effort,
+  type Goal,
+} from '@/domain/types';
 import type { IconName } from '@/ui';
 
 export interface Choice<T extends string | number> {
@@ -18,32 +22,17 @@ export interface Choice<T extends string | number> {
   icon?: IconName;
 }
 
-export const dietChoices: readonly Choice<DietId>[] = [
-  { id: 'vegetarian', label: 'Vegetarian' },
-  { id: 'vegan', label: 'Vegan' },
-  { id: 'pescatarian', label: 'Pescatarian' },
-  { id: 'no_pork', label: 'No pork' },
-  { id: 'no_beef', label: 'No beef' },
-  { id: 'no_alcohol', label: 'No alcohol' },
-  { id: 'halal_friendly', label: 'Halal-friendly' },
-  { id: 'gluten_free', label: 'Gluten-free' },
-  { id: 'dairy_free', label: 'Dairy-free' },
-];
+export const dietChoices: readonly Choice<DietFlagName>[] = DIET_FLAG_NAMES.map((id) => ({
+  id,
+  label: DIET_LABELS[id],
+}));
 
-export const allergenChoices: readonly Choice<AllergenId>[] = [
-  { id: 'milk', label: 'Milk' },
-  { id: 'egg', label: 'Egg' },
-  { id: 'fish', label: 'Fish' },
-  { id: 'shellfish', label: 'Shellfish' },
-  { id: 'tree_nut', label: 'Tree nuts' },
-  { id: 'peanut', label: 'Peanuts' },
-  { id: 'wheat', label: 'Wheat' },
-  { id: 'soy', label: 'Soy' },
-  { id: 'sesame', label: 'Sesame' },
-  { id: 'gluten', label: 'Gluten' },
-];
+export const allergenChoices: readonly Choice<AllergenId>[] = ALLERGEN_IDS.map((id) => ({
+  id,
+  label: ALLERGEN_LABELS[id],
+}));
 
-export const goalChoices: readonly Choice<GoalId>[] = [
+export const goalChoices: readonly Choice<Goal>[] = [
   { id: 'more_protein', label: 'More protein', icon: 'fish.fill' },
   { id: 'more_fiber', label: 'More fiber', icon: 'leaf.fill' },
   { id: 'lower_sodium', label: 'Less salt', icon: 'drop.fill' },
@@ -62,7 +51,7 @@ export const timeChoices: readonly { minutes: number | null; label: string }[] =
   { minutes: null, label: 'No limit' },
 ];
 
-export const effortChoices: readonly Choice<EffortLevel>[] = [
+export const effortChoices: readonly Choice<Effort>[] = [
   {
     id: 1,
     label: 'Keep it simple',

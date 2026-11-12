@@ -1,6 +1,8 @@
+import { usePantryStore, useSettingsStore } from '@/stores';
+
 import { deleteMyAccount, identityFor, isAccountError } from './accountApi';
-import { aiConsent } from './deps';
 import { readCachedSetup, writeCachedSetup } from './profileCache';
+import { useSessionStore } from './sessionStore';
 
 const mockClient = {
   sessionUser: 'kid-1' as string | null,
@@ -34,7 +36,16 @@ jest.mock('@/lib/supabase/client', () => ({
   }),
 }));
 
+const initialSession = useSessionStore.getState();
+
+jest.mock('expo-crypto', () => ({
+  randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
+}));
+
 beforeEach(() => {
+  useSessionStore.setState(initialSession, true);
+  usePantryStore.getState().reset();
+  useSettingsStore.getState().reset();
   mockClient.sessionUser = 'kid-1';
   mockClient.headers = [];
   mockClient.rpc.mockReturnValue({ data: { deleted: true }, error: null });
@@ -56,17 +67,38 @@ describe('identityFor', () => {
 });
 
 describe('deleteMyAccount', () => {
-  it('runs as the given account and forgets its hints on this device', async () => {
+  it('wipes the deleted account’s data from this device', async () => {
+    useSessionStore
+      .getState()
+      .signedIn({ userId: 'kid-1', birthYear: 2016, onboardingComplete: false });
     writeCachedSetup('kid-1', { birthYear: 2016 });
-    aiConsent.write('kid-1', true);
-    // Another account has signed in since the identity was captured.
-    mockClient.sessionUser = 'someone-else';
+    usePantryStore.getState().add({ name: 'rice' });
+    useSettingsStore.getState().rememberAiConsent(true);
+    expect(Object.keys(usePantryStore.getState().items)).toHaveLength(1);
 
     await deleteMyAccount({ userId: 'kid-1', accessToken: 'jwt-kid-1' });
 
     expect(mockClient.rpc).toHaveBeenCalledWith('delete_my_account', undefined);
+    expect(readCachedSetup('kid-1').birthYear).toBeNull();
+    expect(usePantryStore.getState().items).toEqual({});
+    expect(useSettingsStore.getState().aiConsentHint).toBeNull();
+  });
+
+  it('runs as the given account and leaves whoever signed in since alone', async () => {
+    writeCachedSetup('kid-1', { birthYear: 2016 });
+    // Another account has signed in since the identity was captured.
+    mockClient.sessionUser = 'someone-else';
+    useSessionStore
+      .getState()
+      .signedIn({ userId: 'someone-else', birthYear: 1990, onboardingComplete: true });
+    usePantryStore.getState().add({ name: 'their rice' });
+
+    await deleteMyAccount({ userId: 'kid-1', accessToken: 'jwt-kid-1' });
+
     expect(mockClient.headers).toEqual([['Authorization', 'Bearer jwt-kid-1']]);
     expect(readCachedSetup('kid-1').birthYear).toBeNull();
-    expect(aiConsent.read('kid-1')).toBe(false);
+    expect(Object.values(usePantryStore.getState().items).map((item) => item.name)).toEqual([
+      'their rice',
+    ]);
   });
 });

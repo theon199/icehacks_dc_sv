@@ -2,8 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, userEvent } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import { preferences, useSessionStore } from '@/features/auth';
-import { clearUserData } from '@/features/auth/deps';
+import { useSessionStore } from '@/features/auth';
+import {
+  defaultPreferences,
+  selectAvoidAllergens,
+  selectHasAnsweredAllergens,
+  selectIsOnboarded,
+  usePantryStore,
+  usePreferencesStore,
+} from '@/stores';
 import { renderWithTheme } from '@/test/render';
 
 import { OnboardingScreen } from './OnboardingScreen';
@@ -28,16 +35,26 @@ jest.mock('@/lib/supabase/client', () => ({
   }),
 }));
 
+jest.mock('expo-crypto', () => ({
+  randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
+}));
+
+const mockStaples = [
+  { id: 'olive_oil', name: 'olive oil', category: 'oil' as const },
+  { id: 'salt', name: 'salt', category: 'spice' as const },
+];
+
+// Catalog reads are faked; the answers go to the real user stores.
 jest.mock('../deps', () => ({
+  ...jest.requireActual<object>('../deps'),
   loadCuisineOptions: async () => [
     { id: 'thai', region: 'southeast_asia', recipeCount: 12 },
     { id: 'italian', region: 'southern_europe', recipeCount: 30 },
     { id: 'west_african', region: 'sub_saharan_africa', recipeCount: 4 },
   ],
-  loadPantryStaples: async () => [
-    { id: 'olive_oil', name: 'olive oil', category: 'oil' },
-    { id: 'salt', name: 'salt', category: 'spice' },
-  ],
+  loadPantryStaples: async () => mockStaples,
+  loadPantryStarters: async (ids: readonly string[]) =>
+    mockStaples.filter((staple) => ids.includes(staple.id)),
 }));
 
 const thisYear = new Date().getFullYear();
@@ -58,7 +75,8 @@ function renderScreen() {
 const continueButton = () => screen.getByTestId('onboarding-continue');
 
 beforeEach(() => {
-  clearUserData();
+  usePreferencesStore.getState().reset();
+  usePantryStore.getState().reset();
   useSessionStore.setState(initial, true);
   useSessionStore.getState().signedIn({
     userId: 'person-1',
@@ -126,19 +144,28 @@ describe('OnboardingScreen', () => {
     expect(screen.getByText('Finish')).toBeOnTheScreen();
     await user.press(continueButton());
 
-    expect(preferences.readAnswers('person-1')).toEqual({
+    const saved = usePreferencesStore.getState();
+    expect(saved.prefs).toEqual({
+      ...defaultPreferences,
       displayName: 'Ama',
       cuisines: ['thai'],
       diets: ['vegetarian'],
       allergens: ['peanut'],
+      allergensAnswered: true,
       goals: [],
-      timeBudgetMinutes: 30,
+      maxMinutes: 30,
       effort: null,
       householdSize: 2,
-      pantryStaples: ['olive_oil'],
       smallAppetite: true,
+      onboardedAt: expect.any(String),
     });
-    expect(preferences.isOnboardingComplete('person-1')).toBe(true);
+    // What the rest of the app reads.
+    expect(selectAvoidAllergens(saved)).toEqual(['peanut']);
+    expect(selectHasAnsweredAllergens(saved)).toBe(true);
+    expect(selectIsOnboarded(saved)).toBe(true);
+    expect(Object.values(usePantryStore.getState().items)).toEqual([
+      expect.objectContaining({ ingredientId: 'olive_oil', name: 'olive oil', category: 'oil' }),
+    ]);
     expect(useSessionStore.getState().status).toBe('ready');
     expect(mockProfileUpdate).toHaveBeenCalledWith({ display_name: 'Ama' }, 'person-1');
   }, 30_000);

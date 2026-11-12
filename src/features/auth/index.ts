@@ -37,19 +37,3 @@ export {
   type AccountIdentity,
   type AccountStatus,
 } from './accountApi';
-export {
-  ALLERGEN_IDS,
-  DIET_IDS,
-  EFFORT_LEVELS,
-  GOAL_IDS,
-  MAX_CUISINES,
-  MAX_HOUSEHOLD,
-  TIME_BUDGET_CHOICES,
-  aiConsent,
-  preferences,
-  type AllergenId,
-  type DietId,
-  type EffortLevel,
-  type GoalId,
-  type OnboardingAnswers,
-} from './deps';

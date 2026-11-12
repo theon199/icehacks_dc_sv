@@ -6,8 +6,9 @@ import { z } from 'zod';
 
 import { getSupabase } from '@/lib/supabase/client';
 
-import { aiConsent } from './deps';
+import { accountDeletedCleanup } from './deps';
 import { forgetCachedSetup } from './profileCache';
+import { useSessionStore } from './sessionStore';
 
 export type AccountErrorKind =
   | 'offline'
@@ -186,13 +187,16 @@ export async function saveBirthYear(
 
 /**
  * Deletes the given account and everything it owns on the server, then forgets this device's
- * launch hints for it. Uploaded files are only queued for removal (docs/BACKEND.md, storage), so
- * callers must not describe them as gone. The caller signs out afterwards.
+ * launch hints for it and wipes its local data without pushing anything. Uploaded files are only
+ * queued for removal (docs/BACKEND.md, storage), so callers must not describe them as gone. The
+ * caller signs out afterwards.
  */
 export async function deleteMyAccount(as: AccountIdentity): Promise<void> {
   await callRpc({ name: 'delete_my_account', as }, deletionSchema);
   forgetCachedSetup(as.userId);
-  aiConsent.forget(as.userId);
+  // If someone else has signed in meanwhile, the local data is theirs: that switch already wiped
+  // the deleted account's copy.
+  if (useSessionStore.getState().userId === as.userId) await accountDeletedCleanup();
 }
 
 /** Sets the public display name on the person's profile (1–50 characters). */

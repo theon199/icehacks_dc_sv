@@ -1,10 +1,24 @@
-import { act, renderHook } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import * as SecureStore from 'expo-secure-store';
 import Storage from 'expo-sqlite/kv-store';
 
 import { queryClient } from '@/lib/query/client';
 import { storageKey } from '@/lib/storage/kv';
+import { FakeSyncServer } from '@/lib/sync/__fixtures__/fakeServer';
+import { accountDeletedCleanup, startSync, stopSync } from '@/lib/sync/session';
+import {
+  defaultPreferences,
+  selectAiConsentHint,
+  useChefStore,
+  useMealPlanStore,
+  usePantryStore,
+  usePersonalDetailsStore,
+  usePreferencesStore,
+  useSavedStore,
+  useSettingsStore,
+} from '@/stores';
 
-import { aiConsent, clearUserData, preferences, sync, type OnboardingAnswers } from './deps';
+import { signOut } from './authActions';
 import { usePendingEmail } from './pendingEmail';
 import { readCachedSetup } from './profileCache';
 import { useSessionStore } from './sessionStore';
@@ -16,7 +30,7 @@ const mockAuth = {
   listener: null as AuthListener | null,
   getSession: jest.fn(),
   getUser: jest.fn(),
-  signOut: jest.fn(async () => ({ error: null })),
+  signOut: jest.fn(async (_options?: unknown) => ({ error: null })),
   unsubscribe: jest.fn(),
   rpc: jest.fn(),
 };
@@ -36,9 +50,27 @@ jest.mock('@/lib/supabase/client', () => ({
     },
   }),
 }));
+jest.mock('expo-crypto', () => ({
+  randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
+}));
+
+/** One fake server per account, as the real one only ever serves the signed-in account's rows. */
+let mockServers = new Map<string, FakeSyncServer>();
+function mockServerFor(userId: string): FakeSyncServer {
+  let server = mockServers.get(userId);
+  if (!server) {
+    server = new FakeSyncServer();
+    mockServers.set(userId, server);
+  }
+  return server;
+}
+jest.mock('@/lib/sync/transport', () => ({
+  createSupabaseTransport: jest.fn((userId: string) => mockServerFor(userId).transport()),
+}));
 
 const thisYear = new Date().getFullYear();
 const initial = useSessionStore.getState();
+const OWNER_KEY = storageKey('sync.owner');
 
 function serverAge(ageYears: number | null, userId = 'user-1') {
   return {
@@ -64,30 +96,39 @@ async function flush() {
   });
 }
 
-const answers = (overrides: Partial<OnboardingAnswers> = {}): OnboardingAnswers => ({
-  displayName: null,
-  cuisines: [],
-  diets: [],
-  allergens: [],
-  goals: [],
-  timeBudgetMinutes: null,
-  effort: null,
-  householdSize: 1,
-  pantryStaples: [],
-  smallAppetite: false,
-  ...overrides,
-});
+/** Answers onboarding the way the questionnaire does. */
+function finishOnboarding(allergens: readonly ('peanut' | 'sesame')[] = []) {
+  const prefs = usePreferencesStore.getState();
+  prefs.update({ displayName: 'Sam', householdSize: 2 });
+  prefs.setAllergens(allergens);
+  prefs.completeOnboarding();
+}
+
+/** Some of everything a signed-in person accumulates on the device. */
+function fillUserStores() {
+  usePantryStore.getState().add({ name: 'basmati rice', category: 'grain' });
+  useSavedStore.getState().save('recipe-1');
+  useMealPlanStore
+    .getState()
+    .setSlot('2026-11-09', '0-dinner', { recipeId: 'recipe-1', servings: 2 });
+  useChefStore.getState().startThread('Weeknight ideas');
+  usePersonalDetailsStore.getState().update({ heightCm: 170, weightKg: 70 });
+}
 
 const sessionRefused = { data: null, error: { code: 'PGRST301', message: 'JWT expired' } };
 
-beforeEach(() => {
-  clearUserData();
+beforeEach(async () => {
+  await accountDeletedCleanup();
+  Storage.clearSync();
+  mockServers = new Map();
   usePendingEmail.getState().clear();
   useSessionStore.setState(initial, true);
   mockAuth.listener = null;
   mockAuth.rpc.mockResolvedValue(serverAge(null));
   mockAuth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
 });
+
+afterAll(() => stopSync());
 
 describe('useSessionBootstrap', () => {
   it('moves to signedOut when there is no stored session', async () => {
@@ -96,7 +137,7 @@ describe('useSessionBootstrap', () => {
     expect(useSessionStore.getState().status).toBe('signedOut');
   });
 
-  it('sends a new account to setup', async () => {
+  it('sends a new account to setup without syncing before the age gate', async () => {
     mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
     await renderHook(() => useSessionBootstrap());
     await flush();
@@ -106,6 +147,7 @@ describe('useSessionBootstrap', () => {
       birthYear: null,
     });
     expect(mockAuth.rpc).toHaveBeenCalledWith('my_account_status');
+    expect(Storage.getItemSync(OWNER_KEY)).toBeNull();
   });
 
   it('takes the birth year from the server and remembers it as a launch hint', async () => {
@@ -131,103 +173,127 @@ describe('useSessionBootstrap', () => {
     expect(useSessionStore.getState().birthYear).toBe(thisYear - 31);
   });
 
-  it('reaches ready when onboarding completes in the preferences store', async () => {
+  it('starts sync past the age gate and reaches ready when onboarding completes', async () => {
     mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
     mockAuth.rpc.mockResolvedValue(serverAge(30));
-    const start = jest.spyOn(sync, 'start');
     await renderHook(() => useSessionBootstrap());
     await flush();
     expect(useSessionStore.getState().status).toBe('needsSetup');
-    expect(start).toHaveBeenCalledWith('user-1');
+    await waitFor(() => expect(Storage.getItemSync(OWNER_KEY)).toBe('user-1'));
 
-    await act(async () => {
-      preferences.completeOnboarding('user-1', answers());
-    });
+    await act(async () => finishOnboarding());
     expect(useSessionStore.getState().status).toBe('ready');
   });
 
-  it('stops sync and clears user data and cached queries on sign-out', async () => {
+  it('skips onboarding for a returning person once their answers sync in', async () => {
+    mockServerFor('user-1').seed({
+      collection: 'preferences',
+      doc_id: 'main',
+      data: {
+        ...defaultPreferences,
+        allergens: ['sesame'],
+        allergensAnswered: true,
+        onboardedAt: '2026-10-01T10:00:00.000Z',
+      },
+      updated_at: '2026-10-01T10:00:00.000Z',
+      device_id: 'other-device',
+      deleted_at: null,
+    });
     mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
     mockAuth.rpc.mockResolvedValue(serverAge(30));
-    const stop = jest.spyOn(sync, 'stop');
+    await renderHook(() => useSessionBootstrap());
+
+    await waitFor(() => expect(useSessionStore.getState().status).toBe('ready'));
+    expect(usePreferencesStore.getState().prefs.allergens).toEqual(['sesame']);
+  });
+
+  it('wipes every user store and cached query when the session ends', async () => {
+    mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
+    mockAuth.rpc.mockResolvedValue(serverAge(30));
     const clearQueries = jest.spyOn(queryClient, 'clear');
     await renderHook(() => useSessionBootstrap());
     await flush();
     await act(async () => {
-      preferences.completeOnboarding(
-        'user-1',
-        answers({ displayName: 'Sam', allergens: ['peanut'], householdSize: 2 }),
-      );
+      finishOnboarding(['peanut']);
+      fillUserStores();
     });
 
     await act(async () => mockAuth.listener?.('SIGNED_OUT', null));
     expect(useSessionStore.getState().status).toBe('signedOut');
-    expect(stop).toHaveBeenCalled();
     expect(clearQueries).toHaveBeenCalled();
-    expect(preferences.isOnboardingComplete('user-1')).toBe(false);
-    expect(preferences.readAnswers('user-1')).toBeNull();
+    await waitFor(() => expect(usePantryStore.getState().items).toEqual({}));
+    expect(usePreferencesStore.getState().prefs).toEqual(defaultPreferences);
+    expect(useSavedStore.getState().saved).toEqual({});
+    expect(useMealPlanStore.getState().weeks).toEqual({});
+    expect(useChefStore.getState().threads).toEqual({});
+    expect(Storage.getItemSync(OWNER_KEY)).toBeNull();
   });
 
-  it('never hands one account’s answers to the next person on the device', async () => {
-    // Person A finished onboarding, then their session ended while the app was closed.
-    preferences.adoptOwner('person-a');
-    preferences.completeOnboarding('person-a', answers({ allergens: [] }));
+  it('never hands one account’s data to the next person on the device', async () => {
+    // Person A used the app, then their session ended while it was closed.
+    await startSync('person-a');
+    finishOnboarding();
+    fillUserStores();
+    await stopSync();
 
     mockAuth.getSession.mockResolvedValue(signedIn('person-b'));
     mockAuth.rpc.mockResolvedValue(serverAge(30, 'person-b'));
     await renderHook(() => useSessionBootstrap());
-    await flush();
 
+    await waitFor(() => expect(Storage.getItemSync(OWNER_KEY)).toBe('person-b'));
+    await flush();
     expect(useSessionStore.getState()).toMatchObject({
       userId: 'person-b',
       status: 'needsSetup',
       onboardingComplete: false,
     });
-    expect(preferences.readAnswers('person-b')).toBeNull();
-    expect(preferences.readAnswers('person-a')).toBeNull();
+    expect(usePreferencesStore.getState().prefs.onboardedAt).toBeNull();
+    expect(usePantryStore.getState().items).toEqual({});
+    expect(useSavedStore.getState().saved).toEqual({});
   });
 
-  it('keeps the answers of the account that saved them', async () => {
-    preferences.adoptOwner('user-1');
-    preferences.completeOnboarding('user-1', answers({ allergens: ['sesame'] }));
-
-    mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
-    mockAuth.rpc.mockResolvedValue(serverAge(30));
+  it('does not read the previous account’s answers when someone else signs in', async () => {
+    mockAuth.getSession.mockResolvedValue(signedIn('person-a'));
+    mockAuth.rpc.mockResolvedValue(serverAge(30, 'person-a'));
     await renderHook(() => useSessionBootstrap());
     await flush();
-
-    expect(useSessionStore.getState().status).toBe('ready');
-    expect(preferences.readAnswers('user-1')?.allergens).toEqual(['sesame']);
-  });
-
-  it('discards saved answers that do not say whose they are', () => {
-    Storage.setItemSync(
-      storageKey('user.preferences'),
-      JSON.stringify({
-        onboardingComplete: true,
-        answers: answers(),
-        updatedAt: new Date().toISOString(),
-      }),
-    );
-    jest.isolateModules(() => {
-      const fresh = jest.requireActual<{ preferences: typeof preferences }>('./deps');
-      expect(fresh.preferences.isOnboardingComplete('user-1')).toBe(false);
-      fresh.preferences.adoptOwner('user-1');
-      expect(fresh.preferences.readAnswers('user-1')).toBeNull();
+    await act(async () => {
+      finishOnboarding(['peanut']);
+      fillUserStores();
     });
+    expect(useSessionStore.getState().status).toBe('ready');
+
+    mockAuth.rpc.mockResolvedValue(serverAge(30, 'person-b'));
+    await act(async () => mockAuth.listener?.('SIGNED_IN', { user: { id: 'person-b' } }));
+    expect(useSessionStore.getState()).toMatchObject({
+      userId: 'person-b',
+      onboardingComplete: false,
+    });
+
+    await waitFor(() => expect(Storage.getItemSync(OWNER_KEY)).toBe('person-b'));
+    await flush();
+    expect(useSessionStore.getState().onboardingComplete).toBe(false);
+    expect(usePreferencesStore.getState().prefs.allergens).toEqual([]);
+    expect(usePantryStore.getState().items).toEqual({});
   });
 
-  it('takes AI consent from the consent adapter, for the signed-in account only', async () => {
-    aiConsent.write('user-1', true);
+  it('opens AI from the settings store’s consent hint and keeps that hint current', async () => {
+    useSettingsStore.getState().rememberAiConsent(true);
     mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
     mockAuth.rpc.mockResolvedValue(serverAge(30));
     await renderHook(() => useSessionBootstrap());
     await flush();
     expect(useSessionStore.getState().aiConsent).toBe(true);
 
-    await act(async () => aiConsent.write('someone-else', false));
-    expect(useSessionStore.getState().aiConsent).toBe(true);
-    await act(async () => aiConsent.write('user-1', false));
+    await act(async () => useSessionStore.getState().setAiConsent(false));
+    expect(selectAiConsentHint(useSettingsStore.getState())?.granted).toBe(false);
+  });
+
+  it('treats a missing consent hint as not agreed', async () => {
+    mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
+    mockAuth.rpc.mockResolvedValue(serverAge(30));
+    await renderHook(() => useSessionBootstrap());
+    await flush();
     expect(useSessionStore.getState().aiConsent).toBe(false);
   });
 
@@ -247,8 +313,7 @@ describe('useSessionBootstrap', () => {
       error: { status: 401, message: 'invalid JWT' },
     });
     await renderHook(() => useSessionBootstrap());
-    await flush();
-    expect(mockAuth.signOut).toHaveBeenCalled();
+    await waitFor(() => expect(mockAuth.signOut).toHaveBeenCalled());
   });
 
   it('stays signed in when a single refusal is not confirmed', async () => {
@@ -289,5 +354,45 @@ describe('useSessionBootstrap', () => {
     expect(useSessionStore.getState().status).toBe('signedOut');
     await unmount();
     expect(mockAuth.unsubscribe).toHaveBeenCalled();
+  });
+});
+
+describe('signOut', () => {
+  it('clears pantry, saved items, plan, chef threads and personal details before the session goes', async () => {
+    mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
+    mockAuth.rpc.mockResolvedValue(serverAge(30));
+    await renderHook(() => useSessionBootstrap());
+    await waitFor(() => expect(Storage.getItemSync(OWNER_KEY)).toBe('user-1'));
+    await act(async () => {
+      finishOnboarding(['sesame']);
+      fillUserStores();
+    });
+    await waitFor(async () =>
+      expect(await SecureStore.getItemAsync('famara.user.personal_details')).not.toBeNull(),
+    );
+
+    let pantryWhenSessionWent: unknown = 'not signed out';
+    mockAuth.signOut.mockImplementationOnce(async () => {
+      pantryWhenSessionWent = usePantryStore.getState().items;
+      return { error: null };
+    });
+    await act(async () => signOut());
+
+    expect(pantryWhenSessionWent).toEqual({});
+    expect(usePantryStore.getState().items).toEqual({});
+    expect(useSavedStore.getState().saved).toEqual({});
+    expect(useMealPlanStore.getState().weeks).toEqual({});
+    expect(useChefStore.getState().threads).toEqual({});
+    expect(usePersonalDetailsStore.getState().details.heightCm).toBeNull();
+    expect(usePreferencesStore.getState().prefs).toEqual(defaultPreferences);
+    await waitFor(async () =>
+      expect(await SecureStore.getItemAsync('famara.user.personal_details')).toBeNull(),
+    );
+    expect(Storage.getItemSync(storageKey('user.pantry'))).toBeNull();
+    expect(Storage.getItemSync(OWNER_KEY)).toBeNull();
+    // What was pending reached the account before the wipe.
+    expect(
+      [...mockServerFor('user-1').rows.values()].some((row) => row.collection === 'pantry'),
+    ).toBe(true);
   });
 });

@@ -1,10 +1,9 @@
 import { StyleSheet, View } from 'react-native';
 
-import { MAX_HOUSEHOLD } from '@/features/auth';
 import { IconButton, Text } from '@/ui';
 
 import { StepHeader } from '../components/StepHeader';
-import { clampHousehold } from '../onboardingModel';
+import { MAX_HOUSEHOLD, clampHousehold } from '../onboardingModel';
 import type { StepProps } from './types';
 
 function peopleLabel(size: number): string {

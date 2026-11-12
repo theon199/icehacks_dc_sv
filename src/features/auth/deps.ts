@@ -1,242 +1,47 @@
 /**
- * The narrow slice of user data the account flow needs: onboarding answers (the preferences store),
- * background sync, and wiping a person's data from the device on sign-out.
+ * The shared modules the account flow builds on: the per-account user stores (`@/stores`) and the
+ * sync session (`@/lib/sync`). Auth reads them only through this file.
  *
- * This file is the only place auth and setup touch those modules. Its shapes follow docs/PRODUCT.md
- * §2 and docs/ARCHITECTURE.md (user data is local-first and synced through `user_documents`). The
- * implementation below is a small self-contained stand-in until the shared user stores and sync
- * engine land; replacing it with them is a change to this file only.
+ * Importing `@/stores` also registers every user store with sync, which `startSync` needs and which
+ * lets the cleanups below wipe all of them (pantry, saved, plan, chef threads, the Keychain copy of
+ * personal details, ...) rather than a hand-picked few.
  */
-import { z } from 'zod';
-import { create } from 'zustand';
-
+import { accountDeletedCleanup, signOutCleanup, startSync, stopSync } from '@/lib/sync';
 import {
-  ALLERGEN_IDS as DOMAIN_ALLERGEN_IDS,
-  DIET_FLAG_NAMES,
-  GOAL_IDS as DOMAIN_GOAL_IDS,
-  MAX_LOVED_CUISINES,
-  TIME_BUDGET_CHOICES as DOMAIN_TIME_BUDGET_CHOICES,
-  allergenIdSchema,
-  cuisineIdSchema,
-  dietFlagNameSchema,
-  effortSchema,
-  goalIdSchema,
-  type AllergenId as DomainAllergenId,
-  type DietFlagName,
-  type Effort,
-  type Goal,
-} from '@/domain/types';
-import { logger } from '@/lib/logger';
-import { defineKvKey, type KvKey } from '@/lib/storage/kv';
+  selectAiConsentHint,
+  selectIsOnboarded,
+  usePreferencesStore,
+  useSettingsStore,
+} from '@/stores';
 
-/** Allergen, diet and goal vocabularies come from the shared domain types (docs/DATA.md). */
-export const ALLERGEN_IDS = DOMAIN_ALLERGEN_IDS;
-export type AllergenId = DomainAllergenId;
+export { accountDeletedCleanup, signOutCleanup, startSync, stopSync };
 
-export const DIET_IDS = DIET_FLAG_NAMES;
-export type DietId = DietFlagName;
-
-export const GOAL_IDS = DOMAIN_GOAL_IDS;
-export type GoalId = Goal;
-
-/** 1 keeps it easy, 2 is some effort, 3 is involved cooking (the shared `Effort` scale). */
-export const EFFORT_LEVELS: readonly Effort[] = [1, 2, 3];
-export type EffortLevel = Effort;
-
-/** Weeknight time budgets offered, in minutes; "no limit" is stored as null. */
-export const TIME_BUDGET_CHOICES = DOMAIN_TIME_BUDGET_CHOICES;
-
-export const MAX_CUISINES = MAX_LOVED_CUISINES;
-/** Largest household `userPreferencesSchema` accepts. */
-export const MAX_HOUSEHOLD = 20;
-
-/**
- * Onboarding answers use the field names and value types of the shared `UserPreferences`
- * (src/domain/types/preferences.ts), plus the few answers that live elsewhere (display name,
- * pantry starters). Skipped optional questions are null or empty rather than a default.
- */
-const answersSchema = z.object({
-  displayName: z.string().trim().min(1).max(50).nullable(),
-  cuisines: z.array(cuisineIdSchema).max(MAX_CUISINES),
-  diets: z.array(dietFlagNameSchema),
-  /** An empty list is an explicit "no allergies", given on its own screen. */
-  allergens: z.array(allergenIdSchema),
-  goals: z.array(goalIdSchema),
-  /** Minutes available on a typical weeknight; null for no limit. */
-  timeBudgetMinutes: z
-    .number()
-    .int()
-    .min(5)
-    .max(24 * 60)
-    .nullable(),
-  /** The most involved cooking the person is happy with; null when skipped. */
-  effort: effortSchema.nullable(),
-  householdSize: z.number().int().min(1).max(MAX_HOUSEHOLD),
-  pantryStaples: z.array(z.string().min(1)),
-  smallAppetite: z.boolean(),
-});
-
-export type OnboardingAnswers = z.infer<typeof answersSchema>;
-
-const storedPreferencesSchema = z.object({
-  /**
-   * The account these answers belong to. Entries saved before ownership was recorded read as
-   * unowned, and unowned answers are never handed to anyone.
-   */
-  ownerId: z.string().min(1).nullable().default(null),
-  onboardingComplete: z.boolean(),
-  answers: answersSchema.nullable(),
-  updatedAt: z.string(),
-});
-
-type StoredPreferences = z.infer<typeof storedPreferencesSchema>;
-
-const preferencesKey = defineKvKey('user.preferences', storedPreferencesSchema);
-
-function blankPreferences(ownerId: string | null = null): StoredPreferences {
-  return {
-    ownerId,
-    onboardingComplete: false,
-    answers: null,
-    updatedAt: new Date(0).toISOString(),
-  };
-}
-
-function loadPersisted(): StoredPreferences {
-  try {
-    return preferencesKey.getSync() ?? blankPreferences();
-  } catch {
-    return blankPreferences();
-  }
-}
-
-const usePreferenceSlice = create<StoredPreferences>()(() => loadPersisted());
-
-usePreferenceSlice.subscribe((state) => {
-  try {
-    preferencesKey.setSync(state);
-  } catch (error) {
-    logger.warn('Could not save preferences', { error: String(error) });
-  }
-});
-
-function ownedBy(userId: string | null | undefined): StoredPreferences | null {
-  const state = usePreferenceSlice.getState();
-  return userId && state.ownerId === userId ? state : null;
-}
-
-/**
- * Onboarding answers and completion, as kept by the preferences store. Every read names the
- * account asking, so answers saved by one person (allergens included) never reach another.
- */
-export const preferences = {
-  /**
-   * Claims the stored preferences for `userId`. Anything saved for a different account, or saved
-   * without an owner, is wiped first. Call before reading completion for a newly signed-in person.
-   */
-  adoptOwner(userId: string): void {
-    const state = usePreferenceSlice.getState();
-    if (state.ownerId === userId) return;
-    usePreferenceSlice.setState(blankPreferences(userId), true);
+/** Onboarding completion, as recorded in the synced preferences document. */
+export const onboarding = {
+  isComplete(): boolean {
+    return selectIsOnboarded(usePreferencesStore.getState());
   },
 
-  isOnboardingComplete(userId: string | null): boolean {
-    return ownedBy(userId)?.onboardingComplete ?? false;
-  },
-
-  subscribeOnboardingComplete(listener: (complete: boolean, ownerId: string | null) => void) {
-    return usePreferenceSlice.subscribe((state, previous) => {
-      if (state.onboardingComplete !== previous.onboardingComplete) {
-        listener(state.onboardingComplete, state.ownerId);
-      }
-    });
-  },
-
-  /** Answers this account saved earlier (on this device or synced), used to prefill onboarding. */
-  readAnswers(userId: string | null): OnboardingAnswers | null {
-    return ownedBy(userId)?.answers ?? null;
-  },
-
-  /** Saves every answer for `userId` and marks onboarding finished. Throws on invalid answers. */
-  completeOnboarding(userId: string, answers: OnboardingAnswers, now: Date = new Date()): void {
-    const parsed = answersSchema.parse(answers);
-    usePreferenceSlice.setState({
-      ownerId: userId,
-      onboardingComplete: true,
-      answers: parsed,
-      updatedAt: now.toISOString(),
+  /** Calls `listener` whenever completion changes, e.g. when a returning person's answers sync in. */
+  subscribe(listener: (complete: boolean) => void): () => void {
+    return usePreferencesStore.subscribe((state, previous) => {
+      const complete = selectIsOnboarded(state);
+      if (complete !== selectIsOnboarded(previous)) listener(complete);
     });
   },
 };
 
-/** Background sync of the signed-in person's documents. */
-export const sync = {
-  start(userId: string): void {
-    logger.debug('Sync start requested', { userId });
-  },
-  stop(): void {
-    logger.debug('Sync stop requested');
-  },
-};
-
-const consentRecordSchema = z.object({
-  granted: z.boolean(),
-  decidedAt: z.string(),
-});
-
-function consentRecord(userId: string): KvKey<z.infer<typeof consentRecordSchema>> {
-  return defineKvKey(`user.aiConsent.${userId}`, consentRecordSchema);
-}
-
-type ConsentListener = (userId: string, granted: boolean) => void;
-const consentListeners = new Set<ConsentListener>();
-
 /**
- * Whether a person has agreed to the AI terms (PRODUCT.md §8). The settings store, and later the
- * server profile, owns this answer; until then it is kept per account on this device. Anything
- * missing or unreadable counts as "not agreed", so AI features stay closed.
+ * The last known AI consent answer, kept by the settings store as a launch hint. The account record
+ * stays the source of truth (see `reconcileAiConsent` in Settings); anything missing reads as "not
+ * agreed", so AI stays closed until the person or the server says otherwise.
  */
-export const aiConsent = {
-  read(userId: string): boolean {
-    try {
-      return consentRecord(userId).getSync()?.granted ?? false;
-    } catch {
-      return false;
-    }
+export const aiConsentHint = {
+  read(): boolean {
+    return selectAiConsentHint(useSettingsStore.getState())?.granted ?? false;
   },
 
-  write(userId: string, granted: boolean, now: Date = new Date()): void {
-    try {
-      consentRecord(userId).setSync({ granted, decidedAt: now.toISOString() });
-    } catch (error) {
-      logger.warn('Could not save the AI consent answer', { error: String(error) });
-    }
-    for (const listener of consentListeners) listener(userId, granted);
-  },
-
-  subscribe(listener: ConsentListener): () => void {
-    consentListeners.add(listener);
-    return () => {
-      consentListeners.delete(listener);
-    };
-  },
-
-  /** Drops the answer for an account that no longer exists. */
-  forget(userId: string): void {
-    try {
-      void consentRecord(userId).remove();
-    } catch (error) {
-      logger.warn('Could not remove the AI consent answer', { error: String(error) });
-    }
+  remember(granted: boolean): void {
+    useSettingsStore.getState().rememberAiConsent(granted);
   },
 };
-
-/** Removes the signed-in person's local data so the next person on this device starts clean. */
-export function clearUserData(): void {
-  usePreferenceSlice.setState(blankPreferences(), true);
-  try {
-    void preferencesKey.remove();
-  } catch (error) {
-    logger.warn('Could not clear saved preferences', { error: String(error) });
-  }
-}

@@ -10,6 +10,7 @@ import { getSupabase } from '@/lib/supabase/client';
 
 import { authFailure, describeAuthError, type AuthFailure } from './authErrors';
 import { AUTH_CALLBACK_URL, type CallbackAction } from './callback';
+import { signOutCleanup } from './deps';
 import { normalizeEmail } from './validation';
 
 /** Version of the Terms and Privacy Policy someone agrees to when creating an account. */
@@ -164,8 +165,16 @@ export async function completeCallback(
 /**
  * Signs out everywhere when possible. Offline, or when the server no longer knows the session,
  * the session is still dropped from this device so the person is never stuck signed in.
+ *
+ * Pending changes are sent first (briefly, while the session can still authorise them), then every
+ * user store on this device is wiped before the session goes.
  */
 export async function signOut(): Promise<void> {
+  try {
+    await signOutCleanup();
+  } catch (error) {
+    logger.error('Could not clear user data before signing out', { error: String(error) });
+  }
   const auth = getSupabase().auth;
   try {
     const { error } = await auth.signOut();
