@@ -74,7 +74,7 @@ async function stopEngine(): Promise<void> {
   const current = engine;
   engine = null;
   engineUser = null;
-  setSyncRunning(false);
+  setSyncRunning(() => false);
   await current?.stop();
 }
 
@@ -125,7 +125,7 @@ async function startEngine(userId: string): Promise<void> {
   });
   engine = instance;
   engineUser = userId;
-  setSyncRunning(true);
+  setSyncRunning(() => engine === instance && !instance.isStopped());
   // Begin on the next macrotask: an auth change queued in the same tick (a sign-out right after
   // the sign-in) then replaces this engine before it sends anything. Starting also waits for every
   // store to load, which can take a moment for Keychain-backed ones, so it is not awaited here.
