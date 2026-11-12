@@ -1,9 +1,14 @@
 /**
  * What the person is searching for right now. Shared by the Search screen and the filter sheet
  * (a separate route), and kept for the session so switching to Chef and back loses nothing.
+ *
+ * The state belongs to whoever is signed in: when the account changes (sign-out, or someone else
+ * signing in on the same device) it starts over, so one person's query and filters never show up
+ * for the next.
  */
 import { create } from 'zustand';
 
+import { watchSearchOwner } from './deps';
 import { EMPTY_FILTERS, type SearchFilterState } from './filters';
 
 export type SearchMode = 'search' | 'chef';
@@ -31,3 +36,5 @@ export const useSearchStore = create<SearchState>()((set, get) => ({
   resetFilters: () => set({ filters: EMPTY_FILTERS }),
   reset: () => set({ mode: 'search', query: '', filters: EMPTY_FILTERS }),
 }));
+
+watchSearchOwner(() => useSearchStore.getState().reset());

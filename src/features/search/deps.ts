@@ -19,6 +19,16 @@ export function useSearchOwnerId(): string | null {
   return useSessionStore((state) => state.userId);
 }
 
+/**
+ * Calls `onChange` whenever a different account (or nobody) becomes the signed-in owner. Returns
+ * the unsubscribe function.
+ */
+export function watchSearchOwner(onChange: (ownerId: string | null) => void): () => void {
+  return useSessionStore.subscribe((state, previous) => {
+    if (state.userId !== previous.userId) onChange(state.userId);
+  });
+}
+
 export type AiAccess = 'allowed' | 'needs_consent' | 'too_young';
 
 /** Whether the Chef segment may show the chat, and if not, what the person can do about it. */
