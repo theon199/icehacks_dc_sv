@@ -12,30 +12,42 @@ export function msUntilNextHour(at: number): number {
 }
 
 /**
- * The local hour (0–23), kept current while the screen stays mounted: re-read when each hour
- * turns and whenever the app returns to the foreground (timers do not run in the background).
- * It only re-renders when the hour actually changes.
+ * Re-reads the hour now and again just after each hour boundary, plus whenever the app comes
+ * back to the foreground (timers are paused while it is in the background). Returns a stop
+ * function that cancels the pending wake-up and drops the foreground listener.
+ */
+function watchHour(clock: () => number, onHour: (hour: number) => void): () => void {
+  const wake = { handle: null as ReturnType<typeof setTimeout> | null };
+
+  const cancelWake = () => {
+    if (wake.handle !== null) clearTimeout(wake.handle);
+    wake.handle = null;
+  };
+
+  const tick = () => {
+    cancelWake();
+    const reading = clock();
+    onHour(new Date(reading).getHours());
+    wake.handle = setTimeout(tick, msUntilNextHour(reading));
+  };
+
+  const foreground = AppState.addEventListener('change', (next) => {
+    if (next === 'active') tick();
+  });
+  tick();
+
+  return () => {
+    cancelWake();
+    foreground.remove();
+  };
+}
+
+/**
+ * The local hour (0–23), kept current while the screen stays mounted. It only re-renders when
+ * the hour actually changes.
  */
 export function useLocalHour(clock: () => number = Date.now): number {
   const [hour, setHour] = useState(() => new Date(clock()).getHours());
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => {
-      clearTimeout(timer);
-      const now = clock();
-      setHour(new Date(now).getHours());
-      timer = setTimeout(refresh, msUntilNextHour(now));
-    };
-    refresh();
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refresh();
-    });
-    return () => {
-      clearTimeout(timer);
-      subscription.remove();
-    };
-  }, [clock]);
-
+  useEffect(() => watchHour(clock, setHour), [clock]);
   return hour;
 }

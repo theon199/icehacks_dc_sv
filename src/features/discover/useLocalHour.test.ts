@@ -14,14 +14,17 @@ describe('msUntilNextHour', () => {
 });
 
 describe('useLocalHour', () => {
-  let listeners: ((state: AppStateStatus) => void)[];
+  /** The most recent app-state handler the hook registered, if any. */
+  let onAppState: ((status: AppStateStatus) => void) | null;
+  const comeToForeground = () => onAppState?.('active');
 
   beforeEach(() => {
     jest.useFakeTimers();
-    listeners = [];
-    jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
-      listeners.push(listener as (state: AppStateStatus) => void);
-      return { remove: jest.fn() } as unknown as ReturnType<typeof AppState.addEventListener>;
+    onAppState = null;
+    const fakeSubscription = { remove: jest.fn() };
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, handler) => {
+      onAppState = handler as typeof onAppState;
+      return fakeSubscription as unknown as ReturnType<typeof AppState.addEventListener>;
     });
   });
 
@@ -48,7 +51,7 @@ describe('useLocalHour', () => {
     expect(result.current).toBe(9);
 
     now = at(18, 5);
-    await act(async () => listeners.forEach((listener) => listener('active')));
+    await act(async () => comeToForeground());
     expect(result.current).toBe(18);
   });
 });
