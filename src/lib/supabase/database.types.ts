@@ -372,11 +372,13 @@ export type Database = {
           expires_at: string;
           fetched_at: string;
           ingredient_id: string;
-          price_cents: number;
+          package_qty: number | null;
+          price_cents: number | null;
           region: string;
-          source_name: string;
+          source_name: string | null;
           source_url: string | null;
-          unit: string;
+          status: string;
+          unit: string | null;
         };
         ComputedFields: never;
         Insert: {
@@ -386,11 +388,13 @@ export type Database = {
           expires_at: string;
           fetched_at?: string;
           ingredient_id: string;
-          price_cents: number;
+          package_qty?: number | null;
+          price_cents?: number | null;
           region?: string;
-          source_name: string;
+          source_name?: string | null;
           source_url?: string | null;
-          unit: string;
+          status?: string;
+          unit?: string | null;
         };
         Update: {
           cache_key?: string;
@@ -399,11 +403,13 @@ export type Database = {
           expires_at?: string;
           fetched_at?: string;
           ingredient_id?: string;
-          price_cents?: number;
+          package_qty?: number | null;
+          price_cents?: number | null;
           region?: string;
-          source_name?: string;
+          source_name?: string | null;
           source_url?: string | null;
-          unit?: string;
+          status?: string;
+          unit?: string | null;
         };
         Relationships: [];
       };
@@ -1021,6 +1027,56 @@ export type Database = {
         };
         Relationships: [];
       };
+      walmart_item_cache: {
+        Row: {
+          expires_at: string;
+          fetched_at: string;
+          item_id: string;
+          payload: NonNullable<Json>;
+        };
+        ComputedFields: never;
+        Insert: {
+          expires_at: string;
+          fetched_at?: string;
+          item_id: string;
+          payload: NonNullable<Json>;
+        };
+        Update: {
+          expires_at?: string;
+          fetched_at?: string;
+          item_id?: string;
+          payload?: NonNullable<Json>;
+        };
+        Relationships: [];
+      };
+      walmart_item_map: {
+        Row: {
+          approved: boolean;
+          created_at: string;
+          ingredient_id: string;
+          item_id: string;
+          note: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          approved?: boolean;
+          created_at?: string;
+          ingredient_id: string;
+          item_id: string;
+          note?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          approved?: boolean;
+          created_at?: string;
+          ingredient_id?: string;
+          item_id?: string;
+          note?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       comment_cards: {
@@ -1226,6 +1282,10 @@ export type Database = {
           object_name: string;
         }[];
       };
+      claim_fill_leases: {
+        Args: { p_holder: string; p_keys: string[]; p_ttl_seconds?: number };
+        Returns: string[];
+      };
       complete_storage_purge: { Args: { p_ids: number[] }; Returns: number };
       confirm_dish: {
         Args: { p_dish_key: string; p_had_it: boolean; p_place_id: string };
@@ -1380,6 +1440,14 @@ export type Database = {
         Returns: Json;
       };
       redeem_friend_invite: { Args: { p_code: string }; Returns: Json };
+      release_fill_leases: {
+        Args: { p_holder: string; p_keys: string[] };
+        Returns: number;
+      };
+      release_usage: {
+        Args: { p_bucket: string; p_period: string; p_units: number };
+        Returns: undefined;
+      };
       report_content: {
         Args: {
           p_details?: string;
@@ -1388,6 +1456,15 @@ export type Database = {
           p_target_kind: Database["public"]["Enums"]["report_target"];
         };
         Returns: string;
+      };
+      reserve_usage: {
+        Args: {
+          p_bucket: string;
+          p_limit: number;
+          p_period: string;
+          p_units: number;
+        };
+        Returns: number;
       };
       set_birth_year: { Args: { p_birth_year: number }; Returns: Json };
       sync_pull: {
