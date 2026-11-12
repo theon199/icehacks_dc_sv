@@ -113,6 +113,8 @@ const US_VOLUME_LADDER: readonly { unit: UnitId; from: number }[] = [
 
 /**
  * Choose a readable unit for an amount in the requested system. Count units are returned as-is.
+ * The choice looks at the value as it will be displayed, so an amount that rounds up to the next
+ * unit's threshold is shown in that unit: 999 g is "1 kg", not "1000 g"; 15.9 oz is "1 lb".
  * In metric mode, spoon measures up to 2 tbsp stay as spoons because metric kitchens use them too.
  * Pinch and dash are kept when the amount is still that small.
  */
@@ -122,29 +124,48 @@ export function toDisplayUnit(quantity: number, unit: UnitId, system: UnitSystem
   const base = toBase(quantity, unit);
   if (d.dimension === 'mass') {
     if (system === 'us') {
-      const chosen: UnitId = base >= UNITS.lb.base ? 'lb' : 'oz';
+      const ozShown = snappedValue(fromBase(base, 'oz')) * UNITS.oz.base;
+      const chosen: UnitId = Math.max(base, ozShown) >= UNITS.lb.base - 1e-9 ? 'lb' : 'oz';
       return { quantity: fromBase(base, chosen), unit: chosen };
     }
-    const chosen: UnitId = base >= 1000 ? 'kg' : 'g';
+    const chosen: UnitId = Math.max(base, roundMetric(base)) >= UNITS.kg.base ? 'kg' : 'g';
     return { quantity: fromBase(base, chosen), unit: chosen };
   }
   if ((unit === 'pinch' || unit === 'dash') && base <= UNITS.tsp.base / 4) {
     return { quantity, unit };
   }
   if (system === 'us') {
-    const step = US_VOLUME_LADDER.find((s) => base >= s.from) ?? { unit: 'tsp' as UnitId };
+    let index = US_VOLUME_LADDER.findIndex((s) => base >= s.from);
+    if (index < 0) index = US_VOLUME_LADDER.length - 1;
+    let promoted = false;
+    // Move up while the displayed (snapped) amount already reaches the next unit's threshold.
+    for (;;) {
+      const here = US_VOLUME_LADDER[index];
+      const up = US_VOLUME_LADDER[index - 1];
+      if (!here || !up) break;
+      const shown = snappedValue(fromBase(base, here.unit)) * UNITS[here.unit].base;
+      if (shown < up.from - 1e-9) break;
+      index -= 1;
+      promoted = true;
+    }
+    const unitHere = US_VOLUME_LADDER[index]?.unit ?? 'tsp';
     const cups = fromBase(base, 'cup');
     // Between ¼ and ½ cup, "6 tbsp" is more exact than rounding to "⅓ cup".
-    if (step.unit === 'cup' && cups < 0.5 && Math.abs(snappedValue(cups) - cups) > cups * 0.03) {
+    if (
+      !promoted &&
+      unitHere === 'cup' &&
+      cups < 0.5 &&
+      Math.abs(snappedValue(cups) - cups) > cups * 0.03
+    ) {
       return { quantity: fromBase(base, 'tbsp'), unit: 'tbsp' };
     }
-    return { quantity: fromBase(base, step.unit), unit: step.unit };
+    return { quantity: fromBase(base, unitHere), unit: unitHere };
   }
   if (base <= UNITS.tbsp.base * 2 + 1e-9) {
     const chosen: UnitId = base >= UNITS.tbsp.base - 1e-9 ? 'tbsp' : 'tsp';
     return { quantity: fromBase(base, chosen), unit: chosen };
   }
-  const chosen: UnitId = base >= 1000 ? 'l' : 'ml';
+  const chosen: UnitId = Math.max(base, roundMetric(base)) >= UNITS.l.base ? 'l' : 'ml';
   return { quantity: fromBase(base, chosen), unit: chosen };
 }
 

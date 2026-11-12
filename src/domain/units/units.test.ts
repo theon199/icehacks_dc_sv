@@ -342,3 +342,58 @@ describe('display units', () => {
     expect(formatIn(1, 'cup', 'g', { system: 'metric' })).toBeNull();
   });
 });
+
+describe('review edge cases', () => {
+  it('does not read a unit out of a hyphenated word', () => {
+    expect(parseAmount('2 T-bone steaks')).toEqual({
+      quantity: { value: 2 },
+      unit: null,
+      rest: 'T-bone steaks',
+    });
+    expect(parseAmount('1 c-shaped pasta').unit).toBeNull();
+    expect(parseAmount('2 cups all-purpose flour')).toEqual({
+      quantity: { value: 2 },
+      unit: 'cup',
+      rest: 'all-purpose flour',
+    });
+    expect(parseAmount('1 T. oil').unit).toBe('tbsp');
+  });
+
+  it('reads thousands separators before the decimal comma', () => {
+    expect(parseQuantity('1,000')).toEqual({ value: 1000 });
+    expect(parseQuantity('12,500.5')).toEqual({ value: 12500.5 });
+    expect(parseAmount('1,000 g flour')).toEqual({
+      quantity: { value: 1000 },
+      unit: 'g',
+      rest: 'flour',
+    });
+    expect(parseAmount('1,000-1,500 ml water').quantity).toEqual({ value: 1000, max: 1500 });
+    // Not three-digit groups: still a decimal comma.
+    expect(parseQuantity('1,5')).toEqual({ value: 1.5 });
+    expect(parseQuantity('1,25')).toEqual({ value: 1.25 });
+    expect(parseQuantity('1,0000')).toEqual({ value: 1 });
+  });
+
+  it('chooses the display unit after rounding', () => {
+    expect(formatAmount(999, 'g', { system: 'metric' })).toBe('1 kg');
+    expect(formatAmount(998, 'ml', { system: 'metric' })).toBe('1 L');
+    expect(formatAmount(15.9, 'oz', { system: 'us' })).toBe('1 lb');
+    expect(formatAmount(2.95, 'tsp', { system: 'us' })).toBe('1 tbsp');
+    expect(formatAmount(15.8, 'cup', { system: 'us' })).toBe('1 gallon');
+    expect(formatAmount(990, 'g', { system: 'metric' })).toBe('990 g');
+    expect(formatAmount(15, 'oz', { system: 'us' })).toBe('15 oz');
+  });
+
+  it('derives a density from any single volume entry', () => {
+    for (const [unit, grams] of [
+      ['gallon', 3785],
+      ['pinch', 0.4],
+      ['dash', 0.8],
+    ] as const) {
+      const g = normalizeGramsPerUnit({ [unit]: grams });
+      const perMl = grams / UNITS[unit].base;
+      expect(densityOf(g)).toBeCloseTo(perMl, 10);
+      expect(convertAmount(1, 'cup', 'g', g)).toBeCloseTo(UNITS.cup.base * perMl, 6);
+    }
+  });
+});

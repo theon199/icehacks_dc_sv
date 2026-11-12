@@ -26,12 +26,14 @@ const GLYPHS: Readonly<Record<string, number>> = {
 };
 const GLYPH_CLASS = Object.keys(GLYPHS).join('');
 
-// One number: mixed ("1 1/2", "1½", "1 ½"), simple fraction ("3/4"), decimal ("1.5" / "1,5"),
-// a lone glyph ("½"), or an integer. The `⁄` fraction slash is accepted alongside `/`.
+// One number: mixed ("1 1/2", "1½", "1 ½"), simple fraction ("3/4"), thousands with commas
+// ("1,000", "1,250.5"; tried before the decimal comma), decimal ("1.5" / "1,5"), a lone glyph
+// ("½"), or an integer. The `⁄` fraction slash is accepted alongside `/`.
 const NUMBER_SOURCE =
   `(?:\\d+\\s+\\d+\\s*[/⁄]\\s*\\d+` +
   `|\\d+\\s*[${GLYPH_CLASS}]` +
   `|\\d+\\s*[/⁄]\\s*\\d+` +
+  `|\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?(?!\\d)` +
   `|\\d+(?:[.,]\\d+)?` +
   `|[.,]\\d+` +
   `|[${GLYPH_CLASS}])`;
@@ -65,6 +67,8 @@ function numberValue(token: string): number | null {
   }
   const glyph = GLYPHS[t];
   if (glyph !== undefined) return glyph;
+  // A comma followed by groups of exactly three digits separates thousands: "1,000" is 1000.
+  if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(t)) return Number(t.replace(/,/g, ''));
   const n = Number(t.replace(',', '.'));
   return Number.isFinite(n) ? n : null;
 }
@@ -115,8 +119,9 @@ export interface ParsedAmount {
   readonly rest: string;
 }
 
-// Unit words can be one or two words ("fl oz", "fluid ounces").
-const WORD_RE = /^\s*([A-Za-z]+\.?)(?:\s+([A-Za-z]+\.?))?/;
+// Unit words can be one or two words ("fl oz", "fluid ounces"). Each word must end where the word
+// really ends, not at a hyphen or apostrophe, so "T-bone" is never read as "T" (tablespoon).
+const WORD_RE = /^\s*([A-Za-z]+\.?)(?![-'’\w])(?:\s+([A-Za-z]+\.?)(?![-'’\w]))?/;
 // "(14 oz)" package-size notes between the quantity and the unit are skipped.
 const PAREN_RE = /^\s*\([^)]*\)/;
 

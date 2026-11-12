@@ -57,8 +57,21 @@ export function convertUnit(quantity: number, from: UnitId, to: UnitId): number 
 
 /** Grams per millilitre for an ingredient, derived from its first usable volume entry. */
 export function densityOf(gramsPerUnit: GramsPerUnit): number | null {
-  // Prefer larger measures: a cup weighing is a more reliable density than a pinch.
-  const order: UnitId[] = ['cup', 'l', 'pint', 'quart', 'fl_oz', 'tbsp', 'ml', 'tsp'];
+  // Prefer kitchen-sized measures (a cup weighing is a more reliable density than a pinch), then
+  // fall back to every other volume unit so any single volume entry is enough.
+  const order: readonly UnitId[] = [
+    'cup',
+    'l',
+    'pint',
+    'quart',
+    'gallon',
+    'fl_oz',
+    'tbsp',
+    'ml',
+    'tsp',
+    'dash',
+    'pinch',
+  ];
   for (const unit of order) {
     const grams = gramsPerUnit[unit];
     if (grams !== undefined) return grams / UNITS[unit].base;
