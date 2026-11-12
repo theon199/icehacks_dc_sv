@@ -11,7 +11,7 @@ import {
 import { addDays, type IsoDate, type PlanDaysResult, type PlannedDay } from '@/domain/plan';
 import { slotKey } from '@/stores';
 
-import { locateDate, type SlotWrite } from './week';
+import { locateDate, storedPortion, type SlotWrite } from './week';
 
 /** Nutrients shown under each planned day, in reading order. */
 export const SHOWN_NUTRIENTS: readonly TargetNutrient[] = [
@@ -91,8 +91,9 @@ export interface WeekWrites {
 
 /**
  * Slot writes for a plan starting on `start`, grouped by planner week (a plan that starts on a
- * Sunday spans two weeks). The planner has one snack slot a day, so a day's second snack is left
- * out; empty planned slots are skipped.
+ * Sunday spans two weeks). Each write keeps the portion the plan was balanced at, so half-size
+ * small meals stay half-size in the planner and on the shopping list. The planner has one snack
+ * slot a day, so a day's second snack is left out; empty planned slots are skipped.
  */
 export function dayPlanWrites(
   result: PlanDaysResult,
@@ -111,6 +112,7 @@ export function dayPlanWrites(
         slot: slotKey(dayIndex, meal.slot),
         recipeId: meal.recipeId,
         servings: Math.max(1, servings),
+        portion: storedPortion(meal.portion),
       });
     }
     byWeek.set(week, writes);

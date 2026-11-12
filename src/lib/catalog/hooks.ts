@@ -142,12 +142,14 @@ export function useCandidates(filters: CandidateFilters, options: { enabled?: bo
 }
 
 /**
- * Every version of one dish, healthiest first, read only once `familyId` is known. Safety filters
- * are part of the cache key, so versions read under other allergen or diet answers are never reused.
+ * Every version of one dish, healthiest first, read only once `familyId` is known. `filters` is
+ * required so no caller reads versions without screening them against the person's allergens and
+ * diets by accident; pass the safety filters built from their answers. They are part of the cache
+ * key, so versions read under other allergen or diet answers are never reused.
  */
 export function useRecipeFamily(
   familyId: string | null | undefined,
-  filters: FamilyFilters = {},
+  filters: FamilyFilters,
   options: { enabled?: boolean } = {},
 ) {
   return useQuery({

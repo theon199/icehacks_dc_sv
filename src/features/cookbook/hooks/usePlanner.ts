@@ -13,6 +13,7 @@ import {
   useMealPlanStore,
   usePreferencesStore,
   type MealPlanState,
+  type PlanEntry,
   type PlanWeek,
 } from '@/stores';
 
@@ -65,9 +66,14 @@ export const plannerActions = {
    * Put a recipe in a slot, replacing whatever was there. Returns false (and writes nothing) when
    * the week is archived.
    */
-  place(ref: SlotRef, recipeId: string, servings = defaultServings()): boolean {
+  place(
+    ref: SlotRef,
+    recipeId: string,
+    servings = defaultServings(),
+    portion?: number | undefined,
+  ): boolean {
     if (isWeekArchived(ref.week)) return false;
-    plan().setSlot(ref.week, slotKey(ref.day, ref.slot), { recipeId, servings });
+    plan().setSlot(ref.week, slotKey(ref.day, ref.slot), { recipeId, servings, portion });
     return true;
   },
   /**
@@ -83,12 +89,15 @@ export const plannerActions = {
     return true;
   },
   /**
-   * Put a recipe back into a slot only if the slot is still empty (undo after a removal must not
-   * overwrite a meal planned there since). Returns whether it was placed.
+   * Put a removed meal back, with its servings and portion, only if the slot is still empty (undo
+   * after a removal must not overwrite a meal planned there since). Returns whether it was placed.
    */
-  restoreIfEmpty(ref: SlotRef, recipeId: string, servings: number): boolean {
+  restoreIfEmpty(
+    ref: SlotRef,
+    entry: Pick<PlanEntry, 'recipeId' | 'servings' | 'portion'>,
+  ): boolean {
     if (plan().weeks[ref.week]?.slots[slotKey(ref.day, ref.slot)]) return false;
-    return plannerActions.place(ref, recipeId, servings);
+    return plannerActions.place(ref, entry.recipeId, entry.servings, entry.portion);
   },
   clear(ref: SlotRef): void {
     if (isWeekArchived(ref.week)) return;
@@ -112,7 +121,11 @@ export const plannerActions = {
     for (const write of writes) {
       const store = plan();
       if (store.weeks[week]?.slots[write.slot]) continue;
-      store.setSlot(week, write.slot, { recipeId: write.recipeId, servings: write.servings });
+      store.setSlot(week, write.slot, {
+        recipeId: write.recipeId,
+        servings: write.servings,
+        portion: write.portion,
+      });
       if (plan().weeks[week]?.slots[write.slot]) placed += 1;
     }
     return placed;

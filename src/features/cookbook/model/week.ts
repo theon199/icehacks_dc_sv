@@ -21,7 +21,15 @@ import {
   type PlannedMeal,
   type WeekPlan,
 } from '@/domain/plan';
-import { slotKey, type PlanEntry, type PlanWeek, type SlotKey } from '@/stores';
+import {
+  entryPortion,
+  MAX_PORTION,
+  MIN_PORTION,
+  slotKey,
+  type PlanEntry,
+  type PlanWeek,
+  type SlotKey,
+} from '@/stores';
 
 export const SLOT_LABELS: Readonly<Record<MealSlot, string>> = {
   breakfast: 'Breakfast',
@@ -125,14 +133,18 @@ export function toCellKey(key: SlotKey): CellKey {
 }
 
 /**
- * A stored week as the planner domain reads it. `portion` is applied to every meal because the
- * store keeps servings only.
+ * A stored week as the planner domain reads it. Each meal keeps the portion it was planned at;
+ * `portion` stands in for meals stored without one.
  */
 export function toWeekPlan(week: PlanWeek | undefined, weekStart: IsoDate, portion = 1): WeekPlan {
   const cells: Partial<Record<CellKey, PlannedMeal>> = {};
   if (week) {
     for (const [key, entry] of Object.entries(week.slots) as [SlotKey, PlanEntry][]) {
-      cells[toCellKey(key)] = { recipeId: entry.recipeId, servings: entry.servings, portion };
+      cells[toCellKey(key)] = {
+        recipeId: entry.recipeId,
+        servings: entry.servings,
+        portion: entry.portion ?? portion,
+      };
     }
   }
   return { weekStart, cells, updatedAt: null };
@@ -142,14 +154,27 @@ export interface SlotWrite {
   readonly slot: SlotKey;
   readonly recipeId: string;
   readonly servings: number;
+  /** Portion size the planner chose (0.5 for a small meal); omitted means a standard portion. */
+  readonly portion?: number;
 }
 
-/** Planner assignments as store writes. Servings are whole numbers of at least one. */
+/** A planner's portion as the store keeps it: within the stored range, two decimals at most. */
+export function storedPortion(portion: number): number {
+  if (!Number.isFinite(portion) || portion <= 0) return 1;
+  const clamped = Math.min(MAX_PORTION, Math.max(MIN_PORTION, portion));
+  return Math.round(clamped * 100) / 100;
+}
+
+/**
+ * Planner assignments as store writes. Servings are whole numbers of at least one, and every write
+ * carries the planner's portion so a small-meals plan stays small once saved.
+ */
 export function toSlotWrites(assignments: readonly FillAssignment[]): SlotWrite[] {
   return assignments.map((a) => ({
     slot: slotKey(a.day, a.slot),
     recipeId: a.meal.recipeId,
     servings: Math.max(1, Math.round(a.meal.servings)),
+    portion: storedPortion(a.meal.portion),
   }));
 }
 
@@ -164,6 +189,34 @@ export function mealsForDay(slots: PlanWeek['slots'], day: DayIndex): DayMeal[] 
     const key = slotKey(day, slot);
     return { slot, key, entry: slots[key] };
   });
+}
+
+/** One planned meal as the week's cost estimate reads it. */
+export interface WeekCostRecipe {
+  readonly recipeId: string;
+  /** Standard servings to buy for: planned servings × the meal's portion. */
+  readonly servings: number;
+}
+
+/**
+ * Every meal of a week, Monday breakfast first, as recipes to cost. Each meal counts at its
+ * planned servings scaled by its portion, the same amounts the shopping list buys, so a week of
+ * half-size meals is costed at half the food. A recipe planned twice counts twice.
+ */
+export function weekCostRecipes(
+  slots: PlanWeek['slots'],
+  smallAppetite: boolean,
+): WeekCostRecipe[] {
+  const out: WeekCostRecipe[] = [];
+  for (const day of DAY_INDICES) {
+    for (const slot of MEAL_SLOTS) {
+      const entry = slots[slotKey(day, slot)];
+      if (!entry) continue;
+      const servings = entry.servings * entryPortion(entry, slot, smallAppetite);
+      out.push({ recipeId: entry.recipeId, servings });
+    }
+  }
+  return out;
 }
 
 /** Number of planned meals per day of the week, Monday first. */

@@ -3,7 +3,7 @@ import { ALLERGEN_IDS, dietMask } from '@/domain';
 import {
   adaptedSafety,
   diffIngredients,
-  familyCandidateFilters,
+  familySafetyFilters,
   nutritionDeltas,
   pairFamily,
   sideFromPersonalVersion,
@@ -140,22 +140,23 @@ describe('pairFamily', () => {
   });
 });
 
-describe('familyCandidateFilters', () => {
+describe('familySafetyFilters', () => {
   it('keeps out declared allergens and searches every course', () => {
-    const filters = familyCandidateFilters({ allergens: ['peanut'], diets: [] });
+    const filters = familySafetyFilters({ allergens: ['peanut'], diets: [] });
     expect(filters.avoidAllergens).toEqual(['peanut']);
     expect(filters.dietMask).toBeUndefined();
-    expect(filters.course).toBeUndefined();
+    // Family reads have no course or row limit: every version of the dish is a candidate.
+    expect(Object.keys(filters)).toEqual(['avoidAllergens']);
   });
 
   it('requires followed diets and the allergens that could disprove them', () => {
-    const filters = familyCandidateFilters({ allergens: [], diets: ['dairy_free'] });
+    const filters = familySafetyFilters({ allergens: [], diets: ['dairy_free'] });
     expect(filters.dietMask).toBe(dietMask(['dairy_free']));
     expect(filters.avoidAllergens).toEqual(['milk']);
   });
 
   it('only allows versions free of every allergen before the person has answered', () => {
-    const filters = familyCandidateFilters({ allergens: null, diets: null });
+    const filters = familySafetyFilters({ allergens: null, diets: null });
     expect([...(filters.avoidAllergens ?? [])].sort()).toEqual([...ALLERGEN_IDS].sort());
   });
 });

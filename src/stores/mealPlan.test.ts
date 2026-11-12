@@ -1,5 +1,6 @@
 import {
   clearSlot,
+  entryPortion,
   MAX_ARCHIVED_WEEKS,
   mealPlanSync,
   moveSlot,
@@ -59,6 +60,85 @@ describe('slot transitions', () => {
     expect(weeks[W]?.slots['0-dinner']).toBeUndefined();
     expect(weeks[next]?.slots['3-lunch']?.recipeId).toBe('b');
     expect(plannedRecipeIds(weeks[W])).toEqual(['a']);
+  });
+});
+
+describe('portions', () => {
+  it('stores the portion a planner chose with the meal', () => {
+    let weeks = setSlot({}, W, '0-dinner', { recipeId: 'r', servings: 2, portion: 0.5 }, at);
+    expect(weeks[W]?.slots['0-dinner']).toEqual({
+      recipeId: 'r',
+      servings: 2,
+      addedAt: at,
+      portion: 0.5,
+    });
+    // Same recipe and servings at another portion is a change, not a no-op.
+    const before = weeks;
+    weeks = setSlot(weeks, W, '0-dinner', { recipeId: 'r', servings: 2, portion: 1 }, at);
+    expect(weeks).not.toBe(before);
+    expect(weeks[W]?.slots['0-dinner']?.portion).toBe(1);
+    expect(setSlot(weeks, W, '0-dinner', { recipeId: 'r', servings: 2, portion: 1 }, at)).toBe(
+      weeks,
+    );
+  });
+
+  it('writes no portion field for a meal added without one', () => {
+    const weeks = setSlot({}, W, '1-lunch', { recipeId: 'r', servings: 1 }, at);
+    expect(weeks[W]?.slots['1-lunch']).not.toHaveProperty('portion');
+    const explicit = setSlot(
+      {},
+      W,
+      '1-lunch',
+      { recipeId: 'r', servings: 1, portion: undefined },
+      at,
+    );
+    expect(explicit[W]?.slots['1-lunch']).not.toHaveProperty('portion');
+  });
+
+  it('refuses a portion outside the range it can store', () => {
+    expect(setSlot({}, W, '0-dinner', { recipeId: 'r', servings: 2, portion: 0 }, at)).toEqual({});
+    expect(setSlot({}, W, '0-dinner', { recipeId: 'r', servings: 2, portion: 5 }, at)).toEqual({});
+    expect(
+      setSlot({}, W, '0-dinner', { recipeId: 'r', servings: 2, portion: Number.NaN }, at),
+    ).toEqual({});
+  });
+
+  it('keeps the portion when a meal moves', () => {
+    let weeks = setSlot({}, W, '0-dinner', { recipeId: 'r', servings: 2, portion: 0.5 }, at);
+    weeks = moveSlot(weeks, { weekStart: W, slot: '0-dinner' }, { weekStart: W, slot: '3-lunch' });
+    expect(weeks[W]?.slots['3-lunch']?.portion).toBe(0.5);
+  });
+
+  it('sizes a meal by its own portion, else by small appetite mode with snacks whole', () => {
+    expect(entryPortion({ portion: 1 }, 'dinner', true)).toBe(1);
+    expect(entryPortion({ portion: 0.5 }, 'snack', false)).toBe(0.5);
+    expect(entryPortion({}, 'dinner', true)).toBe(0.5);
+    expect(entryPortion({}, 'snack', true)).toBe(1);
+    expect(entryPortion({}, 'lunch', false)).toBe(1);
+  });
+
+  it('accepts synced weeks with and without portions, dropping only a portion it cannot use', () => {
+    mealPlanSync.applyRemote({
+      upserts: [
+        {
+          docId: W,
+          data: {
+            weekStart: W,
+            archivedAt: null,
+            slots: {
+              '0-dinner': { recipeId: 'old', servings: 2, addedAt: at },
+              '1-dinner': { recipeId: 'half', servings: 2, addedAt: at, portion: 0.5 },
+              '2-dinner': { recipeId: 'odd', servings: 2, addedAt: at, portion: 'large' },
+            },
+          },
+        },
+      ],
+      deletes: [],
+    });
+    const synced = useMealPlanStore.getState().weeks[W]?.slots;
+    expect(synced?.['0-dinner']).toEqual({ recipeId: 'old', servings: 2, addedAt: at });
+    expect(synced?.['1-dinner']?.portion).toBe(0.5);
+    expect(synced?.['2-dinner']).toEqual({ recipeId: 'odd', servings: 2, addedAt: at });
   });
 });
 

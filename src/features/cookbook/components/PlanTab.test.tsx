@@ -1,4 +1,6 @@
 import { act, fireEvent, screen, userEvent, waitFor, within } from '@testing-library/react-native';
+import type { ComponentType, createElement as CreateElementFn } from 'react';
+import type { TextProps } from 'react-native';
 
 import { getRecipeSummaries } from '@/lib/catalog/queries';
 import { useMealPlanStore, usePreferencesStore, useSavedStore } from '@/stores';
@@ -15,6 +17,25 @@ import {
 import { plannerActions } from '../hooks/usePlanner';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
+// Grocery's own tests cover the estimate; here only the week the planner hands it.
+jest.mock('@/features/grocery', () => {
+  const { createElement } = jest.requireActual<{ createElement: typeof CreateElementFn }>('react');
+  const { Text } = jest.requireActual<{ Text: ComponentType<TextProps> }>('react-native');
+  return {
+    CostSummary: ({
+      recipes,
+      hideWalmart = false,
+    }: {
+      recipes: readonly { recipeId: string; servings?: number }[];
+      hideWalmart?: boolean;
+    }) =>
+      createElement(
+        Text,
+        { testID: 'week-cost', accessibilityHint: hideWalmart ? 'no shopping' : 'shopping' },
+        recipes.map((r) => `${r.recipeId}×${r.servings}`).join(' '),
+      ),
+  };
+});
 jest.mock('@/lib/catalog/queries', () => ({
   getRecipeSummaries: jest.fn(),
   searchRecipes: jest.fn(async () => ({ items: [], nextCursor: null })),
@@ -209,5 +230,48 @@ describe('PlanTab', () => {
 
     await user.press(screen.getByTestId('restore-week'));
     expect(await screen.findByTestId('slot-more-dinner')).toBeOnTheScreen();
+  });
+
+  it('costs an archived week without offering to shop for it', async () => {
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm1', 2);
+    plannerActions.archive(WEEK);
+    await renderPlan();
+    expect(await screen.findByLabelText(/^Dinner: Dish m1/)).toBeOnTheScreen();
+    expect(screen.getByTestId('week-cost')).toHaveProp('accessibilityHint', 'no shopping');
+
+    await act(async () => {
+      plannerActions.restore(WEEK);
+    });
+    expect(screen.getByTestId('week-cost')).toHaveProp('accessibilityHint', 'shopping');
+  });
+
+  it('costs the week from its planned meals, servings and portions', async () => {
+    plannerActions.place({ week: WEEK, day: 0, slot: 'lunch' }, 'm1', 2);
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm2', 4, 0.5);
+    plannerActions.place({ week: WEEK, day: 2, slot: 'snack' }, 'm1', 1);
+    // Another week's meals are not part of this week's cost.
+    plannerActions.place({ week: '2026-11-16', day: 0, slot: 'dinner' }, 'm3', 2);
+    await renderPlan();
+    expect(screen.getByTestId('week-cost')).toHaveTextContent('m1×2 m2×2 m1×1');
+  });
+
+  it('shows no cost for an empty week', async () => {
+    await renderPlan();
+    expect(screen.queryByTestId('week-cost')).not.toBeOnTheScreen();
+  });
+
+  it('shows the portion each meal was planned at', async () => {
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm1', 2, 0.5);
+    plannerActions.place({ week: WEEK, day: 2, slot: 'lunch' }, 'm2', 2, 1);
+    plannerActions.place({ week: WEEK, day: 2, slot: 'breakfast' }, 'b1', 2);
+    usePreferencesStore.getState().update({ smallAppetite: true });
+    await renderPlan();
+    expect(
+      await screen.findByLabelText(/^Dinner: Dish m1, 2 half-size servings/),
+    ).toBeOnTheScreen();
+    // A plan saved at full size stays full size in small appetite mode...
+    expect(screen.getByLabelText(/^Lunch: Dish m2, 2 servings/)).toBeOnTheScreen();
+    // ...while a meal added by hand follows the setting.
+    expect(screen.getByLabelText(/^Breakfast: Dish b1, 2 half-size servings/)).toBeOnTheScreen();
   });
 });

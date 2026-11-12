@@ -189,7 +189,7 @@ describe('catalog hooks', () => {
   it('reads a dish family only once its id is known, with its safety filters', async () => {
     jest.mocked(getRecipesByFamily).mockResolvedValue([summary('a'), summary('b')]);
     const { Wrapper } = wrapper();
-    const idle = await renderHook(() => useRecipeFamily(null), { wrapper: Wrapper });
+    const idle = await renderHook(() => useRecipeFamily(null, {}), { wrapper: Wrapper });
     expect(idle.result.current.fetchStatus).toBe('idle');
     expect(getRecipesByFamily).not.toHaveBeenCalled();
 

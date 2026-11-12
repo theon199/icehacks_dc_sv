@@ -23,6 +23,16 @@ describe('two-day plan hand-off', () => {
     expect(writes[0]!.writes.map((w) => w.slot)).toEqual(['6-breakfast', '6-lunch', '6-dinner']);
     expect(writes[1]!.writes.map((w) => w.slot)).toEqual(['0-breakfast', '0-lunch', '0-dinner']);
     expect(writes.flatMap((w) => w.writes).every((w) => w.servings === 2)).toBe(true);
+    expect(writes.flatMap((w) => w.writes).every((w) => w.portion === 1)).toBe(true);
+  });
+
+  it('saves small-appetite main meals at half size and snacks whole', () => {
+    const result = planDays({ candidates: pool, targets, days: 2, smallAppetite: true });
+    const writes = dayPlanWrites(result, '2026-11-11', 2).flatMap((w) => w.writes);
+    const mains = writes.filter((w) => !w.slot.endsWith('snack'));
+    expect(mains.length).toBeGreaterThan(0);
+    expect(mains.every((w) => w.portion === 0.5 && w.servings === 2)).toBe(true);
+    expect(writes.filter((w) => w.slot.endsWith('snack')).every((w) => w.portion === 1)).toBe(true);
   });
 
   it('keeps one snack a day for small-appetite plans', () => {

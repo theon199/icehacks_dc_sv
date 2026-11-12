@@ -2,14 +2,21 @@ import { useCallback, useMemo } from 'react';
 
 import { compileSafetyRules, isRecipeSafe, type SafetyRules } from '@/domain/safety';
 import { useRecipes, type RecipeSummary } from '@/lib/catalog';
-import { selectSavedIds, usePreferencesStore, useSavedStore } from '@/stores';
+import {
+  selectSavedIds,
+  selectUnits,
+  usePreferencesStore,
+  useSavedStore,
+  useSettingsStore,
+} from '@/stores';
 
 import { toDomainPreferences } from '../deps';
 
 /** The person's allergen and diet rules, compiled once per preferences change. */
 export function useSafetyRules(): SafetyRules {
   const prefs = usePreferencesStore((s) => s.prefs);
-  return useMemo(() => compileSafetyRules(toDomainPreferences(prefs)), [prefs]);
+  const units = useSettingsStore(selectUnits);
+  return useMemo(() => compileSafetyRules(toDomainPreferences(prefs, units)), [prefs, units]);
 }
 
 /** A stable check of one recipe against the person's current allergen and diet rules. */

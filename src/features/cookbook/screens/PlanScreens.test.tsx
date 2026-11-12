@@ -89,6 +89,34 @@ describe('Plan my week', () => {
     await waitFor(() => expect(screen.getAllByText('Snack').length).toBe(6), LONG);
   });
 
+  it('saves a small-meals week at half size', async () => {
+    const user = userEvent.setup();
+    await renderCookbook(<PlanWeekScreen week="2026-11-16" />);
+    await screen.findByTestId('fill-preview', {}, LONG);
+    await fireEvent(screen.getByRole('switch'), 'valueChange', true);
+    await waitFor(() => expect(screen.getAllByText('Snack').length).toBe(6), LONG);
+
+    await user.press(screen.getByTestId('accept-fill'));
+    const saved = Object.values(slots('2026-11-16'));
+    expect(saved.length).toBeGreaterThan(0);
+    expect(saved.every((entry) => entry.portion === 0.5)).toBe(true);
+  });
+
+  it('saves full-size meals when small meals are turned off for this plan', async () => {
+    const user = userEvent.setup();
+    usePreferencesStore.getState().update({ smallAppetite: true });
+    await renderCookbook(<PlanWeekScreen week="2026-11-16" />);
+    await screen.findByTestId('fill-preview', {}, LONG);
+    await fireEvent(screen.getByRole('switch'), 'valueChange', false);
+    await waitFor(() => expect(screen.queryByText('Snack')).not.toBeOnTheScreen(), LONG);
+    await screen.findByTestId('fill-preview', {}, LONG);
+
+    await user.press(screen.getByTestId('accept-fill'));
+    const saved = Object.values(slots('2026-11-16'));
+    expect(saved.length).toBeGreaterThan(0);
+    expect(saved.every((entry) => entry.portion === 1)).toBe(true);
+  });
+
   it('offers a retry instead of loading forever when planned meals cannot be read', async () => {
     const user = userEvent.setup();
     plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm0');
@@ -148,6 +176,23 @@ describe('Two-day nutrition plan', () => {
       message: ARCHIVED_WEEK_MESSAGE,
       tone: 'neutral',
     });
+  });
+
+  it('saves small-meals main courses at half size and snacks whole', async () => {
+    const user = userEvent.setup();
+    await renderCookbook(<TwoDayPlanScreen />);
+    await screen.findByTestId('two-day-result', {}, LONG);
+    await fireEvent(screen.getByTestId('two-day-small'), 'valueChange', true);
+    await screen.findAllByText(/Half portion/, {}, LONG);
+
+    await user.press(screen.getByTestId('add-two-day'));
+    const saved = Object.entries(slots());
+    const mains = saved.filter(([key]) => !key.endsWith('snack'));
+    expect(mains.length).toBeGreaterThan(0);
+    expect(mains.every(([, entry]) => entry.portion === 0.5)).toBe(true);
+    expect(saved.filter(([key]) => key.endsWith('snack')).every(([, e]) => e.portion === 1)).toBe(
+      true,
+    );
   });
 
   it('says when the meals were already planned', async () => {
