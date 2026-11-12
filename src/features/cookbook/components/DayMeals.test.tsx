@@ -9,6 +9,7 @@ import { DayMeals } from './DayMeals';
 import { makeCandidate } from '../__fixtures__/recipes';
 import { clearQueryClients, renderCookbook, resetCookbookStores } from '../__fixtures__/render';
 import { plannerActions } from '../hooks/usePlanner';
+import { ARCHIVED_WEEK_MESSAGE } from '../model/planToast';
 import { weekDays } from '../model/week';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
@@ -103,7 +104,7 @@ describe('DayMeals adding a meal', () => {
     await user.press(screen.getByTestId('stub-pick'));
     expect(breakfast()).toBeUndefined();
     expect(lastToast()).toMatchObject({
-      message: 'Archived weeks cannot be changed',
+      message: ARCHIVED_WEEK_MESSAGE,
       tone: 'danger',
     });
   });

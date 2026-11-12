@@ -12,6 +12,7 @@ import { AddMealSheet } from './AddMealSheet';
 import { SlotPickerSheet } from './SlotPickerSheet';
 import { SlotRow } from './SlotRow';
 import { plannerActions, type SlotRef } from '../hooks/usePlanner';
+import { ARCHIVED_WEEK_MESSAGE } from '../model/planToast';
 import { mealsForDay, SLOT_LABELS, type DayInfo } from '../model/week';
 
 export interface DayMealsProps {
@@ -172,7 +173,7 @@ export function DayMeals({
               return;
             }
             if (!plannerActions.place(ref(adding), recipe.id)) {
-              toast.show({ message: 'Archived weeks cannot be changed', tone: 'danger' });
+              toast.show({ message: ARCHIVED_WEEK_MESSAGE, tone: 'danger' });
             }
           }}
         />
@@ -193,7 +194,7 @@ export function DayMeals({
             toast.show(
               moved
                 ? { message: 'Meal moved', tone: 'success' }
-                : { message: 'Archived weeks cannot be changed', tone: 'danger' },
+                : { message: ARCHIVED_WEEK_MESSAGE, tone: 'danger' },
             );
           }}
         />

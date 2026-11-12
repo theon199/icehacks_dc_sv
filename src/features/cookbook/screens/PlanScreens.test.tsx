@@ -1,15 +1,16 @@
-import { fireEvent, screen, userEvent, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import { getRecipeSummaries, listCandidates } from '@/lib/catalog/queries';
 import { useMealPlanStore, usePreferencesStore } from '@/stores';
 import { useToastStore } from '@/ui';
 
-import { PlanWeekScreen, addedToPlanToast } from './PlanWeekScreen';
+import { PlanWeekScreen } from './PlanWeekScreen';
 import { TwoDayPlanScreen } from './TwoDayPlanScreen';
 import { candidatePool } from '../__fixtures__/recipes';
 import { clearQueryClients, renderCookbook, resetCookbookStores } from '../__fixtures__/render';
 import { plannerActions } from '../hooks/usePlanner';
+import { ARCHIVED_WEEK_MESSAGE } from '../model/planToast';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/lib/catalog/queries', () => ({
@@ -23,6 +24,8 @@ const WEEK = '2026-11-09';
 const pool = candidatePool();
 const slots = (week = WEEK) => useMealPlanStore.getState().weeks[week]?.slots ?? {};
 const LONG = { timeout: 10_000 };
+/** Plan changes re-run the preview in a zero-delay timer; let it land inside act. */
+const settlePreview = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
 beforeEach(() => {
   resetCookbookStores();
@@ -48,6 +51,7 @@ describe('Plan my week', () => {
     const accept = screen.getByTestId('accept-fill');
     expect(accept).toHaveTextContent('Add 14 meals');
     await user.press(accept);
+    await settlePreview();
 
     const planned = Object.keys(slots());
     expect(planned).toHaveLength(15);
@@ -64,11 +68,14 @@ describe('Plan my week', () => {
     await renderCookbook(<PlanWeekScreen week={WEEK} />);
     await screen.findByTestId('fill-preview', {}, LONG);
 
-    plannerActions.archive(WEEK);
+    await act(async () => {
+      plannerActions.archive(WEEK);
+    });
+    await settlePreview();
     await user.press(screen.getByTestId('accept-fill'));
     expect(Object.keys(slots())).toEqual(['2-dinner']);
     expect(useToastStore.getState().queue[0]).toMatchObject({
-      message: expect.stringMatching(/^That week is archived, so nothing was added/),
+      message: ARCHIVED_WEEK_MESSAGE,
       tone: 'neutral',
     });
   });
@@ -101,31 +108,6 @@ describe('Plan my week', () => {
     await renderCookbook(<PlanWeekScreen week={WEEK} />);
     expect(await screen.findByText('Tell us about allergies first')).toBeOnTheScreen();
     expect(listCandidates).not.toHaveBeenCalled();
-  });
-});
-
-describe('addedToPlanToast', () => {
-  it('reports what landed and why anything did not', () => {
-    expect(addedToPlanToast({ offered: 3, placed: 3, archived: false })).toEqual({
-      message: 'Added 3 meals to your plan',
-      tone: 'success',
-    });
-    expect(addedToPlanToast({ offered: 1, placed: 1, archived: false }).message).toBe(
-      'Added 1 meal to your plan',
-    );
-    expect(addedToPlanToast({ offered: 4, placed: 2, archived: false }).message).toBe(
-      'Added 2 meals to your plan. The rest had been planned in the meantime.',
-    );
-    expect(addedToPlanToast({ offered: 6, placed: 3, archived: true }).message).toBe(
-      'Added 3 meals to your plan. An archived week was left as it is.',
-    );
-    expect(addedToPlanToast({ offered: 3, placed: 0, archived: false })).toEqual({
-      message: 'Those meals are already planned',
-      tone: 'neutral',
-    });
-    expect(addedToPlanToast({ offered: 3, placed: 0, archived: true }).message).toMatch(
-      /^That week is archived, so nothing was added/,
-    );
   });
 });
 
@@ -163,7 +145,7 @@ describe('Two-day nutrition plan', () => {
     await user.press(screen.getByTestId('add-two-day'));
     expect(Object.keys(slots())).toEqual(['0-dinner']);
     expect(useToastStore.getState().queue[0]).toMatchObject({
-      message: expect.stringMatching(/^That week is archived/),
+      message: ARCHIVED_WEEK_MESSAGE,
       tone: 'neutral',
     });
   });

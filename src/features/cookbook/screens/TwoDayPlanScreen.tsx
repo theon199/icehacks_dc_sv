@@ -18,13 +18,13 @@ import {
   Toggle,
 } from '@/ui';
 
-import { addedToPlanToast } from './PlanWeekScreen';
 import { PlannedDayCard } from '../components/PlannedDayCard';
 import { PlanStatus } from '../components/PlanStatus';
 import { isWeekArchived, plannerActions } from '../hooks/usePlanner';
 import { useToday } from '../hooks/useToday';
 import { useTwoDayPlan } from '../hooks/useTwoDayPlan';
 import { dayPlanWrites } from '../model/dayPlan';
+import { addedToPlanToast } from '../model/planToast';
 import { weekDays, locateDate } from '../model/week';
 
 /**
