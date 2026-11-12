@@ -66,6 +66,8 @@ export interface IngredientOptions {
   addedSugar?: boolean;
   /** Plain water or ice: excluded from portion estimates. */
   water?: boolean;
+  /** Sold as a plant-based product (vegan spread, plant milk): vegan even though brands vary. */
+  labelledVegan?: boolean;
 }
 
 export interface IngredientDef extends Required<Pick<IngredientOptions, 'syn' | 'allergens' | 'units'>> {
@@ -82,6 +84,7 @@ export interface IngredientDef extends Required<Pick<IngredientOptions, 'syn' | 
   pantry: boolean;
   addedSugar: boolean;
   water: boolean;
+  labelledVegan: boolean;
 }
 
 export function ing(id: string, category: IngredientCategory, options: IngredientOptions = {}): IngredientDef {
@@ -103,6 +106,7 @@ export function ing(id: string, category: IngredientCategory, options: Ingredien
     units: options.units ?? {},
     addedSugar: options.addedSugar ?? category === 'sweetener',
     water: options.water ?? false,
+    labelledVegan: options.labelledVegan ?? false,
   };
 }
 
@@ -123,4 +127,5 @@ export const ingredientDefSchema = z.object({
   units: z.record(z.string(), z.number().positive()),
   addedSugar: z.boolean(),
   water: z.boolean(),
+  labelledVegan: z.boolean(),
 });

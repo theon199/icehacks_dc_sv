@@ -83,6 +83,13 @@ describe('diet flags', () => {
     assert.ok(has(ingredientDietFlags(def('chicken')), DietFlag.halal_friendly));
   });
 
+  it('never claims vegan or gluten-free for brand-variable products unless sold as plant-based', () => {
+    assert.ok(!has(ingredientDietFlags(def('bread')), DietFlag.vegan));
+    assert.ok(!has(ingredientDietFlags(def('stock_cube')), DietFlag.gluten_free));
+    assert.ok(has(ingredientDietFlags(def('vegan_butter')), DietFlag.vegan));
+    assert.ok(!has(ingredientDietFlags(def('vegan_butter')), DietFlag.dairy_free));
+  });
+
   it('intersects flags across a recipe', () => {
     const lines = [line('chickpea'), line('olive_oil'), line('lemon_juice')];
     const flags = rollupDiet(lines, rollupAllergens(lines));

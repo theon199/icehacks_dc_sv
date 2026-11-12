@@ -47,7 +47,9 @@ export const PROTEIN: IngredientDef[] = [
   ing('cooked_meat', 'protein', { name: 'cooked meat', syn: ['shredded meat', 'leftover meat', 'diced cooked protein', 'cooked protein', 'meat'], meat: 'mixed', variable: true, fdc: [171054, 'Chicken, broilers or fryers, meat only, cooked, roasted'] }),
   ing('ground_meat', 'protein', { name: 'ground meat', syn: ['lean ground meat', 'minced meat'], meat: 'mixed', fdc: [174030, 'Beef, ground, 90% lean meat / 10% fat, raw'] }),
   // Poultry
-  ing('chicken', 'protein', { syn: ['whole chicken', 'chicken pieces', 'chicken meat', 'chicken parts', 'chicken quarters'], meat: 'poultry', fdc: [171052, 'Chicken, broilers or fryers, meat only, raw'], units: { piece: 1500, medium: 1500 } }),
+  // A whole bird yields roughly 1.1 kg of raw meat, which is what the FDC entry describes.
+  ing('chicken', 'protein', { syn: ['whole chicken', 'chicken meat'], meat: 'poultry', fdc: [171052, 'Chicken, broilers or fryers, meat only, raw'], units: { piece: 1100, medium: 1100, small: 900, large: 1400 } }),
+  ing('chicken_pieces', 'protein', { name: 'chicken pieces', syn: ['chicken parts', 'chicken quarters', 'chicken portions', 'bone in chicken pieces'], meat: 'poultry', fdc: [172378, 'Chicken, broilers or fryers, leg, meat and skin, raw'], units: { piece: 200, medium: 200 } }),
   ing('chicken_breast', 'protein', { syn: ['chicken breasts', 'chicken breast halves', 'boneless chicken breast', 'skinless chicken breast', 'chicken fillets', 'chicken tenders', 'chicken breast fillets'], meat: 'poultry', fdc: [171077, 'Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw'], units: { piece: 175, medium: 175, large: 230, small: 120, half: 175 } }),
   ing('chicken_thigh', 'protein', { syn: ['chicken thighs', 'boneless chicken thighs', 'chicken thigh fillets'], meat: 'poultry', fdc: [172385, 'Chicken, broilers or fryers, thigh, meat and skin, raw'], units: { piece: 115, medium: 115 } }),
   ing('chicken_drumstick', 'protein', { syn: ['chicken drumsticks', 'drumsticks'], meat: 'poultry', fdc: [172373, 'Chicken, broilers or fryers, drumstick, meat and skin, raw'], units: { piece: 110, medium: 110 } }),
@@ -87,7 +89,7 @@ export const PROTEIN: IngredientDef[] = [
   ing('shrimp', 'protein', { syn: ['prawns', 'king prawns', 'raw king prawns', 'tiger prawns', 'raw tiger prawns', 'jumbo shrimp', 'large shrimp', 'raw frozen prawns', 'cooked prawns', 'raw prawns', 'peeled prawns'], allergens: ['shellfish'], fdc: [175179, 'Crustaceans, shrimp, raw'], units: { piece: 15, medium: 12, large: 20 } }),
   ing('dried_shrimp', 'protein', { syn: ['dried prawns'], allergens: ['shellfish'], fdc: [175179, 'Crustaceans, shrimp, raw'] }),
   ing('crab', 'protein', { syn: ['crab meat', 'crabmeat', 'crab meay', 'white crab meat'], allergens: ['shellfish'], fdc: [171966, 'Crustaceans, crab, blue, canned'] }),
-  ing('lobster', 'protein', { syn: ['lobster tails', 'lobster meat'], allergens: ['shellfish'], fdc: [174208, 'Crustaceans, lobster, northern, raw'], units: { piece: 450 } }),
+  ing('lobster', 'protein', { syn: ['lobster tails', 'lobster meat'], allergens: ['shellfish'], fdc: [174208, 'Crustaceans, lobster, northern, raw'], units: { piece: 200, medium: 200 } }),
   ing('clam', 'protein', { syn: ['clams', 'baby clams'], allergens: ['shellfish'], fdc: [174214, 'Mollusks, clam, mixed species, raw'], units: { piece: 15 } }),
   ing('mussel', 'protein', { syn: ['mussels'], allergens: ['shellfish'], fdc: [174216, 'Mollusks, mussel, blue, raw'], units: { piece: 10 } }),
   ing('oyster', 'protein', { syn: ['oysters'], allergens: ['shellfish'], fdc: [174219, 'Mollusks, oyster, Pacific, raw'], units: { piece: 50, medium: 50 } }),

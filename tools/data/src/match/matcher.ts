@@ -65,9 +65,11 @@ export class IngredientMatcher {
   matchLine(name: string): LineMatch {
     const cleaned = stripParentheticals(name.replace(/\s+-\s+.*$/, ''));
     const head = cleaned.split(/[,;:]/)[0] ?? '';
-    let primary = this.lookup(head);
+    // For "A or B" the amount was written for A, so A is the primary ingredient.
+    const firstChoice = head.split(/\s+or\s+/i)[0] ?? head;
+    let primary = this.lookup(head) ?? this.lookup(firstChoice);
     if (!primary) {
-      const candidates = [this.findAll(head), this.findAll(cleaned), this.findAll(name)].find((m) => m.length > 0);
+      const candidates = [this.findAll(firstChoice), this.findAll(head), this.findAll(cleaned), this.findAll(name)].find((m) => m.length > 0);
       primary = candidates?.[0]?.id ?? null;
     }
     if (!primary) return { id: null, all: [] };

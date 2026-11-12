@@ -54,6 +54,7 @@ export const COUNT_UNITS = [
   'splash',
   'drizzle',
   'sprinkle',
+  'floret',
 ] as const;
 
 export type MassUnit = keyof typeof MASS_UNITS;
@@ -260,6 +261,8 @@ const UNIT_WORDS: Record<string, Unit> = {
   drizzle: 'drizzle',
   sprinkle: 'sprinkle',
   sprinkling: 'sprinkle',
+  floret: 'floret',
+  florets: 'floret',
   piece: 'piece',
   pieces: 'piece',
   pc: 'piece',

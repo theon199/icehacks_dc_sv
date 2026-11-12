@@ -18,7 +18,7 @@ export function ingredientAllergenStatus(def: IngredientDef): 'resolved' | 'unkn
  * Diet flags an ingredient is compatible with.
  * - vegetarian: no meat, poultry, gelatin, fish or shellfish
  * - vegan: vegetarian and no milk, egg or other animal product (honey); never claimed for
- *   variable store-bought products
+ *   variable store-bought products unless they are sold as plant-based
  * - pescatarian: no land-animal meat (fish and shellfish allowed)
  * - no_pork / no_beef: not that animal, and not gelatin or unspecified meat (source unknown)
  * - no_alcohol: no wine, beer, spirits or alcohol-based cooking liquids
@@ -32,7 +32,7 @@ export function ingredientDietFlags(def: IngredientDef): number {
   let flags = 0;
   const vegetarian = meat === null && !seafood;
   if (vegetarian) flags |= DietFlag.vegetarian;
-  if (vegetarian && !allergens.has('milk') && !allergens.has('egg') && !def.animalProduct && !def.variable) flags |= DietFlag.vegan;
+  if (vegetarian && !allergens.has('milk') && !allergens.has('egg') && !def.animalProduct && (!def.variable || def.labelledVegan)) flags |= DietFlag.vegan;
   if (meat === null) flags |= DietFlag.pescatarian;
   const unknownAnimal = meat === 'gelatin' || meat === 'mixed';
   if (meat !== 'pork' && !unknownAnimal) flags |= DietFlag.no_pork;
@@ -82,6 +82,14 @@ const PORTION_UNITS: ReadonlyArray<readonly [RegExp, string]> = [
   [/^(piece|pieces|each|whole|fruit|link|patty|roll|tortilla|egg|breast|thigh|drumstick|wing|chop|shell|muffin|bagel|pita|pepper|onion|potato|carrot|tomato|banana|apple|orange|lemon|lime)\b/, 'piece'],
 ];
 
+/** FDC often prefixes a size with the food name ("potato large (3\" dia)"). */
+const SIZE_IN_LABEL: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\b(extra large|jumbo|large)\b/, 'large'],
+  [/\bmedium\b/, 'medium'],
+  [/\bsmall\b/, 'small'],
+];
+const VOLUME_LABEL = /^(cups?|tbsp|tablespoons?|tsp|teaspoons?)\b/;
+
 /** Portion labels that describe a weight, volume or package rather than a single item. */
 const NOT_A_PIECE = /^(oz|ounces?|lb|pounds?|fl\b|fluid|serving|nlea|container|unit|quantity|portion|g\b|grams?|cubic|bottle|can\b|cans\b|package|pkg|packet|bag|box|jar|pint|quart|gallon|liter|litre|ml\b|dash|pinch|drop|recipe|batch|yield|cup|tbsp|tsp|half|wedge|bunch|lb\b)/;
 
@@ -91,7 +99,8 @@ export function gramsPerUnit(def: IngredientDef, portions: readonly FdcPortion[]
   let namedPiece: number | undefined;
   for (const portion of portions) {
     const label = portion.label.replace(/^\d+(\.\d+)?\s*/, '').trim();
-    const known = PORTION_UNITS.find(([pattern]) => pattern.test(label));
+    const size = SIZE_IN_LABEL.find(([pattern]) => pattern.test(label));
+    const known = VOLUME_LABEL.test(label) ? PORTION_UNITS.find(([pattern]) => pattern.test(label)) : (size ?? PORTION_UNITS.find(([pattern]) => pattern.test(label)));
     if (known) {
       if (out[known[1]] === undefined) out[known[1]] = portion.grams / portion.amount;
     } else if (namedPiece === undefined && !NOT_A_PIECE.test(label)) {
@@ -158,6 +167,7 @@ export const GENERIC_UNIT_GRAMS: Readonly<Record<string, number>> = {
   stalk: 40,
   head: 500,
   ear: 90,
+  floret: 12,
 };
 
 /** Plural display name: the table's own, or a regular plural the table lists as a synonym. */

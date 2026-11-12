@@ -25,7 +25,7 @@ export const DAIRY: IngredientDef[] = [
   ing('unsalted_butter', 'dairy', { syn: ['unsalted butter', 'sweet butter'], allergens: [...MILK], fdc: [173430, 'Butter, without salt'], units: { stick: 113, knob: 15 } }),
   ing('ghee', 'dairy', { syn: ['clarified butter', 'desi ghee'], allergens: [...MILK], fdc: [173412, 'Butter oil, anhydrous'] }),
   ing('margarine', 'oil', { syn: ['soft margarine', 'butter or margarine', 'margarine or butter', 'vegetable spread', 'buttery spread'], allergens: ['milk', 'soy'], aisle: 'dairy_eggs', fdc: [172346, 'Margarine, regular, 80% fat, composite, stick, with salt'], units: { stick: 113 } }),
-  ing('vegan_butter', 'oil', { syn: ['vegan butter', 'plant butter', 'dairy free spread'], allergens: ['soy'], variable: true, aisle: 'dairy_eggs', fdc: [172346, 'Margarine, regular, 80% fat, composite, stick, with salt'] }),
+  ing('vegan_butter', 'oil', { syn: ['vegan butter', 'plant butter', 'dairy free spread'], allergens: ['soy'], variable: true, labelledVegan: true, aisle: 'dairy_eggs', fdc: [172346, 'Margarine, regular, 80% fat, composite, stick, with salt'] }),
   ing('shortening', 'oil', { syn: ['vegetable shortening', 'white vegetable fat', 'trex', 'crisco'], aisle: 'baking', fdc: [171011, 'Shortening, household, soybean (partially hydrogenated)-cottonseed (partially hydrogenated)'] }),
   // Cheese
   ing('cheese', 'dairy', { syn: ['grated cheese', 'shredded cheese', 'shredded or sliced cheese', 'liquid cheese', 'cheese curds', 'farmers cheese', 'reduced fat shredded cheese', 'sliced cheese', 'melting cheese'], allergens: [...MILK], fdc: [171288, 'Cheese, Mexican blend'] }),
@@ -54,6 +54,6 @@ export const DAIRY: IngredientDef[] = [
   // Plant milks and creams (stocked with dairy)
   ing('soy_milk', 'beverage', { syn: ['soya milk', 'soymilk', 'vanilla soy milk', 'soy beverage'], allergens: ['soy'], aisle: 'dairy_eggs', fdc: [172446, 'Soymilk, original and vanilla, unfortified'] }),
   ing('almond_milk', 'beverage', { syn: ['almond milk', 'almond beverage'], allergens: ['tree_nut'], aisle: 'dairy_eggs', fdc: [174832, 'Beverages, almond milk, unsweetened, shelf stable'] }),
-  ing('oat_milk', 'beverage', { syn: ['oat milk', 'oat beverage'], allergens: ['gluten'], variable: true, aisle: 'dairy_eggs', fdc: [171942, 'Beverages, rice milk, unsweetened'] }),
-  ing('plant_milk', 'beverage', { name: 'plant milk', syn: ['non dairy milk', 'dairy free milk', 'rice milk', 'vegetable millk', 'vegetable milk'], variable: true, aisle: 'dairy_eggs', fdc: [171942, 'Beverages, rice milk, unsweetened'] }),
+  ing('oat_milk', 'beverage', { syn: ['oat milk', 'oat beverage'], allergens: ['gluten'], variable: true, labelledVegan: true, aisle: 'dairy_eggs', fdc: [171942, 'Beverages, rice milk, unsweetened'] }),
+  ing('plant_milk', 'beverage', { name: 'plant milk', syn: ['non dairy milk', 'dairy free milk', 'rice milk', 'vegetable millk', 'vegetable milk'], variable: true, labelledVegan: true, aisle: 'dairy_eggs', fdc: [171942, 'Beverages, rice milk, unsweetened'] }),
 ];

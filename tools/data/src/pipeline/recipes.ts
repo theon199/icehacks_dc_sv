@@ -1,7 +1,7 @@
 import type { IngredientDef } from '../knowledge/define.ts';
 import { CUISINE_BY_ID, resolveCuisine } from '../knowledge/cuisines.ts';
 import { IngredientMatcher } from '../match/matcher.ts';
-import { measureToGrams, parseMeasure, type Measure } from '../parse/measure.ts';
+import { MASS_UNITS, measureToGrams, parseMeasure, VOLUME_ML, type Measure, type Unit } from '../parse/measure.ts';
 import { detectTimerSeconds, splitSteps } from '../parse/steps.ts';
 import { GENERIC_UNIT_GRAMS, ingredientAllergens, pluralName } from '../derive/ingredients.ts';
 import { addScaled, divide, EMPTY_NUTRITION, toNutrition, ZERO_PROFILE, type NutrientProfile } from '../derive/nutrition.ts';
@@ -55,8 +55,27 @@ interface ParsedLine {
 }
 
 const OPTIONAL = /\boptional\b/i;
+/** A line weighing more than this from counted items alone ("6 lamb legs") is treated as unknown. */
+const MAX_COUNTED_LINE_GRAMS = 3000;
+const UNIT_IN_NAME = /\b(leaves|leaf|cloves?|slices?|stalks?|sprigs?|fillets?|florets?|wedges?|strips?|sheets?|rashers?|heads?|ears?|cubes?)\b/i;
+const UNIT_IN_NAME_MAP: Record<string, Unit> = {
+  leaf: 'leaf',
+  clove: 'clove',
+  slice: 'slice',
+  stalk: 'stalk',
+  sprig: 'sprig',
+  fillet: 'fillet',
+  floret: 'floret',
+  wedge: 'wedge',
+  strip: 'strip',
+  sheet: 'sheet',
+  rasher: 'rasher',
+  head: 'head',
+  ear: 'ear',
+  cube: 'cube',
+};
 
-function parseLine(source: SourceRecipe, index: number, ctx: RecipeContext): ParsedLine {
+function parseLine(source: SourceRecipe, index: number, ctx: RecipeContext, issues: BuildIssue[]): ParsedLine {
   const line = source.lines[index];
   if (!line) throw new Error(`missing line ${index} in ${source.id}`);
   const measure = parseMeasure(line.measure ?? line.text);
@@ -64,10 +83,23 @@ function parseLine(source: SourceRecipe, index: number, ctx: RecipeContext): Par
   const match = ctx.matcher.matchLine(name);
   const matched = match.id === null ? null : match.all.map((id) => ctx.defs.get(id)).filter((d): d is IngredientDef => d !== undefined);
   const primary = match.id ? (ctx.defs.get(match.id) ?? null) : null;
+  // "6 large cabbage leaves", "3 garlic cloves": the unit sits in the name, not the measure.
+  if (measure.unit === null && measure.quantity !== null) {
+    const inName = UNIT_IN_NAME.exec(name);
+    const unit = inName?.[1] ? UNIT_IN_NAME_MAP[inName[1].toLowerCase().replace(/s$/, '').replace(/ve$/, 'f')] : undefined;
+    if (unit) measure.unit = unit;
+    const size = /^(small|medium|large)\b/i.exec(name)?.[1]?.toLowerCase();
+    if (measure.size === null && (size === 'small' || size === 'medium' || size === 'large')) measure.size = size;
+  }
   let grams: number | null = null;
   if (primary && !measure.unquantified && measure.quantity !== null) {
     grams = measureToGrams(measure, ctx.units.get(primary.id) ?? {});
     if (grams === null && measure.unit && GENERIC_UNIT_GRAMS[measure.unit] !== undefined) grams = measure.quantity * (GENERIC_UNIT_GRAMS[measure.unit] ?? 0);
+    const explicit = measure.grams !== null || (measure.unit !== null && (measure.unit in MASS_UNITS || measure.unit in VOLUME_ML));
+    if (grams !== null && !explicit && grams > MAX_COUNTED_LINE_GRAMS) {
+      issues.push({ recipe_id: source.id, kind: 'weight_implausible', detail: `${line.text} (${Math.round(grams)} g)` });
+      grams = null;
+    }
   }
   return {
     row: {
@@ -205,7 +237,7 @@ function tutorials(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[
 
 /** Derives every Famara field for one source recipe. Returns null when it cannot be shipped. */
 export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[]): Omit<RecipeRow, 'slug'> | null {
-  const lines = source.lines.map((_, i) => parseLine(source, i, ctx));
+  const lines = source.lines.map((_, i) => parseLine(source, i, ctx, issues));
   const steps = splitSteps(source.instructions);
   if (lines.length === 0 || steps.length === 0) {
     issues.push({ recipe_id: source.id, kind: 'excluded', detail: lines.length === 0 ? 'no ingredient lines' : 'no instructions' });

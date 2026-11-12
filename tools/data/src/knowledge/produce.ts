@@ -13,7 +13,8 @@ export const PRODUCE: IngredientDef[] = [
   ing('leek', 'produce', { syn: ['leeks'], fdc: [169246, 'Leeks, (bulb and lower leaf-portion), raw'] }),
   // Roots and tubers
   ing('carrot', 'produce', { syn: ['carrots', 'baby carrots'], fdc: [170393, 'Carrots, raw'] }),
-  ing('potato', 'produce', { syn: ['potatoes', 'floury potatoes', 'baking potato', 'baking potatoes', 'boiled potatoes', 'new potatoes', 'baby new potatoes', 'small potatoes', 'charlotte potatoes', 'jersey royal potatoes', 'russet potato', 'russet potatoes', 'white potatoes', 'maris piper potatoes', 'king edward potatoes'], fdc: [170026, 'Potatoes, flesh and skin, raw'] }),
+  ing('potato', 'produce', { syn: ['potatoes', 'floury potatoes', 'baking potato', 'baking potatoes', 'boiled potatoes', 'small potatoes', 'russet potato', 'russet potatoes', 'white potatoes', 'maris piper potatoes', 'king edward potatoes'], fdc: [170026, 'Potatoes, flesh and skin, raw'] }),
+  ing('new_potato', 'produce', { name: 'new potato', syn: ['new potatoes', 'baby new potatoes', 'baby potatoes', 'charlotte potatoes', 'jersey royal potatoes', 'fingerling potatoes', 'salad potatoes'], fdc: [170029, 'Potatoes, red, flesh and skin, raw'], units: { piece: 45, medium: 45, small: 30, large: 70 } }),
   ing('red_potato', 'produce', { syn: ['red potatoes'], fdc: [170029, 'Potatoes, red, flesh and skin, raw'] }),
   ing('sweet_potato', 'produce', { syn: ['sweet potatoes', 'yam sweet potato', 'mashed sweet potatoes', 'bite sized cubed sweet potato'], fdc: [168482, 'Sweet potato, raw, unprepared (Includes foods for USDA\'s Food Distribution Program)'], units: { medium: 130 } }),
   ing('beetroot', 'produce', { syn: ['beets', 'beet', 'cooked beetroot', 'raw beetroot'], fdc: [169145, 'Beets, raw'] }),
@@ -33,9 +34,9 @@ export const PRODUCE: IngredientDef[] = [
   ing('turmeric_root', 'produce', { syn: ['fresh turmeric'], fdc: [169231, 'Ginger root, raw'], units: { inch: 5, piece: 10 } }),
   ing('lemongrass', 'produce', { syn: ['lemongrass stalks', 'lemon grass', 'lemongrass stalk'], fdc: [168573, 'Lemon grass (citronella), raw'], units: { stalk: 20, piece: 20, medium: 20 } }),
   // Brassicas and leaves
-  ing('broccoli', 'produce', { syn: ['broccoli florets', 'purple sprouting broccoli', 'tenderstem broccoli', 'broccolini', 'fresh or frozen broccoli', 'frozen broccoli'], fdc: [170379, 'Broccoli, raw'], units: { head: 350, medium: 350 } }),
+  ing('broccoli', 'produce', { syn: ['broccoli florets', 'purple sprouting broccoli', 'tenderstem broccoli', 'broccolini', 'fresh or frozen broccoli', 'frozen broccoli'], fdc: [170379, 'Broccoli, raw'], units: { head: 350, medium: 350, floret: 11 } }),
   ing('chinese_broccoli', 'produce', { syn: ['gai lan', 'kai lan'], fdc: [169392, 'Broccoli, chinese, cooked'] }),
-  ing('cauliflower', 'produce', { syn: ['cauliflower florets', 'grated cauliflower'], fdc: [169986, 'Cauliflower, raw'], units: { head: 600, medium: 600 } }),
+  ing('cauliflower', 'produce', { syn: ['cauliflower florets', 'grated cauliflower'], fdc: [169986, 'Cauliflower, raw'], units: { head: 600, medium: 600, floret: 13 } }),
   ing('cabbage', 'produce', { syn: ['white cabbage', 'green cabbage', 'shredded cabbage', 'shredded green cabbage', 'cabbage leaves', 'hispi cabbage', 'sweetheart cabbage', 'pointed cabbage'], fdc: [169975, 'Cabbage, raw'], units: { head: 900, medium: 900, leaf: 25 } }),
   ing('red_cabbage', 'produce', { syn: ['purple cabbage'], fdc: [169977, 'Cabbage, red, raw'], units: { head: 900, medium: 900 } }),
   ing('savoy_cabbage', 'produce', { fdc: [170388, 'Cabbage, savoy, raw'], units: { head: 700, medium: 700 } }),
@@ -84,7 +85,7 @@ export const PRODUCE: IngredientDef[] = [
   ing('pumpkin_puree', 'produce', { syn: ['canned pumpkin', 'solid pack pumpkin', 'solid-pack pumpkin', 'pumpkin puree', 'pureed pumpkin'], aisle: 'canned_jarred', fdc: [168450, 'Pumpkin, canned, without salt'] }),
   ing('butternut_squash', 'produce', { syn: ['butternut', 'squash', 'winter squash', 'acorn squash', 'butternut pumpkin'], fdc: [169295, 'Squash, winter, butternut, raw'], units: { medium: 1200, piece: 1200 } }),
   ing('spaghetti_squash', 'produce', { fdc: [169298, 'Squash, winter, spaghetti, raw'], units: { medium: 1200, piece: 1200 } }),
-  ing('squash_blossom', 'produce', { syn: ['squash blossoms', 'zucchini flowers', 'courgette flowers'], fdc: [170487, 'Squash, summer, all varieties, raw'] }),
+  ing('squash_blossom', 'produce', { syn: ['squash blossoms', 'zucchini flowers', 'courgette flowers'], fdc: [170487, 'Squash, summer, all varieties, raw'], units: { piece: 5, medium: 5 } }),
   // Pods, shoots, mushrooms
   ing('green_bean', 'produce', { syn: ['green beans', 'string beans', 'french beans', 'runner beans', 'cut green beans', 'fresh green beans', 'haricots verts', 'chinese long beans', 'long beans', 'yardlong beans'], fdc: [169961, 'Beans, snap, green, raw'] }),
   ing('pea', 'produce', { syn: ['peas', 'green peas', 'garden peas', 'frozen peas', 'petit pois', 'petits pois', 'baby peas'], fdc: [170419, 'Peas, green, raw'] }),
