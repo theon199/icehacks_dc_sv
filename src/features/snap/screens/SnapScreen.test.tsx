@@ -7,7 +7,6 @@ import { AppState, Linking, type AppStateStatus, type View as ViewType } from 'r
 
 import { useSessionStore } from '@/features/auth';
 import type * as AiModule from '@/lib/api/ai';
-import type { SnapMode } from '@/lib/api/ai';
 import { aiApi } from '@/lib/api/ai';
 import { ApiError } from '@/lib/api/errors';
 
@@ -114,9 +113,9 @@ describe('Snap gating', () => {
 
 describe('Snap camera', () => {
   it('opens on the mode a link asks for and clears the request once applied', async () => {
-    let route: (mode: SnapMode | undefined) => void = () => undefined;
+    let route: (mode: AiModule.SnapMode | undefined) => void = () => undefined;
     function Route() {
-      const [mode, setMode] = useState<SnapMode | undefined>('dish');
+      const [mode, setMode] = useState<AiModule.SnapMode | undefined>('dish');
       route = setMode;
       return <SnapScreen mode={mode} />;
     }
