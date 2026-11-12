@@ -83,9 +83,42 @@ describe('BirthYearScreen', () => {
   it('stores the confirmed year on the server before the session', async () => {
     await renderWithTheme(<BirthYearScreen />);
     await pickYear(1994);
-    expect(save).toHaveBeenCalledWith(1994);
+    expect(save).toHaveBeenCalledWith(1994, { userId: KID, accessToken: `token-for-${KID}` });
     expect(record.birthYear).toBe(1994);
     expect(useSessionStore.getState().birthYear).toBe(1994);
+  });
+
+  it('keeps the year on the account that entered it when another one signs in mid-save', async () => {
+    let reply: (value: AccountStatus) => void = () => undefined;
+    save.mockImplementationOnce(
+      () =>
+        new Promise<AccountStatus>((resolve) => {
+          reply = resolve;
+        }),
+    );
+    await renderWithTheme(<BirthYearScreen />);
+    await pickYear(1990);
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save).toHaveBeenCalledWith(1990, { userId: KID, accessToken: `token-for-${KID}` });
+
+    await act(async () => {
+      useSessionStore
+        .getState()
+        .signedIn({ userId: 'someone-else', birthYear: null, onboardingComplete: false });
+    });
+    record.birthYear = 1990;
+    await act(async () => reply(statusOnRecord()));
+
+    expect(useSessionStore.getState()).toMatchObject({ userId: 'someone-else', birthYear: null });
+  });
+
+  it('saves nothing when the account changed before the request was sent', async () => {
+    identity.mockRejectedValueOnce(new AccountError('account_changed', 'changed'));
+    await renderWithTheme(<BirthYearScreen />);
+    await pickYear(1992);
+    expect(await screen.findByText(/A different account is signed in now/)).toBeOnTheScreen();
+    expect(save).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().birthYear).toBeNull();
   });
 
   it('explains an offline failure and keeps the session unchanged', async () => {

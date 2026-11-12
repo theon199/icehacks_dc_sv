@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import {
   accountErrorMessage,
   fetchAccountStatus,
+  identityFor,
   isAccountError,
   saveBirthYear,
   signOut,
@@ -26,7 +27,8 @@ function openingDecade(latest: number): number {
 
 /** A year is already on record for this account: show the screen that record calls for. */
 function adoptRecordedYear(userId: string): void {
-  fetchAccountStatus()
+  identityFor(userId)
+    .then(fetchAccountStatus)
     .then((status) =>
       useSessionStore.getState().applyServerAge({
         userId,
@@ -52,18 +54,23 @@ export function BirthYearScreen() {
   const chosen = reviewing ? year : null;
 
   const confirmYear = (picked: number) => {
+    if (!userId) return;
+    // Everything below is for the account this screen was shown to. If another account signs in
+    // while the year is being saved, the request still goes to the first one (or not at all), and
+    // the answer is not applied to whoever is signed in by the time it arrives.
+    const owner = userId;
     void saving.submit(async () => {
       try {
-        await saveBirthYear(picked);
+        await saveBirthYear(picked, await identityFor(owner));
       } catch (error) {
+        if (useSessionStore.getState().userId !== owner) return null;
         haptics.error();
         setReviewing(false);
-        if (isAccountError(error) && error.kind === 'birth_year_locked' && userId) {
-          adoptRecordedYear(userId);
-        }
+        if (isAccountError(error) && error.kind === 'birth_year_locked') adoptRecordedYear(owner);
         if (isAccountError(error) && error.kind === 'signed_out') void signOut();
         return accountErrorMessage(error);
       }
+      if (useSessionStore.getState().userId !== owner) return null;
       haptics.success();
       useSessionStore.getState().setBirthYear(picked);
       return null;
