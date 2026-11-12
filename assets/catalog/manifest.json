@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "built_at": "2026-11-12T01:54:48.164Z",
+  "built_at": "2026-11-12T02:20:53.265Z",
   "recipe_count": 1031,
-  "ingredient_count": 608,
-  "sha256": "eaa4584a21d6fb4bc0fd2f7cb9f8cb22c2eb6f23dfeb2accc84e62ac6049496e",
-  "bytes": 4321280
+  "ingredient_count": 612,
+  "sha256": "b0c2685a914a421c4bb3060d87b98000b4cef0ab18d8b575e90ca7b9a8b8615b",
+  "bytes": 5038080
 }
