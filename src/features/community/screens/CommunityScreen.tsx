@@ -13,6 +13,7 @@ import { PostCard } from '../components/PostCard';
 import { PostSkeletonList } from '../components/PostSkeleton';
 import { usePostMenu } from '../components/usePostMenu';
 import { WeeklyTopDishes } from '../components/WeeklyTopDishes';
+import { useForgetOtherViewers, useViewer } from '../hooks/queryKeys';
 import { useFeed } from '../hooks/useFeed';
 
 const SEGMENTS = [
@@ -36,10 +37,12 @@ const keyExtractor = (post: Post) => post.id;
 /** The Community tab: Following, Popular and New feeds with this week's most-cooked dishes. */
 export function CommunityScreen() {
   const theme = useTheme();
+  useForgetOtherViewers(useViewer());
   const [mode, setMode] = useState<FeedMode>(readLastMode);
   const feed = useFeed(mode);
   const openMenu = usePostMenu();
-  const [refreshing, setRefreshing] = useState(false);
+  // Only a pull shows the spinner; background refetches stay quiet.
+  const [isPulling, setIsPulling] = useState<boolean>(false);
 
   const changeMode = useCallback((next: FeedMode) => {
     setMode(next);
@@ -50,14 +53,11 @@ export function CommunityScreen() {
     }
   }, []);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await feed.refetch();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [feed]);
+  const { refetch } = feed;
+  const onRefresh = useCallback(() => {
+    setIsPulling(true);
+    void refetch().finally(() => setIsPulling(false));
+  }, [refetch]);
 
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = feed;
   const onEndReached = useCallback(() => {
@@ -112,7 +112,7 @@ export function CommunityScreen() {
         keyExtractor={keyExtractor}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
-        ItemSeparatorComponent={Separator}
+        ItemSeparatorComponent={Gap}
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
         ListFooterComponent={
@@ -124,7 +124,7 @@ export function CommunityScreen() {
         onEndReachedThreshold={0.6}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
+            refreshing={isPulling}
             onRefresh={onRefresh}
             tintColor={theme.colors.primary}
           />
@@ -134,14 +134,14 @@ export function CommunityScreen() {
   );
 }
 
-function Separator() {
-  return <View style={styles.separator} />;
+function Gap() {
+  return <View style={styles.gap} />;
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { paddingHorizontal: gutter, paddingBottom: space.huge },
   header: { gap: space.lg, paddingTop: space.sm, paddingBottom: space.lg },
-  separator: { height: space.lg },
+  gap: { height: space.lg },
   footer: { paddingVertical: space.xl },
 });

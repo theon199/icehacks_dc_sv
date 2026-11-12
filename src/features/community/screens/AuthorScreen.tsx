@@ -11,6 +11,7 @@ import type { Post } from '../api/types';
 import { PostSkeletonList } from '../components/PostSkeleton';
 import { PostTile } from '../components/PostTile';
 import { ProfileHeader } from '../components/ProfileHeader';
+import { useForgetOtherViewers, useViewer } from '../hooks/queryKeys';
 import { useBlockUser, useFollow, useProfileSummary } from '../hooks/useAuthor';
 import { useAuthorFeed } from '../hooks/useFeed';
 
@@ -69,6 +70,7 @@ function useAuthorMenu(profile: ProfileSummary | undefined) {
 /** Someone's profile with follow/unfollow and a grid of their posts. */
 export function AuthorScreen({ authorId }: AuthorScreenProps) {
   const theme = useTheme();
+  useForgetOtherViewers(useViewer());
   const summary = useProfileSummary(authorId);
   const profile = summary.data;
   const feed = useAuthorFeed(authorId, profile != null);

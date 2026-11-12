@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { useSessionStore } from '@/features/auth';
 import { ApiError } from '@/lib/api/errors';
 import { useToastStore } from '@/ui/toastStore';
 
@@ -19,6 +20,7 @@ jest.mock('../api/communityApi', () => ({
 
 const toggleLikeMock = jest.mocked(toggleLike);
 const toggleSaveMock = jest.mocked(toggleSave);
+const VIEWER = 'viewer-1';
 
 function setup(post: Post) {
   const client = new QueryClient({
@@ -28,14 +30,14 @@ function setup(post: Post) {
     },
   });
   const feed: FeedData = { pages: [makePage([post], 'next')], pageParams: [null] };
-  client.setQueryData(communityKeys.feed('new'), feed);
-  client.setQueryData(communityKeys.post(post.id), post);
+  client.setQueryData(communityKeys.feed(VIEWER, 'new'), feed);
+  client.setQueryData(communityKeys.post(VIEWER, post.id), post);
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
   const feedPost = () =>
-    client.getQueryData<FeedData>(communityKeys.feed('new'))?.pages[0]?.items[0];
-  const detailPost = () => client.getQueryData<Post>(communityKeys.post(post.id));
+    client.getQueryData<FeedData>(communityKeys.feed(VIEWER, 'new'))?.pages[0]?.items[0];
+  const detailPost = () => client.getQueryData<Post>(communityKeys.post(VIEWER, post.id));
   return { client, wrapper, feedPost, detailPost };
 }
 
@@ -50,6 +52,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  useSessionStore.setState({ userId: VIEWER, status: 'ready' });
   useToastStore.getState().clear();
 });
 

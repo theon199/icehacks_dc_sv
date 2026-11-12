@@ -8,6 +8,7 @@ import { makePage, makePost } from '../testing/fixtures';
 import { createTestClient } from '../testing/renderWithClient';
 
 jest.mock('../api/communityApi', () => ({ fetchFeedPage: jest.fn() }));
+jest.mock('../deps', () => ({ getRecipeSummaries: jest.fn(async () => []) }));
 
 const feedMock = jest.mocked(fetchFeedPage);
 

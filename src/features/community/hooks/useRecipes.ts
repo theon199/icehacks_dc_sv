@@ -1,5 +1,5 @@
 /** Catalog lookups used by post cards, the weekly header and the compose recipe picker. */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import { fetchWeeklyTopDishes } from '../api/communityApi';
@@ -10,10 +10,36 @@ import {
   searchRecipes,
   type RecipeSummary,
 } from '../deps';
-import { communityKeys } from './queryKeys';
+import { communityKeys, useViewer } from './queryKeys';
 
 /** The catalog never changes while the app runs, so lookups stay fresh for the session. */
 const CATALOG_STALE_MS = Infinity;
+
+/**
+ * Looks up every recipe a batch of posts links to in one catalog query and seeds the per-recipe
+ * cache entries that `useRecipeSummary` reads, so a page of post cards does not run one query per
+ * card. A failed lookup is ignored: each chip then falls back to its own query.
+ */
+export async function primeRecipeSummaries(
+  client: QueryClient,
+  recipeIds: readonly string[],
+): Promise<void> {
+  const missing = [...new Set(recipeIds)].filter(
+    (id) => id.length > 0 && client.getQueryData(communityKeys.recipes([id])) === undefined,
+  );
+  if (missing.length === 0) return;
+  let found: RecipeSummary[];
+  try {
+    found = await getRecipeSummaries(missing);
+  } catch {
+    return;
+  }
+  const byId = new Map(found.map((summary) => [summary.id, summary]));
+  for (const id of missing) {
+    const summary = byId.get(id);
+    client.setQueryData<RecipeSummary[]>(communityKeys.recipes([id]), summary ? [summary] : []);
+  }
+}
 
 export function useRecipeSummary(recipeId: string | null) {
   const query = useQuery({
@@ -42,8 +68,9 @@ export interface MyRecipes {
 
 /** The person's saved and cooked recipes, for quick picking in compose. */
 export function useMyRecipes() {
+  const viewer = useViewer();
   return useQuery({
-    queryKey: communityKeys.myRecipes(),
+    queryKey: communityKeys.myRecipes(viewer),
     queryFn: async (): Promise<MyRecipes> => {
       const [savedIds, cookedIds] = await Promise.all([
         listSavedRecipeIds(),
@@ -69,8 +96,9 @@ export interface WeeklyTopDish {
 
 /** This week's most-cooked dishes that exist in the bundled catalog. */
 export function useWeeklyTopDishes() {
+  const viewer = useViewer();
   const query = useQuery({
-    queryKey: communityKeys.weeklyTop(),
+    queryKey: communityKeys.weeklyTop(viewer),
     queryFn: async (): Promise<WeeklyTopDish[]> => {
       const rows = await fetchWeeklyTopDishes(5);
       const summaries = await getRecipeSummaries(rows.map((row) => row.recipe_ref));

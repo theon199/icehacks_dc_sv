@@ -12,7 +12,7 @@ import { haptics } from '@/lib/haptics';
 import { toast } from '@/ui';
 
 import { cancelPostReads, patchPost } from './postCache';
-import { communityKeys } from './queryKeys';
+import { communityKeys, useViewer } from './queryKeys';
 import { toggleLike, toggleSave } from '../api/communityApi';
 import {
   withLikeState,
@@ -24,46 +24,48 @@ import { publishErrorMessage } from '../logic/publishMessages';
 
 export function useToggleLike(postId: string) {
   const client = useQueryClient();
-  const mutationKey = communityKeys.likeMutation(postId);
+  const viewer = useViewer();
+  const mutationKey = communityKeys.likeMutation(viewer, postId);
   return useMutation({
     mutationKey,
     scope: { id: mutationKey.join(':') },
     mutationFn: () => toggleLike(postId),
     onMutate: async () => {
-      await cancelPostReads(client, postId);
-      patchPost(client, postId, withLikeToggled);
+      await cancelPostReads(client, viewer, postId);
+      patchPost(client, viewer, postId, withLikeToggled);
     },
     onError: (error) => {
-      patchPost(client, postId, withLikeToggled);
+      patchPost(client, viewer, postId, withLikeToggled);
       toast.error(publishErrorMessage(error));
     },
     onSuccess: (state) => {
       // Later taps are still queued: their optimistic state is what the person last chose.
       if (client.isMutating({ mutationKey }) > 1) return;
-      patchPost(client, postId, (post) => withLikeState(post, state));
+      patchPost(client, viewer, postId, (post) => withLikeState(post, state));
     },
   });
 }
 
 export function useToggleSave(postId: string) {
   const client = useQueryClient();
-  const mutationKey = communityKeys.saveMutation(postId);
+  const viewer = useViewer();
+  const mutationKey = communityKeys.saveMutation(viewer, postId);
   return useMutation({
     mutationKey,
     scope: { id: mutationKey.join(':') },
     mutationFn: () => toggleSave(postId),
     onMutate: async () => {
-      await cancelPostReads(client, postId);
-      patchPost(client, postId, withSaveToggled);
+      await cancelPostReads(client, viewer, postId);
+      patchPost(client, viewer, postId, withSaveToggled);
     },
     onError: (error) => {
-      patchPost(client, postId, withSaveToggled);
+      patchPost(client, viewer, postId, withSaveToggled);
       toast.error(publishErrorMessage(error));
     },
     onSuccess: (state) => {
       if (state.saved) haptics.success();
       if (client.isMutating({ mutationKey }) > 1) return;
-      patchPost(client, postId, (post) => withSaveState(post, state));
+      patchPost(client, viewer, postId, (post) => withSaveState(post, state));
     },
   });
 }
