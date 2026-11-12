@@ -62,7 +62,7 @@ jobs:
           if-no-files-found: ignore
 
   functions:
-    name: Edge function shared modules
+    name: Edge functions (every function and _shared)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -81,10 +81,12 @@ jobs:
       - name: Lint
         run: deno lint
 
-      - name: Type-check
+      # Both tasks run from supabase/functions and cover every function folder plus _shared:
+      # `deno check .` type-checks every module, and `deno test` finds every *_test.ts.
+      - name: Type-check every function
         run: deno task check
 
-      - name: Test
+      - name: Test every function
         run: deno task test
 
   types:
