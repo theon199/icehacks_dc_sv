@@ -4,6 +4,9 @@
  */
 import type { Href } from 'expo-router';
 
+import { profileKeys } from '@/features/profile';
+import { queryClient } from '@/lib/query/client';
+
 /** What the cook just made, handed to the community composer as a starting draft. */
 export interface CookShareDraft {
   recipeId: string;
@@ -30,4 +33,12 @@ export function composeHref(draft: CookShareDraft): Href {
     params.photoHeight = String(draft.photo.height);
   }
   return { pathname: '/compose', params };
+}
+
+/**
+ * Marks the person's profile stats and badges as out of date after the server accepted a cook, so
+ * the profile shows the new count, streak and badges the next time it is on screen.
+ */
+export function refreshProfileStats(userId: string): void {
+  void queryClient.invalidateQueries({ queryKey: profileKeys.statsAll(userId) });
 }
