@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, TextInput, View } from 'react-native';
 
 import { deviceLocale } from '@/lib/format';
@@ -53,6 +53,32 @@ export function limitResetNote(until: number, now = Date.now(), locale = deviceL
   return "You've used today's Chef questions. Chef is back once your allowance resets.";
 }
 
+function nextDayStart(at: number): number {
+  const day = new Date(startOfDay(at));
+  day.setDate(day.getDate() + 1);
+  return day.getTime();
+}
+
+/**
+ * Start of the current local day, refreshed at midnight while `active`, so a note that says
+ * "tomorrow" switches to today's wording once the date changes instead of waiting for a re-render.
+ */
+function useDayStart(active: boolean): number {
+  const [dayStart, setDayStart] = useState(() => startOfDay(Date.now()));
+  useEffect(() => {
+    if (!active) return;
+    const now = Date.now();
+    const today = startOfDay(now);
+    if (today !== dayStart) {
+      setDayStart(today);
+      return;
+    }
+    const timer = setTimeout(() => setDayStart(startOfDay(Date.now())), nextDayStart(now) - now);
+    return () => clearTimeout(timer);
+  }, [active, dayStart]);
+  return dayStart;
+}
+
 function joinDictation(base: string, spoken: string): string {
   const head = base.trimEnd();
   return head ? `${head} ${spoken}` : spoken;
@@ -104,6 +130,7 @@ export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
   };
 
   const limited = limitedUntil != null;
+  const dayStart = useDayStart(limited);
   const canSend = !busy && !limited && !preparing && (draft.trim().length > 0 || photo != null);
   const send = () => {
     if (!canSend) return;
@@ -122,7 +149,7 @@ export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
     >
       {limited ? (
         <Text testID="chef-limit-note" variant="footnote" tone="muted" align="center">
-          {limitResetNote(limitedUntil)}
+          {limitResetNote(limitedUntil, dayStart)}
         </Text>
       ) : null}
       {photo || preparing ? (
@@ -195,7 +222,8 @@ export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
         <IconButton
           testID="chef-send"
           icon="arrow.up"
-          accessibilityLabel="Send"
+          // The limit note is plain text, so the disabled button carries the reason for VoiceOver.
+          accessibilityLabel={limited ? "Send. You've used today's Chef questions" : 'Send'}
           variant="filled"
           disabled={!canSend}
           onPress={send}

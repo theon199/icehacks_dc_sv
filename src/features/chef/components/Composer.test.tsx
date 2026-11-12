@@ -1,4 +1,4 @@
-import { screen, userEvent } from '@testing-library/react-native';
+import { act, screen, userEvent } from '@testing-library/react-native';
 
 import { renderWithTheme } from '@/test/render';
 
@@ -53,5 +53,30 @@ describe('Composer', () => {
     expect(onSend).not.toHaveBeenCalled();
     expect(screen.getByTestId('chef-input')).toHaveDisplayValue('Dinner ideas?');
     expect(screen.getByTestId('chef-limit-note')).toHaveTextContent(/Chef is back/);
+  });
+
+  it('names the reason on the disabled Send button for VoiceOver', async () => {
+    const limitedUntil = Date.now() + 60 * 60 * 1000;
+    await renderWithTheme(<Composer busy={false} limitedUntil={limitedUntil} onSend={jest.fn()} />);
+    expect(screen.getByLabelText("Send. You've used today's Chef questions")).toBeDisabled();
+  });
+
+  describe('across midnight', () => {
+    beforeEach(() => jest.useFakeTimers({ now: new Date(2026, 10, 12, 23, 50) }));
+    afterEach(() => jest.useRealTimers());
+
+    it('stops saying tomorrow once the date changes', async () => {
+      const limitedUntil = new Date(2026, 10, 13, 0, 30).getTime();
+      await renderWithTheme(
+        <Composer busy={false} limitedUntil={limitedUntil} onSend={jest.fn()} />,
+      );
+      expect(screen.getByTestId('chef-limit-note')).toHaveTextContent(/back tomorrow at/);
+
+      await act(async () => {
+        jest.advanceTimersByTime(11 * 60 * 1000);
+      });
+      expect(screen.getByTestId('chef-limit-note')).toHaveTextContent(/Chef is back at/);
+      expect(screen.getByTestId('chef-limit-note')).not.toHaveTextContent(/tomorrow/);
+    });
   });
 });
