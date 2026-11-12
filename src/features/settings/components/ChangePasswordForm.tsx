@@ -2,12 +2,15 @@ import { useState } from 'react';
 
 import { Button, Text, TextField, toast } from '@/ui';
 
-import { AccountError, MIN_PASSWORD_LENGTH, changePassword } from '../account/accountApi';
+import { MIN_PASSWORD_LENGTH, changePassword } from '../account/accountApi';
+import { useSubmission } from '../account/useSubmission';
 
 export interface ChangePasswordFormProps {
   email: string | null;
   /** Accounts created with Apple or Google have no password yet; they set one without the old. */
   hasPassword: boolean;
+  /** Called after a successful change so the account details can be read again. */
+  onChanged: () => void;
 }
 
 /** Validates the new-password fields; returns a message or null when they are fine. */
@@ -19,39 +22,46 @@ export function passwordProblem(next: string, confirm: string): string | null {
   return null;
 }
 
-export function ChangePasswordForm({ email, hasPassword }: ChangePasswordFormProps) {
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface PasswordFields {
+  current: string;
+  next: string;
+  confirm: string;
+}
 
-  const submit = async () => {
-    const problem = passwordProblem(next, confirm);
+const BLANK: PasswordFields = { current: '', next: '', confirm: '' };
+
+export function ChangePasswordForm({ email, hasPassword, onChanged }: ChangePasswordFormProps) {
+  const [fields, setFields] = useState<PasswordFields>(BLANK);
+  const { status, busy, submit, reject } = useSubmission('Could not change your password.');
+
+  const field = (name: keyof PasswordFields) => (text: string) =>
+    setFields((previous) => ({ ...previous, [name]: text }));
+
+  const save = async () => {
+    const problem = passwordProblem(fields.next, fields.confirm);
     if (problem) {
-      setError(problem);
+      reject(problem);
       return;
     }
-    setSaving(true);
-    setError(null);
-    try {
-      await changePassword({
+    const saved = await submit(() =>
+      changePassword({
         email,
-        currentPassword: hasPassword ? current : null,
-        newPassword: next,
-      });
-      setCurrent('');
-      setNext('');
-      setConfirm('');
-      toast.show({ message: 'Your password has been changed.', tone: 'success' });
-    } catch (cause) {
-      setError(cause instanceof AccountError ? cause.message : 'Could not change your password.');
-    } finally {
-      setSaving(false);
-    }
+        currentPassword: hasPassword ? fields.current : null,
+        newPassword: fields.next,
+      }),
+    );
+    if (!saved) return;
+    setFields(BLANK);
+    toast.show({
+      message: hasPassword ? 'Your password has been changed.' : 'Your password is set.',
+      tone: 'success',
+    });
+    onChanged();
   };
 
-  const ready = (!hasPassword || current.length > 0) && next.length > 0 && confirm.length > 0;
+  const complete =
+    fields.next !== '' && fields.confirm !== '' && (!hasPassword || fields.current !== '');
+  const verb = hasPassword ? 'Change' : 'Set';
 
   return (
     <>
@@ -60,43 +70,43 @@ export function ChangePasswordForm({ email, hasPassword }: ChangePasswordFormPro
         <TextField
           testID="account-password-current"
           label="Current password"
-          value={current}
-          onChangeText={setCurrent}
+          value={fields.current}
+          onChangeText={field('current')}
           secureTextEntry
           autoComplete="current-password"
           textContentType="password"
-          disabled={saving}
+          disabled={busy}
         />
       ) : null}
       <TextField
         testID="account-password-new"
         label="New password"
         hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
-        value={next}
-        onChangeText={setNext}
+        value={fields.next}
+        onChangeText={field('next')}
         secureTextEntry
         autoComplete="new-password"
         textContentType="newPassword"
-        disabled={saving}
+        disabled={busy}
       />
       <TextField
         testID="account-password-confirm"
         label="Confirm new password"
-        value={confirm}
-        onChangeText={setConfirm}
+        value={fields.confirm}
+        onChangeText={field('confirm')}
         secureTextEntry
         autoComplete="new-password"
         textContentType="newPassword"
-        error={error}
-        disabled={saving}
+        error={status.problem}
+        disabled={busy}
       />
       <Button
         testID="account-password-submit"
-        label={hasPassword ? 'Change password' : 'Set password'}
+        label={`${verb} password`}
         variant="secondary"
-        loading={saving}
-        disabled={!ready}
-        onPress={() => void submit()}
+        loading={busy}
+        disabled={!complete}
+        onPress={() => void save()}
       />
     </>
   );

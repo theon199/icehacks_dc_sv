@@ -3,7 +3,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { Button, Card, Text, TextField, space, toast } from '@/ui';
 
-import { AccountError, DELETE_CONFIRMATION_PHRASE, deleteAccount } from '../account/accountApi';
+import { DELETE_CONFIRMATION_PHRASE, deleteAccount } from '../account/accountApi';
+import { useSubmission } from '../account/useSubmission';
 
 /** Whether the typed text confirms deletion. Case and surrounding spaces do not matter. */
 export function confirmsDeletion(typed: string): boolean {
@@ -15,38 +16,38 @@ export function confirmsDeletion(typed: string): boolean {
  * it are gone, and the app signs out back to the welcome screen.
  */
 export function DeleteAccountCard() {
-  const [open, setOpen] = useState(false);
-  const [typed, setTyped] = useState('');
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // null while collapsed; otherwise what the person has typed so far.
+  const [phrase, setPhrase] = useState<string | null>(null);
+  const { status, busy, submit, dismiss } = useSubmission(
+    'Could not delete your account. Try again.',
+  );
 
-  const confirm = async () => {
-    if (!confirmsDeletion(typed) || deleting) return;
-    setDeleting(true);
-    setError(null);
-    try {
-      await deleteAccount();
-      toast.show({ message: 'Your account has been deleted.', tone: 'success' });
-    } catch (cause) {
-      setError(
-        cause instanceof AccountError ? cause.message : 'Could not delete your account. Try again.',
-      );
-      setDeleting(false);
-    }
-  };
-
-  if (!open) {
+  if (phrase == null) {
     return (
       <Button
         testID="account-delete-start"
         label="Delete account"
         variant="ghost"
         icon="trash"
-        onPress={() => setOpen(true)}
+        onPress={() => setPhrase('')}
         style={styles.start}
       />
     );
   }
+
+  const armed = confirmsDeletion(phrase);
+
+  const erase = async () => {
+    if (!armed) return;
+    if (await submit(deleteAccount)) {
+      toast.show({ message: 'Your account has been deleted.', tone: 'success' });
+    }
+  };
+
+  const collapse = () => {
+    dismiss();
+    setPhrase(null);
+  };
 
   return (
     <Card variant="outlined" testID="account-delete-card" style={styles.card}>
@@ -61,12 +62,12 @@ export function DeleteAccountCard() {
       <TextField
         testID="account-delete-input"
         label={`Type ${DELETE_CONFIRMATION_PHRASE} to confirm`}
-        value={typed}
-        onChangeText={setTyped}
+        value={phrase}
+        onChangeText={setPhrase}
         autoCapitalize="characters"
         autoCorrect={false}
-        disabled={deleting}
-        error={error}
+        disabled={busy}
+        error={status.problem}
       />
       <View style={styles.actions}>
         <Button
@@ -74,20 +75,16 @@ export function DeleteAccountCard() {
           label="Delete forever"
           variant="destructive"
           fullWidth
-          loading={deleting}
-          disabled={!confirmsDeletion(typed)}
-          onPress={() => void confirm()}
+          loading={busy}
+          disabled={!armed}
+          onPress={() => void erase()}
         />
         <Button
           label="Keep my account"
           variant="ghost"
           fullWidth
-          disabled={deleting}
-          onPress={() => {
-            setOpen(false);
-            setTyped('');
-            setError(null);
-          }}
+          disabled={busy}
+          onPress={collapse}
         />
       </View>
     </Card>

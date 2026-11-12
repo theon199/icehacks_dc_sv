@@ -2,46 +2,50 @@ import { useState } from 'react';
 
 import { Button, Text, TextField, toast } from '@/ui';
 
-import { AccountError, changeEmail, isValidEmail } from '../account/accountApi';
+import { changeEmail, isValidEmail } from '../account/accountApi';
+import { useSubmission } from '../account/useSubmission';
 
 export interface ChangeEmailFormProps {
   currentEmail: string | null;
   onChanged: () => void;
 }
 
+/** Why `candidate` cannot be used as the new address, or null when it can. */
+export function emailProblem(candidate: string, currentEmail: string | null): string | null {
+  const address = candidate.trim();
+  if (!isValidEmail(address)) return 'Enter a valid email address.';
+  if (currentEmail != null && address.toLowerCase() === currentEmail.toLowerCase()) {
+    return 'That is already your email address.';
+  }
+  return null;
+}
+
 /** Starts an email change; the new address must be confirmed from the link Supabase sends. */
 export function ChangeEmailForm({ currentEmail, onChanged }: ChangeEmailFormProps) {
-  const [email, setEmail] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const trimmed = email.trim();
-  const same = currentEmail != null && trimmed.toLowerCase() === currentEmail.toLowerCase();
+  const [draft, setDraft] = useState('');
+  const { status, busy, submit, reject, dismiss } = useSubmission('Could not change your email.');
 
-  const submit = async () => {
-    if (!isValidEmail(trimmed)) {
-      setError('Enter a valid email address.');
+  const send = async () => {
+    const problem = emailProblem(draft, currentEmail);
+    if (problem) {
+      reject(problem);
       return;
     }
-    if (same) {
-      setError('That is already your email address.');
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await changeEmail(trimmed);
-      setEmail('');
-      toast.show({
-        message: `Check ${trimmed} for a confirmation link to finish the change.`,
-        tone: 'success',
-        durationMs: 6000,
-      });
-      onChanged();
-    } catch (cause) {
-      setError(cause instanceof AccountError ? cause.message : 'Could not change your email.');
-    } finally {
-      setSaving(false);
-    }
+    const address = draft.trim();
+    const sent = await submit(() => changeEmail(address));
+    if (!sent) return;
+    setDraft('');
+    toast.show({
+      message: `Check ${address} for a confirmation link to finish the change.`,
+      tone: 'success',
+      durationMs: 6000,
+    });
+    onChanged();
+  };
+
+  const edit = (text: string) => {
+    setDraft(text);
+    if (status.phase === 'failed') dismiss();
   };
 
   return (
@@ -50,26 +54,23 @@ export function ChangeEmailForm({ currentEmail, onChanged }: ChangeEmailFormProp
       <TextField
         testID="account-email-input"
         label="New email"
-        value={email}
-        onChangeText={(text) => {
-          setEmail(text);
-          if (error) setError(null);
-        }}
+        value={draft}
+        onChangeText={edit}
         keyboardType="email-address"
         autoCapitalize="none"
         autoComplete="email"
         textContentType="emailAddress"
         autoCorrect={false}
-        error={error}
-        disabled={saving}
+        error={status.problem}
+        disabled={busy}
       />
       <Button
         testID="account-email-submit"
         label="Send confirmation"
         variant="secondary"
-        loading={saving}
-        disabled={trimmed.length === 0}
-        onPress={() => void submit()}
+        loading={busy}
+        disabled={draft.trim() === ''}
+        onPress={() => void send()}
       />
     </>
   );
