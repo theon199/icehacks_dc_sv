@@ -125,6 +125,7 @@ export async function buildCatalog(log: (message: string) => void): Promise<Buil
     gates.check(dbCheck.integrity === 'ok', () => `sqlite integrity_check: ${dbCheck.integrity}`);
     gates.check(dbCheck.foreignKeyViolations === 0, () => `sqlite foreign_key_check: ${dbCheck.foreignKeyViolations} violations`);
     gates.check(dbCheck.ftsRows === recipes.length, () => `FTS rows ${dbCheck.ftsRows} != recipes ${recipes.length}`);
+    gates.check(dbCheck.ingredientListMismatches === 0, () => `${dbCheck.ingredientListMismatches} recipes store ingredient id lists that differ from their lines`);
 
     const bytes = statSync(stagedDb).size;
     gates.check(bytes < MAX_DB_BYTES, () => `catalog is ${bytes} bytes (limit ${MAX_DB_BYTES})`);

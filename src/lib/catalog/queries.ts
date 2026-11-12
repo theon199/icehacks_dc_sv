@@ -191,20 +191,12 @@ export async function getRecipeSummary(id: string): Promise<RecipeSummary | null
 }
 
 /**
- * A recipe's core ingredients: matched, required and not a pantry staple. The staple list is a
- * couple of dozen ids that SQLite collects once per statement, so each recipe costs one more short
- * index walk. `coreIngredientIdsOf` (./toDomain) applies the same rule to a loaded recipe's lines.
+ * Both id lists are JSON columns the catalog build computes from each recipe's lines (matched ids,
+ * and the core ones: matched, required and not a pantry staple), so this reads one row per recipe
+ * instead of aggregating `recipe_ingredients` for each. `coreIngredientIdsOf` (./toDomain) applies
+ * the same core rule to a loaded recipe's lines.
  */
-const CORE_INGREDIENT_WHERE = `ri.ingredient_id IS NOT NULL AND ri.optional = 0
-        AND ri.ingredient_id NOT IN (SELECT id FROM ingredients WHERE pantry_staple = 1)`;
-
-// The id lists follow line position only because each subquery walks the (recipe_id, position)
-// primary key; see `RecipeCandidate` for why no caller relies on that order.
-const CANDIDATES_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS},
-    (SELECT json_group_array(ri.ingredient_id) FROM recipe_ingredients ri
-      WHERE ri.recipe_id = r.id AND ri.ingredient_id IS NOT NULL) AS ingredient_ids,
-    (SELECT json_group_array(ri.ingredient_id) FROM recipe_ingredients ri
-      WHERE ri.recipe_id = r.id AND ${CORE_INGREDIENT_WHERE}) AS core_ingredient_ids
+const CANDIDATES_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS}, r.ingredient_ids, r.core_ingredient_ids
   FROM recipes r
   WHERE 1 = 1 ${FILTER_SQL}
   ORDER BY r.health_score DESC, r.id
@@ -240,6 +232,7 @@ export async function listCandidates(filters: CandidateFilters): Promise<RecipeC
 /** Safety filters a family lookup accepts; a `CandidateFilters` object fits as is. */
 export type FamilyFilters = Pick<CandidateFilters, 'dietMask' | 'avoidAllergens'>;
 
+// `recipes_family` indexes family_id, so this reads only the family's rows.
 const FAMILY_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS} FROM recipes r
   WHERE r.family_id = ? ${FILTER_SQL}
   ORDER BY r.health_score DESC, r.id`;

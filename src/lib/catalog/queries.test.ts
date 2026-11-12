@@ -1,4 +1,4 @@
-import { resetCatalogForTests } from '../db/catalog';
+import { CATALOG_SCHEMA_VERSION, resetCatalogForTests } from '../db/catalog';
 import { describeCatalogDb, stats } from './__fixtures__/nodeCatalogDb';
 import {
   clearCatalogCaches,
@@ -16,7 +16,7 @@ import {
   searchIngredients,
   searchRecipes,
 } from './queries';
-import { ALLERGEN_IDS, DietFlag, dietMask, satisfiesDiets } from './types';
+import { ALLERGEN_IDS, DietFlag, dietMask, satisfiesDiets, type AllergenId } from './types';
 
 jest.mock(
   'expo-sqlite',
@@ -127,6 +127,27 @@ describeCatalogDb('listCandidates', () => {
     expect(found).not.toHaveLength(0);
     const misfits = found.filter((recipe) => !satisfiesDiets(recipe.dietFlags, mask));
     expect(misfits).toEqual([]);
+  });
+
+  it('never carries a diet bit that the allergen statuses cannot back up', async () => {
+    const requirements: [number, readonly AllergenId[]][] = [
+      [DietFlag.vegan, ['milk', 'egg', 'fish', 'shellfish']],
+      [DietFlag.vegetarian, ['fish', 'shellfish']],
+      [DietFlag.dairy_free, ['milk']],
+      [DietFlag.gluten_free, ['gluten', 'wheat']],
+    ];
+    const all = await listCandidates({ limit: 2000 });
+    const contradictions = all.flatMap((recipe) =>
+      requirements
+        .filter(([bit]) => satisfiesDiets(recipe.dietFlags, bit))
+        .flatMap(([bit, allergens]) =>
+          allergens
+            .filter((allergen) => recipe.allergens[allergen] !== 'free')
+            .map((allergen) => `${recipe.id}: diet ${bit} with ${allergen}`),
+        ),
+    );
+    expect(contradictions).toEqual([]);
+    expect(all.some((recipe) => satisfiesDiets(recipe.dietFlags, DietFlag.vegetarian))).toBe(true);
   });
 
   it('keeps only recipes that are explicitly free of avoided allergens', async () => {
@@ -251,7 +272,7 @@ describeCatalogDb('getRecipesByFamily', () => {
     expect(scores).toEqual([...scores].sort((a, b) => b - a));
   });
 
-  it('applies allergen filters fail-closed and diet filters', async () => {
+  it('applies allergen filters fail-closed', async () => {
     // One version contains wheat, the other is free of it.
     const all = await getRecipesByFamily('fam:pepper-salt-squid');
     expect(all).toHaveLength(2);
@@ -260,9 +281,31 @@ describeCatalogDb('getRecipesByFamily', () => {
     // An unknown status is treated as unsafe, never as free.
     const unknown = await getRecipesByFamily('fam:chicken-spanish', { avoidAllergens: ['milk'] });
     expect(unknown.map((r) => r.id)).toEqual(['mealdb:53164']);
+  });
 
-    const vegan = await getRecipesByFamily('fam:meatball', { dietMask: DietFlag.vegan });
-    for (const recipe of vegan) expect(satisfiesDiets(recipe.dietFlags, DietFlag.vegan)).toBe(true);
+  it('keeps only the versions that carry every diet bit in the mask', async () => {
+    const spanish = await getRecipesByFamily('fam:chicken-spanish');
+    expect(spanish.map((r) => r.id).sort()).toEqual(['mealdb:53143', 'mealdb:53164']);
+    const dairyFree = await getRecipesByFamily('fam:chicken-spanish', {
+      dietMask: DietFlag.dairy_free,
+    });
+    expect(dairyFree.map((r) => r.id)).toEqual(['mealdb:53164']);
+
+    // The other version serves its pudding with store-bought ice cream, whose fish and shellfish
+    // status is unknown, so only this one is vegetarian.
+    const pudding = await getRecipesByFamily('fam:pudding-sticky-toffee');
+    expect(pudding.map((r) => r.id).sort()).toEqual(['mealdb:52793', 'mealdb:52883']);
+    const vegetarian = await getRecipesByFamily('fam:pudding-sticky-toffee', {
+      dietMask: DietFlag.vegetarian,
+    });
+    expect(vegetarian.map((r) => r.id)).toEqual(['mealdb:52883']);
+
+    // A mask needs every bit: neither version is both vegetarian and dairy-free.
+    await expect(
+      getRecipesByFamily('fam:pudding-sticky-toffee', {
+        dietMask: DietFlag.vegetarian | DietFlag.dairy_free,
+      }),
+    ).resolves.toEqual([]);
   });
 
   it('returns nothing for an unknown family', async () => {
@@ -390,7 +433,8 @@ describeCatalogDb('catalog metadata', () => {
     expect(cuisines[0]?.recipeCount).toBeGreaterThanOrEqual(cuisines[1]?.recipeCount ?? 0);
     expect(cuisines.find((c) => c.cuisine === 'greek')?.region).toBe('southern_europe');
     const meta = await getCatalogMeta();
-    expect(meta.schemaVersion).toBe(1);
+    expect(meta.schemaVersion).toBe(CATALOG_SCHEMA_VERSION);
+    expect(meta.schemaVersion).toBe(2);
     expect(meta.recipeCount).toBeGreaterThan(0);
   });
 });

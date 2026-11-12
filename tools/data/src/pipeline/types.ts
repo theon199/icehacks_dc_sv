@@ -65,6 +65,10 @@ export interface RecipeRow {
   health_score: number;
   family_id: string;
   ingredients: RecipeIngredientRow[];
+  /** Every matched ingredient id, once each, in line order (stored as a JSON array). */
+  ingredient_ids: string[];
+  /** Matched ids on required lines that are not pantry staples, once each, in line order. */
+  core_ingredient_ids: string[];
   steps: RecipeStepRow[];
   tutorials: RecipeTutorialRow[];
   /** Ingredient display names for full-text search. */

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ing } from '../src/knowledge/define.ts';
 import { INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
 import { ingredientAllergens, ingredientDietFlags } from '../src/derive/ingredients.ts';
-import { rollupAllergens, rollupDiet, type MatchedLine } from '../src/derive/rollup.ts';
+import { rollupAllergens, rollupDiet, unbackedDietFlags, type MatchedLine } from '../src/derive/rollup.ts';
 import { ALLERGEN_IDS, DietFlag } from '../src/types.ts';
 
 const def = (id: string) => {
@@ -109,5 +109,57 @@ describe('diet flags', () => {
   it('requires a free gluten status for gluten_free', () => {
     const lines = [line('rice'), line('bread')];
     assert.ok(!has(rollupDiet(lines, rollupAllergens(lines)), DietFlag.gluten_free));
+  });
+});
+
+describe('diet flags backed by allergen data', () => {
+  const flagsOf = (...lines: MatchedLine[]) => rollupDiet(lines, rollupAllergens(lines));
+
+  it('clears vegetarian and vegan when a store-bought product leaves fish or shellfish unknown', () => {
+    // Indian curry paste names no animal, but brands vary, so fish and shellfish stay unknown.
+    const flags = flagsOf(line('chickpea'), line('indian_curry_paste'), line('tomato'));
+    assert.ok(!has(flags, DietFlag.vegetarian));
+    assert.ok(!has(flags, DietFlag.vegan));
+    // Diets that no allergen can disprove are unaffected.
+    assert.ok(has(flags, DietFlag.pescatarian));
+    assert.ok(has(flags, DietFlag.no_pork));
+  });
+
+  it('clears vegan for a plant-based product of unknown composition', () => {
+    const flags = flagsOf(line('vegan_butter'), line('rice'));
+    assert.ok(!has(flags, DietFlag.vegan));
+    assert.ok(!has(flags, DietFlag.vegetarian));
+  });
+
+  it('keeps vegan and vegetarian when every ingredient is fully known', () => {
+    const flags = flagsOf(line('chickpea'), line('olive_oil'), line('tomato'));
+    assert.ok(has(flags, DietFlag.vegan));
+    assert.ok(has(flags, DietFlag.vegetarian));
+  });
+
+  it('only sets diet bits the allergen map backs up', () => {
+    const recipes: MatchedLine[][] = [
+      [line('chickpea'), line('stock_cube')],
+      [line('rice'), line('vegetable_stock_cube')],
+      [line('bread'), line('tomato')],
+      [line('oat_milk'), line('banana')],
+      [line('feta'), line('cucumber')],
+      [line('egg_noodles'), line('soy_sauce')],
+    ];
+    for (const lines of recipes) {
+      const allergens = rollupAllergens(lines);
+      assert.deepEqual(unbackedDietFlags(rollupDiet(lines, allergens), allergens), []);
+    }
+  });
+
+  it('names every diet bit that contradicts the allergen map', () => {
+    const allergens = Object.fromEntries(ALLERGEN_IDS.map((a) => [a, 'free'])) as Record<(typeof ALLERGEN_IDS)[number], 'free' | 'unknown' | 'contains'>;
+    const all = DietFlag.vegan | DietFlag.vegetarian | DietFlag.dairy_free | DietFlag.gluten_free | DietFlag.pescatarian;
+    assert.deepEqual(unbackedDietFlags(all, allergens), []);
+    assert.deepEqual(unbackedDietFlags(all, { ...allergens, egg: 'unknown' }), ['vegan']);
+    assert.deepEqual(unbackedDietFlags(all, { ...allergens, shellfish: 'unknown' }).sort(), ['vegan', 'vegetarian']);
+    assert.deepEqual(unbackedDietFlags(all, { ...allergens, milk: 'contains' }).sort(), ['dairy_free', 'vegan']);
+    assert.deepEqual(unbackedDietFlags(all, { ...allergens, wheat: 'unknown' }), ['gluten_free']);
+    assert.deepEqual(unbackedDietFlags(DietFlag.pescatarian, { ...allergens, fish: 'unknown' }), []);
   });
 });

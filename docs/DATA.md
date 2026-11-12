@@ -18,7 +18,7 @@ Bump `meta.schema_version` whenever this contract changes.
 Anything that cannot be traced to a public source is **not fabricated**. It is listed in
 `docs/data/HELD.md` with the reason.
 
-## Schema (v1)
+## Schema (v2)
 
 ```sql
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -59,11 +59,16 @@ CREATE TABLE recipes (
   goal_tags TEXT NOT NULL,           -- JSON array: high_protein|high_fiber|lower_sodium|lower_sat_fat|lower_calorie|plant_forward|heart_friendly
   gentle INTEGER NOT NULL DEFAULT 0, -- suitable for small appetite mode
   health_score REAL NOT NULL,        -- 0..1 deterministic nutrient-density score
-  family_id TEXT NOT NULL            -- groups variants of the same dish
+  family_id TEXT NOT NULL,           -- groups variants of the same dish
+  ingredient_ids TEXT NOT NULL,      -- JSON array: every matched ingredient id, once, in line order
+  core_ingredient_ids TEXT NOT NULL  -- JSON array: matched ids on non-optional lines that are not
+                                     -- pantry staples, once, in line order
 );
 CREATE INDEX recipes_cuisine ON recipes(cuisine);
 CREATE INDEX recipes_course ON recipes(course);
 CREATE INDEX recipes_diet ON recipes(diet_flags);
+CREATE INDEX recipes_family ON recipes(family_id);
+CREATE INDEX recipes_rank ON recipes(health_score DESC, id);  -- the order candidates and browse use
 
 CREATE TABLE recipe_ingredients (
   recipe_id TEXT NOT NULL REFERENCES recipes(id),
@@ -114,6 +119,24 @@ CREATE VIRTUAL TABLE recipes_fts USING fts5(
   non-halal-labelled meat claims; informational only).
 - Recipe allergen status is `contains` if any ingredient contains it, `unknown` if any ingredient is
   unmatched or `allergen_status='unknown'`, otherwise `free`.
+- Recipe diet bits never contradict the recipe's allergen statuses: `vegan` needs milk, egg, fish and
+  shellfish `free`; `vegetarian` needs fish and shellfish `free`; `dairy_free` needs milk `free`;
+  `gluten_free` needs gluten and wheat `free`. So an ingredient with `allergen_status='unknown'`
+  clears `vegan` and `vegetarian`. The build fails on any contradiction.
+
+## Precomputed ingredient lists
+
+`recipes.ingredient_ids` and `recipes.core_ingredient_ids` are derived from `recipe_ingredients`
+and `ingredients.pantry_staple` at build time, so ranking queries read one column per recipe
+instead of aggregating lines. The build recomputes both from the tables in SQL and fails if any
+recipe disagrees. A core ingredient is what defines the dish for pantry matching and similarity: a
+matched line that is not optional and whose ingredient is not a pantry staple.
+
+## Schema history
+
+- v2: `recipes.ingredient_ids`, `recipes.core_ingredient_ids`, indexes `recipes_family` and
+  `recipes_rank`; diet bits backed by allergen statuses.
+- v1: first release.
 
 ## Health score
 
