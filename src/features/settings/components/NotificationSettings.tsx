@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useSessionStore } from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
-import { toast, Toggle } from '@/ui';
+import { ListRow, toast, Toggle } from '@/ui';
 
 import {
   fetchPushCategories,
@@ -14,6 +14,7 @@ import {
 } from '../deps';
 import { ensureNotificationPermission, openSystemSettings } from '../notificationPermission';
 import { rememberPushChoices, usePushChoices } from '../pushChoices';
+import { refreshNotificationAccess, useNotificationAccess } from '../useNotificationAccess';
 import { SettingsSection } from './SettingsSection';
 
 type ChoiceKey = 'cookTimers' | PushCategory;
@@ -44,6 +45,10 @@ const isPushCategory = (key: ChoiceKey): key is PushCategory =>
  * device setting kept in the shared settings store. Likes/comments and followers/friends are push
  * categories stored on the server, which only sends what is turned on; those switches show the
  * server's answer once it arrives and put themselves back if a change cannot be saved.
+ *
+ * A switch shows on only while the choice is on and the system lets Famara notify, so it never
+ * claims alerts that cannot arrive. The permission is read again each time Settings comes into
+ * view or the app returns to the foreground, since it can be changed in the Settings app.
  */
 export function NotificationSettings() {
   const userId = useSessionStore((s) => s.userId);
@@ -51,6 +56,9 @@ export function NotificationSettings() {
   const setNotifications = useSettingsStore((s) => s.setNotifications);
   const push = usePushChoices(userId);
   const choices: Record<ChoiceKey, boolean> = { cookTimers, ...push };
+  const access = useNotificationAccess();
+  const granted = access === 'granted';
+  const blocked = access === 'blocked' && rows.some((row) => choices[row.key]);
   const [pending, setPending] = useState<ChoiceKey | null>(null);
   // Bumped on every change so a server read that started earlier cannot overwrite it.
   const edits = useRef(0);
@@ -108,6 +116,7 @@ export function NotificationSettings() {
     setPending(key);
     try {
       const outcome = await ensureNotificationPermission();
+      void refreshNotificationAccess();
       if (outcome !== 'granted') {
         toast.show({
           message: 'Notifications are off for Famara in your device settings.',
@@ -130,13 +139,23 @@ export function NotificationSettings() {
       title="Notifications"
       footnote="You will always see activity in the in-app inbox, whatever you choose here."
     >
+      {blocked ? (
+        <ListRow
+          testID="settings-notify-blocked"
+          title="Notifications are off for Famara"
+          subtitle="Allow them in the Settings app to get the alerts you chose."
+          icon="bell.slash"
+          divider
+          onPress={openSystemSettings}
+        />
+      ) : null}
       {rows.map((row) => (
         <Toggle
           key={row.key}
           testID={`settings-notify-${row.key}`}
           label={row.label}
           description={row.description}
-          value={choices[row.key]}
+          value={choices[row.key] && granted}
           disabled={pending === row.key}
           onValueChange={(next) => void change(row.key, next)}
         />

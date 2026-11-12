@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
 import Storage from 'expo-sqlite/kv-store';
-import { Alert, type AlertButton, type Text } from 'react-native';
+import type * as ReactModule from 'react';
+import { Alert, AppState, Linking, type AlertButton, type Text } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import {
@@ -15,12 +16,27 @@ import { renderWithTheme } from '@/test/render';
 import { useAppearanceStore, useToastStore } from '@/ui';
 
 import { resetPushChoicesForTests } from '../pushChoices';
+import { resetNotificationAccessForTests } from '../useNotificationAccess';
 import { SettingsScreen } from './SettingsScreen';
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
-}));
+/** Runs every focus effect again, as if the screen came back into view. */
+const mockFocusListeners = new Set<() => void>();
+jest.mock('expo-router', () => {
+  const { useEffect } = jest.requireActual<typeof ReactModule>('react');
+  return {
+    useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
+    useFocusEffect: (effect: () => void) =>
+      useEffect(() => {
+        effect();
+        mockFocusListeners.add(effect);
+        return () => {
+          mockFocusListeners.delete(effect);
+        };
+      }, [effect]),
+  };
+});
+const refocus = () => act(async () => mockFocusListeners.forEach((effect) => effect()));
 
 const mockNotifications = {
   getPermissionsAsync: jest.fn(),
@@ -105,6 +121,7 @@ function sessionUntilSignOut() {
 beforeEach(() => {
   resetUserStores();
   resetPushChoicesForTests();
+  resetNotificationAccessForTests();
   useAppearanceStore.setState({ preference: 'system' });
   useToastStore.getState().clear();
   mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
@@ -217,6 +234,60 @@ describe('SettingsScreen', () => {
     await waitFor(() => expect(useToastStore.getState().queue).toHaveLength(1));
     expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', true);
     expect(serverCategories['user-1']).toEqual({ social: true, follows: false });
+  });
+
+  it('shows a chosen alert as off while the system blocks notifications, with a way to fix it', async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    await renderWithTheme(<SettingsScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('settings-notify-blocked')).toBeOnTheScreen());
+    // Cook timer alerts are chosen, but cannot arrive.
+    expect(notificationSettings().cookTimers).toBe(true);
+    expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', false);
+    await user.press(screen.getByTestId('settings-notify-blocked'));
+    expect(openSettings).toHaveBeenCalled();
+    openSettings.mockRestore();
+  });
+
+  it('reads the permission again when Settings comes back into view', async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() => expect(screen.getByTestId('settings-notify-blocked')).toBeOnTheScreen());
+
+    // The person allowed notifications in the Settings app meanwhile.
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
+    await refocus();
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true),
+    );
+    expect(screen.queryByTestId('settings-notify-blocked')).not.toBeOnTheScreen();
+  });
+
+  it('reads the permission again when the app returns to the foreground', async () => {
+    const listeners: ((state: string) => void)[] = [];
+    const subscribe = jest.spyOn(AppState, 'addEventListener');
+    const usual = subscribe.getMockImplementation();
+    subscribe.mockImplementation((_type, fn) => {
+      listeners.push(fn as (state: string) => void);
+      return { remove: () => undefined };
+    });
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true),
+    );
+
+    // Turned off in the Settings app while Famara was in the background.
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    await act(async () => listeners.forEach((fn) => fn('active')));
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', false),
+    );
+    expect(notificationSettings().cookTimers).toBe(true);
+    // AppState is already a mock here; put its usual behaviour back for the other tests.
+    if (usual) subscribe.mockImplementation(usual);
+    else subscribe.mockRestore();
   });
 
   it('keeps cook timer alerts in the shared settings, not on the push server', async () => {
