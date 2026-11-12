@@ -1,0 +1,102 @@
+name: Database
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - 'src/lib/supabase/database.types.ts'
+      - '.github/workflows/db.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'src/lib/supabase/database.types.ts'
+      - '.github/workflows/db.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sql:
+    name: Migrations, pgTAP and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.1.0
+
+      - name: Start database
+        run: supabase db start
+
+      - name: Run pgTAP tests
+        run: supabase test db
+
+      - name: Lint database functions
+        run: supabase db lint --level warning --fail-on error
+
+      - name: Generate types from the migrated schema
+        run: |
+          mkdir -p supabase/.generated
+          supabase gen types typescript --local --schema public > supabase/.generated/database.generated.ts
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Check committed database types match the schema
+        run: npx --yes --package typescript@6.0.3 tsc -p supabase/tsconfig.drift.json
+
+      - name: Upload generated types
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-types
+          path: supabase/.generated/database.generated.ts
+          if-no-files-found: ignore
+
+  functions:
+    name: Edge function shared modules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: supabase/functions
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.8
+
+      - name: Format check
+        run: deno fmt --check
+
+      - name: Lint
+        run: deno lint
+
+      - name: Type-check
+        run: deno task check
+
+      - name: Test
+        run: deno task test
+
+  types:
+    name: Database types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Type-check database.types.ts
+        run: npx --yes --package typescript@6.0.3 tsc -p supabase/tsconfig.check.json
