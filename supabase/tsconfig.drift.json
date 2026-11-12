@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.check.json",
+  "files": [
+    "../src/lib/supabase/database.types.ts",
+    "types-check/shape.check.ts",
+    ".generated/database.generated.ts",
+    "types-check/drift.check.ts"
+  ]
+}
