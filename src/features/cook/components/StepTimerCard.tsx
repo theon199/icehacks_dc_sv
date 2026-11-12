@@ -12,6 +12,8 @@ export interface StepTimerCardProps {
   seconds: number;
   /** The step's timer once started. */
   timer: CookTimer | undefined;
+  /** Whether a finished timer can alert the person while Famara is in the background. */
+  alertsInBackground: boolean;
   onStart: () => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
@@ -23,6 +25,7 @@ export interface StepTimerCardProps {
 export const StepTimerCard = memo(function StepTimerCard({
   seconds,
   timer,
+  alertsInBackground,
   onStart,
   onPause,
   onResume,
@@ -41,7 +44,11 @@ export const StepTimerCard = memo(function StepTimerCard({
         variant="secondary"
         size="lg"
         onPress={onStart}
-        accessibilityHint="Counts down and alerts you when it is done, even if you leave Famara."
+        accessibilityHint={
+          alertsInBackground
+            ? 'Counts down and alerts you when it is done, even if you leave Famara.'
+            : 'Counts down and alerts you when it is done while Famara is open.'
+        }
         testID="cook-step-timer-start"
       />
     );

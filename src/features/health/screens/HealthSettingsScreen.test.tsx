@@ -17,7 +17,7 @@ jest.mock('../healthKit', () => ({
     requestAccess: jest.fn(),
   },
 }));
-jest.mock('../deps', () => ({ getDishTitles: jest.fn() }));
+jest.mock('../deps', () => ({ getDishTitles: jest.fn(), useCookLogSettled: () => false }));
 jest.mock('../refresh', () => ({
   refreshHealth: jest.fn(async () => 'too_soon'),
   removeSyncedHealth: jest.fn(async () => true),

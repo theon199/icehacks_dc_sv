@@ -29,14 +29,24 @@ export interface TimerNotifier {
 const ANDROID_CHANNEL = 'cook-timers';
 let channelReady: Promise<void> | null = null;
 
-function ensureChannel(): Promise<void> {
+/** Creates the Android channel once. A failed attempt is forgotten so the next timer tries again. */
+export function ensureChannel(): Promise<void> {
   if (Platform.OS !== 'android') return Promise.resolve();
-  channelReady ??= Notifications.setNotificationChannelAsync(ANDROID_CHANNEL, {
-    name: 'Cook timers',
-    importance: Notifications.AndroidImportance.HIGH,
-    sound: 'default',
-    vibrationPattern: [0, 400, 200, 400],
-  }).then(() => undefined);
+  if (!channelReady) {
+    const attempt = Notifications.setNotificationChannelAsync(ANDROID_CHANNEL, {
+      name: 'Cook timers',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      vibrationPattern: [0, 400, 200, 400],
+    }).then(
+      () => undefined,
+      (error: unknown) => {
+        if (channelReady === attempt) channelReady = null;
+        throw error;
+      },
+    );
+    channelReady = attempt;
+  }
   return channelReady;
 }
 

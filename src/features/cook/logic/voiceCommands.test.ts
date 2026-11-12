@@ -151,6 +151,22 @@ describe('createVoiceCommandStream', () => {
     expect(stream.settle(later(400))).toEqual([{ type: 'next' }]);
   });
 
+  it('acts on the revised command when a partial is re-heard with the same word count', () => {
+    const stream = createVoiceCommandStream();
+    expect(stream.push('next', false, 0)).toEqual([]);
+    expect(stream.push('back', false, 300)).toEqual([]);
+    expect(stream.settlesAt()).toBe(later(300));
+    expect(stream.settle(later(0))).toEqual([]);
+    expect(stream.settle(later(300))).toEqual([{ type: 'back' }]);
+  });
+
+  it('keeps waiting from the first sighting when the same partial repeats', () => {
+    const stream = createVoiceCommandStream();
+    stream.push('next', false, 0);
+    stream.push('next', false, 300);
+    expect(stream.settle(later(0))).toEqual([{ type: 'next' }]);
+  });
+
   it('hears a second command later in the same utterance', () => {
     const stream = createVoiceCommandStream();
     stream.push('next', false, 0);
