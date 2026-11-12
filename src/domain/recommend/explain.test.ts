@@ -2,8 +2,9 @@ import { createRankContext, type RankInput } from './context';
 import { explainRecipe, formatMinutes } from './explain';
 import { CATALOG, recipe } from './fixtures/catalog';
 import { makeRecipe } from './fixtures/makeRecipe';
+import { ANSWERED_PREFERENCES } from './fixtures/prefs';
 import { scoreRecipe } from './score';
-import { DEFAULT_PREFERENCES, type UserPreferences } from '../types/preferences';
+import { type UserPreferences } from '../types/preferences';
 import { type RecipeSummary } from '../types/recipe';
 
 const NOW = Date.UTC(2026, 10, 1);
@@ -15,7 +16,7 @@ function explain(
   mode: Parameters<typeof explainRecipe>[3] = 'forYou',
 ) {
   const ctx = createRankContext(
-    { prefs: { ...DEFAULT_PREFERENCES, ...prefs }, now: NOW, ...extra },
+    { prefs: { ...ANSWERED_PREFERENCES, ...prefs }, now: NOW, ...extra },
     CATALOG,
   );
   return explainRecipe(target, scoreRecipe(target, ctx).features, ctx, mode);

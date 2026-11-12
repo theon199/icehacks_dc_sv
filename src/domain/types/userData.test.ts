@@ -1,13 +1,20 @@
 import { feedbackEventSchema, impressionSchema } from './feedback';
 import { pantryIds, pantryItemSchema } from './pantry';
-import { DEFAULT_PREFERENCES, userPreferencesSchema, userProfileSchema } from './preferences';
+import {
+  DEFAULT_PREFERENCES,
+  hasSafetyAnswers,
+  userPreferencesSchema,
+  userProfileSchema,
+} from './preferences';
+import { makeRecipe } from '../recommend/fixtures/makeRecipe';
+import { checkRecipe, compileSafetyRules, isRecipeSafe } from '../safety/checkRecipe';
 
 describe('user preferences', () => {
   it('fills defaults for an empty document', () => {
     expect(DEFAULT_PREFERENCES).toEqual({
       cuisines: [],
-      diets: [],
-      allergens: [],
+      diets: null,
+      allergens: null,
       goals: [],
       timeBudgetMinutes: null,
       effort: 2,
@@ -15,6 +22,40 @@ describe('user preferences', () => {
       smallAppetite: false,
       units: 'us',
     });
+  });
+
+  it('never reads a missing allergen or diet answer as "none"', () => {
+    const parsed = userPreferencesSchema.parse({});
+    expect(parsed.allergens).not.toEqual([]);
+    expect(parsed.allergens).toBeNull();
+    expect(parsed.diets).toBeNull();
+    expect(hasSafetyAnswers(parsed)).toBe(false);
+
+    // Only one of the two answered is still unanswered.
+    expect(hasSafetyAnswers(userPreferencesSchema.parse({ allergens: [] }))).toBe(false);
+    expect(hasSafetyAnswers(userPreferencesSchema.parse({ allergens: [], diets: [] }))).toBe(true);
+  });
+
+  it('keeps an explicit "none" answer distinct from a missing one', () => {
+    expect(userPreferencesSchema.parse({ allergens: [], diets: [] })).toMatchObject({
+      allergens: [],
+      diets: [],
+    });
+    expect(userPreferencesSchema.parse({ allergens: null, diets: null })).toMatchObject({
+      allergens: null,
+      diets: null,
+    });
+  });
+
+  it('admits no recipe while safety answers are missing', () => {
+    const recipe = makeRecipe();
+    const prefs = userPreferencesSchema.parse({ cuisines: ['thai'] });
+    expect(isRecipeSafe(recipe, compileSafetyRules(prefs))).toBe(false);
+    expect(checkRecipe(recipe, prefs)).toEqual({
+      eligible: false,
+      reasons: [expect.objectContaining({ code: 'preferences_unanswered' })],
+    });
+    expect(isRecipeSafe(recipe, compileSafetyRules(DEFAULT_PREFERENCES))).toBe(false);
   });
 
   it('dedupes lists and keeps at most five loved cuisines', () => {

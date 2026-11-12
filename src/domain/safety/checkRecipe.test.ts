@@ -117,7 +117,95 @@ describe('checkRecipe diets', () => {
 
   it('accepts compiled rules', () => {
     const rules = compileSafetyRules({ allergens: ['egg', 'egg'], diets: ['vegan'] });
-    expect(rules).toEqual({ allergens: ['egg'], requiredDiets: DietFlag.vegan });
+    expect(rules).toEqual({
+      answered: true,
+      allergens: ['egg'],
+      requiredDiets: DietFlag.vegan,
+      mustBeFree: ['egg', 'milk', 'fish', 'shellfish'],
+    });
     expect(checkRecipe(makeRecipe({ dietFlags: DietFlag.vegan }), rules).eligible).toBe(true);
+  });
+});
+
+describe('checkRecipe diet cross-checks', () => {
+  it.each([
+    ['vegan', 'milk'],
+    ['vegan', 'egg'],
+    ['vegan', 'fish'],
+    ['vegan', 'shellfish'],
+    ['dairy_free', 'milk'],
+    ['gluten_free', 'gluten'],
+    ['gluten_free', 'wheat'],
+  ] as const)('does not trust a %s flag while %s is unverified', (diet, allergen) => {
+    const recipe = makeRecipe({ dietFlags: DietFlag[diet], allergens: { [allergen]: 'unknown' } });
+    const prefs = { allergens: [], diets: [diet] };
+    expect(isRecipeSafe(recipe, compileSafetyRules(prefs))).toBe(false);
+    expect(checkRecipe(recipe, prefs).reasons).toEqual([
+      expect.objectContaining({ code: 'diet_unverified', diet }),
+    ]);
+  });
+
+  it('explains an unverified vegan flag in plain words', () => {
+    const recipe = makeRecipe({
+      dietFlags: DietFlag.vegan,
+      allergens: { milk: 'unknown', egg: 'unknown' },
+    });
+    expect(checkRecipe(recipe, { allergens: [], diets: ['vegan'] }).reasons).toEqual([
+      {
+        code: 'diet_unverified',
+        diet: 'vegan',
+        message: 'May not be vegan: ingredient data incomplete',
+      },
+    ]);
+  });
+
+  it('treats a contradicting allergen as a diet mismatch', () => {
+    const recipe = makeRecipe({ dietFlags: DietFlag.dairy_free, allergens: { milk: 'contains' } });
+    expect(checkRecipe(recipe, { allergens: [], diets: ['dairy_free'] }).reasons).toEqual([
+      { code: 'diet_mismatch', diet: 'dairy_free', message: 'Not dairy-free' },
+    ]);
+  });
+
+  it('trusts the flag once the relevant allergens are verified free', () => {
+    const recipe = makeRecipe({
+      dietFlags: DietFlag.vegan | DietFlag.gluten_free,
+      allergensDefault: 'unknown',
+      allergens: {
+        milk: 'free',
+        egg: 'free',
+        fish: 'free',
+        shellfish: 'free',
+        gluten: 'free',
+        wheat: 'free',
+      },
+    });
+    expect(checkRecipe(recipe, { allergens: [], diets: ['vegan', 'gluten_free'] }).eligible).toBe(
+      true,
+    );
+  });
+
+  it('leaves diets without an allergen check to the catalog flag', () => {
+    const recipe = makeRecipe({ dietFlags: DietFlag.no_pork, allergensDefault: 'unknown' });
+    expect(checkRecipe(recipe, { allergens: [], diets: ['no_pork'] }).eligible).toBe(true);
+  });
+});
+
+describe('checkRecipe with unanswered preferences', () => {
+  it.each([
+    { allergens: null, diets: [] },
+    { allergens: [], diets: null },
+    { allergens: null, diets: null },
+  ])('admits nothing for %j', (prefs) => {
+    const recipe = makeRecipe({ dietFlags: DietFlag.vegan });
+    expect(isRecipeSafe(recipe, compileSafetyRules(prefs))).toBe(false);
+    expect(checkRecipe(recipe, prefs)).toEqual({
+      eligible: false,
+      reasons: [
+        {
+          code: 'preferences_unanswered',
+          message: 'Tell us about allergies and diets to see recipes',
+        },
+      ],
+    });
   });
 });

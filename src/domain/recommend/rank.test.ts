@@ -1,9 +1,9 @@
 import { createRankContext } from './context';
 import { CATALOG } from './fixtures/catalog';
 import { makeRecipe } from './fixtures/makeRecipe';
+import { ANSWERED_PREFERENCES } from './fixtures/prefs';
 import { rankRecipes, scoreCandidates, sortIndices } from './rank';
 import { scoreRecipe } from './score';
-import { DEFAULT_PREFERENCES } from '../types/preferences';
 
 const NOW = Date.UTC(2026, 10, 1);
 
@@ -17,7 +17,7 @@ describe('sortIndices', () => {
 describe('scoreCandidates', () => {
   it('matches single-recipe scoring', () => {
     const ctx = createRankContext(
-      { prefs: { ...DEFAULT_PREFERENCES, cuisines: ['thai'], goals: ['more_fiber'] }, now: NOW },
+      { prefs: { ...ANSWERED_PREFERENCES, cuisines: ['thai'], goals: ['more_fiber'] }, now: NOW },
       CATALOG,
     );
     const batch = scoreCandidates(CATALOG, ctx);
@@ -32,7 +32,7 @@ describe('scoreCandidates', () => {
 describe('rankRecipes', () => {
   it('drops unsafe recipes and sorts best first', () => {
     const ranked = rankRecipes(CATALOG, {
-      prefs: { ...DEFAULT_PREFERENCES, allergens: ['milk'], cuisines: ['indian'] },
+      prefs: { ...ANSWERED_PREFERENCES, allergens: ['milk'], cuisines: ['indian'] },
       now: NOW,
     });
     expect(ranked.length).toBeGreaterThan(0);
@@ -44,17 +44,17 @@ describe('rankRecipes', () => {
   });
 
   it('honours a limit', () => {
-    expect(rankRecipes(CATALOG, { prefs: DEFAULT_PREFERENCES, now: NOW }, 3)).toHaveLength(3);
-    expect(rankRecipes(CATALOG, { prefs: DEFAULT_PREFERENCES, now: NOW }, -1)).toHaveLength(0);
+    expect(rankRecipes(CATALOG, { prefs: ANSWERED_PREFERENCES, now: NOW }, 3)).toHaveLength(3);
+    expect(rankRecipes(CATALOG, { prefs: ANSWERED_PREFERENCES, now: NOW }, -1)).toHaveLength(0);
   });
 
   it('returns nothing for an empty catalog', () => {
-    expect(rankRecipes([], { prefs: DEFAULT_PREFERENCES, now: NOW })).toEqual([]);
+    expect(rankRecipes([], { prefs: ANSWERED_PREFERENCES, now: NOW })).toEqual([]);
   });
 
   it('keeps the caller’s recipe objects', () => {
     const custom = { ...makeRecipe({ id: 'x:1' }), extra: 'kept' };
-    const [first] = rankRecipes([custom], { prefs: DEFAULT_PREFERENCES, now: NOW });
+    const [first] = rankRecipes([custom], { prefs: ANSWERED_PREFERENCES, now: NOW });
     expect(first?.recipe).toBe(custom);
   });
 });

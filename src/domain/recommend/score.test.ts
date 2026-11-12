@@ -2,6 +2,7 @@ import { RANKING_CONFIG_V1, type RankingConfig } from './config';
 import { createRankContext, effectiveTimeBudget, type RankInput } from './context';
 import { CATALOG, recipe } from './fixtures/catalog';
 import { makeRecipe } from './fixtures/makeRecipe';
+import { ANSWERED_PREFERENCES } from './fixtures/prefs';
 import {
   cuisineMatch,
   dataQuality,
@@ -14,13 +15,13 @@ import {
   toFitScore,
 } from './score';
 import { DAY_MS } from './taste';
-import { DEFAULT_PREFERENCES, type UserPreferences } from '../types/preferences';
+import { type UserPreferences } from '../types/preferences';
 
 const NOW = Date.UTC(2026, 10, 1);
 
 function ctxFor(prefs: Partial<UserPreferences> = {}, extra: Partial<RankInput> = {}) {
   return createRankContext(
-    { prefs: { ...DEFAULT_PREFERENCES, ...prefs }, now: NOW, ...extra },
+    { prefs: { ...ANSWERED_PREFERENCES, ...prefs }, now: NOW, ...extra },
     CATALOG,
   );
 }
@@ -232,7 +233,7 @@ describe('scoreRecipe', () => {
       },
     };
     const ctx = createRankContext({
-      prefs: { ...DEFAULT_PREFERENCES, cuisines: ['indian'] },
+      prefs: { ...ANSWERED_PREFERENCES, cuisines: ['indian'] },
       now: NOW,
       config: cuisineOnly,
     });

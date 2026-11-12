@@ -79,6 +79,7 @@ describe('ranking performance', () => {
   const prefs = userPreferencesSchema.parse({
     cuisines: ['indian', 'thai', 'mexican', 'italian'],
     allergens: ['peanut'],
+    diets: [],
     goals: ['more_protein', 'heart_friendly'],
     timeBudgetMinutes: 30,
     effort: 2,

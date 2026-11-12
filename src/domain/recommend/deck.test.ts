@@ -3,7 +3,8 @@ import { buildDeck, recentlyPassedIds, type BuildDeckInput } from './deck';
 import { CATALOG, recipe } from './fixtures/catalog';
 import { DAY_MS } from './taste';
 import { type FeedbackEvent } from '../types/feedback';
-import { DEFAULT_PREFERENCES, type UserPreferences } from '../types/preferences';
+import { ANSWERED_PREFERENCES } from './fixtures/prefs';
+import { type UserPreferences } from '../types/preferences';
 
 const NOW = Date.UTC(2026, 10, 1);
 
@@ -18,7 +19,7 @@ function deck(
     size: 10,
     now: NOW,
     ...rest,
-    prefs: { ...DEFAULT_PREFERENCES, ...prefs },
+    prefs: { ...ANSWERED_PREFERENCES, ...prefs },
   });
 }
 

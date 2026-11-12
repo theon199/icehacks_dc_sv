@@ -53,6 +53,7 @@ describe('persona: vegetarian home cook who loves South Asian food and wants mor
   const persona: Persona = {
     prefs: userPreferencesSchema.parse({
       cuisines: ['indian', 'pakistani'],
+      allergens: [],
       diets: ['vegetarian'],
       goals: ['more_protein'],
       timeBudgetMinutes: 30,
@@ -93,6 +94,7 @@ describe('persona: peanut and milk allergies, loves Mexican and Thai, watching s
     prefs: userPreferencesSchema.parse({
       cuisines: ['mexican', 'thai'],
       allergens: ['peanut', 'milk'],
+      diets: [],
       goals: ['lower_sodium'],
       timeBudgetMinutes: 45,
     }),
@@ -129,6 +131,8 @@ describe('persona: small appetite, loves British and Irish food, heart health', 
   const persona: Persona = {
     prefs: userPreferencesSchema.parse({
       cuisines: ['british', 'irish'],
+      allergens: [],
+      diets: [],
       goals: ['heart_friendly', 'lighter_meals'],
       effort: 1,
       smallAppetite: true,
@@ -157,6 +161,7 @@ describe('persona: pescatarian who loves Japanese food and has cooked a lot', ()
   const persona: Persona = {
     prefs: userPreferencesSchema.parse({
       cuisines: ['japanese'],
+      allergens: [],
       diets: ['pescatarian'],
       goals: ['more_protein'],
       timeBudgetMinutes: 30,
