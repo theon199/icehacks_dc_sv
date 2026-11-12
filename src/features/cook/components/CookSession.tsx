@@ -1,7 +1,7 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, BackHandler, StyleSheet, View } from 'react-native';
 import { Directions, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -61,6 +61,15 @@ export function CookSession({ recipe }: CookSessionProps) {
       { text: 'Leave', style: 'destructive', onPress: () => router.back() },
     ]);
   }, [router, timers.timers]);
+
+  // Android's back button goes through the same check as the close button.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      leave();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [leave]);
 
   const finish = useCallback(() => {
     clear();

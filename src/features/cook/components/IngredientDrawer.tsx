@@ -121,13 +121,15 @@ export function IngredientDrawer({
               onPress={onClose}
             />
           </View>
-          <FlashList
-            data={ingredients}
-            renderItem={renderItem}
-            keyExtractor={(line) => String(line.position)}
-            extraData={checked}
-            contentContainerStyle={styles.list}
-          />
+          <View style={styles.listFrame}>
+            <FlashList
+              data={ingredients}
+              renderItem={renderItem}
+              keyExtractor={(line) => String(line.position)}
+              extraData={checked}
+              contentContainerStyle={styles.list}
+            />
+          </View>
         </View>
       </View>
     </Modal>
@@ -146,6 +148,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   headerText: { flex: 1, gap: 2 },
+  listFrame: { flex: 1 },
   list: { paddingHorizontal: 16, paddingBottom: 24 },
   row: {
     flexDirection: 'row',

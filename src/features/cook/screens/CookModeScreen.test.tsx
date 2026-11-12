@@ -186,6 +186,14 @@ describe('CookModeScreen', () => {
     expect(screen.getByTestId('cook-tutorial-video')).toBeTruthy();
   });
 
+  it('ticks off ingredients in the drawer', async () => {
+    await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
+    await act(async () => fireEvent.press(screen.getByTestId('cook-ingredients-open')));
+    expect(screen.getByText('0 of 1 ready')).toBeTruthy();
+    await act(async () => fireEvent.press(screen.getByLabelText('1 cup red lentils')));
+    expect(screen.getByText('1 of 1 ready')).toBeTruthy();
+  });
+
   it('says so when the recipe does not exist', async () => {
     mockRecipeResult = { data: null, isSuccess: true };
     await renderWithTheme(<CookModeScreen recipeId="nope" />);

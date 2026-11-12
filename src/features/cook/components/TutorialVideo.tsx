@@ -81,11 +81,13 @@ export function TutorialVideo({ video }: TutorialVideoProps) {
           </View>
         ) : null}
       </View>
-      {video.publisher || video.title ? (
-        <Text variant="caption" tone="muted" numberOfLines={1}>
-          {[video.title, video.publisher].filter(Boolean).join(' · ')}
+      <View style={styles.caption}>
+        <Text variant="caption" tone="muted" numberOfLines={1} style={styles.captionText}>
+          {[video.title, video.publisher].filter(Boolean).join(' · ') || 'Recipe video'}
         </Text>
-      ) : null}
+        {/* Some videos refuse to play embedded; this always works. */}
+        <Button label="Open" variant="ghost" size="sm" onPress={openExternally} />
+      </View>
     </View>
   );
 }
@@ -96,4 +98,6 @@ const styles = StyleSheet.create({
   web: { flex: 1, backgroundColor: 'transparent' },
   center: { alignItems: 'center', justifyContent: 'center' },
   fallback: { padding: 16, gap: 12, alignItems: 'flex-start' },
+  caption: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  captionText: { flex: 1 },
 });
