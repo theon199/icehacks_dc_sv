@@ -12,22 +12,21 @@ import { nameKey } from '../logic/words';
 
 const TYPING_PAUSE_MS = 350;
 
-function useDebounced<T>(value: T, delayMs: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return settled;
-}
-
 export function useIngredientMatches(names: readonly string[]) {
   // A stable, order-free key: the same set of foods is matched once.
   const joined = useMemo(
     () => [...new Set(names.map(nameKey).filter((key) => key.length > 0))].sort().join('|'),
     [names],
   );
-  const settled = useDebounced(joined, TYPING_PAUSE_MS);
+  // Matching waits until the names have stopped changing for a moment, so each keystroke does
+  // not start a catalog search of its own.
+  const [settled, setSettled] = useState(joined);
+  const typing = settled !== joined;
+  useEffect(() => {
+    if (!typing) return undefined;
+    const pause = setTimeout(setSettled, TYPING_PAUSE_MS, joined);
+    return () => clearTimeout(pause);
+  }, [joined, typing]);
   const query = useQuery({
     queryKey: ['snap', 'ingredient-matches', settled],
     queryFn: () => matchIngredients(settled.split('|'), searchIngredients),
@@ -38,7 +37,7 @@ export function useIngredientMatches(names: readonly string[]) {
     placeholderData: keepPreviousData,
   });
   const matches: ReadonlyMap<string, Ingredient | null> = query.data ?? EMPTY;
-  return { matches, isMatching: query.isFetching || settled !== joined };
+  return { matches, isMatching: query.isFetching || typing };
 }
 
 const EMPTY: ReadonlyMap<string, Ingredient | null> = new Map();

@@ -2,8 +2,8 @@
  * Lines up item names the AI read from a photo with catalog ingredients, so pantry items carry an
  * ingredient id (and with it a shelf, allergens and recipe matching).
  *
- * Matching is cautious: a catalog ingredient is accepted only when it names the same food, give or
- * take descriptive words such as "red" or "frozen". "Peanut butter" never becomes "butter", and
+ * Matching is cautious: a catalog ingredient is accepted only when it names the same food, or the
+ * same food without some of the descriptive words ("red", "frozen") the item was given. "Peanut butter" never becomes "butter", and
  * "sweet potato" never becomes "potato"; an item without a safe match is kept as free text.
  */
 import { foodWords, nameKey } from './words';
@@ -63,16 +63,23 @@ export function lookupPhrases(name: string): string[] {
   return phrases;
 }
 
+/**
+ * True when the catalog name is the same food as the query. The query may lose any of its own
+ * descriptive words ("red onion" can be "onion"). The catalog name may only bring in descriptive
+ * words when the query had none: a plain "rice" can be "white rice", but "brown rice" never becomes
+ * "white rice" and "black beans" never becomes "white beans".
+ */
 function differsOnlyByModifiers(query: readonly string[], candidate: readonly string[]): boolean {
-  const q = new Set(query);
-  const c = new Set(candidate);
-  let shared = 0;
-  for (const word of q) {
-    if (c.has(word)) shared++;
-    else if (!MODIFIERS.has(word)) return false;
+  const asked = new Set(query);
+  const offered = new Set(candidate);
+  const askedPlain = query.every((word) => !MODIFIERS.has(word));
+  let common = 0;
+  for (const word of offered) {
+    if (asked.has(word)) common++;
+    else if (!askedPlain || !MODIFIERS.has(word)) return false;
   }
-  for (const word of c) if (!q.has(word) && !MODIFIERS.has(word)) return false;
-  return shared > 0;
+  for (const word of asked) if (!offered.has(word) && !MODIFIERS.has(word)) return false;
+  return common > 0;
 }
 
 /** Whether the ingredient names the same food as `name` (allowing descriptive words). */

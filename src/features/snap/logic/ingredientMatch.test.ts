@@ -24,6 +24,17 @@ describe('food words', () => {
     expect(singular('glass')).toBe('glass');
   });
 
+  it('keeps singulars that end in -ie and leaves short words alone', () => {
+    expect(singular('pies')).toBe('pie');
+    expect(singular('cookies')).toBe('cookie');
+    expect(singular('brownies')).toBe('brownie');
+    expect(singular('smoothies')).toBe('smoothie');
+    expect(singular('cherries')).toBe('cherry');
+    expect(singular('fries')).toBe('fry');
+    expect(singular('gas')).toBe('gas');
+    expect(singular('figs')).toBe('fig');
+  });
+
   it('drops filler and packaging words', () => {
     expect(foodWords('A bag of Fresh Spinach')).toEqual(['spinach']);
     expect(nameKey('Tomatoes')).toBe(nameKey('tomato'));
@@ -55,6 +66,20 @@ describe('ingredient matching', () => {
     expect(isPlausibleMatch('sweet potato', ing('potato', 'potato'))).toBe(false);
     expect(isPlausibleMatch('peanuts', ing('peanut_butter', 'peanut butter'))).toBe(false);
     expect(isPlausibleMatch('coconut milk', ing('milk', 'milk'))).toBe(false);
+  });
+
+  it('never swaps one describing word for another', () => {
+    expect(isPlausibleMatch('black beans', ing('white_bean', 'white bean', 'white beans'))).toBe(
+      false,
+    );
+    expect(isPlausibleMatch('black pepper', ing('green_pepper', 'green pepper'))).toBe(false);
+    expect(isPlausibleMatch('brown rice', ing('white_rice', 'white rice'))).toBe(false);
+    expect(isPlausibleMatch('frozen peas', ing('snow_pea', 'snow pea'))).toBe(false);
+  });
+
+  it('lets a described item drop its own describing words', () => {
+    expect(isPlausibleMatch('black beans', ing('bean', 'bean', 'beans'))).toBe(true);
+    expect(isPlausibleMatch('brown rice', ing('brown_rice', 'brown rice'))).toBe(true);
   });
 
   it('falls back to the main word when the full name finds nothing', async () => {

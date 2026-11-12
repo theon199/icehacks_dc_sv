@@ -27,7 +27,7 @@ const FILLER = new Set([
   'carton',
 ]);
 
-/** Plural forms the simple rules below would get wrong. */
+/** Plurals the suffix table below would get wrong, mapped straight to their singular. */
 const IRREGULAR: Readonly<Record<string, string>> = {
   leaves: 'leaf',
   loaves: 'loaf',
@@ -39,6 +39,7 @@ const IRREGULAR: Readonly<Record<string, string>> = {
   olives: 'olive',
   chives: 'chive',
   peas: 'pea',
+  fries: 'fry',
   oats: 'oats',
   hummus: 'hummus',
   couscous: 'couscous',
@@ -47,16 +48,46 @@ const IRREGULAR: Readonly<Record<string, string>> = {
   swiss: 'swiss',
 };
 
-/** Singular form of one lowercase word, by the common English rules. */
+/** Foods whose singular really ends in "-ie", so "-ies" must not become "-y". */
+const IE_FOODS = new Set([
+  'brownie',
+  'cookie',
+  'pie',
+  'smoothie',
+  'veggie',
+  'hoagie',
+  'calorie',
+  'sweetie',
+  'birdie',
+]);
+
+/**
+ * Plural endings, longest first: the ending, what replaces it, and how many letters must remain
+ * before it for the rule to apply (so short words such as "bus" or "gas" are left alone).
+ */
+const SUFFIX_RULES: readonly (readonly [ending: string, swap: string, minStem: number])[] = [
+  ['sses', 'ss', 1],
+  ['ches', 'ch', 1],
+  ['shes', 'sh', 1],
+  ['ies', 'y', 3],
+  ['oes', 'o', 2],
+  ['xes', 'x', 1],
+  ['zes', 'z', 2],
+  ['s', '', 3],
+];
+
+/** Singular of one lowercase word: irregular table first, then the first suffix rule that fits. */
 export function singular(word: string): string {
-  const irregular = IRREGULAR[word];
-  if (irregular) return irregular;
-  if (word.length <= 3) return word;
-  if (word.endsWith('ies')) return `${word.slice(0, -3)}y`;
-  if (word.endsWith('oes')) return word.slice(0, -2);
-  if (/(ches|shes|xes|sses|zes)$/.test(word)) return word.slice(0, -2);
-  if (word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us')) return word.slice(0, -1);
-  return word;
+  const known = IRREGULAR[word];
+  if (known !== undefined) return known;
+  if (word.endsWith('ies') && IE_FOODS.has(word.slice(0, -1))) return word.slice(0, -1);
+  if (word.endsWith('ss') || word.endsWith('us')) return word;
+  const rule = SUFFIX_RULES.find(
+    ([ending, , minStem]) => word.endsWith(ending) && word.length - ending.length >= minStem,
+  );
+  if (!rule) return word;
+  const [ending, swap] = rule;
+  return word.slice(0, word.length - ending.length) + swap;
 }
 
 /** Lowercase singular word tokens, without filler words. */
@@ -71,14 +102,17 @@ export function nameKey(text: string): string {
   return foodWords(text).join(' ');
 }
 
-/** Share of words two names have in common (Jaccard index over food words), 0..1. */
+/**
+ * How alike two names are, 0..1: the food words both share, as a fraction of all the distinct food
+ * words used by either.
+ */
 export function wordOverlap(a: string, b: string): number {
-  const left = new Set(foodWords(a));
-  const right = new Set(foodWords(b));
-  if (left.size === 0 || right.size === 0) return 0;
-  let shared = 0;
-  for (const word of left) if (right.has(word)) shared++;
-  return shared / (left.size + right.size - shared);
+  const first = new Set(foodWords(a));
+  const second = new Set(foodWords(b));
+  const everyWord = new Set([...first, ...second]);
+  if (first.size === 0 || second.size === 0) return 0;
+  const inBoth = [...first].filter((word) => second.has(word)).length;
+  return inBoth / everyWord.size;
 }
 
 /** Capitalises the first letter, for names the AI returns in lowercase. */
