@@ -6,7 +6,14 @@
 import { type RankContext } from './context';
 import { isNovel, pantryOwned, type FeatureVector } from './score';
 import { cuisineLabel, REGION_LABELS } from '../types/cuisines';
-import { GOAL_DETAILS, goalTagMask, recipeGoalMask, type Goal, type GoalTag } from '../types/goals';
+import {
+  GOAL_DETAILS,
+  GOAL_TAGS,
+  goalTagMask,
+  recipeGoalMask,
+  type Goal,
+  type GoalTag,
+} from '../types/goals';
 import { type Effort, type RecipeSummary } from '../types/recipe';
 
 export type FitReasonCode =
@@ -57,13 +64,16 @@ const PARTIAL_GOAL_REASON: Partial<Record<Goal, Partial<Record<GoalTag, string>>
   },
 };
 
+/** Each goal tag's bit in a recipe goal mask, worked out once. */
+const TAG_BIT = Object.fromEntries(GOAL_TAGS.map((tag) => [tag, goalTagMask([tag])])) as Readonly<
+  Record<GoalTag, number>
+>;
+
 /** The goal's reason, worded from the serving tags the recipe actually carries. */
 function goalReason(goal: Goal, recipeMask: number): string {
   const partial = PARTIAL_GOAL_REASON[goal];
   if (!partial) return GOAL_REASON[goal];
-  const carried = GOAL_DETAILS[goal].servedBy.filter(
-    (tag) => (recipeMask & goalTagMask([tag])) !== 0,
-  );
+  const carried = GOAL_DETAILS[goal].servedBy.filter((tag) => (recipeMask & TAG_BIT[tag]) !== 0);
   const only = carried.length === 1 ? carried[0] : undefined;
   return (only !== undefined ? partial[only] : undefined) ?? GOAL_REASON[goal];
 }
