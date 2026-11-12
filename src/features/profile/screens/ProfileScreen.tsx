@@ -1,5 +1,4 @@
 import { FlashList } from '@shopify/flash-list';
-import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
@@ -19,8 +18,8 @@ import { EditProfileSheet } from '../components/EditProfileSheet';
 import { PostTile } from '../components/PostTile';
 import { ProfileOverview } from '../components/ProfileOverview';
 import type { PostTileData } from '../deps';
-import { profileKeys } from '../hooks/queryKeys';
-import { useMyPosts, useMyProfile, useMyUserId } from '../hooks/useProfileData';
+import { useMyPosts, useMyProfile } from '../hooks/useProfileData';
+import { useProfileRefresh } from '../hooks/useProfileRefresh';
 
 const COLUMNS = 3;
 
@@ -40,32 +39,16 @@ function LoadingProfile() {
 /** The signed-in person's profile: identity, stats, badges and a grid of their posts. */
 export function ProfileScreen() {
   const theme = useTheme();
-  const queryClient = useQueryClient();
-  const userId = useMyUserId();
   const profile = useMyProfile();
   const posts = useMyPosts();
-  const [editing, setEditing] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const pull = useProfileRefresh();
+  const [sheetOpen, showSheet] = useState(false);
 
   const openPost = useCallback((postId: string) => router.push(`/post/${postId}`), []);
   const renderItem = useCallback(
     ({ item }: { item: PostTileData }) => <PostTile post={item} onPress={openPost} />,
     [openPost],
   );
-
-  const refresh = async () => {
-    if (!userId) return;
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: profileKeys.me(userId) }),
-        queryClient.invalidateQueries({ queryKey: profileKeys.statsAll(userId) }),
-        queryClient.invalidateQueries({ queryKey: profileKeys.posts(userId) }),
-      ]);
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   if (profile.isPending) return <LoadingProfile />;
   if (!profile.data) {
@@ -115,7 +98,7 @@ export function ProfileScreen() {
         ListHeaderComponent={
           <ProfileOverview
             profile={profile.data}
-            onEdit={() => setEditing(true)}
+            onEdit={() => showSheet(true)}
             onFriends={() => router.push('/friends')}
             onSettings={() => router.push('/settings')}
           />
@@ -128,14 +111,14 @@ export function ProfileScreen() {
         }}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void refresh()}
+            refreshing={pull.refreshing}
+            onRefresh={pull.refresh}
             tintColor={theme.colors.primary}
           />
         }
       />
-      {editing ? (
-        <EditProfileSheet profile={profile.data} onClose={() => setEditing(false)} />
+      {sheetOpen ? (
+        <EditProfileSheet profile={profile.data} onClose={() => showSheet(false)} />
       ) : null}
     </View>
   );

@@ -36,7 +36,11 @@ export function useMyStats() {
   });
 }
 
-/** Badge catalog joined with what the person has earned and their progress. */
+/**
+ * Badge catalog joined with what the person has earned and their progress. Earned state comes from
+ * `my_stats`, so the grid waits for both queries: drawing it from the catalog alone would show every
+ * badge as locked until stats arrive (or forever, if they fail).
+ */
 export function useBadgeGrid() {
   const stats = useMyStats();
   const catalog = useQuery({
@@ -47,12 +51,15 @@ export function useBadgeGrid() {
   });
   const grid = useMemo(
     () =>
-      catalog.data
-        ? buildBadgeGrid(catalog.data, stats.data ?? null, stats.data?.badges ?? [])
-        : [],
+      catalog.data && stats.data ? buildBadgeGrid(catalog.data, stats.data, stats.data.badges) : [],
     [catalog.data, stats.data],
   );
-  return { grid, isPending: catalog.isPending, error: catalog.error, refetch: catalog.refetch };
+  const error = catalog.error ?? (stats.data ? null : stats.error);
+  const retry = () => {
+    if (catalog.error) void catalog.refetch();
+    if (stats.error) void stats.refetch();
+  };
+  return { grid, isPending: catalog.isPending || stats.isPending, error, refetch: retry };
 }
 
 export function useMyPosts() {

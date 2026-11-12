@@ -69,7 +69,7 @@ export function ProfileOverview({ profile, onEdit, onFriends, onSettings }: Prof
         <ErrorState
           error={badges.error}
           title="Badges didn't load"
-          onRetry={() => void badges.refetch()}
+          onRetry={badges.refetch}
           style={styles.compactError}
         />
       ) : (
