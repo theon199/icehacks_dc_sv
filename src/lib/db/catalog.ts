@@ -21,7 +21,7 @@ import { resolveCatalogAssetId } from './catalogAsset';
 import { defineKvKey } from '../storage/kv';
 
 /** Must equal `meta.schema_version` of the bundled catalog. Bump together with docs/DATA.md. */
-export const CATALOG_SCHEMA_VERSION = 1;
+export const CATALOG_SCHEMA_VERSION = 2;
 
 /**
  * `query_failed`: SQLite could not prepare or run the statement. `bad_rows`: it ran, but the rows

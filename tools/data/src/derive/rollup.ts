@@ -1,5 +1,5 @@
 import type { IngredientDef } from '../knowledge/define.ts';
-import { ALL_DIET_FLAGS, ALLERGEN_IDS, DietFlag, type AllergenId, type AllergenState } from '../types.ts';
+import { ALL_DIET_FLAGS, ALLERGEN_IDS, DietFlag, type AllergenId, type AllergenState, type DietFlagName } from '../types.ts';
 import { ingredientAllergens, ingredientDietFlags } from './ingredients.ts';
 
 /**
@@ -49,9 +49,30 @@ export function rollupAllergens(lines: readonly MatchedLine[]): Record<AllergenI
 }
 
 /**
+ * Allergens whose status can disprove a diet. A recipe keeps the diet only while each of them is
+ * `free`: `contains` rules it out, and `unknown` (an unmatched line, an unidentified choice or a
+ * store-bought product whose recipe varies by brand) means the claim cannot be backed up.
+ */
+export const DIET_ALLERGEN_REQUIREMENTS: Readonly<Partial<Record<DietFlagName, readonly AllergenId[]>>> = {
+  vegan: ['milk', 'egg', 'fish', 'shellfish'],
+  vegetarian: ['fish', 'shellfish'],
+  dairy_free: ['milk'],
+  gluten_free: ['gluten', 'wheat'],
+};
+
+const DIET_REQUIREMENT_ENTRIES = Object.entries(DIET_ALLERGEN_REQUIREMENTS) as [DietFlagName, readonly AllergenId[]][];
+
+/** Diet bits in `flags` that the allergen map does not back up (see DIET_ALLERGEN_REQUIREMENTS). */
+export function unbackedDietFlags(flags: number, allergens: Readonly<Record<AllergenId, AllergenState>>): DietFlagName[] {
+  return DIET_REQUIREMENT_ENTRIES.filter(([diet, needed]) => (flags & DietFlag[diet]) !== 0 && needed.some((a) => allergens[a] !== 'free')).map(([diet]) => diet);
+}
+
+/**
  * Recipe diet flags: the intersection of every named ingredient's flags. Any unmatched or
- * partially identified line clears all flags, and gluten/dairy-free additionally require the
- * allergen roll-up to be `free`.
+ * partially identified line clears all flags. A diet that an allergen can disprove (vegan,
+ * vegetarian, dairy-free, gluten-free) additionally needs that allergen to be `free` in the
+ * roll-up, so an ingredient of unknown composition, such as a stock cube or curry paste, clears
+ * vegan and vegetarian even though its own entry names no animal.
  */
 export function rollupDiet(lines: readonly MatchedLine[], allergens: Record<AllergenId, AllergenState>): number {
   let flags = ALL_DIET_FLAGS;
@@ -60,9 +81,8 @@ export function rollupDiet(lines: readonly MatchedLine[], allergens: Record<Alle
     if (!complete) return 0;
     for (const def of defs) flags &= ingredientDietFlags(def);
   }
-  if (allergens.gluten !== 'free') flags &= ~DietFlag.gluten_free;
-  if (allergens.milk !== 'free') flags &= ~DietFlag.dairy_free;
   // A vegan recipe is by definition vegetarian and pescatarian-compatible.
   if (flags & DietFlag.vegan) flags |= DietFlag.vegetarian;
+  for (const diet of unbackedDietFlags(flags, allergens)) flags &= ~DietFlag[diet];
   return flags;
 }
