@@ -3,6 +3,7 @@ import { router, Stack } from 'expo-router';
 import { useCallback } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
 
+import { reportHref } from '@/features/moderation';
 import { EmptyState, ErrorState, IconButton, Screen, Text, gutter, space, useTheme } from '@/ui';
 
 import { isNotFound } from '../api/rpcError';
@@ -33,7 +34,7 @@ function useAuthorMenu(profile: ProfileSummary | undefined) {
     if (!profile || profile.is_self) return;
     const who = `@${profile.handle}`;
     const report = () =>
-      router.push({ pathname: '/moderation/report', params: { target: 'user', id: profile.id } });
+      router.push(reportHref({ kind: 'user', id: profile.id }, profile.display_name));
     const confirmBlock = () =>
       Alert.alert(
         `Block ${who}?`,
@@ -43,7 +44,15 @@ function useAuthorMenu(profile: ProfileSummary | undefined) {
           {
             text: 'Block',
             style: 'destructive',
-            onPress: () => block(profile.id, { onSuccess: leave }),
+            onPress: () =>
+              block(
+                {
+                  userId: profile.id,
+                  displayName: profile.display_name,
+                  handle: profile.handle || null,
+                },
+                { onSuccess: leave },
+              ),
           },
         ],
       );

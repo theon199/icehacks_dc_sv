@@ -171,11 +171,6 @@ export async function setFollowing(userId: string, follow: boolean): Promise<voi
   if (error) throw toApiError(name, error);
 }
 
-export async function blockUser(userId: string): Promise<void> {
-  const { error } = await supabase.rpc('block_user', { p_user_id: userId });
-  if (error) throw toApiError('block_user', error);
-}
-
 export async function fetchWeeklyTopDishes(limit = 5): Promise<WeeklyTopDishRow[]> {
   const { data, error } = await supabase.rpc('weekly_top_dishes', { p_limit: limit });
   if (error) throw toApiError('weekly_top_dishes', error);
