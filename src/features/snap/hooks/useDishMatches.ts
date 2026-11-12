@@ -6,6 +6,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
+import { hasSafetyAnswers } from '@/domain/types/preferences';
 import type { SnapDish } from '@/lib/api/ai';
 import { dietMask, searchRecipes, type SearchFilters } from '@/lib/catalog';
 import { selectPreferences, selectUnits, usePreferencesStore, useSettingsStore } from '@/stores';
@@ -29,7 +30,7 @@ export function useDishMatches(resultId: string | null, dish: SnapDish | null) {
   const prefs = usePreferencesStore(selectPreferences);
   const units = useSettingsStore(selectUnits);
   const userPrefs = useMemo(() => toUserPreferences(prefs, units), [prefs, units]);
-  const answered = userPrefs.allergens !== null && userPrefs.diets !== null;
+  const answered = hasSafetyAnswers(userPrefs);
 
   const query = useQuery({
     queryKey: ['snap', 'dish-matches', resultId, userPrefs],
@@ -43,7 +44,7 @@ export function useDishMatches(resultId: string | null, dish: SnapDish | null) {
       const results = await Promise.all(
         dishSearchQueries(dish).map(async (query) => {
           const page = await searchRecipes(query.text, filters, 0);
-          return { query, recipes: page.items.map((recipe) => toDomainRecipe(recipe)) };
+          return { query, recipes: page.items.map(toDomainRecipe) };
         }),
       );
       const closest = rankCloseRecipes(mergeDishHits(results), dish, safety);

@@ -10,14 +10,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
+import { hasSafetyAnswers } from '@/domain/types/preferences';
 import type { RecipeSummary } from '@/domain/types/recipe';
-import {
-  dietMask,
-  getIngredients,
-  listCandidates,
-  type AllergenId,
-  type DietId,
-} from '@/lib/catalog';
+import { dietMask, listCandidates, type AllergenId, type DietId } from '@/lib/catalog';
 import {
   selectPantryIngredientIds,
   selectPreferences,
@@ -45,14 +40,12 @@ async function loadCandidates(
   allergens: readonly AllergenId[],
 ): Promise<RecipeSummary[]> {
   const list = await listCandidates({
-    excludeDietMask: dietMask(diets),
+    dietMask: dietMask(diets),
     avoidAllergens: allergens,
     limit: CANDIDATE_LIMIT,
   });
-  const ingredientIds = [...new Set(list.flatMap((recipe) => recipe.ingredientIds))];
-  const ingredients = await getIngredients(ingredientIds);
-  const staples = new Set(ingredients.filter((i) => i.pantryStaple).map((i) => i.id));
-  return list.map((recipe) => toDomainRecipe(recipe, staples));
+  // Core ingredients arrive without staples or optional lines, which is what pantry coverage counts.
+  return list.map(toDomainRecipe);
 }
 
 const sortedKey = (ids: Iterable<string>) => [...ids].sort().join(',');
@@ -79,7 +72,7 @@ export function usePantryMeals(snappedIds: readonly string[], enabled: boolean) 
   const queryClient = useQueryClient();
 
   const userPrefs = useMemo(() => toUserPreferences(prefs, units), [prefs, units]);
-  const answered = userPrefs.allergens !== null && userPrefs.diets !== null;
+  const answered = hasSafetyAnswers(userPrefs);
   const diets = userPrefs.diets ?? [];
   const allergens = userPrefs.allergens ?? [];
   const candidateKey = ['snap', 'pantry-candidates', sortedKey(diets), sortedKey(allergens)];

@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, TextInput, View } from 'react-native';
 
+import { deviceLocale } from '@/lib/format';
 import { logger } from '@/lib/logger';
-import { IconButton, maxFontSizeMultiplier, space, toast, useTheme } from '@/ui';
+import { IconButton, Text, maxFontSizeMultiplier, space, toast, useTheme } from '@/ui';
 
 import { useDictation } from '../hooks/useDictation';
 import { MAX_MESSAGE_LENGTH } from '../logic/conversation';
@@ -18,7 +19,60 @@ import {
 export interface ComposerProps {
   /** Chef is busy; typing is fine but sending waits. */
   busy: boolean;
+  /**
+   * When today's allowance is spent, the time (epoch ms) it resets. Typing is still fine, but
+   * nothing can be sent until then, since the server would only refuse it.
+   */
+  limitedUntil?: number | null;
   onSend: (input: { text: string; photo: string | null }) => void;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfDay(at: number): number {
+  const day = new Date(at);
+  day.setHours(0, 0, 0, 0);
+  return day.getTime();
+}
+
+function clockTime(at: number, locale: string): string {
+  try {
+    return new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(at);
+  } catch {
+    const time = new Date(at);
+    return `${time.getHours()}:${String(time.getMinutes()).padStart(2, '0')}`;
+  }
+}
+
+/** "Chef is back at 6:30 PM", or "tomorrow at 12:00 AM" when the reset is after midnight. */
+export function limitResetNote(until: number, now = Date.now(), locale = deviceLocale()): string {
+  const time = clockTime(until, locale);
+  const days = Math.round((startOfDay(until) - startOfDay(now)) / DAY_MS);
+  if (days <= 0) return `You've used today's Chef questions. Chef is back at ${time}.`;
+  if (days === 1) return `You've used today's Chef questions. Chef is back tomorrow at ${time}.`;
+  return "You've used today's Chef questions. Chef is back once your allowance resets.";
+}
+
+function nextDayStart(at: number): number {
+  const day = new Date(startOfDay(at));
+  day.setDate(day.getDate() + 1);
+  return day.getTime();
+}
+
+/**
+ * Start of the current local day, refreshed at midnight while `active`, so a note that says
+ * "tomorrow" switches to today's wording once the date changes instead of waiting for a re-render.
+ */
+function useDayStart(active: boolean): number {
+  const [dayStart, setDayStart] = useState(() => startOfDay(Date.now()));
+  useEffect(() => {
+    if (!active) return;
+    // A day that has already ended (the screen sat idle while not limited) refreshes at once.
+    const wait = Math.max(0, nextDayStart(dayStart) - Date.now());
+    const timer = setTimeout(() => setDayStart(startOfDay(Date.now())), wait);
+    return () => clearTimeout(timer);
+  }, [active, dayStart]);
+  return dayStart;
 }
 
 function joinDictation(base: string, spoken: string): string {
@@ -27,7 +81,7 @@ function joinDictation(base: string, spoken: string): string {
 }
 
 /** Question box with dictation and an optional photo. */
-export function Composer({ busy, onSend }: ComposerProps) {
+export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
   const theme = useTheme();
   const [draft, setDraft] = useState('');
   const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
@@ -71,7 +125,9 @@ export function Composer({ busy, onSend }: ComposerProps) {
     void dictation.start();
   };
 
-  const canSend = !busy && !preparing && (draft.trim().length > 0 || photo != null);
+  const limited = limitedUntil != null;
+  const dayStart = useDayStart(limited);
+  const canSend = !busy && !limited && !preparing && (draft.trim().length > 0 || photo != null);
   const send = () => {
     if (!canSend) return;
     if (dictation.listening) dictation.stop();
@@ -87,6 +143,11 @@ export function Composer({ busy, onSend }: ComposerProps) {
         { borderTopColor: theme.colors.border, backgroundColor: theme.colors.background },
       ]}
     >
+      {limited ? (
+        <Text testID="chef-limit-note" variant="footnote" tone="muted" align="center">
+          {limitResetNote(limitedUntil, dayStart)}
+        </Text>
+      ) : null}
       {photo || preparing ? (
         <View style={styles.preview}>
           {photo ? (
@@ -157,7 +218,8 @@ export function Composer({ busy, onSend }: ComposerProps) {
         <IconButton
           testID="chef-send"
           icon="arrow.up"
-          accessibilityLabel="Send"
+          // The limit note is plain text, so the disabled button carries the reason for VoiceOver.
+          accessibilityLabel={limited ? "Send. You've used today's Chef questions" : 'Send'}
           variant="filled"
           disabled={!canSend}
           onPress={send}

@@ -3,10 +3,7 @@
  * cuisine and pantry questions, and the per-account user stores (`@/stores`) the answers land in.
  * The rest of the app reads those same stores, so the answers are what it sees.
  */
-import { z } from 'zod';
-
-import { getCuisines, getIngredients, type Ingredient } from '@/lib/catalog';
-import { catalogPreparedQuery } from '@/lib/db/catalog';
+import { getCuisines, getIngredients, getPantryStaples, type Ingredient } from '@/lib/catalog';
 import { preferencesSchema, usePantryStore, usePreferencesStore } from '@/stores';
 
 import type { OnboardingAnswers } from './onboardingModel';
@@ -28,17 +25,13 @@ export async function loadCuisineOptions(): Promise<CuisineOption[]> {
   return cuisines.map(({ cuisine, region, recipeCount }) => ({ id: cuisine, region, recipeCount }));
 }
 
-const STAPLE_IDS_SQL = 'SELECT id FROM ingredients WHERE pantry_staple = 1';
-
 /** Ingredients most kitchens already have, offered as a quick start for the pantry. */
 export async function loadPantryStaples(): Promise<PantryStaple[]> {
-  // The typed catalog module has no staple listing, so only the ids are read here; the
-  // ingredients themselves come through it (validated and cached).
-  const rows = await catalogPreparedQuery(STAPLE_IDS_SQL, [], z.object({ id: z.string().min(1) }));
-  const staples = await getIngredients(rows.map((row) => row.id));
-  return staples
-    .filter((ingredient) => ingredient.pantryStaple)
-    .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  const staples = await getPantryStaples();
+  // Sorted for display with the reader's collation rather than SQLite's byte order.
+  return staples.sort(
+    (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name),
+  );
 }
 
 /** Answers this account already has, used to prefill the questionnaire. */

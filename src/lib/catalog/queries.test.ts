@@ -5,7 +5,9 @@ import {
   getCatalogMeta,
   getCuisines,
   getIngredients,
+  getPantryStaples,
   getRecipeDetail,
+  getRecipesByFamily,
   getRecipeSummaries,
   getRecipeSummary,
   getSubstitutions,
@@ -120,51 +122,151 @@ describeCatalogDb('recipe detail', () => {
 describeCatalogDb('listCandidates', () => {
   it('requires every diet bit in the mask', async () => {
     const mask = dietMask(['vegetarian', 'dairy_free']);
-    const candidates = await listCandidates({ dietMask: mask, limit: 500 });
-    expect(candidates.length).toBeGreaterThan(0);
-    for (const c of candidates) expect(satisfiesDiets(c.dietFlags, mask)).toBe(true);
     expect(mask).toBe(DietFlag.vegetarian | DietFlag.dairy_free);
+    const found = await listCandidates({ dietMask: mask, limit: 500 });
+    expect(found).not.toHaveLength(0);
+    const misfits = found.filter((recipe) => !satisfiesDiets(recipe.dietFlags, mask));
+    expect(misfits).toEqual([]);
   });
 
   it('keeps only recipes that are explicitly free of avoided allergens', async () => {
-    const candidates = await listCandidates({ avoidAllergens: ['milk', 'egg'], limit: 2000 });
-    expect(candidates.length).toBeGreaterThan(0);
-    for (const c of candidates) {
-      expect(c.allergens.milk).toBe('free');
-      expect(c.allergens.egg).toBe('free');
-    }
-    const ids = new Set(candidates.map((c) => c.id));
-    // Unknown egg status: excluded even though it does not "contain" egg.
-    expect(ids.has('mealdb:52765')).toBe(false);
+    const found = await listCandidates({ avoidAllergens: ['milk', 'egg'], limit: 2000 });
+    expect(found).not.toHaveLength(0);
+    const statuses = new Set(
+      found.flatMap((recipe) => [recipe.allergens.milk, recipe.allergens.egg]),
+    );
+    expect([...statuses]).toEqual(['free']);
+    // This recipe has no egg line but its egg status is unknown, so fail-closed leaves it out.
+    expect(found.some((recipe) => recipe.id === 'mealdb:52765')).toBe(false);
   });
 
   it('filters by cuisine, course, time and gentle, and orders by health score', async () => {
-    const candidates = await listCandidates({
+    const found = await listCandidates({
       cuisines: ['italian', 'greek'],
       course: ['main', 'soup'],
       maxMinutes: 60,
       limit: 100,
     });
-    expect(candidates.length).toBeGreaterThan(0);
-    for (const c of candidates) {
-      expect(['italian', 'greek']).toContain(c.cuisine);
-      expect(['main', 'soup']).toContain(c.course);
-      expect(c.totalMinutes).not.toBeNull();
-      expect(c.totalMinutes ?? Infinity).toBeLessThanOrEqual(60);
-    }
-    const scores = candidates.map((c) => c.healthScore);
-    expect(scores).toEqual([...scores].sort((a, b) => b - a));
+    expect(found).not.toHaveLength(0);
+    expect(
+      found.every((recipe) => recipe.cuisine === 'italian' || recipe.cuisine === 'greek'),
+    ).toBe(true);
+    expect(found.every((recipe) => recipe.course === 'main' || recipe.course === 'soup')).toBe(
+      true,
+    );
+    // An unknown total time never passes a time limit.
+    expect(found.every((recipe) => recipe.totalMinutes !== null && recipe.totalMinutes <= 60)).toBe(
+      true,
+    );
+    const scores = found.map((recipe) => recipe.healthScore);
+    const climbs = scores.filter((score, i) => i > 0 && score > (scores[i - 1] ?? Infinity));
+    expect(climbs).toEqual([]);
 
     const gentle = await listCandidates({ gentle: true, limit: 50 });
-    for (const c of gentle) expect(c.gentle).toBe(true);
+    expect(gentle.filter((recipe) => !recipe.gentle)).toEqual([]);
   });
 
   it('includes matched ingredient ids and honours limit and exclusions', async () => {
-    const [first] = await listCandidates({ limit: 1 });
-    expect(first?.ingredientIds.length).toBeGreaterThan(0);
-    const next = await listCandidates({ limit: 5, excludeIds: [first?.id ?? ''] });
-    expect(next).toHaveLength(5);
-    expect(next.map((c) => c.id)).not.toContain(first?.id);
+    const [top] = await listCandidates({ limit: 1 });
+    expect(top).toBeDefined();
+    expect(top?.ingredientIds).not.toHaveLength(0);
+    const rest = await listCandidates({ limit: 5, excludeIds: [top?.id ?? ''] });
+    expect(rest).toHaveLength(5);
+    expect(rest.some((recipe) => recipe.id === top?.id)).toBe(false);
+  });
+});
+
+describeCatalogDb('core ingredients', () => {
+  it('leave out pantry staples and optional lines', async () => {
+    // Thirteen lines: five pantry staples and one optional line among them.
+    const [candidate] = await listCandidates({ limit: 2000 }).then((all) =>
+      all.filter((c) => c.id === 'medlineplus:apple-bars'),
+    );
+    const detail = await getRecipeDetail('medlineplus:apple-bars');
+    if (!candidate || !detail) throw new Error('fixture recipe missing from the catalog');
+    const ingredients = new Map(
+      (await getIngredients(candidate.ingredientIds)).map((i) => [i.id, i] as const),
+    );
+
+    const staples = candidate.ingredientIds.filter((id) => ingredients.get(id)?.pantryStaple);
+    const optional = detail.ingredients.filter((line) => line.optional).map((l) => l.ingredientId);
+    expect(staples.length).toBeGreaterThan(0);
+    expect(optional.length).toBeGreaterThan(0);
+
+    expect(candidate.coreIngredientIds.length).toBeGreaterThan(0);
+    for (const id of [...staples, ...optional])
+      expect(candidate.coreIngredientIds).not.toContain(id);
+    expect(candidate.coreIngredientIds).toEqual(
+      candidate.ingredientIds.filter((id) => !staples.includes(id) && !optional.includes(id)),
+    );
+  });
+
+  it('are distinct, a subset of the matched ids, and never a staple anywhere in the catalog', async () => {
+    const candidates = await listCandidates({ limit: 2000 });
+    const staples = new Set((await getPantryStaples()).map((i) => i.id));
+    for (const c of candidates) {
+      expect(new Set(c.coreIngredientIds).size).toBe(c.coreIngredientIds.length);
+      for (const id of c.coreIngredientIds) {
+        expect(c.ingredientIds).toContain(id);
+        expect(staples.has(id)).toBe(false);
+      }
+    }
+    // Staples still count as matched ingredients; only the core list leaves them out.
+    expect(candidates.some((c) => c.ingredientIds.some((id) => staples.has(id)))).toBe(true);
+  });
+});
+
+describeCatalogDb('getPantryStaples', () => {
+  it('returns only pantry staples, grouped by category', async () => {
+    const staples = await getPantryStaples();
+    expect(staples.length).toBeGreaterThan(0);
+    for (const staple of staples) expect(staple.pantryStaple).toBe(true);
+    const ids = staples.map((s) => s.id);
+    expect(ids).toEqual(expect.arrayContaining(['salt', 'olive_oil']));
+    expect(ids).not.toContain('chickpea');
+    expect([...new Set(ids)]).toEqual(ids);
+    const categories = staples.map((s) => s.category);
+    expect(categories).toEqual([...categories].sort());
+  });
+
+  it('reads once and hands every caller its own list', async () => {
+    const first = await getPantryStaples();
+    const before = stats.executed;
+    first.length = 0;
+    const second = await getPantryStaples();
+    expect(stats.executed).toBe(before);
+    expect(second.length).toBeGreaterThan(0);
+  });
+});
+
+describeCatalogDb('getRecipesByFamily', () => {
+  it('returns every version of a dish, healthiest first', async () => {
+    const family = await getRecipesByFamily('fam:meatball');
+    expect(family.map((r) => r.id).sort()).toEqual([
+      'medlineplus:baked-meatballs',
+      'medlineplus:easy-meatballs',
+    ]);
+    for (const recipe of family) expect(recipe.familyId).toBe('fam:meatball');
+    const scores = family.map((r) => r.healthScore);
+    expect(scores).toEqual([...scores].sort((a, b) => b - a));
+  });
+
+  it('applies allergen filters fail-closed and diet filters', async () => {
+    // One version contains wheat, the other is free of it.
+    const all = await getRecipesByFamily('fam:pepper-salt-squid');
+    expect(all).toHaveLength(2);
+    const safe = await getRecipesByFamily('fam:pepper-salt-squid', { avoidAllergens: ['wheat'] });
+    expect(safe.map((r) => r.id)).toEqual(['mealdb:53108']);
+    // An unknown status is treated as unsafe, never as free.
+    const unknown = await getRecipesByFamily('fam:chicken-spanish', { avoidAllergens: ['milk'] });
+    expect(unknown.map((r) => r.id)).toEqual(['mealdb:53164']);
+
+    const vegan = await getRecipesByFamily('fam:meatball', { dietMask: DietFlag.vegan });
+    for (const recipe of vegan) expect(satisfiesDiets(recipe.dietFlags, DietFlag.vegan)).toBe(true);
+  });
+
+  it('returns nothing for an unknown family', async () => {
+    await expect(getRecipesByFamily('fam:does-not-exist')).resolves.toEqual([]);
   });
 });
 

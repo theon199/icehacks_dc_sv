@@ -47,6 +47,24 @@ describe('explainRecipe', () => {
     expect(texts(reasons)).not.toContain('Plant-forward, like you wanted');
   });
 
+  it('words a shared goal from the tags the dish actually carries', () => {
+    const goalText = (
+      goalTags: RecipeSummary['goalTags'],
+      goal: UserPreferences['goals'][number],
+    ) => explain(makeRecipe({ goalTags }), { goals: [goal] }).find((r) => r.code === 'goal')?.text;
+
+    expect(goalText(['high_protein'], 'steady_energy')).toBe('Protein for steadier energy');
+    expect(goalText(['high_fiber'], 'steady_energy')).toBe('Fiber for steadier energy');
+    expect(goalText(['high_fiber', 'high_protein'], 'steady_energy')).toBe(
+      'Fiber and protein for steadier energy',
+    );
+    expect(goalText(['lower_sat_fat'], 'heart_friendly')).toBe(
+      'Lower in saturated fat, for your goal',
+    );
+    expect(goalText(['heart_friendly'], 'heart_friendly')).toBe('Heart-friendly, for your goal');
+    expect(goalText(['high_protein'], 'steady_energy')).not.toMatch(/fiber/i);
+  });
+
   it('mentions loved cuisines and their neighbours', () => {
     expect(texts(explain(recipe('pad-thai'), { cuisines: ['thai'] }))).toContain(
       'You love Thai food',

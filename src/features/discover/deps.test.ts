@@ -1,4 +1,6 @@
+import { toDomainRecipe } from '@/lib/catalog';
 import { defaultPreferences, type FeedbackEvent as StoredFeedbackEvent } from '@/stores';
+import { toDomainFeedback, toUserPreferences } from '@/stores/domainBridge';
 
 import { candidate } from './__fixtures__/catalog';
 import {
@@ -28,6 +30,23 @@ function stored(
     ...extra,
   };
 }
+
+describe('shared bridges', () => {
+  it('re-exports the shared feedback and recipe mappings', () => {
+    expect(toRankFeedback).toBe(toDomainFeedback);
+    expect(toRankRecipe).toBe(toDomainRecipe);
+  });
+
+  it('reads preferences exactly as the shared bridge does, in US units by default', () => {
+    const stored = {
+      ...defaultPreferences,
+      allergensAnswered: true,
+      goals: ['steadier_energy' as const],
+    };
+    expect(toRankPreferences(stored)).toEqual(toUserPreferences(stored, 'us'));
+    expect(toRankPreferences(stored, 'metric')).toEqual(toUserPreferences(stored, 'metric'));
+  });
+});
 
 describe('toRankPreferences', () => {
   it('keeps safety answers unanswered until the allergen question is answered', () => {
@@ -112,7 +131,11 @@ describe('toRankFeedback', () => {
 describe('toRankRecipe', () => {
   it('reshapes a catalog candidate for ranking', () => {
     const recipe = toRankRecipe(
-      candidate('x', { ingredientIds: ['egg', 'rice', 'egg'], region: 'atlantis' }),
+      candidate('x', {
+        ingredientIds: ['egg', 'rice', 'salt'],
+        coreIngredientIds: ['egg', 'rice'],
+        region: 'atlantis',
+      }),
     );
     expect(recipe.coreIngredientIds).toEqual(['egg', 'rice']);
     expect(recipe.region).toBe('global');

@@ -1,15 +1,33 @@
 import { checkRecipe } from '@/domain';
+import { coreIngredientIdsOf, toDomainRecipe as sharedToDomainRecipe } from '@/lib/catalog';
 import type { FeedbackEvent } from '@/stores';
+import * as bridge from '@/stores/domainBridge';
 
 import {
-  coreIngredientIds,
   targetGoalTags,
   toDomainFeedback,
+  toDomainGoals,
   toDomainPreferences,
   toDomainRecipe,
   toTargetDetails,
 } from './adapters';
 import { allergenMap, ingredient, makeDetail, prefs } from '../test/fixtures';
+
+describe('shared bridges', () => {
+  it('re-exports the shared preference, goal and feedback mappings', () => {
+    expect(toDomainPreferences).toBe(bridge.toUserPreferences);
+    expect(toDomainGoals).toBe(bridge.toDomainGoals);
+    expect(toDomainFeedback).toBe(bridge.toDomainFeedback);
+  });
+
+  it('maps a recipe with the shared catalog mapping, adding the given core ingredients', () => {
+    const detail = makeDetail({ region: 'atlantis' });
+    expect(toDomainRecipe(detail, ['chickpea'])).toEqual({
+      ...sharedToDomainRecipe(detail),
+      coreIngredientIds: ['chickpea'],
+    });
+  });
+});
 
 describe('toDomainPreferences', () => {
   it('keeps safety answers unanswered until the person has answered', () => {
@@ -55,10 +73,10 @@ describe('toDomainRecipe', () => {
     expect(recipe.region).toBe('global');
   });
 
-  it('derives core ingredients without staples or optional lines', () => {
+  it('derives core ingredients without staples or optional lines, via the catalog rule', () => {
     const detail = makeDetail();
     const mint = { ...detail.ingredients[0]!, position: 9, ingredientId: 'mint', optional: true };
-    const ids = coreIngredientIds(
+    const ids = coreIngredientIdsOf(
       [...detail.ingredients, mint],
       new Map([['salt', ingredient('salt', { pantryStaple: true })]]),
     );
@@ -82,7 +100,8 @@ describe('toDomainFeedback', () => {
   it('converts times, keeps reasons and drops events ranking does not use', () => {
     const events = toDomainFeedback([
       event('1', {}),
-      event('2', { kind: 'unsave' }),
+      event('5', { kind: 'save', at: '2026-01-02T00:00:00.000Z' }),
+      event('2', { kind: 'unsave', at: '2026-01-02T01:00:00.000Z' }),
       event('3', {
         kind: 'not_for_me',
         reason: 'dislike_ingredient',

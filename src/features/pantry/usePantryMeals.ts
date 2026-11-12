@@ -7,7 +7,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { InteractionManager } from 'react-native';
 
-import { useCandidates, useIngredients, type CandidateFilters } from '@/lib/catalog';
+import { hasSafetyAnswers } from '@/domain';
+import { useCandidates, type CandidateFilters } from '@/lib/catalog';
 import { createSelector } from '@/stores/memo';
 import { selectPantryIngredientIds, usePantryStore } from '@/stores/pantry';
 import { selectDietMask, selectPreferences, usePreferencesStore } from '@/stores/preferences';
@@ -41,7 +42,7 @@ const selectPantryKey = createSelector(selectPantryIngredientIds, (ids) =>
 const NO_MEALS: readonly PantryMeal[] = [];
 
 function sameSafetyInputs(a: PantryMealsInput, b: PantryMealsInput): boolean {
-  return a.candidates === b.candidates && a.staples === b.staples && a.prefs === b.prefs;
+  return a.candidates === b.candidates && a.prefs === b.prefs;
 }
 
 export function usePantryMeals(): PantryMealsResult {
@@ -56,8 +57,9 @@ export function usePantryMeals(): PantryMealsResult {
     () => new Set(pantryKey ? pantryKey.split(KEY_SEPARATOR) : []),
     [pantryKey],
   );
-  // Both safety answers are needed: allergens, and diets (answered once onboarding finished).
-  const answered = prefs.allergensAnswered && prefs.onboardedAt != null;
+  const rankPrefs = useMemo(() => toRankPreferences(prefs, units), [prefs, units]);
+  // Both safety answers are needed; the shared bridge decides when they count as given.
+  const answered = hasSafetyAnswers(rankPrefs);
   const filters = useMemo<CandidateFilters>(
     () => ({ dietMask, avoidAllergens: prefs.allergens, limit: CANDIDATE_LIMIT }),
     [dietMask, prefs.allergens],
@@ -65,33 +67,16 @@ export function usePantryMeals(): PantryMealsResult {
   const enabled = answered && pantry.size > 0;
   const candidates = useCandidates(filters, { enabled });
 
-  // Staple flags live on ingredient rows. The id list depends only on the candidates, so this
-  // query runs once per candidate set and is then served from the query cache.
-  const ingredientIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const candidate of candidates.data ?? []) {
-      for (const id of candidate.ingredientIds) ids.add(id);
-    }
-    return [...ids].sort();
-  }, [candidates.data]);
-  const ingredients = useIngredients(enabled ? ingredientIds : []);
-  const staples = useMemo(
-    () => new Set((ingredients.data ?? []).filter((i) => i.pantryStaple).map((i) => i.id)),
-    [ingredients.data],
-  );
-
-  const rankPrefs = useMemo(() => toRankPreferences(prefs, units), [prefs, units]);
   const input = useMemo<PantryMealsInput | null>(() => {
-    if (!enabled || !candidates.data || !ingredients.data) return null;
+    if (!enabled || !candidates.data) return null;
     return {
       candidates: candidates.data,
-      staples,
       pantry,
       prefs: rankPrefs,
       now,
       size: PANTRY_MEALS_SHOWN,
     };
-  }, [enabled, candidates.data, ingredients.data, staples, pantry, rankPrefs, now]);
+  }, [enabled, candidates.data, pantry, rankPrefs, now]);
 
   const [ranked, setRanked] = useState<{
     readonly input: PantryMealsInput;
@@ -112,7 +97,7 @@ export function usePantryMeals(): PantryMealsResult {
   let status: PantryMealsStatus;
   if (pantry.size === 0) status = 'emptyPantry';
   else if (!answered) status = 'needsPreferences';
-  else if (candidates.isError || ingredients.isError) status = 'error';
+  else if (candidates.isError) status = 'error';
   // While a pantry change is re-ranked the previous list stays up. Anything else (first load,
   // new candidates, changed preferences) waits for its own ranking, so a list ranked under old
   // allergen or diet answers is never shown.
@@ -124,7 +109,6 @@ export function usePantryMeals(): PantryMealsResult {
     meals: status === 'ready' && ranked ? ranked.meals : NO_MEALS,
     retry: () => {
       if (candidates.isError) void candidates.refetch();
-      if (ingredients.isError) void ingredients.refetch();
     },
   };
 }

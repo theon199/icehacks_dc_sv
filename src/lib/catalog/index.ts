@@ -4,7 +4,9 @@ export {
   getCatalogMeta,
   getCuisines,
   getIngredients,
+  getPantryStaples,
   getRecipeDetail,
+  getRecipesByFamily,
   getRecipeSummaries,
   getRecipeSummary,
   getSubstitutions,
@@ -12,6 +14,7 @@ export {
   SEARCH_PAGE_SIZE,
   searchIngredients,
   searchRecipes,
+  type FamilyFilters,
 } from './queries';
 export {
   catalogKeys,
@@ -21,9 +24,12 @@ export {
   useCuisines,
   useIngredients,
   useIngredientSearch,
+  usePantryStaples,
   useRecipe,
+  useRecipeFamily,
   useRecipes,
   useRecipeSearch,
   useSubstitutions,
 } from './hooks';
 export { buildFtsQuery, tokenize } from './searchQuery';
+export { coreIngredientIdsOf, toDomainRecipe } from './toDomain';

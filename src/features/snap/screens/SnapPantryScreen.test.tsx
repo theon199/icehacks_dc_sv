@@ -2,7 +2,7 @@ import type * as FlashListModule from '@shopify/flash-list';
 import { act, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
 
 import type { Ingredient } from '@/lib/catalog';
-import { getIngredients, listCandidates, searchIngredients } from '@/lib/catalog/queries';
+import { listCandidates, searchIngredients } from '@/lib/catalog/queries';
 import {
   defaultPreferences,
   MAX_PANTRY_ITEMS,
@@ -32,7 +32,6 @@ jest.mock('expo-crypto', () => ({
 jest.mock('@/lib/catalog/queries', () => ({
   searchIngredients: jest.fn(),
   listCandidates: jest.fn(),
-  getIngredients: jest.fn(),
 }));
 
 const ingredient = (id: string, category: Ingredient['category']): Ingredient => ({
@@ -59,14 +58,20 @@ beforeEach(() => {
     const hit = catalog[text];
     return hit ? [hit] : [];
   });
-  jest.mocked(getIngredients).mockResolvedValue([]);
   jest.mocked(listCandidates).mockResolvedValue([
     catalogRecipe({
       id: 'r:omelette',
       title: 'Spinach omelette',
-      ingredientIds: ['egg', 'spinach'],
+      // Salt is a pantry staple: matched, but not core, so it never counts as missing.
+      ingredientIds: ['egg', 'spinach', 'salt'],
+      coreIngredientIds: ['egg', 'spinach'],
     }),
-    catalogRecipe({ id: 'r:stew', title: 'Bean stew', ingredientIds: ['bean', 'carrot'] }),
+    catalogRecipe({
+      id: 'r:stew',
+      title: 'Bean stew',
+      ingredientIds: ['bean', 'carrot'],
+      coreIngredientIds: ['bean', 'carrot'],
+    }),
   ]);
   usePantryStore.getState().reset();
   usePreferencesStore.setState({ prefs: { ...defaultPreferences, allergensAnswered: true } });

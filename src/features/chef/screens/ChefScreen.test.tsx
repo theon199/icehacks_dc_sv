@@ -74,7 +74,9 @@ beforeEach(() => {
   resetChefSession();
   usePreferencesStore.setState({ prefs: answeredPrefs({ allergens: ['peanut'] }) });
   askChef.mockReset();
-  jest.mocked(listCandidates).mockResolvedValue(catalog.map((r) => ({ ...r, ingredientIds: [] })));
+  jest
+    .mocked(listCandidates)
+    .mockResolvedValue(catalog.map((r) => ({ ...r, ingredientIds: [], coreIngredientIds: [] })));
   jest.mocked(searchRecipes).mockResolvedValue({ items: catalog, nextCursor: null });
   jest
     .mocked(getRecipeSummaries)
@@ -192,6 +194,27 @@ describe('ChefScreen', () => {
     expect(useChefSession.getState().followUps[onlyThread().id]).toEqual([
       'Can I make it spicier?',
     ]);
+  });
+
+  it('ignores a suggestion chip while the daily limit is spent', async () => {
+    signIn(30);
+    useChefSession.setState({ limitedUntil: Date.now() + 2 * 3600 * 1000 });
+    await renderChef();
+
+    await userEvent.setup().press(screen.getByText('A cozy dinner under 30 minutes'));
+    expect(askChef).not.toHaveBeenCalled();
+    expect(Object.values(useChefStore.getState().threads)).toEqual([]);
+    expect(screen.getByTestId('chef-limit-note')).toBeOnTheScreen();
+  });
+
+  it('asks a suggestion chip question while Chef is free', async () => {
+    signIn(30);
+    askChef.mockResolvedValue(reply());
+    await renderChef();
+
+    await userEvent.setup().press(screen.getByText('A cozy dinner under 30 minutes'));
+    await waitFor(() => expect(askChef).toHaveBeenCalledTimes(1));
+    expect(onlyThread().messages[0]?.text).toBe('A cozy dinner under 30 minutes');
   });
 
   it('does not offer to ask again once the daily limit is spent', async () => {

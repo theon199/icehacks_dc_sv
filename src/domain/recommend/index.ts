@@ -17,7 +17,10 @@ export {
 } from './context';
 export {
   buildDeck,
+  clampDeckSize,
   DECK_MODES,
+  DEFAULT_DECK_SIZE,
+  MAX_DECK_SIZE,
   fitsMode,
   recentlyPassedIds,
   sampleOrder,
