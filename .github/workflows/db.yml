@@ -41,6 +41,26 @@ jobs:
       - name: Lint database functions
         run: supabase db lint --level warning --fail-on error
 
+      - name: Generate types from the migrated schema
+        run: |
+          mkdir -p supabase/.generated
+          supabase gen types typescript --local --schema public > supabase/.generated/database.generated.ts
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Check committed database types match the schema
+        run: npx --yes --package typescript@6.0.3 tsc -p supabase/tsconfig.drift.json
+
+      - name: Upload generated types
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-types
+          path: supabase/.generated/database.generated.ts
+          if-no-files-found: ignore
+
   functions:
     name: Edge function shared modules
     runs-on: ubuntu-latest
@@ -79,4 +99,4 @@ jobs:
           node-version: 22
 
       - name: Type-check database.types.ts
-        run: npx --yes --package typescript@5.9.3 tsc --noEmit -p supabase/tsconfig.check.json
+        run: npx --yes --package typescript@6.0.3 tsc -p supabase/tsconfig.check.json
