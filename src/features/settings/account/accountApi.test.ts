@@ -92,6 +92,39 @@ describe('changePassword', () => {
     mockAuth.updateUser.mockResolvedValue({ data: {}, error: null });
     await changePassword({ email: null, currentPassword: null, newPassword: 'long-enough' });
     expect(mockAuth.signInWithPassword).not.toHaveBeenCalled();
-    expect(mockAuth.updateUser).toHaveBeenCalledWith({ password: 'long-enough' });
+    expect(mockAuth.updateUser).toHaveBeenCalledWith({
+      password: 'long-enough',
+      data: { password_set: true },
+    });
+  });
+});
+
+describe('password detection', () => {
+  const appleUser = (metadata: Record<string, unknown>) => ({
+    data: {
+      user: {
+        id: 'u2',
+        email: 'kai@example.com',
+        app_metadata: { provider: 'apple', providers: ['apple'] },
+        user_metadata: metadata,
+      },
+    },
+    error: null,
+  });
+
+  it('treats an Apple account that has set a password as having one', async () => {
+    // Auth keeps listing only the Apple identity after a password is added.
+    mockAuth.getUser.mockResolvedValue(appleUser({ password_set: true }));
+    expect((await fetchAccountUser()).hasPassword).toBe(true);
+    mockAuth.getUser.mockResolvedValue(appleUser({}));
+    expect((await fetchAccountUser()).hasPassword).toBe(false);
+  });
+
+  it('sees email sign-ups as having a password', async () => {
+    mockAuth.getUser.mockResolvedValue({
+      data: { user: { id: 'u3', email: 'a@b.co', app_metadata: { providers: ['email'] } } },
+      error: null,
+    });
+    expect((await fetchAccountUser()).hasPassword).toBe(true);
   });
 });

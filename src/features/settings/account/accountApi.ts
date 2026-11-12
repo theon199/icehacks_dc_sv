@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import { useSessionStore } from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
+import { queryClient } from '@/lib/query/client';
 import { getSupabase } from '@/lib/supabase/client';
 
 import { clearLocalUserData } from '../deps';
@@ -57,6 +58,20 @@ function toAccountError(error: unknown, fallback: string): AccountError {
   return new AccountError(code, authErrorCopy[code] ?? fallback);
 }
 
+/** Root of every react-query key Settings uses; cleared whenever this device signs out. */
+export const SETTINGS_QUERY_ROOT = 'settings';
+
+/** Account details are cached per user, so a second sign-in never reads the first person's. */
+export const accountUserQueryKey = (userId: string | null) =>
+  [SETTINGS_QUERY_ROOT, 'account-user', userId] as const;
+
+/**
+ * Marker written to user metadata when an Apple or Google account sets its first password. Auth
+ * lists providers by linked identity, and adding a password does not link an email identity, so
+ * without this the account would keep looking password-less.
+ */
+const PASSWORD_SET_FLAG = 'password_set';
+
 export const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
 export async function fetchAccountUser(): Promise<AccountUser> {
@@ -65,11 +80,12 @@ export async function fetchAccountUser(): Promise<AccountUser> {
   const user = data.user;
   const providers = (user.app_metadata as { providers?: unknown }).providers;
   const providerList = Array.isArray(providers) ? providers : [user.app_metadata.provider];
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
   return {
     id: user.id,
     email: user.email ?? null,
     pendingEmail: user.new_email ?? null,
-    hasPassword: providerList.includes('email'),
+    hasPassword: providerList.includes('email') || metadata[PASSWORD_SET_FLAG] === true,
   };
 }
 
@@ -114,7 +130,11 @@ export async function changePassword({
     const check = await client.auth.signInWithPassword({ email, password: currentPassword });
     if (check.error) throw toAccountError(check.error, authErrorCopy.invalid_credentials ?? '');
   }
-  const { error } = await client.auth.updateUser({ password: newPassword });
+  const { error } = await client.auth.updateUser(
+    currentPassword == null
+      ? { password: newPassword, data: { [PASSWORD_SET_FLAG]: true } }
+      : { password: newPassword },
+  );
   if (error) throw toAccountError(error, 'Could not change your password. Try again.');
 }
 
@@ -149,12 +169,13 @@ export async function deleteAccount(): Promise<void> {
   await signOutLocally();
 }
 
-/** Signs out on this device. */
+/** Signs out on this device and drops the cached account details so the next person starts clean. */
 export async function signOutLocally(): Promise<void> {
   try {
     await getSupabase().auth.signOut({ scope: 'local' });
   } catch (error) {
     logger.warn('Sign-out request failed', describeError(error));
   }
+  queryClient.removeQueries({ queryKey: [SETTINGS_QUERY_ROOT] });
   useSessionStore.getState().signedOut();
 }

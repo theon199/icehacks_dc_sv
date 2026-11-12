@@ -1,20 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
 import { StyleSheet, View } from 'react-native';
 
+import { useSessionStore } from '@/features/auth';
 import { Button, Card, ErrorState, Screen, Skeleton, Text, space } from '@/ui';
 
-import { AccountError, fetchAccountUser } from '../account/accountApi';
+import { AccountError, accountUserQueryKey, fetchAccountUser } from '../account/accountApi';
 import { useDataExport } from '../account/useDataExport';
 import { ChangeEmailForm } from '../components/ChangeEmailForm';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { EXPORT_FOOTNOTE } from '../components/DataPrivacySection';
 import { DeleteAccountCard } from '../components/DeleteAccountCard';
 
-export const accountUserQueryKey = ['settings', 'account-user'] as const;
-
 /** Email, password, data export and account deletion. */
 export function AccountScreen() {
-  const user = useQuery({ queryKey: accountUserQueryKey, queryFn: fetchAccountUser });
+  const userId = useSessionStore((s) => s.userId);
+  const user = useQuery({
+    queryKey: accountUserQueryKey(userId),
+    queryFn: fetchAccountUser,
+    enabled: userId != null,
+  });
   const exporter = useDataExport();
 
   if (user.isPending) {
@@ -59,7 +63,11 @@ export function AccountScreen() {
       </Card>
 
       <Card style={styles.card}>
-        <ChangePasswordForm email={email} hasPassword={hasPassword} />
+        <ChangePasswordForm
+          email={email}
+          hasPassword={hasPassword}
+          onChanged={() => void user.refetch()}
+        />
       </Card>
 
       <Card style={styles.card}>
@@ -73,6 +81,7 @@ export function AccountScreen() {
           variant="secondary"
           icon="square.and.arrow.up"
           loading={exporter.exporting}
+          disabled={exporter.exporting}
           onPress={() => void exporter.run()}
         />
       </Card>
