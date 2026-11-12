@@ -1,6 +1,7 @@
 /**
  * Runs one snap: shrink the photo on the device, send it to the snap function, and hand the reading
- * to the result screens. Cancellable at any point; leaving the screen cancels too.
+ * to the result screens through the snap session. Cancellable at any point, and cancelled when the
+ * screen unmounts. A snap that finishes while its tab is in the background still completes.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -28,8 +29,7 @@ export type SnapPhase =
       photoUri: string;
       source: PhotoSource;
       problem: SnapProblem;
-    }
-  | { status: 'done'; mode: SnapMode; resultId: string };
+    };
 
 export interface SnapRequestDeps {
   prepare: (source: PhotoSource) => Promise<PreparedPhoto>;
@@ -46,11 +46,21 @@ const defaultDeps: SnapRequestDeps = {
 let sequence = 0;
 const nextResultId = (now: number) => `${now.toString(36)}-${(sequence++).toString(36)}`;
 
-export function useSnapRequest(deps: SnapRequestDeps = defaultDeps) {
+export interface UseSnapRequestOptions {
+  /** Called once the reading is in the snap session, ready for its result screen. */
+  onResult: (mode: SnapMode) => void;
+  deps?: SnapRequestDeps;
+}
+
+export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestOptions) {
   const [phase, setPhase] = useState<SnapPhase>({ status: 'idle' });
   const controllerRef = useRef<AbortController | null>(null);
+  const onResultRef = useRef(onResult);
   const setResult = useSnapSession((state) => state.setResult);
 
+  useEffect(() => {
+    onResultRef.current = onResult;
+  }, [onResult]);
   useEffect(() => () => controllerRef.current?.abort(), []);
 
   const start = useCallback(
@@ -89,7 +99,8 @@ export function useSnapRequest(deps: SnapRequestDeps = defaultDeps) {
         } else {
           setResult({ ...base, mode: 'dish', dish: response.dish });
         }
-        setPhase({ status: 'done', mode: response.mode, resultId: base.id });
+        setPhase({ status: 'idle' });
+        onResultRef.current(response.mode);
       } catch (error) {
         if (signal.aborted) return;
         const problem = describeSnapError(error);
@@ -105,7 +116,7 @@ export function useSnapRequest(deps: SnapRequestDeps = defaultDeps) {
     [deps, setResult],
   );
 
-  /** Stops the snap in progress (or dismisses a finished one) and goes back to the camera. */
+  /** Stops the snap in progress (or dismisses a problem) and goes back to the camera. */
   const reset = useCallback(() => {
     controllerRef.current?.abort();
     controllerRef.current = null;
