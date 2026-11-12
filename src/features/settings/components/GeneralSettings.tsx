@@ -10,7 +10,13 @@ import {
   type Segment,
 } from '@/ui';
 
-import { updatePreferences, usePreferences, type Units } from '../deps';
+import {
+  selectUnits,
+  usePreferencesStore,
+  useSettingsStore,
+  type Appearance,
+  type Units,
+} from '../deps';
 import { SettingsSection } from './SettingsSection';
 
 const unitSegments: readonly Segment<Units>[] = [
@@ -26,9 +32,19 @@ const appearanceSegments: readonly Segment<AppearancePreference>[] = [
 
 /** Small appetite mode, measurement units and appearance. */
 export function GeneralSettings() {
-  const { smallAppetite, units } = usePreferences();
+  const smallAppetite = usePreferencesStore((s) => s.prefs.smallAppetite);
+  const updatePreferences = usePreferencesStore((s) => s.update);
+  const units = useSettingsStore(selectUnits);
+  const setUnits = useSettingsStore((s) => s.setUnits);
+  // The theme follows the device-level appearance store; the account's synced settings record the
+  // same answer.
   const appearance = useAppearanceStore((s) => s.preference);
-  const setAppearance = useAppearanceStore((s) => s.setPreference);
+  const applyAppearance = useAppearanceStore((s) => s.setPreference);
+  const saveAppearance = useSettingsStore((s) => s.setAppearance);
+  const setAppearance = (next: AppearancePreference & Appearance) => {
+    applyAppearance(next);
+    saveAppearance(next);
+  };
 
   return (
     <SettingsSection title="Cooking and display">
@@ -46,7 +62,7 @@ export function GeneralSettings() {
           accessibilityLabel="Units"
           segments={unitSegments}
           value={units}
-          onChange={(next) => updatePreferences({ units: next })}
+          onChange={setUnits}
         />
       </View>
       <View style={styles.control}>

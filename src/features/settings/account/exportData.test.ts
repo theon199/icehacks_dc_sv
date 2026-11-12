@@ -1,8 +1,8 @@
 import * as Sharing from 'expo-sharing';
 
 import { useSessionStore } from '@/features/auth';
+import { resetUserStores, usePreferencesStore, useSettingsStore } from '@/stores';
 
-import { resetSettingsDepsForTests, updatePreferences } from '../deps';
 import { AccountError } from './accountApi';
 import { buildExportBundle, exportFileName, exportMyData } from './exportData';
 
@@ -51,7 +51,7 @@ const now = new Date('2026-11-11T10:00:00Z');
 
 beforeEach(() => {
   mockFiles.length = 0;
-  resetSettingsDepsForTests();
+  resetUserStores();
   useSessionStore.getState().signedIn({
     userId: 'user-1',
     birthYear: 1990,
@@ -67,7 +67,8 @@ describe('exportMyData', () => {
       data: { format_version: 1, profile: { handle: 'cook_ab12' } },
       error: null,
     });
-    updatePreferences({ allergens: ['sesame'], units: 'metric' });
+    usePreferencesStore.getState().setAllergens(['sesame']);
+    useSettingsStore.getState().setUnits('metric');
 
     await exportMyData(now);
 
@@ -80,7 +81,8 @@ describe('exportMyData', () => {
       exported_at: '2026-11-11T10:00:00.000Z',
       server: { profile: { handle: 'cook_ab12' } },
       device: {
-        preferences: expect.objectContaining({ allergens: ['sesame'], units: 'metric' }),
+        preferences: expect.objectContaining({ allergens: ['sesame'], allergensAnswered: true }),
+        settings: expect.objectContaining({ units: 'metric' }),
         personalDetails: expect.objectContaining({ heightCm: null }),
       },
     });

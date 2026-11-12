@@ -1,12 +1,11 @@
 import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 
 import { Button, ListRow, Screen, Text, space, toast } from '@/ui';
 
 import { ABOUT_PAGE_LIST } from '../about/pages';
-import { AccountError, signOutLocally } from '../account/accountApi';
-import { useAiConsentSync } from '../aiConsent';
+import { AccountError, signOutEverywhere, signOutLocally } from '../account/accountApi';
 import { formatAppVersion, readAppVersion } from '../appVersion';
 import { AiConsentSection } from '../components/AiConsentSection';
 import { DataPrivacySection } from '../components/DataPrivacySection';
@@ -20,12 +19,11 @@ export function SettingsScreen() {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const version = formatAppVersion(readAppVersion());
-  useAiConsentSync();
 
-  const signOut = async () => {
+  const run = async (work: () => Promise<void>) => {
     setSigningOut(true);
     try {
-      await signOutLocally();
+      await work();
     } catch (error) {
       setSigningOut(false);
       toast.show({
@@ -34,6 +32,30 @@ export function SettingsScreen() {
       });
     }
   };
+
+  const signOutHere = () => run(signOutLocally);
+
+  const signOutAll = () =>
+    run(async () => {
+      const { everywhere } = await signOutEverywhere();
+      if (!everywhere) {
+        toast.show({
+          message:
+            'Signed out on this device. Other devices could not be reached, so they may still be signed in.',
+          tone: 'danger',
+        });
+      }
+    });
+
+  const confirmSignOutAll = () =>
+    Alert.alert(
+      'Sign out of all devices?',
+      'This signs you out on every phone and tablet using your account, including this one. Unsynced changes on other devices may be lost.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out everywhere', style: 'destructive', onPress: () => void signOutAll() },
+      ],
+    );
 
   return (
     <Screen testID="settings-screen">
@@ -89,7 +111,15 @@ export function SettingsScreen() {
         variant="secondary"
         fullWidth
         loading={signingOut}
-        onPress={() => void signOut()}
+        onPress={() => void signOutHere()}
+      />
+      <Button
+        testID="settings-sign-out-everywhere"
+        label="Sign out of all devices"
+        variant="ghost"
+        fullWidth
+        disabled={signingOut}
+        onPress={confirmSignOutAll}
       />
       <Text variant="footnote" tone="subtle" align="center" style={styles.version} selectable>
         {version}
