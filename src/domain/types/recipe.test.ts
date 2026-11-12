@@ -120,6 +120,24 @@ describe('ingredient row parsing', () => {
     expect(ingredientRowSchema.parse({ ...base, grams_per_unit: null }).gramsPerUnit).toEqual({});
   });
 
+  it('accepts zero gram weights from the catalog but drops them', () => {
+    const leaf = ingredientRowSchema.parse({
+      ...base,
+      id: 'leaf_wrap',
+      grams_per_unit: '{"leaf":0,"sheet":0,"bunch":40}',
+    });
+    expect(leaf.gramsPerUnit).toEqual({ bunch: 40 });
+    expect(
+      ingredientRowSchema.parse({ ...base, grams_per_unit: '{"leaf":0}' }).gramsPerUnit,
+    ).toEqual({});
+  });
+
+  it('still rejects negative gram weights', () => {
+    expect(ingredientRowSchema.safeParse({ ...base, grams_per_unit: '{"cube":-1}' }).success).toBe(
+      false,
+    );
+  });
+
   it('rejects unknown allergen names on ingredients', () => {
     expect(ingredientRowSchema.safeParse({ ...base, allergens: '["mustard"]' }).success).toBe(
       false,

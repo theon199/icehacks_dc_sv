@@ -59,7 +59,9 @@ export const ingredientRowSchema = z
     allergen_status: z.enum(['resolved', 'unknown']),
     diet_flags: z.number().int().nonnegative(),
     pantry_staple: z.number().int(),
-    grams_per_unit: jsonText(z.record(z.string(), z.number().positive())).nullable(),
+    // The catalog writes 0 for units it has no gram weight for (e.g. a banana leaf); such entries
+    // are dropped below rather than rejecting the row.
+    grams_per_unit: jsonText(z.record(z.string(), z.number().nonnegative())).nullable(),
   })
   .transform((row): Ingredient => ({
     id: row.id,
@@ -72,5 +74,15 @@ export const ingredientRowSchema = z
     allergenStatus: row.allergen_status,
     dietFlags: row.diet_flags,
     pantryStaple: row.pantry_staple !== 0,
-    gramsPerUnit: row.grams_per_unit ?? {},
+    gramsPerUnit: usableGramWeights(row.grams_per_unit),
   }));
+
+/** Keeps only unit weights that can convert anything (strictly positive). */
+function usableGramWeights(
+  raw: Readonly<Record<string, number>> | null,
+): Readonly<Record<string, number>> {
+  const out: Record<string, number> = {};
+  if (!raw) return out;
+  for (const [unit, grams] of Object.entries(raw)) if (grams > 0) out[unit] = grams;
+  return out;
+}
