@@ -94,6 +94,9 @@ const BY_REGION: Readonly<Record<RegionId, readonly (readonly [CuisineId, string
     ['dominican', 'Dominican'],
     ['haitian', 'Haitian'],
     ['trinidadian', 'Trinidadian'],
+    ['barbadian', 'Barbadian'],
+    ['antiguan', 'Antiguan'],
+    ['caymanian', 'Caymanian'],
     ['caribbean', 'Caribbean'],
   ],
   northern_europe: [
@@ -129,6 +132,7 @@ const BY_REGION: Readonly<Record<RegionId, readonly (readonly [CuisineId, string
     ['czech', 'Czech'],
     ['slovak', 'Slovak'],
     ['georgian', 'Georgian'],
+    ['bulgarian', 'Bulgarian'],
   ],
   middle_east: [
     ['turkish', 'Turkish'],
@@ -157,6 +161,7 @@ const BY_REGION: Readonly<Record<RegionId, readonly (readonly [CuisineId, string
     ['kenyan', 'Kenyan'],
     ['south_african', 'South African'],
     ['somali', 'Somali'],
+    ['botswanan', 'Botswanan'],
     ['west_african', 'West African'],
   ],
   south_asia: [
@@ -187,6 +192,7 @@ const BY_REGION: Readonly<Record<RegionId, readonly (readonly [CuisineId, string
     ['singaporean', 'Singaporean'],
     ['cambodian', 'Cambodian'],
     ['burmese', 'Burmese'],
+    ['lao', 'Lao'],
   ],
   oceania: [
     ['australian', 'Australian'],

@@ -35,6 +35,15 @@ describe('cuisines', () => {
     );
   });
 
+  it('knows the cuisines added with the bundled catalog', () => {
+    expect(cuisineRegion('lao')).toBe('southeast_asia');
+    expect(cuisineRegion('antiguan')).toBe('caribbean');
+    expect(cuisineRegion('barbadian')).toBe('caribbean');
+    expect(cuisineRegion('caymanian')).toBe('caribbean');
+    expect(cuisineRegion('botswanan')).toBe('sub_saharan_africa');
+    expect(cuisineRegion('bulgarian')).toBe('eastern_europe');
+  });
+
   it('validates cuisine id shape', () => {
     expect(cuisineIdSchema.safeParse('Sri Lankan').success).toBe(false);
     expect(cuisineIdSchema.safeParse('').success).toBe(false);

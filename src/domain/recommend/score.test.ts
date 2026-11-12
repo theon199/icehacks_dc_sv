@@ -40,10 +40,22 @@ describe('cuisineMatch', () => {
     expect(cuisineMatch(recipe('chana-masala'), ctxFor())).toBe(0.5);
   });
 
-  it('only relates cuisines this build knows to a region', () => {
+  it('has no region for an unlisted cuisine that no recipe carries', () => {
     const custom = ctxFor({ cuisines: ['atlantean'] });
     expect(cuisineMatch(makeRecipe({ cuisine: 'atlantean' }), custom)).toBe(1);
     expect(cuisineMatch(recipe('pad-thai'), custom)).toBe(0.2);
+  });
+
+  it('takes the region of an unlisted loved cuisine from a recipe that carries it', () => {
+    const atlantean = makeRecipe({ cuisine: 'atlantean', region: 'southeast_asia' });
+    const ctx = createRankContext(
+      { prefs: { ...ANSWERED_PREFERENCES, cuisines: ['atlantean'] }, now: NOW },
+      [...CATALOG, atlantean],
+    );
+    expect(ctx.lovedRegions.get('southeast_asia')).toBe('atlantean');
+    expect(cuisineMatch(atlantean, ctx)).toBe(1);
+    expect(cuisineMatch(recipe('pad-thai'), ctx)).toBe(0.6);
+    expect(cuisineMatch(recipe('chana-masala'), ctx)).toBe(0.2);
   });
 });
 

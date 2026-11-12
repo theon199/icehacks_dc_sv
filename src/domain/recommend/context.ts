@@ -66,6 +66,19 @@ function noteLatest(map: Map<RecipeId, number>, id: RecipeId, at: number) {
   if (previous === undefined || at > previous) map.set(id, at);
 }
 
+/** First region seen per cuisine among `recipes`, limited to the cuisines in `wanted`. */
+function recipeRegions(
+  recipes: readonly Pick<RecipeSummary, 'cuisine' | 'region'>[],
+  wanted: ReadonlySet<CuisineId>,
+): Map<CuisineId, RegionId> {
+  const out = new Map<CuisineId, RegionId>();
+  for (let i = 0; i < recipes.length; i++) {
+    const { cuisine, region } = recipes[i]!;
+    if (wanted.has(cuisine) && !out.has(cuisine)) out.set(cuisine, region);
+  }
+  return out;
+}
+
 /** Effective budget: "too long" feedback shrinks it, and creates one when none was stated. */
 export function effectiveTimeBudget(
   stated: number | null,
@@ -95,8 +108,14 @@ export function createRankContext(
 
   const loved = new Set(prefs.cuisines);
   const lovedRegions = new Map<RegionId, CuisineId>();
+  // A loved cuisine this build does not list takes its region from a recipe that carries it.
+  let regionFromRecipes: Map<CuisineId, RegionId> | null = null;
   for (const cuisine of prefs.cuisines) {
-    const region = cuisineRegion(cuisine);
+    let region = cuisineRegion(cuisine);
+    if (!region) {
+      regionFromRecipes ??= recipeRegions(candidates, loved);
+      region = regionFromRecipes.get(cuisine);
+    }
     if (region && !lovedRegions.has(region)) lovedRegions.set(region, cuisine);
   }
 
