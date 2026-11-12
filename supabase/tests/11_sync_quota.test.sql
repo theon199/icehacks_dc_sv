@@ -70,11 +70,44 @@ as $fn$
   select u.live_docs from private.sync_usage u where u.user_id = p_user;
 $fn$;
 
+-- Pages a full pull the way a device does: from 0, then p_full on every later page, following the
+-- cursor until has_more is false. Stops after 50 pages so a looping pull fails instead of hanging.
+create function tests.full_pull(p_limit integer)
+returns jsonb
+language plpgsql
+as $fn$
+declare
+  v_since bigint := 0;
+  v_page jsonb;
+  v_pages integer := 0;
+  v_resync boolean := false;
+  v_has_more boolean := true;
+  v_live text[] := '{}';
+begin
+  while v_has_more and v_pages < 50 loop
+    v_page := public.sync_pull(v_since, p_limit, v_pages > 0);
+    v_pages := v_pages + 1;
+    v_resync := v_resync or (v_page ->> 'resync')::boolean;
+    v_has_more := (v_page ->> 'has_more')::boolean;
+    v_live := v_live || array(
+      select e ->> 'doc_id' from jsonb_array_elements(v_page -> 'documents') e
+      where e ->> 'deleted_at' is null
+    );
+    v_since := (v_page ->> 'cursor')::bigint;
+  end loop;
+  return jsonb_build_object(
+    'pages', v_pages, 'resync', v_resync, 'has_more', v_has_more, 'cursor', v_since,
+    'live', to_jsonb(v_live)
+  );
+end;
+$fn$;
+
 grant execute on all functions in schema tests to authenticated, anon;
 
 select tests.create_user('aaaaaaaa-0000-4000-8000-000000000001', 'ana');
 select tests.create_user('bbbbbbbb-0000-4000-8000-000000000002', 'ben');
 select tests.create_user('cccccccc-0000-4000-8000-000000000003', 'cai');
+select tests.create_user('dddddddd-0000-4000-8000-000000000004', 'dee');
 
 -- ---------------------------------------------------------------------------------------------
 -- Live-document cap: only live documents count, and only growth past the cap is refused.
@@ -245,6 +278,58 @@ select is(
   jsonb_array_length(public.sync_pull((public.sync_pull(0, 1000) ->> 'cursor')::bigint, 1000) -> 'documents'),
   5,
   'the next page continues after the size cap'
+);
+reset role;
+
+-- ---------------------------------------------------------------------------------------------
+-- A full pull pages across a compacted tombstone that sits above its first page.
+-- ---------------------------------------------------------------------------------------------
+
+set local role authenticated;
+select tests.login('dddddddd-0000-4000-8000-000000000004');
+select tests.push('a', '2026-02-01T00:00:00Z');
+select tests.push('b', '2026-02-01T00:00:00Z');
+select tests.push('c', '2026-02-01T00:00:00Z');
+select tests.push('x', '2026-02-01T00:00:00Z');
+select tests.push('x', '2026-02-02T00:00:00Z', true);
+select tests.push('d', '2026-02-01T00:00:00Z');
+select tests.push('e', '2026-02-01T00:00:00Z');
+-- An incremental device that has seen only the first document.
+select set_config('tests.first_cursor', public.sync_pull(0, 1) ->> 'cursor', true);
+
+reset role;
+select is(private.compact_user_tombstones('dddddddd-0000-4000-8000-000000000004', 0), 1, 'the tombstone above the first page is compacted');
+select ok(
+  current_setting('tests.first_cursor')::bigint
+    < (select compacted_through from private.sync_usage where user_id = 'dddddddd-0000-4000-8000-000000000004'),
+  'the first page of a full pull ends below the compaction mark'
+);
+set local role authenticated;
+select tests.login('dddddddd-0000-4000-8000-000000000004');
+
+select set_config('tests.full', tests.full_pull(1)::text, true);
+select is((current_setting('tests.full')::jsonb ->> 'resync')::boolean, false, 'no page of a paged full pull asks for a resync');
+select is((current_setting('tests.full')::jsonb ->> 'has_more')::boolean, false, 'a paged full pull reaches its last page');
+select is((current_setting('tests.full')::jsonb ->> 'pages')::integer, 5, 'a paged full pull takes one page per live document');
+select is(
+  (select array_agg(x order by x) from jsonb_array_elements_text(current_setting('tests.full')::jsonb -> 'live') x),
+  array['a', 'b', 'c', 'd', 'e'],
+  'a paged full pull returns every live document exactly once'
+);
+select is(
+  (public.sync_pull((current_setting('tests.full')::jsonb ->> 'cursor')::bigint, 1) ->> 'resync')::boolean,
+  false,
+  'the cursor from a paged full pull keeps pulling incrementally'
+);
+select is(
+  (public.sync_pull(current_setting('tests.first_cursor')::bigint, 1) ->> 'resync')::boolean,
+  true,
+  'an incremental pull from below the compaction mark is still told to resync'
+);
+select is(
+  (public.sync_pull(current_setting('tests.first_cursor')::bigint, 1, false) ->> 'resync')::boolean,
+  true,
+  'an explicit p_full => false pull from below the compaction mark is told to resync'
 );
 reset role;
 

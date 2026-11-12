@@ -87,7 +87,8 @@ its slot straight away. Totals live in `private.sync_usage`, kept by statement-l
 Tombstones are compacted: the daily `job_compact_sync_tombstones` removes those older than 90
 days, and `sync_push` removes the oldest once an account holds more than 20 000. The highest
 revision removed is kept in `sync_usage.compacted_through`; a device pulling from an older cursor
-gets `resync: true` and must rebuild from a full pull (see `sync_pull`).
+gets `resync: true` and must rebuild from a full pull, passing `p_full` on its later pages (see
+`sync_pull`).
 
 ### Community
 
@@ -192,7 +193,7 @@ limit. Ledger rows are purged after two days.
 | Signature | Returns | Semantics |
 | --- | --- | --- |
 | `sync_push(p_docs jsonb)` | `{applied: [{collection, doc_id, revision}], rejected: [{collection, doc_id, reason, server}]}` | Up to 500 docs `{collection, doc_id, data, updated_at, device_id, deleted_at?}`. Applies when `(updated_at, device_id)` is strictly greater than the stored pair; re-sending exactly the stored version counts as applied; the same pair with different content is rejected as `conflict` (a device bug: keep the server copy); otherwise `reason: "stale"` with the server copy. Growing past the live-document caps → `sync_quota` (413); a `data` object over 256 KB → `document_too_large`. `updated_at` more than 1 h in the future → `future_timestamp`. Tombstones store `{}` as data. Duplicates in one batch collapse to the newest |
-| `sync_pull(p_since bigint = 0, p_limit int = 500)` | `{documents: [...], cursor, has_more, resync}` | Documents (including tombstones) with `revision > p_since`, oldest first, ≤ 1000 and about 4 MB of JSON per page (always at least one document). Pass `cursor` back until `has_more` is false. Pushes per user are serialised, so the cursor never skips a later commit. `resync: true` (no documents) means deletions after `p_since` were compacted away: pull again from 0 and drop every already-synced local document the full pull does not return |
+| `sync_pull(p_since bigint = 0, p_limit int = 500, p_full boolean = false)` | `{documents: [...], cursor, has_more, resync}` | Documents (including tombstones) with `revision > p_since`, oldest first, ≤ 1000 and about 4 MB of JSON per page (always at least one document). Pass `cursor` back until `has_more` is false. Pushes per user are serialised, so the cursor never skips a later commit. `resync: true` (no documents) means deletions after `p_since` were compacted away: pull again from 0 and drop every already-synced local document the full pull does not return. Pass `p_full => true` on every page after the first of a pull that started at 0: its intermediate cursors may sit below the compaction mark, and the flag stops those pages being answered with `resync` (a full pull never needs one). Restart a full pull left unfinished for days from 0 |
 
 ### Community
 

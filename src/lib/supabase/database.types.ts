@@ -1391,7 +1391,7 @@ export type Database = {
       };
       set_birth_year: { Args: { p_birth_year: number }; Returns: Json };
       sync_pull: {
-        Args: { p_limit?: number; p_since?: number };
+        Args: { p_full?: boolean; p_limit?: number; p_since?: number };
         Returns: Json;
       };
       sync_push: { Args: { p_docs: Json }; Returns: Json };
@@ -1644,7 +1644,8 @@ export interface SyncPullResult {
   has_more: boolean;
   /**
    * True when deletions newer than `p_since` were compacted away. No documents come back: pull
-   * again from 0 and drop every synced local document that the full pull does not return.
+   * again from 0 (with `p_full: true` on every later page) and drop every synced local document
+   * that the full pull does not return. Never true for a pull with `p_full: true`.
    */
   resync: boolean;
 }

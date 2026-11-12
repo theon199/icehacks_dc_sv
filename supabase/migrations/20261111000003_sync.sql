@@ -424,8 +424,18 @@ comment on function public.sync_push(jsonb) is
 -- have missed deletions. No documents are returned; the device pulls again from 0 and drops
 -- every already-synced local document that the full pull does not return (pending local edits
 -- are pushed afterwards as usual).
+--
+-- p_full marks the later pages of a pull that started at 0. A full pull rebuilds everything, so
+-- it never needs a resync, but its intermediate cursors can sit below compacted_through; without
+-- the flag those pages would be answered with resync and the pull would restart forever. Pass
+-- p_full => true on every page after the first of a full pull, and false (the default) for
+-- incremental pulls. A full pull left unfinished for days should start again from 0.
 
-create function public.sync_pull(p_since bigint default 0, p_limit integer default 500)
+create function public.sync_pull(
+  p_since bigint default 0,
+  p_limit integer default 500,
+  p_full boolean default false
+)
 returns jsonb
 language plpgsql
 stable
@@ -446,7 +456,7 @@ begin
   select coalesce(max(u.compacted_through), 0) into v_compacted
   from private.sync_usage u
   where u.user_id = v_uid;
-  if v_since > 0 and v_since < v_compacted then
+  if v_since > 0 and v_since < v_compacted and not coalesce(p_full, false) then
     return jsonb_build_object('documents', '[]'::jsonb, 'cursor', 0, 'has_more', true, 'resync', true);
   end if;
 
@@ -504,7 +514,7 @@ begin
 end;
 $$;
 
-comment on function public.sync_pull(bigint, integer) is
+comment on function public.sync_pull(bigint, integer, boolean) is
   'Pages the caller''s documents changed after a revision cursor; signals when a full resync is needed.';
 
 revoke all on sequence private.user_document_revision_seq from public;
@@ -513,7 +523,7 @@ revoke all on function private.user_documents_count_update() from public;
 revoke all on function private.user_documents_count_delete() from public;
 revoke all on function private.compact_user_tombstones(uuid, integer) from public;
 grant execute on function public.sync_push(jsonb) to authenticated;
-grant execute on function public.sync_pull(bigint, integer) to authenticated;
+grant execute on function public.sync_pull(bigint, integer, boolean) to authenticated;
 
 -- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
 revoke execute on all functions in schema public from public, anon;
