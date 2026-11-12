@@ -11,6 +11,7 @@ import { describeError, logger } from '@/lib/logger';
 import { queryClient } from '@/lib/query/client';
 import { getSupabase } from '@/lib/supabase/client';
 
+import { forgetAiConsentOnDevice } from '../aiConsent';
 import {
   deleteSignedInAccount,
   endAuthSession,
@@ -183,8 +184,10 @@ export async function deleteAccount(): Promise<void> {
     }
     logger.error('Account deleted, but clearing this device failed', describeError(error));
   }
-  // The deleted account's own old answers have nowhere to go; other accounts' are left alone.
+  // The deleted account's own old answers and unsent AI withdrawal have nowhere to go; other
+  // accounts' are left alone.
   await discardLegacyAccount(userId);
+  await forgetAiConsentOnDevice(userId);
   await finishSignOut(signOutHere);
 }
 

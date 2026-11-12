@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import Storage from 'expo-sqlite/kv-store';
 
 import { useSessionStore } from '@/features/auth';
+import type * as SyncModule from '@/lib/sync';
 import { useSyncStatusStore } from '@/lib/sync';
 import {
   defaultPreferences,
@@ -22,6 +23,12 @@ import {
   resetLegacyMigrationForTests,
   useLegacySettingsMigration,
 } from './legacySettings';
+
+const mockFlush = jest.fn<Promise<boolean>, [number?]>();
+jest.mock('@/lib/sync', () => {
+  const actual = jest.requireActual<typeof SyncModule>('@/lib/sync');
+  return { ...actual, flushSync: (timeoutMs?: number) => mockFlush(timeoutMs) };
+});
 
 const OLD_KEY = 'famara:settings.user';
 const oldPersonalKey = (userId: string) => `famara.personal-details.${userId}`;
@@ -70,6 +77,9 @@ function signIn(userId = 'user-1') {
 }
 
 beforeEach(async () => {
+  // No sync engine runs in these tests, so a flush has nothing to send and succeeds at once.
+  mockFlush.mockReset();
+  mockFlush.mockResolvedValue(true);
   resetUserStores();
   resetLegacyMigrationForTests();
   await usePersonalDetailsStore.persist.rehydrate();
@@ -207,6 +217,75 @@ describe('migrateLegacySettings', () => {
     expect(selectAvoidAllergens(usePreferencesStore.getState())).toEqual(['peanut']);
     expect(usePreferencesStore.getState().prefs.cuisines).toEqual([]);
     expect(oldAccounts()).toEqual([]);
+  });
+
+  /** Reads the cut-down entry kept for `userId`, or undefined when it was deleted. */
+  function keptPreferences(userId: string): Record<string, unknown> | undefined {
+    const kept = JSON.parse(Storage.getItemSync(OLD_KEY) ?? '{"state":{"accounts":{}}}') as {
+      state: { accounts: Record<string, { preferences: Record<string, unknown> }> };
+    };
+    return kept.state.accounts[userId]?.preferences;
+  }
+
+  function oldSafetyAnswers() {
+    usePreferencesStore.setState({ prefs: onboarded() });
+    writeOldSettings({
+      'user-1': oldEntry({ allergens: ['peanut'], diets: ['vegan'], cuisines: ['thai'] }),
+    });
+  }
+
+  it('keeps the old safety answers when the push fails', async () => {
+    oldSafetyAnswers();
+    mockFlush.mockImplementation(async () => {
+      useSyncStatusStore.getState().set({
+        phase: 'idle',
+        pending: 0,
+        lastSyncedAt: 1_700_000_000_000,
+        lastError: 'push failed',
+      });
+      return true;
+    });
+    await expect(migrateLegacySettings('user-1')).resolves.toBe('migrated');
+    expect(selectAvoidAllergens(usePreferencesStore.getState())).toEqual(['peanut']);
+    expect(keptPreferences('user-1')).toEqual({ allergens: ['peanut'], diets: ['vegan'] });
+  });
+
+  it('keeps the old safety answers when the push does not finish in time', async () => {
+    oldSafetyAnswers();
+    mockFlush.mockResolvedValue(false);
+    await expect(migrateLegacySettings('user-1')).resolves.toBe('migrated');
+    expect(mockFlush).toHaveBeenCalledWith(expect.any(Number));
+    expect(keptPreferences('user-1')).toEqual({ allergens: ['peanut'], diets: ['vegan'] });
+  });
+
+  it('keeps the old safety answers when the server keeps a newer copy without them', async () => {
+    oldSafetyAnswers();
+    // The push is refused as stale and sync adopts the server's copy, which lacks the merge.
+    mockFlush.mockImplementation(async () => {
+      usePreferencesStore.setState({ prefs: onboarded({ cuisines: ['thai'] }) });
+      return true;
+    });
+    await expect(migrateLegacySettings('user-1')).resolves.toBe('migrated');
+    expect(keptPreferences('user-1')).toEqual({ allergens: ['peanut'], diets: ['vegan'] });
+
+    // The next run merges them back in, and once they stick the old copy goes.
+    mockFlush.mockResolvedValue(true);
+    await expect(migrateLegacySettings('user-1')).resolves.toBe('migrated');
+    expect(selectAvoidAllergens(usePreferencesStore.getState())).toEqual(['peanut']);
+    expect(usePreferencesStore.getState().prefs.diets).toEqual(['vegan']);
+    expect(oldAccounts()).toEqual([]);
+  });
+
+  it('keeps the old copies when another account signs in during the push', async () => {
+    oldSafetyAnswers();
+    await SecureStore.setItemAsync(oldPersonalKey('user-1'), JSON.stringify({ heightCm: 170 }));
+    mockFlush.mockImplementation(async () => {
+      signIn('user-2');
+      return true;
+    });
+    await expect(migrateLegacySettings('user-1')).resolves.toBe('migrated');
+    expect(keptPreferences('user-1')).toEqual({ allergens: ['peanut'], diets: ['vegan'] });
+    expect(await SecureStore.getItemAsync(oldPersonalKey('user-1'))).not.toBeNull();
   });
 
   it('moves each account’s answers when that account signs in, then removes the old key', async () => {

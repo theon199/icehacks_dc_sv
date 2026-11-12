@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
 import Storage from 'expo-sqlite/kv-store';
-import { Alert, type AlertButton } from 'react-native';
+import type * as ReactModule from 'react';
+import { Alert, AppState, Linking, type AlertButton, type Text } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import {
@@ -15,18 +16,34 @@ import { renderWithTheme } from '@/test/render';
 import { useAppearanceStore, useToastStore } from '@/ui';
 
 import { resetPushChoicesForTests } from '../pushChoices';
+import { resetNotificationAccessForTests } from '../useNotificationAccess';
 import { SettingsScreen } from './SettingsScreen';
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
-}));
+/** Runs every focus effect again, as if the screen came back into view. */
+const mockFocusListeners = new Set<() => void>();
+jest.mock('expo-router', () => {
+  const { useEffect } = jest.requireActual<typeof ReactModule>('react');
+  return {
+    useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
+    useFocusEffect: (effect: () => void) =>
+      useEffect(() => {
+        effect();
+        mockFocusListeners.add(effect);
+        return () => {
+          mockFocusListeners.delete(effect);
+        };
+      }, [effect]),
+  };
+});
+const refocus = () => act(async () => mockFocusListeners.forEach((effect) => effect()));
 
 const mockNotifications = {
   getPermissionsAsync: jest.fn(),
   requestPermissionsAsync: jest.fn(),
 };
 jest.mock('expo-notifications', () => ({
+  IosAuthorizationStatus: { DENIED: 1, AUTHORIZED: 2, PROVISIONAL: 3, EPHEMERAL: 4 },
   getPermissionsAsync: () => mockNotifications.getPermissionsAsync(),
   requestPermissionsAsync: () => mockNotifications.requestPermissionsAsync(),
 }));
@@ -54,6 +71,23 @@ jest.mock('@/features/notifications', () => ({
   savePushCategories: (change: unknown) => mockPushApi.save(change),
   syncPushRegistration: (userId: string) => mockPushApi.sync(userId),
   unregisterPushDevice: () => Promise.resolve(),
+}));
+
+jest.mock('@/features/health', () => {
+  const { Text: MockText } = jest.requireActual<{ Text: typeof Text }>('react-native');
+  return { HealthConnections: () => <MockText>apple health card</MockText> };
+});
+
+const mockModerator = { isModerator: false };
+jest.mock('@/features/moderation', () => ({
+  blockedPeopleHref: '/moderation/blocked',
+  reviewQueueHref: '/moderation',
+  useIsModerator: () => ({
+    isModerator: mockModerator.isModerator,
+    isLoading: false,
+    error: null,
+    retry: () => undefined,
+  }),
 }));
 
 const currentCategories = (): Categories =>
@@ -88,6 +122,7 @@ function sessionUntilSignOut() {
 beforeEach(() => {
   resetUserStores();
   resetPushChoicesForTests();
+  resetNotificationAccessForTests();
   useAppearanceStore.setState({ preference: 'system' });
   useToastStore.getState().clear();
   mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
@@ -100,6 +135,7 @@ beforeEach(() => {
     return next;
   });
   mockPushApi.sync.mockResolvedValue('registered');
+  mockModerator.isModerator = false;
   signIn();
 });
 
@@ -201,6 +237,137 @@ describe('SettingsScreen', () => {
     expect(serverCategories['user-1']).toEqual({ social: true, follows: false });
   });
 
+  it('shows a chosen alert as off while the system blocks notifications, with a way to fix it', async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    await renderWithTheme(<SettingsScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('settings-notify-blocked')).toBeOnTheScreen());
+    // Cook timer alerts are chosen, but cannot arrive.
+    expect(notificationSettings().cookTimers).toBe(true);
+    expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', false);
+    await user.press(screen.getByTestId('settings-notify-blocked'));
+    expect(openSettings).toHaveBeenCalled();
+    openSettings.mockRestore();
+  });
+
+  it('reads the permission again when Settings comes back into view', async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() => expect(screen.getByTestId('settings-notify-blocked')).toBeOnTheScreen());
+
+    // The person allowed notifications in the Settings app meanwhile.
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
+    await refocus();
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true),
+    );
+    expect(screen.queryByTestId('settings-notify-blocked')).not.toBeOnTheScreen();
+  });
+
+  it('reads the permission again when the app returns to the foreground', async () => {
+    const listeners: ((state: string) => void)[] = [];
+    const subscribe = jest.spyOn(AppState, 'addEventListener');
+    const usual = subscribe.getMockImplementation();
+    subscribe.mockImplementation((_type, fn) => {
+      listeners.push(fn as (state: string) => void);
+      return { remove: () => undefined };
+    });
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true),
+    );
+
+    // Turned off in the Settings app while Famara was in the background.
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    await act(async () => listeners.forEach((fn) => fn('active')));
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', false),
+    );
+    expect(notificationSettings().cookTimers).toBe(true);
+    // AppState is already a mock here; put its usual behaviour back for the other tests.
+    if (usual) subscribe.mockImplementation(usual);
+    else subscribe.mockRestore();
+  });
+
+  it('holds chosen switches at the choice until the permission has been read', async () => {
+    mockNotifications.getPermissionsAsync.mockReturnValue(new Promise(() => undefined));
+    await renderWithTheme(<SettingsScreen />);
+    expect(notificationSettings().cookTimers).toBe(true);
+    expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true);
+    expect(screen.queryByTestId('settings-notify-askable')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('settings-notify-blocked')).not.toBeOnTheScreen();
+  });
+
+  it('explains a chosen alert that waits for permission, and asks when it is tapped', async () => {
+    serverCategories['user-1'] = { social: true, follows: false };
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: true });
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() => expect(screen.getByTestId('settings-notify-askable')).toBeOnTheScreen());
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-social')).toHaveProp(
+        'accessibilityHint',
+        expect.stringContaining('cannot arrive until notifications are allowed'),
+      ),
+    );
+    expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', false);
+    expect(screen.queryByTestId('settings-notify-blocked')).not.toBeOnTheScreen();
+    // A choice that is off says nothing extra.
+    expect(screen.getByTestId('settings-notify-follows')).toHaveProp(
+      'accessibilityHint',
+      expect.not.stringContaining('cannot arrive'),
+    );
+
+    // Tapping asks for permission; once allowed, the chosen alert shows on.
+    mockNotifications.requestPermissionsAsync.mockImplementation(async () => {
+      mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
+      return { granted: true };
+    });
+    await fireEvent(screen.getByTestId('settings-notify-social'), 'valueChange', true);
+    expect(mockNotifications.requestPermissionsAsync).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', true),
+    );
+    expect(screen.queryByTestId('settings-notify-askable')).not.toBeOnTheScreen();
+    expect(serverCategories['user-1']).toEqual({ social: true, follows: false });
+  });
+
+  it('lets a chosen alert be turned off while the system blocks notifications', async () => {
+    serverCategories['user-1'] = { social: true, follows: false };
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() => expect(notificationSettings().social).toBe(true));
+    await waitFor(() => expect(screen.getByTestId('settings-notify-blocked')).toBeOnTheScreen());
+    expect(screen.getByTestId('settings-notify-social')).toHaveProp('value', false);
+
+    // The switch reads off, so a tap arrives as "on"; it offers to stop the choice instead.
+    await fireEvent(screen.getByTestId('settings-notify-social'), 'valueChange', true);
+    await waitFor(() => expect(alert).toHaveBeenCalledTimes(1));
+    expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    const buttons = alert.mock.calls[0]?.[2] as AlertButton[];
+    await act(async () => buttons.find((button) => button.text === 'Turn off')?.onPress?.());
+
+    await waitFor(() => expect(mockPushApi.save).toHaveBeenLastCalledWith({ social: false }));
+    expect(serverCategories['user-1']).toEqual({ social: false, follows: false });
+    expect(notificationSettings().social).toBe(false);
+    alert.mockRestore();
+  });
+
+  it('treats iOS provisional permission as allowed', async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({
+      granted: false,
+      canAskAgain: true,
+      ios: { status: 3 },
+    });
+    await renderWithTheme(<SettingsScreen />);
+    await waitFor(() => expect(mockNotifications.getPermissionsAsync).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(screen.getByTestId('settings-notify-cookTimers')).toHaveProp('value', true);
+    expect(screen.queryByTestId('settings-notify-askable')).not.toBeOnTheScreen();
+  });
+
   it('keeps cook timer alerts in the shared settings, not on the push server', async () => {
     await renderWithTheme(<SettingsScreen />);
     await fireEvent(screen.getByTestId('settings-notify-cookTimers'), 'valueChange', false);
@@ -213,9 +380,29 @@ describe('SettingsScreen', () => {
     expect(mockPushApi.save).not.toHaveBeenCalled();
   });
 
-  it('hides the health row until the health feature provides it', async () => {
+  it('shows the Apple Health connection and opens the Health screen', async () => {
+    const user = userEvent.setup();
     await renderWithTheme(<SettingsScreen />);
-    expect(screen.queryByTestId('settings-health')).not.toBeOnTheScreen();
+    expect(screen.getByTestId('settings-health')).toBeOnTheScreen();
+    expect(screen.getByText('apple health card')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('settings-health-insights'));
+    expect(mockPush).toHaveBeenCalledWith('/health');
+  });
+
+  it('opens the blocked people list, and hides the review queue from members', async () => {
+    const user = userEvent.setup();
+    await renderWithTheme(<SettingsScreen />);
+    await user.press(screen.getByTestId('settings-blocked-people'));
+    expect(mockPush).toHaveBeenCalledWith('/moderation/blocked');
+    expect(screen.queryByTestId('settings-review-queue')).not.toBeOnTheScreen();
+  });
+
+  it('offers the review queue to moderators', async () => {
+    mockModerator.isModerator = true;
+    const user = userEvent.setup();
+    await renderWithTheme(<SettingsScreen />);
+    await user.press(screen.getByTestId('settings-review-queue'));
+    expect(mockPush).toHaveBeenCalledWith('/moderation');
   });
 
   it('explains the AI age limit instead of offering the switch to under-18s', async () => {

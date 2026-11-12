@@ -8,13 +8,17 @@ import { ABOUT_PAGE_LIST } from '../about/pages';
 import { AccountError, signOutEverywhere, signOutLocally } from '../account/accountApi';
 import { formatAppVersion, readAppVersion } from '../appVersion';
 import { AiConsentSection } from '../components/AiConsentSection';
+import { CommunitySafetySection } from '../components/CommunitySafetySection';
 import { DataPrivacySection } from '../components/DataPrivacySection';
 import { GeneralSettings } from '../components/GeneralSettings';
+import { HealthSection } from '../components/HealthSection';
 import { NotificationSettings } from '../components/NotificationSettings';
 import { SettingsSection } from '../components/SettingsSection';
-import { HealthConnections } from '../deps';
 
-/** The settings hub: account, preferences, display, notifications, AI, privacy and about. */
+/**
+ * The settings hub: account, preferences, display, notifications, health, community safety, AI,
+ * privacy and about.
+ */
 export function SettingsScreen() {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
@@ -85,11 +89,8 @@ export function SettingsScreen() {
       <GeneralSettings />
       <NotificationSettings />
 
-      {HealthConnections ? (
-        <SettingsSection title="Health" testID="settings-health">
-          <HealthConnections />
-        </SettingsSection>
-      ) : null}
+      <HealthSection />
+      <CommunitySafetySection />
 
       <AiConsentSection />
       <DataPrivacySection />

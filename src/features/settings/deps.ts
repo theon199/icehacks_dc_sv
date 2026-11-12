@@ -1,14 +1,12 @@
 /**
  * What Settings uses from modules owned elsewhere: the shared user stores, the domain vocabulary
- * for the preference editors, account lifecycle calls from the auth feature and push categories
- * from the notifications feature.
+ * for the preference editors, account lifecycle calls from the auth feature, push categories
+ * from the notifications feature, the health connection card and the community safety links.
  *
  * Settings keeps no copy of user data of its own. Preferences, personal details and app settings
  * are read and written in the shared stores, which is what recommendations, safety filtering,
  * search and Chef read too, and which sync and sign-out already cover.
  */
-import type { ComponentType } from 'react';
-
 import {
   deleteMyAccount,
   identityFor,
@@ -125,7 +123,13 @@ export async function collectLocalData(): Promise<Record<string, unknown>> {
 // Health
 
 /**
- * The health feature's connections panel. Null until that feature exports one, which hides the
- * Health row in Settings entirely.
+ * The health feature's Apple Health connection card. Its public surface never loads the native
+ * module, so importing it here keeps Settings light.
  */
-export const HealthConnections: ComponentType | null = null;
+export { HealthConnections } from '@/features/health';
+
+// ---------------------------------------------------------------------------------------------
+// Community safety
+
+/** Links to the moderation feature's screens, and whether the review tools apply to this person. */
+export { blockedPeopleHref, reviewQueueHref, useIsModerator } from '@/features/moderation';
