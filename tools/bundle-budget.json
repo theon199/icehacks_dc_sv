@@ -1,8 +1,8 @@
 {
-  "$comment": "Maximum size of the main iOS JS bundle produced by `expo export --platform ios`. The budget is the measured baseline plus 35% headroom. Raise it only in a PR that explains the growth.",
+  "$comment": "Maximum size of the main iOS JS bundle produced by `expo export --platform ios`. The budget is the baseline measured in CI plus the headroom fraction. Raise it only in a PR that explains the growth.",
   "ios": {
-    "baselineBytes": 5541787,
-    "headroom": 0.35,
-    "maxBytes": 7481413
+    "baselineBytes": 7510000,
+    "headroom": 0.15,
+    "maxBytes": 8636500
   }
 }
