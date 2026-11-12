@@ -23,7 +23,12 @@ import { defineKvKey } from '../storage/kv';
 /** Must equal `meta.schema_version` of the bundled catalog. Bump together with docs/DATA.md. */
 export const CATALOG_SCHEMA_VERSION = 1;
 
-export type CatalogErrorKind = 'missing' | 'open_failed' | 'schema_mismatch' | 'query_failed';
+/**
+ * `query_failed`: SQLite could not prepare or run the statement. `bad_rows`: it ran, but the rows
+ * do not match this build's contract (a catalog/app mismatch, never caused by user input).
+ */
+export type CatalogErrorKind =
+  'missing' | 'open_failed' | 'schema_mismatch' | 'query_failed' | 'bad_rows';
 
 export class CatalogError extends Error {
   readonly kind: CatalogErrorKind;
@@ -139,7 +144,7 @@ export function resetCatalogForTests(): void {
 function validateRows<S extends z.ZodType>(rows: unknown[], schema: S): z.infer<S>[] {
   const parsed = z.array(schema).safeParse(rows);
   if (!parsed.success) {
-    throw new CatalogError('query_failed', 'Catalog rows did not match the expected shape.', {
+    throw new CatalogError('bad_rows', 'Catalog rows did not match the expected shape.', {
       cause: parsed.error,
     });
   }

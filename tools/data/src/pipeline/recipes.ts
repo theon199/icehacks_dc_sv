@@ -59,7 +59,10 @@ export interface ParsedLine {
   /** The line's ingredient wording, without the measure. */
   name: string;
   measure: Measure;
-  matched: MatchedLine;
+  /** Every known ingredient the line names, or null if unmatched. */
+  matched: IngredientDef[] | null;
+  /** Choices or items the line lists that name no known ingredient ("halva spread"). */
+  unresolved: string[];
   primary: IngredientDef | null;
   /** Ingredient whose weight and nutrients the line contributes (primary, or its preparedAs). */
   nutritionDef: IngredientDef | null;
@@ -135,6 +138,7 @@ function parseLine(source: SourceRecipe, index: number, ctx: RecipeContext, issu
     },
     measure,
     matched,
+    unresolved: match.unresolved,
     primary,
     nutritionDef,
     eatenGrams: grams,
@@ -307,6 +311,7 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
   }
   for (const line of lines) {
     if (line.matched === null) issues.push({ recipe_id: source.id, kind: 'unmatched_line', detail: line.row.text });
+    else if (line.unresolved.length > 0) issues.push({ recipe_id: source.id, kind: 'unresolved_choice', detail: `${line.row.text} [${line.unresolved.join(', ')}]` });
   }
   const stepRows = steps.map((text, i) => ({ position: i + 1, text, timer_seconds: detectTimerSeconds(text) }));
   let course = mapCourse(source.source, source.categories, source.title);
@@ -356,7 +361,8 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
 
   // Safety and goals. A dish named after a food that its ingredient list omits ("... pork
   // belly" with no pork line) still counts that food, so diet and allergen claims stay safe.
-  const matchedLines: MatchedLine[] = lines.map((l) => l.matched);
+  // A line that also lists an unidentified choice keeps its known ingredients but fails closed.
+  const matchedLines: MatchedLine[] = lines.map((l) => (l.matched !== null && l.unresolved.length > 0 ? { defs: l.matched, unresolved: l.unresolved } : l.matched));
   const titleExtras = titleIngredients(source.title, lines, ctx);
   if (titleExtras.length > 0) {
     matchedLines.push(titleExtras);
@@ -432,6 +438,7 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     steps: stepRows,
     tutorials: tutorials(source, ctx, issues),
     search_ingredients: searchNames,
+    partial_lines: lines.filter((l) => l.matched !== null && l.unresolved.length > 0).length,
   };
 }
 

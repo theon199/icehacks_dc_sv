@@ -109,6 +109,11 @@ interface SentVersion {
 
 type Timer = ReturnType<typeof setTimeout>;
 
+/** Whether a ledger entry still holds exactly the version that was sent. */
+function isSentVersion(entry: LedgerEntry, version: SentVersion): boolean {
+  return entry.u === version.u && entry.d === version.d && !!entry.x === version.deleted;
+}
+
 export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   const {
     userId,
@@ -139,6 +144,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   let retryAt = 0;
   let quotaBlocked = false;
   let status: SyncStatus = { phase: 'stopped', pending: 0, lastSyncedAt: null, lastError: null };
+  /** Collections whose ledger bucket changed since the last save. */
+  const dirty = new Set<string>();
 
   // ---------------------------------------------------------------------------------------------
   // Status and persistence
@@ -170,7 +177,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       saveTimer = null;
     }
     try {
-      storage.save(ledger);
+      storage.save(ledger, dirty);
+      dirty.clear();
     } catch (error) {
       logger.warn('Could not save the sync ledger', describeError(error));
     }
@@ -187,9 +195,19 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   // ---------------------------------------------------------------------------------------------
   // Versions
 
+  /** The ledger bucket of a collection, marked for saving: only call it to change entries. */
   function bucket(collection: string): Record<string, LedgerEntry> {
+    dirty.add(collection);
     ledger.docs[collection] ??= {};
     return ledger.docs[collection];
+  }
+
+  /**
+   * Whether local edits in a collection are versioned yet. A collection is tracked once a full
+   * pull has completed while this build knew it, so local defaults never overwrite account data.
+   */
+  function tracked(collection: string): boolean {
+    return ledger.bootstrapped && ledger.known.includes(collection);
   }
 
   /** A new local version, strictly later than the one this device last held or saw. */
@@ -223,7 +241,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   /** Compares a collection with the ledger and stamps whatever changed. Returns true on change. */
   function scanCollection(adapter: SyncCollectionAdapter): boolean {
     const docs = adapter.getDocs();
-    const entries = bucket(adapter.collection);
+    const entries = ledger.docs[adapter.collection] ?? {};
     let changed = false;
     for (const [docId, data] of docs) {
       const hash = fingerprint(data).hash;
@@ -237,6 +255,10 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       entries[docId] = withMeta({ ...stamp(entry), h: '', s: false, x: true }, entry);
       changed = true;
     }
+    if (changed) {
+      ledger.docs[adapter.collection] = entries;
+      dirty.add(adapter.collection);
+    }
     return changed;
   }
 
@@ -249,12 +271,14 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
 
   function scanAll(): boolean {
     let changed = false;
-    for (const adapter of adapters.values()) changed = scanCollection(adapter) || changed;
+    for (const adapter of adapters.values()) {
+      if (tracked(adapter.collection)) changed = scanCollection(adapter) || changed;
+    }
     return changed;
   }
 
   function onLocalChange(adapter: SyncCollectionAdapter): void {
-    if (!active || applyingRemote || !ledger.bootstrapped) return;
+    if (!active || applyingRemote || !tracked(adapter.collection)) return;
     if (!scanCollection(adapter)) return;
     quotaBlocked = false;
     scheduleSave();
@@ -300,7 +324,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     let restamped = false;
     for (const [collection, list] of byCollection) {
       const adapter = adapters.get(collection);
-      // Collections from a newer build are left on the server untouched.
+      // Collections from a newer build are left on the server untouched. The cursor still moves
+      // past them; a build that adds the collection sees it is new and runs a full pull.
       if (!adapter) continue;
       const entries = bucket(collection);
       const incoming: ServerDoc[] = [];
@@ -312,6 +337,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         if (entry && (localWins(entry, doc) || (entry.s && sameVersion(entry, doc)))) {
           entry.r = Math.max(entry.r ?? 0, doc.revision);
           if (epoch != null) entry.e = epoch;
+          // The server copy is now known and older, so the held local version can go out again.
+          if (entry.b === 'stale') delete entry.b;
           continue;
         }
         incoming.push(doc);
@@ -353,7 +380,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       }
       // Applying can change other documents too (a capped store drops its oldest), and change
       // tracking was paused meanwhile, so compare the whole collection once more.
-      if (ledger.bootstrapped && scanCollection(adapter)) restamped = true;
+      if (tracked(collection) && scanCollection(adapter)) restamped = true;
     }
     if (restamped) schedulePush();
   }
@@ -374,6 +401,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       // Only collections this build manages could have been refreshed by the pull.
       const adapter = adapters.get(collection);
       if (!adapter) continue;
+      dirty.add(collection);
       const deletes: string[] = [];
       for (const [docId, entry] of Object.entries(entries)) {
         if (!entry.s || entry.e === full.epoch) continue;
@@ -384,10 +412,11 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     }
     ledger.cursor = full.cursor;
     ledger.fullPull = null;
-    const firstTime = !ledger.bootstrapped;
+    const newlyTracked = [...adapters.values()].filter((adapter) => !tracked(adapter.collection));
     ledger.bootstrapped = true;
+    ledger.known = [...adapters.keys()];
     // Edits made before the account's data arrived are versioned only now, after the merge.
-    if (firstTime) scanAll();
+    for (const adapter of newlyTracked) scanCollection(adapter);
   }
 
   async function pullAll(): Promise<void> {
@@ -448,6 +477,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
           if (!current) continue;
           if (fingerprint(current).bytes > MAX_DOC_BYTES) {
             entry.b = 'too_large';
+            dirty.add(collection);
             logger.warn('Not syncing a document over the size limit', { collection, docId });
             continue;
           }
@@ -476,7 +506,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       const entry = ledger.docs[applied.collection]?.[applied.doc_id];
       if (!version || !entry) continue;
       // An edit made while the push was in flight stays in the outbox.
-      if (entry.u !== version.u || entry.d !== version.d || !!entry.x !== version.deleted) continue;
+      if (!isSentVersion(entry, version)) continue;
+      dirty.add(applied.collection);
       entry.s = true;
       entry.r = Math.max(entry.r ?? 0, applied.revision);
       if (epoch != null) entry.e = epoch;
@@ -484,8 +515,18 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
 
     const serverCopies: ServerDoc[] = [];
     for (const rejected of result.rejected) {
-      if (rejected.reason === 'future_timestamp' || !rejected.server) {
-        logger.warn('Sync push rejected', {
+      if (!rejected.server) {
+        // Sending the same version again cannot succeed, so hold it back rather than resend it on
+        // every drain. A future timestamp means this device's clock runs ahead; a rejection that
+        // lacks the server copy is settled by pulling that copy.
+        const version = sentByKey.get(`${rejected.collection}/${rejected.doc_id}`);
+        const entry = ledger.docs[rejected.collection]?.[rejected.doc_id];
+        if (version && entry && isSentVersion(entry, version)) {
+          entry.b = rejected.reason === 'future_timestamp' ? 'clock' : 'stale';
+          dirty.add(rejected.collection);
+        }
+        if (rejected.reason !== 'future_timestamp') wanted.pull = true;
+        logger.warn('Sync push rejected; holding the document back', {
           collection: rejected.collection,
           reason: rejected.reason,
         });
@@ -507,17 +548,21 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       result = await transport.push(docs);
     } catch (error) {
       if (!isSyncError(error) || error.kind !== 'invalid') throw error;
+      if (!active) return;
       if (docs.length > 1) {
         // Find the document the server refuses by halving the batch.
         const middle = Math.ceil(docs.length / 2);
         await pushBatch(docs.slice(0, middle), sent.slice(0, middle));
+        if (!active) return;
         await pushBatch(docs.slice(middle), sent.slice(middle));
         return;
       }
       const [version] = sent;
       const entry = version && ledger.docs[version.collection]?.[version.docId];
-      if (version && entry && entry.u === version.u) {
+      if (version && entry && isSentVersion(entry, version)) {
         entry.b = 'invalid';
+        dirty.add(version.collection);
+        scheduleSave();
         logger.error('The server refused a synced document', {
           collection: version.collection,
           message: error.message,
@@ -648,11 +693,38 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
 
   function pruneTombstones(): void {
     const cutoff = now() - TOMBSTONE_RETENTION_MS;
-    for (const entries of Object.values(ledger.docs)) {
+    for (const [collection, entries] of Object.entries(ledger.docs)) {
       for (const [docId, entry] of Object.entries(entries)) {
-        if (entry.x && entry.s && timestampMs(entry.u) < cutoff) delete entries[docId];
+        if (entry.x && entry.s && timestampMs(entry.u) < cutoff) {
+          delete entries[docId];
+          dirty.add(collection);
+        }
       }
     }
+  }
+
+  /** Gives documents held back for a passing reason (clock skew, missing server copy) a retry. */
+  function releaseHolds(): void {
+    for (const [collection, entries] of Object.entries(ledger.docs)) {
+      for (const entry of Object.values(entries)) {
+        if (entry.b === 'clock' || entry.b === 'stale') {
+          delete entry.b;
+          dirty.add(collection);
+        }
+      }
+    }
+  }
+
+  /**
+   * A collection this build syncs but the last full pull did not cover (an app update added it)
+   * can already have documents on the server that earlier pulls skipped, so pull everything again.
+   */
+  function checkNewCollections(): void {
+    if (!ledger.bootstrapped) return;
+    const added = [...adapters.keys()].filter((collection) => !ledger.known.includes(collection));
+    if (added.length === 0) return;
+    logger.info('New synced collections; starting a full pull', { collections: added.join(',') });
+    beginFullPull();
   }
 
   async function doStart(): Promise<void> {
@@ -662,6 +734,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     ledger = storage.load(userId) ?? freshLedger(userId);
     active = true;
     pruneTombstones();
+    releaseHolds();
+    checkNewCollections();
 
     for (const adapter of adapters.values()) {
       unsubscribers.push(adapter.subscribe(() => onLocalChange(adapter)));
@@ -692,7 +766,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       }),
     );
 
-    if (ledger.bootstrapped && scanAll()) scheduleSave();
+    scanAll();
+    if (dirty.size > 0) scheduleSave();
     publish({ phase: idlePhase() });
     void request({ pull: true, push: true });
   }
