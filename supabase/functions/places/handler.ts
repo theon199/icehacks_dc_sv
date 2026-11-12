@@ -21,7 +21,7 @@ import { enforceQuota, type QuotaPolicy } from "../_shared/quota.ts";
 import { callRpc } from "../_shared/rpc.ts";
 import { parseBody } from "../_shared/validate.ts";
 import { envInt, supabaseUsageGuards, type UsageGuards } from "../prices/usage.ts";
-import { geohashCenter, geohashEncode } from "./geo.ts";
+import { geohashCenter, geohashEncode, geohashHalfDiagonal } from "./geo.ts";
 import { searchText } from "./google.ts";
 import { type Confirmation, type Place, type RankedPlace, rankPlaces } from "./rank.ts";
 
@@ -29,6 +29,8 @@ export const CACHE_TTL_MS = 6 * 3_600_000;
 /** Geohash precision 6: cells of about 1.2 km × 0.6 km. */
 export const CELL_PRECISION = 6;
 const LEASE_TTL_SECONDS = 30;
+/** Largest circle ever searched: the 8 km band plus a precision-6 cell's half-diagonal. */
+const MAX_SEARCH_RADIUS_M = 9000;
 const WAIT_STEPS = 6;
 const WAIT_STEP_MS = 500;
 
@@ -114,6 +116,15 @@ export function searchKey(input: Pick<PlacesInput, "dish" | "lat" | "lng" | "rad
   const band = radiusBand(input.radius_m);
   const query = normalizeQuery(input.dish);
   return { cell, band, query, cacheKey: `v1:${cell}:${band}:${query}`.slice(0, 200) };
+}
+
+/**
+ * The circle searched for a cell: the radius band plus the distance from the cell centre to its
+ * corner, so a caller anywhere in the cell still has their whole band covered. Capped a little
+ * above the largest band.
+ */
+export function searchRadius(cell: string, band: number): number {
+  return Math.min(Math.round(band + geohashHalfDiagonal(cell)), MAX_SEARCH_RADIUS_M);
 }
 
 export function placesQuota(env: EnvReader): QuotaPolicy {
@@ -209,7 +220,7 @@ export function createPlacesHandler(deps: PlacesDeps): Handler {
       const places = await searchText({
         query: key.query,
         center,
-        radiusM: key.band,
+        radiusM: searchRadius(key.cell, key.band),
         apiKey,
         fetch: deps.fetch,
       });
@@ -237,10 +248,12 @@ export function createPlacesHandler(deps: PlacesDeps): Handler {
 // Production wiring
 // ---------------------------------------------------------------------------------------------
 
+/** How many members answered yes (or no) for a place. */
+const answerCount = z.number().int().gte(0);
 const summaryRows = z.array(z.object({
   place_id: z.string(),
-  yes_count: z.number().int().nonnegative(),
-  no_count: z.number().int().nonnegative(),
+  yes_count: answerCount,
+  no_count: answerCount,
   my_answer: z.boolean().nullable(),
 }));
 
@@ -275,8 +288,13 @@ export function supabasePlacesService(service: SupabaseClient): PlacesService {
         console.error("places cache read failed", error);
         return null;
       }
-      const parsed = cacheRowSchema.safeParse(data);
-      return parsed.success ? parsed.data : null;
+      if (data === null) return null;
+      const row = cacheRowSchema.safeParse(data);
+      if (!row.success) {
+        console.error("places cache row has an unexpected shape");
+        return null;
+      }
+      return row.data;
     },
     async writeCache(row) {
       const { error } = await service.from("places_cache").upsert(row, { onConflict: "cache_key" });

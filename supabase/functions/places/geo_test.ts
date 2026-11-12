@@ -1,5 +1,5 @@
 import { assert, assertAlmostEquals, assertEquals, assertThrows } from "@std/assert";
-import { distanceMeters, geohashCenter, geohashEncode } from "./geo.ts";
+import { distanceMeters, geohashCenter, geohashEncode, geohashHalfDiagonal } from "./geo.ts";
 
 Deno.test("geohashEncode matches the reference encoding", () => {
   assertEquals(geohashEncode(57.64911, 10.40744, 11), "u4pruydqqvj");
@@ -18,4 +18,15 @@ Deno.test("distanceMeters is a great-circle distance", () => {
   assertEquals(distanceMeters({ lat: 1, lng: 1 }, { lat: 1, lng: 1 }), 0);
   // One degree of latitude is about 111.2 km.
   assertAlmostEquals(distanceMeters({ lat: 0, lng: 0 }, { lat: 1, lng: 0 }), 111_195, 50);
+});
+
+Deno.test("geohashHalfDiagonal reaches every corner of the cell", () => {
+  const half = geohashHalfDiagonal("9q8yyk");
+  // A precision-6 cell at 37.8°N is about 0.96 km × 0.61 km.
+  assert(half > 500 && half < 700, String(half));
+  const center = geohashCenter("9q8yyk");
+  for (const [dLat, dLng] of [[-1, -1], [-1, 1], [1, -1], [1, 1]] as const) {
+    const corner = { lat: center.lat + dLat * 0.00274, lng: center.lng + dLng * 0.00549 };
+    assert(distanceMeters(center, corner) <= half + 1);
+  }
 });

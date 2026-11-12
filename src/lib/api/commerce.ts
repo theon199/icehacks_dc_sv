@@ -1,7 +1,8 @@
 /**
  * Typed wrappers for Famara's shopping and nearby edge functions: `prices`, `walmart` and
- * `places`. Inputs are validated before sending (a bad request never leaves the device) and
- * every response is parsed with zod by `callFunction`.
+ * `places`. Request shapes (ids, list sizes, ranges) are checked before sending and every
+ * response is parsed with zod by `callFunction`. Ingredient names are sent as the catalog spells
+ * them; the `prices` function tidies or skips names it cannot search for, one item at a time.
  */
 import { z } from 'zod';
 
@@ -9,6 +10,10 @@ import { type CallOptions, callFunction } from './client';
 
 const ingredientId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/);
 const nullableString = z.string().nullable();
+/** A whole number of things (entries, answers): never negative. */
+const tally = z.number().int().gte(0);
+/** Places one nearby search may return. */
+const nearbyResultCount = z.number().int().gte(1).lte(10);
 
 // -------------------------------------------------------------------------------------------------
 // prices
@@ -67,7 +72,7 @@ export type PricesNotice = z.infer<typeof pricesNoticeSchema>;
 export const pricesResponseSchema = z
   .object({
     prices: z.array(ingredientPriceSchema),
-    pending: z.number().int().nonnegative(),
+    pending: tally,
     retry_after_seconds: z.number().int().positive().nullable(),
     notice: pricesNoticeSchema.nullable(),
   })
@@ -206,7 +211,7 @@ export const nearbyRequestSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   radiusM: z.number().int().min(500).max(8000).optional(),
-  limit: z.number().int().min(1).max(10).optional(),
+  limit: nearbyResultCount.optional(),
 });
 export type NearbyRequest = z.input<typeof nearbyRequestSchema>;
 
@@ -223,8 +228,8 @@ export const nearbyPlaceSchema = z
     price_level: z.number().int().min(0).max(4).nullable(),
     open_now: z.boolean().nullable(),
     primary_type: nullableString,
-    yes_count: z.number().int().nonnegative(),
-    no_count: z.number().int().nonnegative(),
+    yes_count: tally,
+    no_count: tally,
     my_answer: z.boolean().nullable(),
     score: z.number(),
   })

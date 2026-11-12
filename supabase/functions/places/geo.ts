@@ -39,9 +39,16 @@ export function geohashEncode(lat: number, lng: number, precision: number): stri
   return hash;
 }
 
-/** The centre of a geohash cell. */
-export function geohashCenter(hash: string): { lat: number; lng: number } {
-  let latMin = -90, latMax = 90, lngMin = -180, lngMax = 180;
+interface CellBounds {
+  latMin: number;
+  latMax: number;
+  lngMin: number;
+  lngMax: number;
+}
+
+/** The latitude and longitude ranges a geohash covers. */
+function geohashBounds(hash: string): CellBounds {
+  const box: CellBounds = { latMin: -90, latMax: 90, lngMin: -180, lngMax: 180 };
   let evenBit = true;
   for (const char of hash) {
     const index = BASE32.indexOf(char);
@@ -49,18 +56,35 @@ export function geohashCenter(hash: string): { lat: number; lng: number } {
     for (let bit = 4; bit >= 0; bit--) {
       const on = ((index >> bit) & 1) === 1;
       if (evenBit) {
-        const mid = (lngMin + lngMax) / 2;
-        if (on) lngMin = mid;
-        else lngMax = mid;
+        const mid = (box.lngMin + box.lngMax) / 2;
+        if (on) box.lngMin = mid;
+        else box.lngMax = mid;
       } else {
-        const mid = (latMin + latMax) / 2;
-        if (on) latMin = mid;
-        else latMax = mid;
+        const mid = (box.latMin + box.latMax) / 2;
+        if (on) box.latMin = mid;
+        else box.latMax = mid;
       }
       evenBit = !evenBit;
     }
   }
-  return { lat: (latMin + latMax) / 2, lng: (lngMin + lngMax) / 2 };
+  return box;
+}
+
+/** The centre of a geohash cell. */
+export function geohashCenter(hash: string): { lat: number; lng: number } {
+  const box = geohashBounds(hash);
+  return { lat: (box.latMin + box.latMax) / 2, lng: (box.lngMin + box.lngMax) / 2 };
+}
+
+/**
+ * Metres from a cell's centre to its farthest corner (the corner nearer the equator, where a
+ * degree of longitude is widest).
+ */
+export function geohashHalfDiagonal(hash: string): number {
+  const box = geohashBounds(hash);
+  const center = geohashCenter(hash);
+  const nearEquator = Math.abs(box.latMin) < Math.abs(box.latMax) ? box.latMin : box.latMax;
+  return distanceMeters(center, { lat: nearEquator, lng: box.lngMax });
 }
 
 const EARTH_RADIUS_M = 6_371_000;

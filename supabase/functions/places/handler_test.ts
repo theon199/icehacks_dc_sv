@@ -11,7 +11,9 @@ import {
   type PlacesDeps,
   radiusBand,
   searchKey,
+  searchRadius,
 } from "./handler.ts";
+import { distanceMeters, geohashHalfDiagonal } from "./geo.ts";
 import type { Confirmation } from "./rank.ts";
 
 const NOW = Date.parse("2026-11-12T18:00:00Z");
@@ -139,7 +141,14 @@ Deno.test("a miss runs one minimal Text Search near the cell centre and caches i
   const body = await req.json();
   assertEquals(body.textQuery, "chana masala restaurant");
   assertEquals(body.pageSize, 10);
-  assertEquals(body.locationBias.circle.radius, 3000);
+  // The 3 km band plus the cell's half-diagonal, so the caller's own circle is covered.
+  const cell = searchKey(INPUT).cell;
+  assertEquals(body.locationBias.circle.radius, Math.round(3000 + geohashHalfDiagonal(cell)));
+  const centre = body.locationBias.circle.center;
+  assert(
+    distanceMeters({ lat: centre.latitude, lng: centre.longitude }, ORIGIN) + 3000 <=
+      body.locationBias.circle.radius,
+  );
   // Centred on the geohash cell, not the caller's exact position.
   const center = body.locationBias.circle.center;
   assert(center.latitude !== ORIGIN.lat || center.longitude !== ORIGIN.lng);
@@ -306,4 +315,9 @@ Deno.test("query normalisation and radius bands", () => {
   assertEquals(radiusBand(500), 1000);
   assertEquals(radiusBand(3001), 4000);
   assertEquals(radiusBand(8000), 8000);
+  const cell = searchKey(INPUT).cell;
+  assert(searchRadius(cell, 3000) > 3000 && searchRadius(cell, 3000) < 3800);
+  assertEquals(searchRadius(cell, 8000), Math.round(8000 + geohashHalfDiagonal(cell)));
+  // A coarse cell would overshoot; the circle stays capped.
+  assertEquals(searchRadius("9q8y", 8000), 9000);
 });
