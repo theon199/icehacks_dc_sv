@@ -29,6 +29,9 @@ npm run verify               # typecheck + lint + format check + tests
 Famara uses native modules (HealthKit, speech recognition, camera, maps, Liquid Glass tabs), so it
 runs in a **development build**, not Expo Go.
 
+First time on a Mac? [docs/TESTING_ON_MAC.md](docs/TESTING_ON_MAC.md) walks through Xcode, Supabase,
+the Simulator, installing on an iPhone, and a checklist of what to test.
+
 ```sh
 npx expo run:ios                                      # build and launch on a simulator (Mac only)
 npx expo start --dev-client                           # start the bundler for an installed dev build
