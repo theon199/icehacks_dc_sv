@@ -54,3 +54,22 @@ describe('weight', () => {
     expect(parseWeight('5', 'metric').ok).toBe(false);
   });
 });
+
+describe('US limits', () => {
+  it('names the same pound limits that the check applies', () => {
+    expect(parseWeight('881', 'us').ok).toBe(true);
+    expect(parseWeight('45', 'us').ok).toBe(true);
+    const refused = parseWeight('882', 'us');
+    expect(refused).toEqual({ ok: false, message: 'Enter a weight between 45 and 881 lb.' });
+    expect(parseWeight('44', 'us').ok).toBe(false);
+  });
+
+  it('names the same height limits that the check applies', () => {
+    expect(parseHeight({ primary: '8', secondary: '11' }, 'us').ok).toBe(true);
+    expect(parseHeight({ primary: '1', secondary: '8' }, 'us').ok).toBe(true);
+    expect(parseHeight({ primary: '9', secondary: '0' }, 'us')).toEqual({
+      ok: false,
+      message: 'Enter a height between 1 ft 8 in and 8 ft 11 in.',
+    });
+  });
+});

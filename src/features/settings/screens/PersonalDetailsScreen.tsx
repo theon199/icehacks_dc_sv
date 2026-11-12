@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { Button, Card, Screen, Skeleton, Text, TextField, space, toast } from '@/ui';
 
@@ -101,11 +101,21 @@ export function PersonalDetailsScreen() {
     );
   };
 
-  const clear = () => {
+  const wipe = () => {
     setErrors({});
     setForm({ height: { primary: '', secondary: '' }, weight: '', sex: null, activity: null });
     void persist(EMPTY_PERSONAL_DETAILS, 'Details removed.');
   };
+
+  const confirmWipe = () =>
+    Alert.alert(
+      'Remove your details?',
+      'Your height, weight, sex and activity level will be deleted from this device. Targets go back to general estimates.',
+      [
+        { text: 'Keep them', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: wipe },
+      ],
+    );
 
   const metric = units === 'metric';
   return (
@@ -192,7 +202,7 @@ export function PersonalDetailsScreen() {
         variant="ghost"
         icon="trash"
         disabled={saving}
-        onPress={clear}
+        onPress={confirmWipe}
         style={styles.clear}
       />
     </Screen>

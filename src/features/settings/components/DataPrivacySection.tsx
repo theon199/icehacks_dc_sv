@@ -22,10 +22,10 @@ export function DataPrivacySection() {
         title="Export my data"
         icon="square.and.arrow.up"
         divider
-        onPress={() => void run()}
+        // While an export runs the row has no press handler, so it cannot start a second one.
         {...(exporting
           ? { accessory: <ActivityIndicator color={theme.colors.primary} />, value: 'Preparing' }
-          : {})}
+          : { onPress: () => void run() })}
       />
       <ListRow
         title="Privacy policy"

@@ -5,6 +5,8 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
+import { describeError, logger } from '@/lib/logger';
+
 import { collectLocalData } from '../deps';
 import { AccountError, fetchServerExport } from './accountApi';
 
@@ -39,7 +41,7 @@ export function exportFileName(now: Date): string {
 
 /**
  * Builds the export, writes it to the cache directory and opens the share sheet. Resolves once the
- * sheet closes. The file stays in the cache, which the system may clear at any time.
+ * sheet closes, after the file has been deleted again.
  */
 export async function exportMyData(now: Date = new Date()): Promise<void> {
   if (!(await Sharing.isAvailableAsync())) {
@@ -50,9 +52,22 @@ export async function exportMyData(now: Date = new Date()): Promise<void> {
   const file = new File(Paths.cache, exportFileName(now));
   file.create({ overwrite: true });
   file.write(JSON.stringify(bundle, null, 2));
-  await Sharing.shareAsync(file.uri, {
-    mimeType: 'application/json',
-    UTI: 'public.json',
-    dialogTitle: 'Export your Famara data',
-  });
+  try {
+    await Sharing.shareAsync(file.uri, {
+      mimeType: 'application/json',
+      UTI: 'public.json',
+      dialogTitle: 'Export your Famara data',
+    });
+  } finally {
+    discard(file);
+  }
+}
+
+/** The export holds the Keychain-protected personal details, so it must not outlive the share. */
+function discard(file: File): void {
+  try {
+    if (file.exists) file.delete();
+  } catch (error) {
+    logger.warn('Could not remove the export file', describeError(error));
+  }
 }

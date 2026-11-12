@@ -6,13 +6,19 @@ import { resetSettingsDepsForTests, updatePreferences } from '../deps';
 import { AccountError } from './accountApi';
 import { buildExportBundle, exportFileName, exportMyData } from './exportData';
 
-const mockFiles: { name: string; content: string | null; created: boolean }[] = [];
+interface MockFile {
+  name: string;
+  content: string | null;
+  created: boolean;
+  deleted: boolean;
+}
+const mockFiles: MockFile[] = [];
 jest.mock('expo-file-system', () => ({
   Paths: { cache: { uri: 'file:///cache/' } },
   File: class {
-    record: { name: string; content: string | null; created: boolean };
+    record: MockFile;
     constructor(_dir: unknown, name: string) {
-      this.record = { name, content: null, created: false };
+      this.record = { name, content: null, created: false, deleted: false };
       mockFiles.push(this.record);
     }
     get uri() {
@@ -23,6 +29,12 @@ jest.mock('expo-file-system', () => ({
     }
     write(content: string) {
       this.record.content = content;
+    }
+    get exists() {
+      return this.record.created && !this.record.deleted;
+    }
+    delete() {
+      this.record.deleted = true;
     }
   },
 }));
@@ -76,6 +88,16 @@ describe('exportMyData', () => {
       'file:///cache/famara-data-2026-11-11.json',
       expect.objectContaining({ mimeType: 'application/json', UTI: 'public.json' }),
     );
+  });
+
+  it('deletes the file once the share sheet closes, even if sharing fails', async () => {
+    mockRpc.mockResolvedValue({ data: {}, error: null });
+    await exportMyData(now);
+    expect(mockFiles[0]?.deleted).toBe(true);
+
+    jest.mocked(Sharing.shareAsync).mockRejectedValue(new Error('dismissed'));
+    await expect(exportMyData(now)).rejects.toThrow('dismissed');
+    expect(mockFiles[1]?.deleted).toBe(true);
   });
 
   it('fails with a readable message when the server export fails', async () => {

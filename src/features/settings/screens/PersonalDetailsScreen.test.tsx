@@ -1,5 +1,6 @@
-import { screen, userEvent } from '@testing-library/react-native';
+import { act, screen, userEvent, waitFor } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
+import { Alert, type AlertButton } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import { renderWithTheme } from '@/test/render';
@@ -56,5 +57,22 @@ describe('PersonalDetailsScreen', () => {
 
     expect(screen.getByText('Enter a weight between 20 and 400 kg.')).toBeOnTheScreen();
     expect(await SecureStore.getItemAsync('famara.personal-details.user-1')).toBeNull();
+  });
+
+  it('asks before removing saved details', async () => {
+    const stored = { heightCm: 170, weightKg: 70, sex: null, activity: null };
+    await SecureStore.setItemAsync('famara.personal-details.user-1', JSON.stringify(stored));
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    await renderWithTheme(<PersonalDetailsScreen />);
+    await user.press(await screen.findByTestId('personal-details-clear'));
+
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(await loadPersonalDetails()).toEqual(stored);
+
+    const buttons = alert.mock.calls[0]?.[2] as AlertButton[];
+    await act(async () => buttons.find((button) => button.text === 'Remove')?.onPress?.());
+    await waitFor(async () => expect((await loadPersonalDetails()).heightCm).toBeNull());
+    alert.mockRestore();
   });
 });

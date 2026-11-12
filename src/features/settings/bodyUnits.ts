@@ -26,6 +26,21 @@ function parseNumber(text: string): number | null {
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
+/**
+ * The whole-unit US limits that sit inside the metric ranges, so the message never names a value
+ * the check would refuse or leaves out one it would accept.
+ */
+const US_HEIGHT_INCHES = {
+  min: Math.ceil(HEIGHT_RANGE_CM.min / CM_PER_INCH),
+  max: Math.floor(HEIGHT_RANGE_CM.max / CM_PER_INCH),
+};
+const US_WEIGHT_POUNDS = {
+  min: Math.ceil(WEIGHT_RANGE_KG.min / KG_PER_POUND),
+  max: Math.floor(WEIGHT_RANGE_KG.max / KG_PER_POUND),
+};
+
+const feetAndInches = (inches: number) => `${Math.floor(inches / 12)} ft ${inches % 12} in`;
+
 export function heightToInput(cm: number | null, units: Units): HeightInput {
   if (cm == null) return { primary: '', secondary: '' };
   if (units === 'metric') return { primary: String(Math.round(cm)), secondary: '' };
@@ -56,7 +71,7 @@ export function parseHeight(input: HeightInput, units: Units): ParseResult {
       message:
         units === 'metric'
           ? `Enter a height between ${HEIGHT_RANGE_CM.min} and ${HEIGHT_RANGE_CM.max} cm.`
-          : 'Enter a height between 1 ft 8 in and 8 ft 11 in.',
+          : `Enter a height between ${feetAndInches(US_HEIGHT_INCHES.min)} and ${feetAndInches(US_HEIGHT_INCHES.max)}.`,
     };
   }
   return { ok: true, value: round1(cm) };
@@ -79,7 +94,7 @@ export function parseWeight(text: string, units: Units): ParseResult {
       message:
         units === 'metric'
           ? `Enter a weight between ${WEIGHT_RANGE_KG.min} and ${WEIGHT_RANGE_KG.max} kg.`
-          : 'Enter a weight between 45 and 880 lb.',
+          : `Enter a weight between ${US_WEIGHT_POUNDS.min} and ${US_WEIGHT_POUNDS.max} lb.`,
     };
   }
   return { ok: true, value: round1(kg) };
