@@ -154,6 +154,56 @@ describe('autoFillWeek', () => {
     expect(result.assignments).toHaveLength(20);
   });
 
+  it('counts hand-placed recipes outside the candidates toward cuisine variety when told', () => {
+    const cands = [
+      candidate('it1', { cuisine: 'italian', score: 0.9 }),
+      candidate('mx1', { cuisine: 'mexican', score: 0.1 }),
+    ];
+    const plan: WeekPlan = {
+      weekStart: WEEK,
+      cells: {
+        [cellKey(0, 'dinner')]: { recipeId: 'handA', servings: 2, portion: 1 },
+        [cellKey(1, 'dinner')]: { recipeId: 'handB', servings: 2, portion: 1 },
+      },
+      updatedAt: null,
+    };
+    const base = {
+      weekStart: WEEK,
+      candidates: cands,
+      servings: 2,
+      plan,
+      slots: ['dinner' as const],
+    };
+    const unknown = autoFillWeek({ ...base, days: [2] });
+    expect(unknown.assignments[0]?.meal.recipeId).toBe('it1');
+    const known = autoFillWeek({
+      ...base,
+      days: [2],
+      plannedCuisines: { handA: 'italian', handB: 'italian' },
+    });
+    expect(known.assignments[0]?.meal.recipeId).toBe('mx1');
+    expect(known.relaxed).toEqual([]);
+  });
+
+  it('breaks ties on adjusted score by recommender score, then id', () => {
+    // 'b' has the lower raw score but a goal bonus that brings it level with 'a'.
+    const cands = [
+      candidate('b', { score: 0.4, goal_tags: ['high_protein'] }),
+      candidate('a', { score: 0.5 }),
+      candidate('c', { score: 0.5 }),
+    ];
+    const result = autoFillWeek({
+      weekStart: WEEK,
+      candidates: cands,
+      servings: 1,
+      slots: ['dinner'],
+      days: [0, 1],
+      goals: ['high_protein'],
+      weights: { goalPerMatch: 0.1 },
+    });
+    expect(result.assignments.map((a) => a.meal.recipeId)).toEqual(['a', 'c']);
+  });
+
   it('only fills the requested days', () => {
     const result = autoFillWeek({
       weekStart: WEEK,

@@ -1,7 +1,9 @@
 /**
  * "Plan my week": fill empty planner cells from a ranked list of candidate recipes.
  *
- * The caller passes candidates already scored by the recommender. This module only arranges them:
+ * The caller passes candidates already scored by the recommender and already filtered for the
+ * person's allergens and diet (fail-closed: unknown allergen data must be excluded upstream). This
+ * module never checks safety; it only arranges what it is given:
  * it walks the week day by day, slot by slot, and for each empty cell takes the best eligible
  * candidate by an adjusted score. Hard rules:
  * - the recipe's course must suit the slot;
@@ -18,7 +20,11 @@
  *   + reuse bonus (share of its ingredients already bought for earlier meals this week)
  *   + gentle bonus in small appetite mode
  *   − penalty when the total time is unknown.
- * Ties break on recipe id, so the same input always gives the same week.
+ * Ties on adjusted score break on the recommender score (higher first), then on recipe id, so the
+ * same input always gives the same week.
+ *
+ * Cells already planned count toward the cuisine rule only when their cuisine is known: either the
+ * recipe is among the candidates or its cuisine is given in `plannedCuisines`.
  */
 import { DAY_INDICES, type DayIndex, type IsoDate } from './dates';
 import type { FillAssignment } from './reducer';
@@ -84,6 +90,11 @@ export interface AutoFillInput {
   readonly servings: number;
   readonly smallAppetite?: boolean | undefined;
   readonly weights?: Partial<FillWeights> | undefined;
+  /**
+   * Cuisine of recipes already in `plan` that are not among the candidates (for example ones the
+   * person placed by hand), so they still count toward cuisine variety.
+   */
+  readonly plannedCuisines?: Readonly<Record<string, string>> | undefined;
 }
 
 export type FillReason = 'goal' | 'pantry' | 'quick' | 'gentle';
@@ -156,10 +167,12 @@ export function autoFillWeek(input: AutoFillInput): AutoFillResult {
 
   const remember = (day: DayIndex, c: FillCandidate | undefined, recipeId: string) => {
     used.add(recipeId);
-    if (!c) return;
-    const m = cuisineByDay[day];
-    m?.set(c.cuisine, (m.get(c.cuisine) ?? 0) + 1);
-    for (const id of c.ingredientIds) bought.add(id);
+    const cuisine = c?.cuisine ?? input.plannedCuisines?.[recipeId];
+    if (cuisine !== undefined) {
+      const m = cuisineByDay[day];
+      m?.set(cuisine, (m.get(cuisine) ?? 0) + 1);
+    }
+    for (const id of c?.ingredientIds ?? []) bought.add(id);
   };
   for (const key of Object.keys(cells) as CellKey[]) {
     const meal = cells[key];
@@ -211,7 +224,8 @@ export function autoFillWeek(input: AutoFillInput): AutoFillResult {
         let best: { c: FillCandidate; score: number; reasons: FillReason[] } | null = null;
         for (const c of pool) {
           const e = evaluate(c);
-          // Candidates are pre-sorted by id within equal scores, so `>` keeps the first on ties.
+          // The pool is pre-sorted by recommender score, then id, so `>` keeps the earlier one
+          // when adjusted scores tie: higher raw score first, then the smaller id.
           if (best === null || e.score > best.score + 1e-12) best = { c, ...e };
         }
         return best;
