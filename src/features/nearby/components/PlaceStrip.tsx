@@ -1,11 +1,5 @@
 import { memo, useCallback, useEffect, useRef } from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { ScrollView, StyleSheet, View, type ScrollViewProps } from 'react-native';
 
 import { gutter } from '@/ui';
 
@@ -30,55 +24,54 @@ export interface PlaceStripProps {
   onOpen: (id: string) => void;
 }
 
+type MomentumEnd = NonNullable<ScrollViewProps['onMomentumScrollEnd']>;
+
 /**
  * Horizontally paged cards under the map. A search returns at most ten places, so a snapping
  * ScrollView of memoised cards is enough; a recycling list would only add measuring work here.
  */
 function PlaceStripView({ places, selection, cardWidth, onSettle, onOpen }: PlaceStripProps) {
-  const scrollRef = useRef<ScrollView>(null);
-  const interval = slotWidth(cardWidth, CARD_GAP);
-
+  const pager = useRef<ScrollView>(null);
   const { selectedId, revision } = selection;
-  const follow = stripShouldFollow(selection);
-  useEffect(() => {
-    if (!follow || !selectedId) return;
-    const index = places.findIndex((p) => p.id === selectedId);
-    if (index < 0) return;
-    scrollRef.current?.scrollTo({ x: offsetForIndex(index, cardWidth, CARD_GAP), animated: true });
-    // `revision` re-runs this when the same marker is tapped again after a swipe.
-  }, [follow, selectedId, revision, places, cardWidth]);
 
-  const handleSettle = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const index = indexAtOffset(
-        event.nativeEvent.contentOffset.x,
-        cardWidth,
-        CARD_GAP,
-        places.length,
-      );
-      const place = places[index];
-      if (place) onSettle(place.id);
+  // Follow on the selected card's position, not on the `places` array: a tally update rebuilds
+  // the array without moving any card, and must not scroll the strip.
+  const followIndex = stripShouldFollow(selection)
+    ? places.findIndex((p) => p.id === selectedId)
+    : -1;
+  useEffect(() => {
+    if (followIndex < 0) return;
+    const x = offsetForIndex(followIndex, cardWidth, CARD_GAP);
+    pager.current?.scrollTo({ x, animated: true });
+    // `revision` re-runs this when the same marker is tapped again after a swipe.
+  }, [followIndex, revision, cardWidth]);
+
+  const settle = useCallback<MomentumEnd>(
+    ({ nativeEvent }) => {
+      const at = indexAtOffset(nativeEvent.contentOffset.x, cardWidth, CARD_GAP, places.length);
+      const landed = places[at];
+      if (landed) onSettle(landed.id);
     },
     [cardWidth, places, onSettle],
   );
 
   return (
     <ScrollView
-      ref={scrollRef}
+      ref={pager}
       horizontal
       showsHorizontalScrollIndicator={false}
       decelerationRate="fast"
-      snapToInterval={interval}
+      snapToInterval={slotWidth(cardWidth, CARD_GAP)}
       snapToAlignment="start"
       disableIntervalMomentum
       contentContainerStyle={styles.content}
-      onMomentumScrollEnd={handleSettle}
+      onMomentumScrollEnd={settle}
       accessibilityRole="list"
-      accessibilityLabel="Nearby places"
+      accessibilityLabel="Restaurants on the map"
       testID="nearby-strip"
     >
       {places.map((place, index) => (
-        <View key={place.id} style={index > 0 ? styles.gap : null}>
+        <View key={place.id} style={index === 0 ? null : styles.spaced}>
           <PlaceCard
             place={place}
             selected={place.id === selectedId}
@@ -95,5 +88,5 @@ export const PlaceStrip = memo(PlaceStripView);
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: gutter, paddingVertical: 8 },
-  gap: { marginLeft: CARD_GAP },
+  spaced: { marginLeft: CARD_GAP },
 });

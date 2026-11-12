@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import type { ComponentType, ReactNode } from 'react';
 
 import { useSessionStore } from '@/features/auth';
@@ -172,6 +172,38 @@ describe('NearbyResults', () => {
       expect(screen.getAllByText('1 of 1 member found it here').length).toBeGreaterThan(0),
     );
     expect(screen.queryByTestId('nearby-confirm-no')).toBeNull();
+  });
+
+  it('leaves the camera where the person put it after an answer updates the tally', async () => {
+    mockRpc.mockResolvedValue({
+      data: { place_id: 'b', dish_key: 'pad_thai', yes_count: 1, no_count: 0, my_answer: true },
+      error: null,
+    });
+    await renderResults();
+    await screen.findByText('Basil House');
+    await waitFor(() => expect(mockAnimateToRegion).toHaveBeenCalled());
+    mockAnimateToRegion.mockClear();
+
+    await fireEvent.press(screen.getByTestId('nearby-marker-b'));
+    await fireEvent.press(screen.getByTestId('nearby-card-b'));
+    mockAnimateCamera.mockClear();
+    await fireEvent.press(await screen.findByTestId('nearby-confirm-yes'));
+    await waitFor(() =>
+      expect(screen.getAllByText('1 of 1 member found it here').length).toBeGreaterThan(0),
+    );
+
+    expect(mockAnimateToRegion).not.toHaveBeenCalled();
+    expect(mockAnimateCamera).not.toHaveBeenCalled();
+  });
+
+  it('reads the place facts in the sheet as one spoken phrase', async () => {
+    await renderResults();
+    await fireEvent.press(await screen.findByTestId('nearby-card-a'));
+    const facts = within(await screen.findByTestId('nearby-sheet')).getByTestId(
+      'nearby-place-facts',
+    );
+    expect(facts.props.accessible).toBe(true);
+    expect(facts.props.accessibilityLabel).toContain('Price level 2 of 4');
   });
 
   it('lets the person answer again when the server rejects the answer', async () => {

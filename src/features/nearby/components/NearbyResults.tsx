@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { deviceLocale } from '@/lib/format';
 import { Button, EmptyState, ErrorState, Screen, Skeleton, SkeletonGroup, gutter } from '@/ui';
 
 import { AreaBar } from './AreaBar';
@@ -9,9 +10,10 @@ import { NearbyMap } from './NearbyMap';
 import { PlaceSheet } from './PlaceSheet';
 import { PlaceStrip } from './PlaceStrip';
 import type { NearbyLocation } from '../hooks/useNearbyLocation';
-import { useNearbyPlaces } from '../hooks/useNearbyPlaces';
+import { SEARCH_RADIUS_M, useNearbyPlaces, type NearbyResultKind } from '../hooks/useNearbyPlaces';
 import { usePlaceSelection } from '../hooks/usePlaceSelection';
 import type { NearbyDish } from '../model/dish';
+import { distanceUnitFor, formatDistance } from '../model/geo';
 import type { NearbyOrigin } from '../model/permission';
 
 export interface NearbyResultsProps {
@@ -22,119 +24,139 @@ export interface NearbyResultsProps {
 
 /** Height reserved for the card strip over the map. */
 const STRIP_HEIGHT = 140;
-const CARD_PEEK = 36;
-const MAX_CARD_WIDTH = 340;
+/** How much of the next card stays visible, hinting that the strip scrolls. */
+const NEXT_CARD_VISIBLE = 36;
+const WIDEST_CARD = 340;
 
-/** The map, card strip and place sheet for one dish around one origin. */
-export function NearbyResults({ dish, origin, location }: NearbyResultsProps) {
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const cardWidth = Math.min(MAX_CARD_WIDTH, width - gutter * 2 - CARD_PEEK);
-  const places = useNearbyPlaces(dish, origin);
-  const list = useMemo(() => places.result?.places ?? [], [places.result]);
-  const ids = useMemo(() => list.map((p) => p.id), [list]);
-  const { selection, selectFromMap, selectFromStrip } = usePlaceSelection(ids);
-  const [openId, setOpenId] = useState<string | null>(null);
+/** Card width for a screen width: as wide as fits while still showing part of the next card. */
+function cardWidthFor(screenWidth: number): number {
+  return Math.min(WIDEST_CARD, screenWidth - gutter * 2 - NEXT_CARD_VISIBLE);
+}
 
-  const openPlace = useCallback(
-    (id: string) => {
-      selectFromStrip(id);
-      setOpenId(id);
-    },
-    [selectFromStrip],
-  );
-  const closeSheet = useCallback(() => setOpenId(null), []);
-  const padding = useMemo(
-    () => ({ top: 64, right: 0, bottom: STRIP_HEIGHT + insets.bottom, left: 0 }),
-    [insets.bottom],
-  );
-
-  const changeArea = location.chooseCity;
-  const kind = places.result?.kind;
-
-  if (places.isError && !places.result) {
-    return (
-      <Screen>
-        <ErrorState
-          error={places.error}
-          title="Couldn't search nearby"
-          onRetry={() => void places.refetch()}
-        />
-        <Button label="Search another area" variant="ghost" onPress={changeArea} />
-      </Screen>
-    );
-  }
-
-  if (kind === 'notConfigured' || kind === 'budget') {
-    return (
-      <Screen>
-        <EmptyState
-          icon="map"
-          title="Nearby search is resting"
-          message={
-            kind === 'budget'
-              ? "We've reached this month's search limit. Please try again in a few days."
-              : "Restaurant search isn't available right now. Please check back later."
-          }
-        />
-      </Screen>
-    );
-  }
-
+/** Full-screen notices for searches that produced no map: nothing found, or search unavailable. */
+function NoMap({
+  kind,
+  dishName,
+  onChangeArea,
+}: {
+  kind: Exclude<NearbyResultKind, 'places'>;
+  dishName: string;
+  onChangeArea: () => void;
+}) {
   if (kind === 'empty') {
+    const radius = formatDistance(SEARCH_RADIUS_M, distanceUnitFor(deviceLocale()));
     return (
       <Screen>
         <EmptyState
           icon="fork.knife"
-          title={`No ${dish.name} found nearby`}
-          message="We looked within about 5 km. Try another area, or cook a healthier version at home."
+          title={`No ${dishName} found nearby`}
+          message={`We looked within about ${radius}. Try another area, or cook a healthier version at home.`}
           actionLabel="Search another area"
-          onAction={changeArea}
+          onAction={onChangeArea}
         />
       </Screen>
     );
   }
+  return (
+    <Screen>
+      <EmptyState
+        icon="map"
+        title="Nearby search is resting"
+        message={
+          kind === 'budget'
+            ? "We've reached this month's search limit. Please try again in a few days."
+            : "Restaurant search isn't available right now. Please check back later."
+        }
+      />
+    </Screen>
+  );
+}
 
-  const selected = list.find((p) => p.id === openId) ?? null;
+/** The map, card strip and place sheet for one dish around one origin. */
+export function NearbyResults({ dish, origin, location }: NearbyResultsProps) {
+  const safeArea = useSafeAreaInsets();
+  const cardWidth = cardWidthFor(useWindowDimensions().width);
+  const search = useNearbyPlaces(dish, origin);
+  const { result } = search;
+
+  const places = useMemo(() => result?.places ?? [], [result]);
+  const placeIds = useMemo(() => places.map((p) => p.id), [places]);
+  const { selection, selectFromMap, selectFromStrip } = usePlaceSelection(placeIds);
+
+  // The sheet shows whichever place was last opened from the strip; null keeps it closed.
+  const [sheetFor, setSheetFor] = useState<string | null>(null);
+  const showSheet = useCallback(
+    (id: string) => {
+      selectFromStrip(id);
+      setSheetFor(id);
+    },
+    [selectFromStrip],
+  );
+  const hideSheet = useCallback(() => setSheetFor(null), []);
+
+  const stripBottom = STRIP_HEIGHT + safeArea.bottom;
+  const mapPadding = useMemo(
+    () => ({ top: 64, right: 0, bottom: stripBottom, left: 0 }),
+    [stripBottom],
+  );
+
+  if (search.isError && !result) {
+    return (
+      <Screen>
+        <ErrorState
+          error={search.error}
+          title="Couldn't search nearby"
+          onRetry={() => void search.refetch()}
+        />
+        <Button label="Search another area" variant="ghost" onPress={location.chooseCity} />
+      </Screen>
+    );
+  }
+
+  if (result && result.kind !== 'places') {
+    return <NoMap kind={result.kind} dishName={dish.name} onChangeArea={location.chooseCity} />;
+  }
+
+  const sheetPlace = sheetFor === null ? null : (places.find((p) => p.id === sheetFor) ?? null);
 
   return (
-    <View style={styles.root}>
+    <View style={styles.fill}>
       <NearbyMap
         origin={origin}
-        places={list}
+        places={places}
         selection={selection}
         onSelect={selectFromMap}
-        padding={padding}
+        padding={mapPadding}
       />
-      <AreaBar origin={origin} onChange={changeArea} />
-      <View style={[styles.strip, { paddingBottom: insets.bottom + 8 }]}>
-        {places.result ? (
+      <AreaBar origin={origin} onChange={location.chooseCity} />
+      <View style={[styles.dock, { paddingBottom: safeArea.bottom + 8 }]}>
+        {result ? (
           <PlaceStrip
-            places={list}
+            places={places}
             selection={selection}
             cardWidth={cardWidth}
             onSettle={selectFromStrip}
-            onOpen={openPlace}
+            onOpen={showSheet}
           />
         ) : (
-          <SkeletonGroup label="Finding places" style={styles.loading}>
+          <SkeletonGroup label="Finding places" style={styles.placeholder}>
             <Skeleton width={cardWidth} height={112} radius="lg" />
           </SkeletonGroup>
         )}
       </View>
       <PlaceSheet
         dish={dish}
-        place={selected}
-        places={list}
-        bucket={places.bucket}
-        onClose={closeSheet}
+        place={sheetPlace}
+        places={places}
+        bucket={search.bucket}
+        onClose={hideSheet}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  strip: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  loading: { paddingHorizontal: gutter, paddingVertical: 8 },
+  fill: { flex: 1 },
+  dock: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  placeholder: { paddingHorizontal: gutter, paddingVertical: 8 },
 });

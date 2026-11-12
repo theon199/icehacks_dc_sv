@@ -10,7 +10,7 @@ import { toast } from '@/ui';
 import { ConfirmDishError, confirmDish } from '../api/confirmDish';
 import { selectConfirmationLog, useConfirmationStore } from '../confirmationStore';
 import { useViewerId } from '../deps';
-import { getPlaceTally, setPlaceTally } from './useNearbyPlaces';
+import { getPlaceTally, nearbyKeys, setPlaceTally } from './useNearbyPlaces';
 import {
   applyAnswer,
   confirmationKey,
@@ -54,7 +54,9 @@ export function useConfirmDish(
 
   const mutation = useMutation<Tally, Error, Variables, Context>({
     mutationFn: (vars) => confirmDish({ placeId: vars.placeId, dishKey, hadIt: vars.hadIt }),
-    onMutate: (vars) => {
+    onMutate: async (vars) => {
+      // A search still in flight would land after the optimistic tally and overwrite it.
+      await client.cancelQueries({ queryKey: nearbyKeys.placesFor(dishKey) });
       const previous = getPlaceTally(client, dishKey, vars.placeId);
       if (previous) setPlaceTally(client, dishKey, vars.placeId, applyAnswer(previous, vars.hadIt));
       return { previous };

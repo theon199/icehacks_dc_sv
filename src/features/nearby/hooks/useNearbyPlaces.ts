@@ -19,14 +19,17 @@ import { toPlaceView, type PlaceView } from '../model/placeView';
 
 export const PLACES_STALE_MS = 20 * 60_000;
 const PLACES_GC_MS = 60 * 60_000;
-const SEARCH_RADIUS_M = 5000;
+/** How far around the origin a search looks. */
+export const SEARCH_RADIUS_M = 5000;
 const RESULT_LIMIT = 10;
 
 export const nearbyKeys = {
   all: ['nearby'] as const,
+  /** Every cached search for a dish, whatever the bucket. */
+  placesFor: (dishKey: string) => ['nearby', 'places', dishKey] as const,
   places: (dishKey: string, bucket: string) => ['nearby', 'places', dishKey, bucket] as const,
-  tips: (dishKey: string, bucket: string, placeIds: string) =>
-    ['nearby', 'tips', dishKey, bucket, placeIds] as const,
+  tips: (dishKey: string, bucket: string, placeIds: string, profile: string) =>
+    ['nearby', 'tips', dishKey, bucket, placeIds, profile] as const,
 };
 
 export type NearbyResultKind = 'places' | 'empty' | 'notConfigured' | 'budget';
@@ -78,7 +81,9 @@ export function useNearbyPlaces(dish: NearbyDish | null, origin: NearbyOrigin | 
     };
   }, [query.data, point, bucket]);
 
-  return { ...query, result, bucket };
+  // Only the fields the screen reads, so react-query re-renders for changes to those alone.
+  const { isError, error, refetch } = query;
+  return { result, bucket, isError, error, refetch };
 }
 
 /** Writes a place's new tally into every cached search for the dish. */
@@ -88,7 +93,7 @@ export function setPlaceTally(
   placeId: string,
   tally: Tally,
 ): void {
-  client.setQueriesData<NearbyResponse>({ queryKey: ['nearby', 'places', dishKey] }, (data) => {
+  client.setQueriesData<NearbyResponse>({ queryKey: nearbyKeys.placesFor(dishKey) }, (data) => {
     if (!data) return data;
     let changed = false;
     const places = data.places.map((place) => {
@@ -103,7 +108,7 @@ export function setPlaceTally(
 /** The cached tally for a place, from whichever search holds it. */
 export function getPlaceTally(client: QueryClient, dishKey: string, placeId: string): Tally | null {
   for (const [, data] of client.getQueriesData<NearbyResponse>({
-    queryKey: ['nearby', 'places', dishKey],
+    queryKey: nearbyKeys.placesFor(dishKey),
   })) {
     const place = data?.places.find((p) => p.id === placeId);
     if (place) {

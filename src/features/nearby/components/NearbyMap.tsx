@@ -25,29 +25,34 @@ function NearbyMapView({ origin, places, selection, onSelect, padding }: NearbyM
   const theme = useTheme();
   const mapRef = useRef<MapView>(null);
 
+  // Framing depends only on coordinates. Tally updates rebuild `places` with the same points, so
+  // keying the region on its numbers keeps those updates from pulling the camera back out.
+  const frame = regionFor(
+    origin.point,
+    places.map((p) => p.point),
+  );
+  const { latitude, longitude, latitudeDelta, longitudeDelta } = frame;
   const region = useMemo(
-    () =>
-      regionFor(
-        origin.point,
-        places.map((p) => p.point),
-      ),
-    [origin.point, places],
+    () => ({ latitude, longitude, latitudeDelta, longitudeDelta }),
+    [latitude, longitude, latitudeDelta, longitudeDelta],
   );
 
-  // Frame every result whenever the result set (or origin) changes.
+  // Frame every result whenever the result set (or origin) moves.
   useEffect(() => {
     mapRef.current?.animateToRegion(region, CAMERA_MS);
   }, [region]);
 
-  const { selectedId } = selection;
+  const { selectedId, revision } = selection;
   const follow = mapShouldFollow(selection);
-  const { revision } = selection;
+  const target = selectedId ? places.find((p) => p.id === selectedId) : undefined;
+  const targetLat = target?.point.latitude;
+  const targetLng = target?.point.longitude;
   useEffect(() => {
-    if (!follow || !selectedId) return;
-    const place = places.find((p) => p.id === selectedId);
-    if (place) mapRef.current?.animateCamera({ center: place.point }, { duration: CAMERA_MS });
+    if (!follow || targetLat === undefined || targetLng === undefined) return;
+    const center = { latitude: targetLat, longitude: targetLng };
+    mapRef.current?.animateCamera({ center }, { duration: CAMERA_MS });
     // `revision` re-runs this for a repeated selection of the same place.
-  }, [follow, selectedId, revision, places]);
+  }, [follow, revision, targetLat, targetLng]);
 
   return (
     <MapView
