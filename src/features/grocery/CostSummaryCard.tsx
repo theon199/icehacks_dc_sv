@@ -57,7 +57,7 @@ function Figures({ display }: { display: CostDisplay }) {
   );
 }
 
-/** The cost summary's layout, driven entirely by props. */
+/** The cost summary's layout, driven entirely by props. Renders nothing for an empty list. */
 export function CostSummaryCard({
   display,
   hasStaples,
@@ -68,6 +68,7 @@ export function CostSummaryCard({
   onRetry,
   footer,
 }: CostSummaryCardProps) {
+  if (display.empty) return null;
   const checking = checkingMessage(display.checking);
   const missing = missingMessage(display.missing);
   const status = noticeMessage(notice, lookupFailed);

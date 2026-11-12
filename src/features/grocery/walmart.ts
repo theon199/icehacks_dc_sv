@@ -26,17 +26,27 @@ export function cartReadyIds(prices: readonly WalmartPrice[]): Set<string> {
   return ready;
 }
 
+/** What has already been learned about a set of ingredient ids, without a new lookup. */
+export interface KnownReadiness {
+  /** Ids with a cart-ready item. */
+  readonly ready: ReadonlySet<string>;
+  /** Ids nobody has asked about recently. */
+  readonly unknown: readonly string[];
+}
+
 /**
- * The button shows only when the integration reports itself configured and at least one
- * ingredient that still needs buying has a cart-ready item.
+ * The button shows when the integration reports itself configured and some ingredient that
+ * still needs buying is either known to be cart-ready or not yet asked about. Availability is
+ * only looked up when the shopper taps, so viewing a recipe never spends the Walmart allowance;
+ * once a lookup has found nothing cart-ready, the button stays hidden for that set.
  */
 export function shouldShowWalmart(
   status: WalmartStatus | undefined,
   idsToBuy: readonly string[],
-  readyIds: ReadonlySet<string> | undefined,
+  known: KnownReadiness,
 ): boolean {
-  if (status?.configured !== true || !readyIds) return false;
-  return idsToBuy.some((id) => readyIds.has(id));
+  if (status?.configured !== true || idsToBuy.length === 0) return false;
+  return idsToBuy.some((id) => known.ready.has(id) || known.unknown.includes(id));
 }
 
 export interface CartPlan {

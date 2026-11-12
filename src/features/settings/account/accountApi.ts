@@ -6,12 +6,18 @@
 import * as Linking from 'expo-linking';
 import { z } from 'zod';
 
-import { useSessionStore } from '@/features/auth';
+import { accountErrorMessage, isAccountError, useSessionStore } from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
 import { queryClient } from '@/lib/query/client';
 import { getSupabase } from '@/lib/supabase/client';
 
-import { clearLocalUserData, endAuthSession, unregisterPushDevice } from '../deps';
+import {
+  deleteSignedInAccount,
+  endAuthSession,
+  unregisterPushDevice,
+  type SignOutScope,
+} from '../deps';
+import { discardLegacyAccount, migrateLegacySettings } from '../legacySettings';
 
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -149,22 +155,36 @@ export async function fetchServerExport(): Promise<Record<string, unknown>> {
   return parsed.data;
 }
 
-const deleteSchema = z.object({ deleted: z.boolean() }).loose();
+const DELETE_FAILED = 'Could not delete your account. Try again.';
 
 /**
- * Deletes the account on the server, clears what this device holds for it and signs out. The
- * server removes the account's push devices along with it, so there is nothing to unregister.
+ * Deletes the account through the auth feature, which removes it on the server and then stops
+ * sync and wipes this device's copy of the account's data without pushing anything. The session
+ * is then ended on this device. The server removes the account's push devices along with it, so
+ * there is nothing to unregister.
+ *
+ * Once the server has deleted the account, a failure in the local cleanup is logged and sign-out
+ * carries on: staying signed in to an account that no longer exists helps no one, and the wipe
+ * also runs when the session ends.
  */
 export async function deleteAccount(): Promise<void> {
-  const client = getSupabase();
   const userId = useSessionStore.getState().userId;
-  const { data, error } = await client.rpc('delete_my_account');
-  if (error) throw toAccountError(error, 'Could not delete your account. Try again.');
-  const parsed = deleteSchema.safeParse(data);
-  if (!parsed.success || !parsed.data.deleted) {
-    throw new AccountError('not_deleted', 'Your account could not be deleted. Try again.');
+  if (!userId) throw new AccountError('signed_out', 'Your session has ended. Sign in again.');
+  try {
+    await deleteSignedInAccount(userId);
+  } catch (error) {
+    // The auth feature reports every failure before or of the deletion call as an AccountError;
+    // anything else comes from the cleanup after the account was already deleted.
+    if (isAccountError(error)) {
+      throw new AccountError(
+        error.kind,
+        error.kind === 'server' ? DELETE_FAILED : accountErrorMessage(error),
+      );
+    }
+    logger.error('Account deleted, but clearing this device failed', describeError(error));
   }
-  if (userId) await clearLocalUserData(userId);
+  // The deleted account's own old answers have nowhere to go; other accounts' are left alone.
+  await discardLegacyAccount(userId);
   await finishSignOut(signOutHere);
 }
 
@@ -231,17 +251,45 @@ async function finishSignOut(end: () => Promise<unknown>): Promise<void> {
   useSessionStore.getState().signedOut();
 }
 
+export interface SignOutOutcome {
+  /** True when other devices were signed out too (only ever for `global`). */
+  everywhere: boolean;
+}
+
 /**
  * Signs out and drops the cached account details so the next person starts clean.
  *
  * The device's push registration is removed first, while the session can still authorise that
  * request, so the next person on this phone does not get this account's notifications; it is
  * best effort and gives up after a few seconds so sign-out still works offline. The session is
- * then ended by the auth feature (pending sync is sent and user data on the device is wiped, the
- * server session is revoked, falling back to this device only), and checked to be gone.
+ * then ended by the auth feature (pending sync is sent and user data on the device is wiped), for
+ * this device only unless `scope` is `global`, and checked to be gone.
  * Throws an `AccountError` when the stored session could not be removed.
  */
-export async function signOutLocally(): Promise<void> {
+export async function signOutOfAccount(scope: SignOutScope): Promise<SignOutOutcome> {
+  const userId = useSessionStore.getState().userId;
   await bestEffort(unregisterPushDevice, PUSH_UNREGISTER_TIMEOUT_MS);
-  await finishSignOut(endAuthSession);
+  // Old answers this account still has on the device are moved now, while sync can send them.
+  // When that is not safe yet they stay, to be moved on the account's next sign-in here.
+  if (userId) {
+    await migrateLegacySettings(userId).catch((error: unknown) => {
+      logger.warn('Could not move old Settings answers before signing out', describeError(error));
+    });
+  }
+  let everywhere = false;
+  await finishSignOut(async () => {
+    everywhere = await endAuthSession(scope);
+    return null;
+  });
+  return { everywhere };
+}
+
+/** Ends this device's session only; other devices stay signed in. */
+export async function signOutLocally(): Promise<void> {
+  await signOutOfAccount('local');
+}
+
+/** Ends every session of the account, this device's included. */
+export function signOutEverywhere(): Promise<SignOutOutcome> {
+  return signOutOfAccount('global');
 }
