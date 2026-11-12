@@ -92,6 +92,9 @@ export const plannerActions = {
   archivePast(now: Date = new Date()): void {
     plan().rollover(now);
   },
+  archive(week: IsoDate): void {
+    plan().archiveWeek(week);
+  },
   restore(week: IsoDate): void {
     plan().unarchiveWeek(week);
   },

@@ -9,6 +9,7 @@ import {
   DAY_INDICES,
   daysBetween,
   dayIndexOf,
+  isValidWeekStart,
   MEAL_SLOTS,
   parseIsoDate,
   weekStartOf,
@@ -28,16 +29,6 @@ export const SLOT_LABELS: Readonly<Record<MealSlot, string>> = {
   dinner: 'Dinner',
   snack: 'Snack',
 };
-
-export const DAY_NAMES: readonly string[] = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -93,6 +84,8 @@ export interface DayInfo {
   readonly date: IsoDate;
   /** "Mon" */
   readonly short: string;
+  /** "Monday" */
+  readonly weekday: string;
   /** "9" */
   readonly dayOfMonth: string;
   /** "Monday, November 9" — for VoiceOver and headings. */
@@ -103,6 +96,7 @@ export interface DayInfo {
 
 export function weekDays(weekStart: IsoDate, today: IsoDate, locale = 'en-US'): DayInfo[] {
   const short = formatter(locale, { weekday: 'short' });
+  const weekday = formatter(locale, { weekday: 'long' });
   const long = formatter(locale, { weekday: 'long', month: 'long', day: 'numeric' });
   return DAY_INDICES.map((day) => {
     const date = addDays(weekStart, day);
@@ -110,6 +104,7 @@ export function weekDays(weekStart: IsoDate, today: IsoDate, locale = 'en-US'): 
       day,
       date,
       short: short.format(utc(date)),
+      weekday: weekday.format(utc(date)),
       dayOfMonth: String(Number(date.slice(8))),
       long: long.format(utc(date)),
       isToday: date === today,
@@ -193,4 +188,18 @@ export function remainingDays(weekStart: IsoDate, today: IsoDate): DayIndex[] {
 /** Where a planned day lands in the planner: its week and day of week. */
 export function locateDate(date: IsoDate): { week: IsoDate; day: DayIndex } {
   return { week: weekStartOf(date), day: dayIndexOf(date) };
+}
+
+/** The slot a recipe of this course most naturally goes in. */
+export function defaultSlotFor(course: string): MealSlot {
+  if (course === 'breakfast') return 'breakfast';
+  if (course === 'snack' || course === 'side' || course === 'dessert' || course === 'drink') {
+    return 'snack';
+  }
+  return 'dinner';
+}
+
+/** A week id from a route parameter, falling back to the current week when it is not a Monday. */
+export function resolveWeekParam(param: string | undefined, today: IsoDate): IsoDate {
+  return param !== undefined && isValidWeekStart(param) ? param : weekStartOf(today);
 }
