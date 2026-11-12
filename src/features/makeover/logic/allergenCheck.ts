@@ -14,7 +14,7 @@ import type { AllergenId } from '@/domain/types/allergens';
 
 export interface AllergenHit {
   readonly allergen: AllergenId;
-  /** The words that matched, as written. */
+  /** The words that matched, lowercased and without accents. */
   readonly found: string;
   /** Where they were found, e.g. "Ingredient 3". */
   readonly where: string;
