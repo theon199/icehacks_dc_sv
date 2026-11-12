@@ -1,6 +1,8 @@
 /** Where the recipe screens send people. Kept together so route shapes are reviewed in one place. */
 import type { Href } from 'expo-router';
 
+import { nearbyHref } from '@/features/nearby';
+
 export function recipeHref(recipeId: string): Href {
   return { pathname: '/recipe/[id]', params: { id: recipeId } };
 }
@@ -24,9 +26,12 @@ export function makeoverHref(recipeId: string): Href {
 
 export const aiConsentHref: Href = '/ai-consent';
 
-/** Restaurants nearby that may serve the dish. The nearby search goes by the dish name only. */
-export function nearbyHref(recipe: { title: string }): Href {
-  return { pathname: '/nearby/[dish]', params: { dish: recipe.title } };
+/**
+ * Restaurants nearby that may serve the dish. The recipe id goes in the route so Nearby can look up
+ * both the title and the cuisine; a bare title would lose the cuisine context of the search.
+ */
+export function recipeNearbyHref(recipeId: string): Href {
+  return nearbyHref(recipeId);
 }
 
 /** Share a cooked dish or a remix of it with the community. */
