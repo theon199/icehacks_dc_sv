@@ -1,14 +1,17 @@
-import type { RecipeCandidate } from '@/lib/catalog';
+import { useSessionStore } from '@/features/auth';
 import { defaultPreferences, useCookLogStore } from '@/stores';
 
 import {
   estimatedMealId,
   ESTIMATED_MEAL_PREFIX,
   logEstimatedMeal,
+  onAccountChange,
   toDomainRecipe,
   toSafetyPrefs,
   toUserPreferences,
 } from './deps';
+import { useSnapSession } from './snapSession';
+import { catalogRecipe } from './testing';
 
 jest.mock('./components/SnapAiGate', () => ({ SnapAiGate: () => null }));
 jest.mock('expo-crypto', () => ({
@@ -56,33 +59,16 @@ describe('preference bridge', () => {
 });
 
 describe('recipe bridge', () => {
-  const candidate = {
-    id: 'mealdb:1',
-    slug: 'one',
+  const candidate = catalogRecipe({
+    id: 'catalog:1',
     title: 'One',
-    summary: '',
     cuisine: 'italian',
     region: 'not_a_region',
-    course: 'main',
-    totalMinutes: 20,
-    activeMinutes: 10,
-    servings: 2,
-    effort: 1,
-    imageUrl: null,
-    imageCredit: null,
-    sourceName: 'Test',
-    sourceUrl: null,
-    license: 'test',
     nutritionConfidence: 'none',
     nutrition: null,
-    allergens: {},
-    dietFlags: 0,
-    goalTags: [],
-    gentle: false,
     healthScore: 0.4,
-    familyId: 'one',
     ingredientIds: ['pasta', 'salt', 'tomato', 'pasta'],
-  } as unknown as RecipeCandidate;
+  });
 
   it('drops staples from core ingredients and fills missing nutrition', () => {
     const recipe = toDomainRecipe(candidate, new Set(['salt']));
@@ -113,5 +99,55 @@ describe('logging an estimated meal', () => {
       notes: 'Eaten out, estimated from a photo: Pad thai',
       rating: null,
     });
+  });
+});
+
+describe('account changes', () => {
+  const result = {
+    id: 'snap-1',
+    mode: 'dish' as const,
+    photoUri: 'file:///plate.jpg',
+    takenAt: 0,
+    remaining: null,
+    dish: {
+      name: 'pad thai',
+      cuisine: null,
+      key_ingredients: [],
+      portion: 'one plate',
+      nutrition: {
+        kcal: { estimate: 600, low: 500, high: 700 },
+        protein_g: { estimate: 20, low: 15, high: 25 },
+        carbs_g: { estimate: 80, low: 70, high: 90 },
+        fat_g: { estimate: 20, low: 15, high: 25 },
+        fiber_g: { estimate: 4, low: 3, high: 5 },
+        sodium_mg: { estimate: 1200, low: 1000, high: 1400 },
+      },
+      nutrition_confidence: 'estimated' as const,
+      confidence: 0.8,
+    },
+  };
+
+  it('drops the last snap when someone signs out or another account signs in', () => {
+    useSessionStore.setState({ userId: 'person-a' });
+    useSnapSession.getState().setResult(result);
+    expect(useSnapSession.getState().result).not.toBeNull();
+
+    useSessionStore.setState({ userId: null });
+    expect(useSnapSession.getState().result).toBeNull();
+
+    useSnapSession.getState().setResult(result);
+    useSessionStore.setState({ userId: 'person-b' });
+    expect(useSnapSession.getState().result).toBeNull();
+  });
+
+  it('tells listeners only about real account changes', () => {
+    const listener = jest.fn();
+    useSessionStore.setState({ userId: 'person-a' });
+    const stop = onAccountChange(listener);
+    useSessionStore.setState({ aiConsent: true });
+    expect(listener).not.toHaveBeenCalled();
+    useSessionStore.setState({ userId: 'person-c' });
+    expect(listener).toHaveBeenCalledTimes(1);
+    stop();
   });
 });

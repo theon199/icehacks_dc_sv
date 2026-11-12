@@ -1,9 +1,13 @@
 /**
  * "Meals you can make" for the current pantry. Candidates are read from the catalog once per diet
  * and allergen answer (SQL drops anything not verified free of the person's allergens), turned into
- * the domain shape, then ranked off the render path inside the query.
+ * the domain shape, then ranked inside the query once the screen is idle, so ranking a large
+ * candidate set never competes with the screen's entrance.
+ *
+ * Results computed for other allergen or diet answers are never shown while new ones load: the
+ * previous list is kept only while the pantry itself changes (fail-closed).
  */
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import type { RecipeSummary } from '@/domain/types/recipe';
@@ -53,6 +57,20 @@ async function loadCandidates(
 
 const sortedKey = (ids: Iterable<string>) => [...ids].sort().join(',');
 
+type IdleRequest = (callback: () => void, options?: { timeout: number }) => unknown;
+
+/** Resolves once the JS thread is idle (or after a short wait at most). */
+function whenIdle(): Promise<void> {
+  const requestIdle = (globalThis as { requestIdleCallback?: IdleRequest }).requestIdleCallback;
+  return new Promise((resolve) => {
+    if (typeof requestIdle === 'function') requestIdle(() => resolve(), { timeout: 400 });
+    else setTimeout(resolve, 0);
+  });
+}
+
+/** Index of the safety part of the meals query key. */
+const SAFETY_KEY_INDEX = 2;
+
 /** `snappedIds`: ingredient ids of the items just added from the photo. */
 export function usePantryMeals(snappedIds: readonly string[], enabled: boolean) {
   const prefs = usePreferencesStore(selectPreferences);
@@ -66,22 +84,19 @@ export function usePantryMeals(snappedIds: readonly string[], enabled: boolean) 
   const allergens = userPrefs.allergens ?? [];
   const candidateKey = ['snap', 'pantry-candidates', sortedKey(diets), sortedKey(allergens)];
 
+  // Everything that decides which recipes are safe to show. A change here must not reuse old data.
+  const safetyKey = JSON.stringify([candidateKey, userPrefs]);
+
   const query = useQuery({
     ...catalogOptions,
-    queryKey: [
-      'snap',
-      'pantry-meals',
-      candidateKey,
-      sortedKey(pantryIds),
-      sortedKey(snappedIds),
-      userPrefs,
-    ],
+    queryKey: ['snap', 'pantry-meals', safetyKey, sortedKey(pantryIds), sortedKey(snappedIds)],
     queryFn: async () => {
       const candidates = await queryClient.ensureQueryData({
         ...catalogOptions,
         queryKey: candidateKey,
         queryFn: () => loadCandidates(diets, allergens),
       });
+      await whenIdle();
       return mealsFromPantry({
         candidates,
         prefs: userPrefs,
@@ -91,7 +106,8 @@ export function usePantryMeals(snappedIds: readonly string[], enabled: boolean) 
       });
     },
     enabled: enabled && answered,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[SAFETY_KEY_INDEX] === safetyKey ? previous : undefined,
   });
 
   return { ...query, answered };

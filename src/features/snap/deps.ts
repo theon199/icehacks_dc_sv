@@ -8,6 +8,8 @@
  * - Preference and recipe bridges: the user stores and the catalog use their own field names and
  *   vocabularies, while ranking and safety in `src/domain` expect the domain shapes. These
  *   functions translate one way only (store/catalog → domain) and fail closed.
+ * - `onAccountChange`: tells Snap when the signed-in account changes, so in-memory results from one
+ *   account are never shown to the next.
  * - `logEstimatedMeal`: the cook log has no field for meals eaten out, so an estimate is recorded
  *   under a namespaced id with a readable note. See `ESTIMATED_MEAL_PREFIX`.
  */
@@ -16,11 +18,21 @@ import { isRegionId } from '@/domain/types/cuisines';
 import type { Goal } from '@/domain/types/goals';
 import { DEFAULT_PREFERENCES, type UserPreferences } from '@/domain/types/preferences';
 import type { Nutrition, RecipeSummary as DomainRecipe } from '@/domain/types/recipe';
+import { useSessionStore } from '@/features/auth';
 import type { RecipeCandidate, RecipeSummary } from '@/lib/catalog';
 import type { HealthGoal, Preferences, Units } from '@/stores';
 import { useCookLogStore } from '@/stores';
 
 export { SnapAiGate as AiGate } from './components/SnapAiGate';
+
+// --- Account -----------------------------------------------------------------------------------
+
+/** Calls `listener` whenever the signed-in account changes, signing out included. */
+export function onAccountChange(listener: () => void): () => void {
+  return useSessionStore.subscribe((state, previous) => {
+    if (state.userId !== previous.userId) listener();
+  });
+}
 
 // --- Preferences --------------------------------------------------------------------------------
 
