@@ -4,17 +4,25 @@ import { StyleSheet, View } from 'react-native';
 import { haptics } from '@/lib/haptics';
 import { Icon, PressableScale, Text, useTheme } from '@/ui';
 
-function useLegalLinks() {
+/**
+ * Opens the legal pages. From inside a sheet, the sheet closes first: the pages live in the root
+ * stack and would otherwise open underneath it.
+ */
+function useLegalLinks(fromSheet = false) {
   const router = useRouter();
+  const open = (href: '/about/terms' | '/about/privacy') => {
+    if (fromSheet && router.canGoBack()) router.back();
+    router.push(href);
+  };
   return {
-    openTerms: () => router.push('/about/terms'),
-    openPrivacy: () => router.push('/about/privacy'),
+    openTerms: () => open('/about/terms'),
+    openPrivacy: () => open('/about/privacy'),
   };
 }
 
 /** Footnote under provider buttons: continuing with Apple or Google creates an account on terms. */
-export function LegalNote() {
-  const { openTerms, openPrivacy } = useLegalLinks();
+export function LegalNote({ fromSheet = false }: { fromSheet?: boolean }) {
+  const { openTerms, openPrivacy } = useLegalLinks(fromSheet);
   return (
     <Text variant="footnote" tone="muted" align="center">
       By continuing, you agree to Famara’s{' '}

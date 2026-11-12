@@ -14,7 +14,7 @@ import { Platform } from 'react-native';
 import { logger } from '@/lib/logger';
 import { getSupabase } from '@/lib/supabase/client';
 
-import { completeCallback } from './authActions';
+import { completeCallback, hasSession } from './authActions';
 import { authFailure, describeAuthError, type AuthFailure } from './authErrors';
 import { AUTH_CALLBACK_URL, paramsFromUrl, readCallback } from './callback';
 
@@ -136,5 +136,9 @@ export async function signInWithGoogle(): Promise<ProviderResult> {
   // Closing Google's page early comes back as an access_denied error rather than a dismissal.
   if (action.kind === 'error' && /access_denied/.test(result.url)) return { status: 'cancelled' };
   const outcome = await completeCallback(action);
-  return outcome.ok ? { status: 'signedIn' } : { status: 'failed', failure: outcome.failure };
+  if (outcome.ok) return { status: 'signedIn' };
+  // On Android the same redirect can also open the callback route, which may have used the code
+  // first; a session existing means sign-in worked either way.
+  if (await hasSession()) return { status: 'signedIn' };
+  return { status: 'failed', failure: outcome.failure };
 }
