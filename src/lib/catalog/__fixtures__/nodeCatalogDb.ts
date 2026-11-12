@@ -4,7 +4,8 @@
  *
  *   jest.mock('expo-sqlite', () => jest.requireActual('./__fixtures__/nodeCatalogDb').expoSqliteFake);
  *
- * `nodeSqliteAvailable` is false on runtimes without `node:sqlite`; suites skip themselves then.
+ * Wrap suites in `describeCatalogDb`. Without `node:sqlite` they are skipped locally, but under
+ * CI (`CI` set) they fail instead, so a green CI run always means the catalog was queried.
  */
 import path from 'path';
 
@@ -38,6 +39,15 @@ function loadNodeSqlite(): NodeSqliteModule | null {
 
 const sqlite = loadNodeSqlite();
 export const nodeSqliteAvailable = sqlite != null;
+
+/** `describe` when `node:sqlite` is available; otherwise a skip locally and a failure under CI. */
+export const describeCatalogDb: jest.Describe = (() => {
+  if (nodeSqliteAvailable) return describe;
+  if (process.env.CI) {
+    throw new Error('node:sqlite is required to run the catalog suites in CI (Node 22.12+).');
+  }
+  return describe.skip;
+})();
 
 export const CATALOG_FILE = path.resolve(__dirname, '../../../../assets/catalog/famara-catalog.db');
 

@@ -2,8 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { gramsPerUnit, ingredientAllergens, ingredientDietFlags } from '../src/derive/ingredients.ts';
 import { familyKey, goalTags, mapCourse } from '../src/derive/recipe.ts';
-import { rollupAllergens, rollupDiet, type MatchedLine } from '../src/derive/rollup.ts';
-import { ing, type IngredientDef } from '../src/knowledge/define.ts';
+import { rollupAllergens, rollupDiet } from '../src/derive/rollup.ts';
+import { ing } from '../src/knowledge/define.ts';
 import { INGREDIENTS, INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
 import { alternativesOf, compoundAliasGaps } from '../src/match/audit.ts';
 import { IngredientMatcher } from '../src/match/matcher.ts';
@@ -19,18 +19,8 @@ import {
 import { healthScore } from '../src/score.ts';
 import { preferHttps, type LinkStatus } from '../src/sources/links.ts';
 import { DietFlag, type Nutrition } from '../src/types.ts';
+import { def, defsOf, matchedLine, matcher } from './support/lines.ts';
 
-const matcher = new IngredientMatcher(INGREDIENTS);
-const def = (id: string): IngredientDef => {
-  const found = INGREDIENT_BY_ID.get(id);
-  assert.ok(found, `missing ingredient ${id}`);
-  return found;
-};
-/** Matches a full ingredient line the way the pipeline does and returns every matched entry. */
-const matchedLine = (text: string): MatchedLine => {
-  const result = matcher.matchLine(parseMeasure(text).rest);
-  return result.id === null ? null : result.all.map(def);
-};
 const has = (flags: number, bit: number) => (flags & bit) !== 0;
 
 describe('peanut and groundnut oils fail closed', () => {
@@ -38,19 +28,19 @@ describe('peanut and groundnut oils fail closed', () => {
     assert.deepEqual(ingredientAllergens(def('peanut_oil')), ['peanut']);
     for (const text of ['2 tbsp peanut oil', '1 tbsp groundnut oil', '3 tbsp ground nut oil', '1 tbsp arachis oil']) {
       const line = matchedLine(text);
-      assert.ok(line?.some((d) => d.id === 'peanut_oil'), text);
+      assert.ok(defsOf(line).some((d) => d.id === 'peanut_oil'), text);
       assert.equal(rollupAllergens([line]).peanut, 'contains', text);
     }
   });
 
   it('treats spring roll wrappers as wheat-based and brand-dependent', () => {
     const line = matchedLine('12 spring roll wrappers');
-    assert.equal(line?.[0]?.id, 'spring_roll_wrappers');
+    assert.equal(defsOf(line)[0]?.id, 'spring_roll_wrappers');
     const allergens = rollupAllergens([line]);
     assert.equal(allergens.wheat, 'contains');
     assert.equal(allergens.gluten, 'contains');
     assert.equal(allergens.egg, 'unknown');
-    assert.equal(matchedLine('8 rice paper wrappers')?.[0]?.id, 'rice_paper');
+    assert.equal(defsOf(matchedLine('8 rice paper wrappers'))[0]?.id, 'rice_paper');
   });
 });
 
@@ -64,7 +54,7 @@ describe('combined synonyms never hide an animal option', () => {
 
   it('does not call chicken-flavored ramen vegetarian', () => {
     const line = matchedLine('1 package chicken-flavored ramen noodles, broken up');
-    assert.equal(line?.[0]?.id, 'chicken_ramen_noodles');
+    assert.equal(defsOf(line)[0]?.id, 'chicken_ramen_noodles');
     const flags = rollupDiet([line, matchedLine('4 cups shredded cabbage')], rollupAllergens([line]));
     assert.equal(has(flags, DietFlag.vegetarian), false);
   });
@@ -92,7 +82,7 @@ describe('combined synonyms never hide an animal option', () => {
 
   it('keeps lamb stock out of beef', () => {
     assert.equal(def('lamb_stock').meat, 'lamb');
-    assert.equal(matchedLine('500ml lamb stock')?.[0]?.id, 'lamb_stock');
+    assert.equal(defsOf(matchedLine('500ml lamb stock'))[0]?.id, 'lamb_stock');
     assert.ok(has(ingredientDietFlags(def('lamb_stock')), DietFlag.no_beef));
   });
 });
@@ -109,7 +99,7 @@ describe('stock cubes', () => {
   it('use regular-sodium bouillon unless the line says low sodium', () => {
     for (const id of ['stock_cube', 'chicken_stock_cube', 'beef_stock_cube']) assert.notEqual(def(id).fdc?.[0], 171613, id);
     assert.equal(def('low_sodium_beef_stock_cube').fdc?.[0], 171613);
-    assert.equal(matchedLine('3 cubes low sodium beef bouillon')?.[0]?.id, 'low_sodium_beef_stock_cube');
+    assert.equal(defsOf(matchedLine('3 cubes low sodium beef bouillon'))[0]?.id, 'low_sodium_beef_stock_cube');
   });
 
   it('name a ready-to-use stock for volume measures', () => {
@@ -199,6 +189,7 @@ describe('frying oil absorption', () => {
       row: { position, ingredient_id: id, text, quantity: null, unit: null, grams, section: null, optional: 0 },
       measure: parseMeasure(text),
       matched: [d],
+      unresolved: [],
       primary: d,
       nutritionDef: d,
       eatenGrams: grams,

@@ -445,6 +445,110 @@ Deno.test("runTools shares one deadline across all rounds", async () => {
   assertEquals(calls.length, 2);
 });
 
+const pingTool = defineTool("ping", "Ping.", z.object({}));
+const pingTurn = () =>
+  message([{ type: "tool_use", id: crypto.randomUUID(), name: "ping", input: {} }], "tool_use");
+
+Deno.test("runTools gives up on a stalled tool at the deadline", async () => {
+  const { client: c, calls } = client([pingTurn(), message([])], { timeoutMs: 30 });
+  let seen: AbortSignal | undefined;
+  // Ignores its signal and never settles, like a hung upstream request without a timeout.
+  const stalled = toolHandler(pingTool, (_input, { signal }) => {
+    seen = signal;
+    return new Promise<string>(() => {});
+  });
+  const error = await assertRejects(
+    () => c.runTools({ messages: [{ role: "user", content: "x" }] }, [stalled]),
+    AnthropicError,
+  );
+  assertEquals([error.kind, error.retryable], ["timeout", false]);
+  assertEquals(calls.length, 1);
+  assert(seen?.aborted, "the handler's signal fires at the deadline");
+  quiet(() => {
+    assertEquals(anthropicErrorToHttp(error).status, 504);
+  });
+});
+
+Deno.test("runTools stops waiting for tools when the caller aborts", async () => {
+  const caller = new AbortController();
+  const { client: c, calls } = client([pingTurn(), message([])]);
+  let started!: () => void;
+  const running = new Promise<void>((resolve) => (started = resolve));
+  const stalled = toolHandler(pingTool, () => {
+    started();
+    return new Promise<string>(() => {});
+  });
+  const pending = c.runTools(
+    { messages: [{ role: "user", content: "x" }], signal: caller.signal },
+    [stalled],
+  );
+  await running;
+  caller.abort(new Error("client went away"));
+  const error = await assertRejects(() => pending, AnthropicError);
+  assertEquals([error.kind, error.retryable], ["aborted", false]);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("a tool that stops on its signal still fails the round as cancelled", async () => {
+  const caller = new AbortController();
+  const { client: c, calls } = client([pingTurn(), message([])]);
+  let started!: () => void;
+  const running = new Promise<void>((resolve) => (started = resolve));
+  const cooperative = toolHandler(pingTool, (_input, { signal }) => {
+    started();
+    return new Promise<string>((_, reject) =>
+      signal.addEventListener("abort", () => reject(new Error("stopped")))
+    );
+  });
+  const pending = c.runTools(
+    { messages: [{ role: "user", content: "x" }], signal: caller.signal },
+    [cooperative],
+  );
+  await running;
+  caller.abort();
+  const error = await assertRejects(() => pending, AnthropicError);
+  assertEquals(error.kind, "aborted");
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("runTools starts no tools once the deadline has passed", async () => {
+  let clock = 0;
+  const late = () => {
+    clock += 11_000;
+    return Promise.resolve(pingTurn());
+  };
+  const { client: c } = client([late], { timeoutMs: 10_000, now: () => clock });
+  let ran = false;
+  const error = await assertRejects(
+    () =>
+      c.runTools({ messages: [{ role: "user", content: "x" }] }, [
+        toolHandler(pingTool, () => {
+          ran = true;
+          return Promise.resolve("pong");
+        }),
+      ]),
+    AnthropicError,
+  );
+  assertEquals(error.kind, "timeout");
+  assertEquals(ran, false);
+});
+
+Deno.test("tool handlers receive a live signal, also when invoked directly", async () => {
+  const signals: AbortSignal[] = [];
+  const handler = toolHandler(pingTool, (_input, { signal }) => {
+    signals.push(signal);
+    return Promise.resolve("pong");
+  });
+  const { client: c } = client([pingTurn(), message([{ type: "text", text: "done" }])]);
+  const { message: final } = await c.runTools({ messages: [{ role: "user", content: "x" }] }, [
+    handler,
+  ]);
+  assertEquals(textOf(final), "done");
+  assertEquals(await handler.invoke({}), { ok: true, output: "pong" });
+  assertEquals(signals.length, 2);
+  assert(signals.every((signal) => !signal.aborted));
+});
+
 Deno.test("defineTool builds a strict, closed input schema", () => {
   const tool = defineTool(
     "add_to_pantry",
