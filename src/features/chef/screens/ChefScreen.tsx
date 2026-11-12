@@ -46,7 +46,8 @@ function ChefChat({ initialThreadId }: { initialThreadId: string | null }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const title = useChefStore((state) => (threadId ? state.threads[threadId]?.title : undefined));
   const conversation = useChefConversation(threadId, setThreadId);
-  const { messages, sending, busy, problem, followUps, quotaNote, send, retry } = conversation;
+  const { messages, sending, busy, limited, problem, followUps, quotaNote, send, retry } =
+    conversation;
 
   const newThread = useCallback(() => {
     setThreadId(null);
@@ -96,6 +97,7 @@ function ChefChat({ initialThreadId }: { initialThreadId: string | null }) {
                 problem={problem}
                 unanswered={awaitsReply(messages) && !sending}
                 blocked={busy}
+                limited={limited}
                 followUps={followUps}
                 quotaNote={quotaNote}
                 onRetry={retry}

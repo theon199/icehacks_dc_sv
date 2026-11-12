@@ -1,22 +1,25 @@
 /**
- * Sending questions to Chef and storing the answers in the (synced) chef store.
+ * One Chef thread as the screen sees it: its messages from the (synced) chef store plus what is
+ * happening right now from the Chef session (see `chefSession.ts`).
  *
  * The person's message is saved first, so it survives a failed request; "Try again" then asks
  * again for the same thread. Recipe ids in a reply are re-screened against the person's current
- * preferences before they are stored, and again whenever a message is displayed.
+ * preferences before they are stored, and again whenever a message is displayed. A question keeps
+ * running when the screen goes away, and its answer lands in the thread.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 
-import { logger } from '@/lib/logger';
-import { selectThread, useChefStore, usePreferencesStore, type ChefMessage } from '@/stores';
+import { selectThread, useChefStore, type ChefMessage } from '@/stores';
 
-import { aiApi, listCandidates, safetyPrefsFrom, searchRecipes } from '../deps';
 import { withPhotoMark } from '../logic/conversation';
-import { describeAiProblem, remainingNote, type AiProblem } from '../logic/problems';
-import { buildChefRequest, type CatalogAccess } from '../logic/request';
-import { finderFor, screenSuggestedIds } from '../logic/screening';
-
-const catalog: CatalogAccess = { listCandidates, searchRecipes };
+import type { AiProblem } from '../logic/problems';
+import {
+  askChef,
+  clearFollowUps,
+  dismissChefProblem,
+  isChefBusy,
+  useChefSession,
+} from './chefSession';
 
 const NO_MESSAGES: readonly ChefMessage[] = [];
 const NO_FOLLOW_UPS: readonly string[] = [];
@@ -38,86 +41,31 @@ export interface ChefConversation {
   readonly followUps: readonly string[];
   /** A heads-up when few requests remain today. */
   readonly quotaNote: string | null;
+  /** Today's allowance is spent, so asking again cannot work yet. */
+  readonly limited: boolean;
   send(input: SendInput): void;
   /** Asks again for the person's last unanswered message. */
   retry(): void;
   dismissProblem(): void;
 }
 
-interface Attempt {
-  readonly threadId: string;
-  readonly photo: string | null;
-}
-
-interface Failure {
-  readonly threadId: string;
-  readonly problem: AiProblem;
-  readonly photo: string | null;
-}
-
 export function useChefConversation(
   threadId: string | null,
   onThreadStarted: (threadId: string) => void,
 ): ChefConversation {
-  const thread = useChefStore(selectThread(threadId ?? ''));
+  const key = threadId ?? '';
+  const thread = useChefStore(selectThread(key));
   const messages = thread?.messages ?? NO_MESSAGES;
-  const [sendingIn, setSendingIn] = useState<string | null>(null);
-  const [failure, setFailure] = useState<Failure | null>(null);
-  const [followUps, setFollowUps] = useState<Readonly<Record<string, readonly string[]>>>({});
-  const [quotaNote, setQuotaNote] = useState<string | null>(null);
-  const inFlight = useRef<AbortController | null>(null);
-
-  useEffect(() => () => inFlight.current?.abort(), []);
-
-  const ask = useCallback(async (attempt: Attempt) => {
-    const controller = new AbortController();
-    inFlight.current = controller;
-    setSendingIn(attempt.threadId);
-    setFailure(null);
-    try {
-      const prefs = usePreferencesStore.getState().prefs;
-      const current = useChefStore.getState().threads[attempt.threadId]?.messages ?? [];
-      const built = await buildChefRequest(current, prefs, catalog, attempt.photo ?? undefined);
-      if (!built || controller.signal.aborted) return;
-      const reply = await aiApi.askChef(built.request, { signal: controller.signal });
-      // Preferences may have changed while Chef was thinking; screen against the latest ones.
-      const latest = safetyPrefsFrom(usePreferencesStore.getState().prefs);
-      const { safe, dropped } = screenSuggestedIds(
-        reply.recipe_ids,
-        finderFor(built.offered),
-        latest,
-      );
-      if (dropped.length > 0) {
-        logger.info('Chef: dropped recipes that did not pass the safety check', {
-          count: dropped.length,
-        });
-      }
-      useChefStore.getState().append(attempt.threadId, {
-        role: 'assistant',
-        text: reply.reply,
-        recipeIds: safe.map((recipe) => recipe.id),
-      });
-      setFollowUps((all) => ({ ...all, [attempt.threadId]: reply.follow_ups }));
-      setQuotaNote(remainingNote(reply.quota.remaining));
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      setFailure({
-        threadId: attempt.threadId,
-        problem: describeAiProblem(error),
-        photo: attempt.photo,
-      });
-    } finally {
-      if (inFlight.current === controller) {
-        inFlight.current = null;
-        setSendingIn(null);
-      }
-    }
-  }, []);
+  const sendingIn = useChefSession((state) => state.sendingIn);
+  const failure = useChefSession((state) => (threadId ? state.failures[threadId] : undefined));
+  const followUps = useChefSession((state) => (threadId ? state.followUps[threadId] : undefined));
+  const quotaNote = useChefSession((state) => state.quotaNote);
+  const limitedUntil = useChefSession((state) => state.limitedUntil);
 
   const send = useCallback(
     ({ text, photo }: SendInput) => {
       const trimmed = text.trim();
-      if ((!trimmed && !photo) || inFlight.current) return;
+      if ((!trimmed && !photo) || isChefBusy()) return;
       const body = photo ? withPhotoMark(trimmed) : trimmed;
       const store = useChefStore.getState();
       let id = threadId && store.threads[threadId] ? threadId : null;
@@ -126,29 +74,32 @@ export function useChefConversation(
         onThreadStarted(id);
       }
       store.append(id, { role: 'user', text: body });
-      const started = id;
-      setFollowUps((all) => ({ ...all, [started]: NO_FOLLOW_UPS }));
-      void ask({ threadId: started, photo: photo ?? null });
+      clearFollowUps(id);
+      void askChef({ threadId: id, photo: photo ?? null });
     },
-    [ask, onThreadStarted, threadId],
+    [onThreadStarted, threadId],
   );
 
   const retry = useCallback(() => {
-    if (!threadId || inFlight.current) return;
+    if (!threadId || isChefBusy()) return;
     // The photo only travels again with a retry of the attempt it belonged to.
-    const photo = failure?.threadId === threadId ? failure.photo : null;
-    void ask({ threadId, photo });
-  }, [ask, failure, threadId]);
+    const photo = useChefSession.getState().failures[threadId]?.photo ?? null;
+    void askChef({ threadId, photo });
+  }, [threadId]);
 
-  const dismissProblem = useCallback(() => setFailure(null), []);
+  const dismissProblem = useCallback(() => {
+    if (threadId) dismissChefProblem(threadId);
+  }, [threadId]);
 
   return {
     messages,
     sending: sendingIn != null && sendingIn === threadId,
     busy: sendingIn != null,
-    problem: failure && failure.threadId === threadId ? failure.problem : null,
-    followUps: (threadId && followUps[threadId]) || NO_FOLLOW_UPS,
+    problem: failure?.problem ?? null,
+    followUps: followUps ?? NO_FOLLOW_UPS,
     quotaNote,
+    // Read at render: the screen re-renders often enough while someone is looking at it.
+    limited: limitedUntil != null && limitedUntil > Date.now(),
     send,
     retry,
     dismissProblem,

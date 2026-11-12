@@ -11,6 +11,8 @@ export interface ConversationFooterProps {
   unanswered: boolean;
   /** Another thread is waiting for its answer, so asking here has to wait. */
   blocked: boolean;
+  /** Today's allowance is spent, so asking again cannot work until it resets. */
+  limited: boolean;
   followUps: readonly string[];
   quotaNote: string | null;
   onRetry: () => void;
@@ -24,6 +26,7 @@ export function ConversationFooter({
   problem,
   unanswered,
   blocked,
+  limited,
   followUps,
   quotaNote,
   onRetry,
@@ -77,7 +80,7 @@ export function ConversationFooter({
         </Card>
       ) : null}
 
-      {!sending && !problem && unanswered && !blocked ? (
+      {!sending && !problem && unanswered && !blocked && !limited ? (
         <Button
           testID="chef-ask-again"
           label="No answer yet. Ask again"
@@ -89,7 +92,7 @@ export function ConversationFooter({
         />
       ) : null}
 
-      {!sending && !problem && followUps.length > 0 ? (
+      {!problem && !blocked && !limited && followUps.length > 0 ? (
         <View style={styles.chips} accessibilityLabel="Suggested questions">
           {followUps.map((question) => (
             <Chip

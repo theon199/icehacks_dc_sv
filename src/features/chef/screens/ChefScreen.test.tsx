@@ -10,6 +10,7 @@ import { renderWithTheme } from '@/test/render';
 
 import { ChefScreen } from './ChefScreen';
 import { answeredPrefs, recipe } from '../__fixtures__/recipe';
+import { resetChefSession, useChefSession } from '../hooks/chefSession';
 
 const mockRouter = { push: jest.fn() };
 jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
@@ -53,7 +54,7 @@ function reply(overrides: Partial<ChefResponse> = {}): ChefResponse {
 }
 
 async function renderChef(threadId?: string) {
-  await renderWithTheme(
+  return renderWithTheme(
     <QueryClientProvider client={client}>
       <ChefScreen threadId={threadId} />
     </QueryClientProvider>,
@@ -70,6 +71,7 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useSessionStore.setState(initialSession, true);
   useChefStore.getState().reset();
+  resetChefSession();
   usePreferencesStore.setState({ prefs: answeredPrefs({ allergens: ['peanut'] }) });
   askChef.mockReset();
   jest.mocked(listCandidates).mockResolvedValue(catalog.map((r) => ({ ...r, ingredientIds: [] })));
@@ -171,5 +173,45 @@ describe('ChefScreen', () => {
     await waitFor(() => expect(onlyThread().messages).toHaveLength(2));
     expect(askChef).toHaveBeenCalledTimes(2);
     expect(onlyThread().messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('keeps an answer that arrives after the screen has gone away', async () => {
+    signIn(30);
+    let answer: (value: ChefResponse) => void = () => undefined;
+    askChef.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    const view = await renderChef();
+    await ask('Dinner?');
+    await waitFor(() => expect(askChef).toHaveBeenCalledTimes(1));
+    view.unmount();
+
+    answer(reply());
+    await waitFor(() =>
+      expect(onlyThread().messages.map((m) => m.role)).toEqual(['user', 'assistant']),
+    );
+    // The suggestions wait for the next time the thread is opened.
+    expect(useChefSession.getState().followUps[onlyThread().id]).toEqual([
+      'Can I make it spicier?',
+    ]);
+  });
+
+  it('does not offer to ask again once the daily limit is spent', async () => {
+    signIn(30);
+    askChef.mockRejectedValue(
+      new ApiError({
+        kind: 'rate_limited',
+        functionName: 'chef',
+        status: 429,
+        code: 'quota_exceeded',
+        retryAfterSeconds: 3600,
+      }),
+    );
+    await renderChef();
+    await ask('Dinner?');
+    await screen.findByTestId('chef-problem');
+
+    await userEvent.setup().press(screen.getByText('Dismiss'));
+    expect(screen.queryByTestId('chef-problem')).toBeNull();
+    expect(screen.queryByTestId('chef-ask-again')).toBeNull();
+    expect(screen.getByText("You've reached today's Chef limit.")).toBeOnTheScreen();
   });
 });
