@@ -57,11 +57,13 @@ export function useSessionBootstrap(): void {
       if (!state.userId) return;
       if (
         state.birthYear !== previous.birthYear ||
-        state.onboardingComplete !== previous.onboardingComplete
+        state.onboardingComplete !== previous.onboardingComplete ||
+        state.aiConsent !== previous.aiConsent
       ) {
         writeCachedSetup(state.userId, {
           birthYear: state.birthYear,
           onboardingComplete: state.onboardingComplete,
+          aiConsent: state.aiConsent,
         });
       }
     });

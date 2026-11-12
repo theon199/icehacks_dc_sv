@@ -11,6 +11,12 @@ export interface AppScreen {
   /** Route name relative to `src/app/(app)`. */
   name: string;
   options: (theme: Theme) => NativeStackNavigationOptions;
+  /**
+   * AI-powered screen: only mounted for people who are 18+ and have agreed to the AI terms, so a
+   * deep link cannot open it either. `ai-consent` itself is never gated, so features can send
+   * people there to opt in.
+   */
+  ai?: true;
 }
 
 const titled =
@@ -30,7 +36,7 @@ export const appScreens: readonly AppScreen[] = [
   { name: 'recipe/[id]/index', options: titled('Recipe') },
   { name: 'recipe/[id]/why', options: (t) => sheetOptions(t, [0.55, 1]) },
   { name: 'compare', options: titled('Compare') },
-  { name: 'makeover', options: titled('Make it healthier', { presentation: 'modal' }) },
+  { name: 'makeover', options: titled('Make it healthier', { presentation: 'modal' }), ai: true },
   { name: 'cook/[id]/index', options: () => fullScreen },
   { name: 'cook/[id]/done', options: () => fullScreen },
 
@@ -40,9 +46,9 @@ export const appScreens: readonly AppScreen[] = [
   { name: 'nearby/[dish]', options: titled('Nearby') },
 
   // AI and Snap results
-  { name: 'chef', options: titled('Chef') },
-  { name: 'snap/dish', options: titled('Your dish') },
-  { name: 'snap/pantry', options: titled('Pantry photo') },
+  { name: 'chef', options: titled('Chef'), ai: true },
+  { name: 'snap/dish', options: titled('Your dish'), ai: true },
+  { name: 'snap/pantry', options: titled('Pantry photo'), ai: true },
 
   // Community
   { name: 'post/[id]', options: titled('Post') },

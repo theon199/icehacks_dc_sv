@@ -36,6 +36,12 @@ describe('app routes', () => {
     expect(fs.existsSync(path.join(dir, 'index.tsx'))).toBe(true);
   });
 
+  it('gates exactly the AI screens and leaves the consent sheet open', () => {
+    const gated = appScreens.filter((s) => s.ai).map((s) => s.name);
+    expect(gated.sort()).toEqual(['chef', 'makeover', 'snap/dish', 'snap/pantry']);
+    expect(appScreens.find((s) => s.name === 'ai-consent')?.ai).toBeUndefined();
+  });
+
   it('keeps route files thin', () => {
     const walk = (dir: string): string[] =>
       fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

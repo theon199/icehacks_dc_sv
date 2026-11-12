@@ -4,6 +4,7 @@ export {
   ageFromBirthYear,
   resolveStatus,
   selectAge,
+  selectCanUseAi,
   selectIsAdult,
   useSessionStore,
   type SessionState,

@@ -19,6 +19,8 @@ export interface SignedInProfile {
   /** Year of birth from the age gate; null until the person has answered it. */
   birthYear: number | null;
   onboardingComplete: boolean;
+  /** Whether the person has agreed to the AI terms. Treated as false when absent. */
+  aiConsent?: boolean;
 }
 
 export interface SessionState {
@@ -26,17 +28,30 @@ export interface SessionState {
   userId: string | null;
   birthYear: number | null;
   onboardingComplete: boolean;
+  /** Agreement to the AI terms. AI routes also need age 18+; see `selectCanUseAi`. */
+  aiConsent: boolean;
   /** A signed-in profile was loaded or changed. */
   signedIn: (profile: SignedInProfile) => void;
   setBirthYear: (birthYear: number) => void;
   completeOnboarding: () => void;
+  /** Records the answer from the AI consent screen (or a later withdrawal). */
+  setAiConsent: (granted: boolean) => void;
   signedOut: () => void;
 }
 
-/** Pure status derivation, kept separate so it is trivial to test. */
-export function resolveStatus(profile: SignedInProfile | null): SessionStatus {
+/**
+ * Pure status derivation, kept separate so it is trivial to test.
+ *
+ * Someone below the minimum age never reaches the app, even if a stale cache or a server bug says
+ * onboarding is complete: they stay in (setup), whose age gate explains why and offers deletion.
+ */
+export function resolveStatus(
+  profile: SignedInProfile | null,
+  now: Date = new Date(),
+): SessionStatus {
   if (!profile) return 'signedOut';
   if (profile.birthYear == null || !profile.onboardingComplete) return 'needsSetup';
+  if (ageFromBirthYear(profile.birthYear, now) < MIN_AGE) return 'needsSetup';
   return 'ready';
 }
 
@@ -53,6 +68,7 @@ const signedOutState = {
   userId: null,
   birthYear: null,
   onboardingComplete: false,
+  aiConsent: false,
 };
 
 export const useSessionStore = create<SessionState>()((set, get) => ({
@@ -60,6 +76,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
   userId: null,
   birthYear: null,
   onboardingComplete: false,
+  aiConsent: false,
 
   signedIn: (profile) =>
     set({
@@ -67,6 +84,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       userId: profile.userId,
       birthYear: profile.birthYear,
       onboardingComplete: profile.onboardingComplete,
+      aiConsent: profile.aiConsent ?? false,
     }),
 
   setBirthYear: (birthYear) => {
@@ -84,6 +102,11 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     });
   },
 
+  setAiConsent: (granted) => {
+    if (!get().userId) return;
+    set({ aiConsent: granted });
+  },
+
   signedOut: () => set(signedOutState),
 }));
 
@@ -96,4 +119,15 @@ export function selectAge(state: Pick<SessionState, 'birthYear'>, now?: Date): n
 export function selectIsAdult(state: Pick<SessionState, 'birthYear'>, now?: Date): boolean {
   const age = selectAge(state, now);
   return age != null && age >= MIN_AI_AGE;
+}
+
+/**
+ * Whether AI features (Chef, makeover, Snap results) are open to the signed-in person: they must be
+ * 18+ and have agreed to the AI terms. Drives the `Stack.Protected` guard around AI routes.
+ */
+export function selectCanUseAi(
+  state: Pick<SessionState, 'birthYear' | 'aiConsent'>,
+  now?: Date,
+): boolean {
+  return state.aiConsent && selectIsAdult(state, now);
 }
