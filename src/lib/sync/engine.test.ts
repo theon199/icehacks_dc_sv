@@ -314,6 +314,19 @@ describe('deletion', () => {
     expect(server.get('notes', 'new')?.deleted_at).toBeNull();
   });
 
+  it('deletes remotely what a capped store evicts locally to make room', async () => {
+    const phone = await started(makeDevice(server, 'phone'));
+    phone.notes.set('mine', { n: 1 });
+    await phone.engine.flush();
+    phone.notes.cap = 1;
+    server.seed(seedDoc('theirs', { n: 2 }, Date.now()));
+    await phone.engine.syncNow();
+    await elapse(PUSH_DEBOUNCE_MS);
+    expect([...phone.notes.docs.keys()]).toEqual(['theirs']);
+    expect(server.get('notes', 'mine')?.deleted_at).not.toBeNull();
+    expect(server.get('notes', 'theirs')?.deleted_at).toBeNull();
+  });
+
   it('keeps remote documents this build cannot read instead of deleting them', async () => {
     server.seed(seedDoc('future', { shape: 'unknown' }));
     const phone = makeDevice(server, 'phone');

@@ -2,9 +2,10 @@
  * Persistence for user stores: versioned zustand `persist` options whose stored state is validated
  * with zod on every load, plus Keychain-backed storage for sensitive stores.
  *
- * Each store declares its current `version` and, when its stored shape changes, a migration from
- * every older version to the next. Stored state that is unreadable, fails validation, or comes from
- * a version with no migration path is dropped and the store starts from its defaults.
+ * Each store declares its current `version`. When its stored shape changes, the version goes up and
+ * an upgrade step is added (`migrations[n]` turns version n state into version n + 1). Stored state
+ * that is unreadable, fails validation, or has no chain of steps to the current version is dropped
+ * and the store starts from its defaults.
  */
 import * as SecureStore from 'expo-secure-store';
 import type { z } from 'zod';
