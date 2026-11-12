@@ -65,8 +65,9 @@ salt is added once per recipe. Plain water and ice add weight to nothing.
 
 **Frying oil.** Oil used as a frying medium mostly stays in the pan, so it does not count in full.
 An oil line is a frying medium when its text says so (*oil for frying*, *2 quarts neutral frying
-oil*, *Fry Oil*) or when it weighs at least 120 g and the method fries anything (*fry*, *fried*,
-*deep-fry*, *shallow-fry*, *deep fat*; *stir-fry* and the noun *frying pan* do not count). All
+oil*, *Fry Oil*) or when it weighs at least 120 g and the title or method fries anything (*fry*,
+*fried*, *deep-fry*, *shallow-fry*, *deep fat*, *hot oil*; *stir-fry* and the noun *frying pan* do
+not count). All
 frying-medium lines together contribute 15 % of their weight, capped at 15 % of the weight of the
 other food in the recipe, split between them by weight. This absorbed amount — not the measured
 amount — feeds nutrition, the portion weight and the servings estimate, which therefore run after
