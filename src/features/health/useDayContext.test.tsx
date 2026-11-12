@@ -38,6 +38,21 @@ describe('useDayContext', () => {
     expect(refreshHealth).toHaveBeenCalled();
   });
 
+  it('shows a context computed after the hook mounted', async () => {
+    useHealthStore.getState().setEnabled(true);
+    const { result } = await renderHook(() => useDayContext());
+    expect(result.current.context).toBeNull();
+
+    const later = NOW + 5 * 60_000;
+    jest.setSystemTime(later);
+    const context = computeDayContext({ workouts: [run], sleep: [], now: later });
+    await act(async () => {
+      useHealthStore.getState().applyRefresh({ at: later, dayContext: context });
+    });
+    expect(result.current.context).toEqual(context);
+    expect(result.current.hints).toEqual({ protein: 1, lighter: 0 });
+  });
+
   it('drops the context once it expires', async () => {
     const context = computeDayContext({ workouts: [run], sleep: [], now: NOW });
     useHealthStore.getState().setEnabled(true);

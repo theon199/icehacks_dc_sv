@@ -28,6 +28,16 @@ export function useDayContext(): DayContextView {
   const stored = useHealthStore((state) => state.dayContext);
   const [now, setNow] = useState(() => Date.now());
 
+  // A context that arrives while mounted was computed after `now` was last read; move the clock up
+  // to the present so it is not mistaken for one from the future.
+  useEffect(
+    () =>
+      useHealthStore.subscribe((state, previous) => {
+        if (state.dayContext !== previous.dayContext) setNow(Date.now());
+      }),
+    [],
+  );
+
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (status) => {
       if (status === 'active') setNow(Date.now());
