@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, userEvent, waitFor } from '@testing-library/react-native';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode, createElement as CreateElementFn } from 'react';
+import type { TextProps } from 'react-native';
 
 import {
   getIngredients,
@@ -39,10 +40,12 @@ jest.mock('react-native-webview', () => {
   const { View } = jest.requireActual<{ View: unknown }>('react-native');
   return { WebView: View };
 });
+type CreateElement = typeof CreateElementFn;
+
 // The grocery feature's own tests cover the estimate; here only what the recipe screen passes in.
 jest.mock('@/features/grocery', () => {
-  const { createElement } = jest.requireActual<typeof import('react')>('react');
-  const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+  const { createElement } = jest.requireActual<{ createElement: CreateElement }>('react');
+  const { Text } = jest.requireActual<{ Text: ComponentType<TextProps> }>('react-native');
   return {
     CostSummary: ({ recipeId, servings }: { recipeId: string; servings?: number }) =>
       createElement(Text, null, `Cost of ${recipeId} for ${servings}`),
