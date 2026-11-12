@@ -11,9 +11,10 @@
     "fetch": "tsx src/cli/fetch.ts",
     "build": "tsx src/cli/build.ts",
     "report": "tsx src/cli/report.ts",
-    "fdc:lookup": "tsx src/cli/fdcLookup.ts",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"test/**/*.test.ts\""
+    "fdc:lookup": "tsx src/cli/fdcLookup.ts",
+    "fdc:pin": "tsx src/cli/fdcPin.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.1.1",
