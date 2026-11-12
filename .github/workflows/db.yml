@@ -1,0 +1,82 @@
+name: Database
+
+on:
+  pull_request:
+    paths:
+      - "supabase/**"
+      - "src/lib/supabase/database.types.ts"
+      - ".github/workflows/db.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - "src/lib/supabase/database.types.ts"
+      - ".github/workflows/db.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sql:
+    name: Migrations, pgTAP and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start database
+        run: supabase db start
+
+      - name: Run pgTAP tests
+        run: supabase test db
+
+      - name: Lint database functions
+        run: supabase db lint --level warning --fail-on error
+
+  functions:
+    name: Edge function shared modules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: supabase/functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Format check
+        run: deno fmt --check
+
+      - name: Lint
+        run: deno lint
+
+      - name: Type-check
+        run: deno task check
+
+      - name: Test
+        run: deno task test
+
+  types:
+    name: Database types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Type-check database.types.ts
+        run: npx --yes --package typescript@5.9.3 tsc --noEmit -p supabase/tsconfig.check.json
