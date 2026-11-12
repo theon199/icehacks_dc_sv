@@ -23,7 +23,7 @@ export function useFlushPendingCooks() {
       // Stats are refreshed per accepted cook, including one the server accepts after the flush
       // stopped waiting for it.
       recordCookEvent: async (request) => {
-        const response = await recordCookEvent(request);
+        const response = await recordCookEvent(request, userId);
         refreshProfileStats(userId);
         return response;
       },

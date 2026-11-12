@@ -30,7 +30,7 @@ import { usePendingCookEvents } from '../services/pendingCookEvents';
  * person has usually left the screen by then, and the refreshed profile shows the badges anyway.
  */
 async function sendCookEvent(userId: string, request: CookEventRequest) {
-  const response = await recordCookEvent(request);
+  const response = await recordCookEvent(request, userId);
   usePendingCookEvents.getState().remove(request.clientEventId);
   refreshProfileStats(userId);
   return response;

@@ -14,6 +14,7 @@ import { RecipeRow } from '../components/RecipeRow';
 import { ResultHeader } from '../components/ResultHeader';
 import { logEstimatedMeal } from '../deps';
 import { useDishMatches } from '../hooks/useDishMatches';
+import { snapCameraHref } from '../links';
 import { CONFIDENCE_LABELS, confidenceBand, estimateNote } from '../logic/estimate';
 import { capitalize } from '../logic/words';
 import { selectDishResult, useSnapSession, type DishSnapResult } from '../snapSession';
@@ -24,7 +25,7 @@ const openRecipe = (id: string) => router.push({ pathname: '/recipe/[id]', param
 // flashes its empty state during the pop animation.
 function retake() {
   if (router.canGoBack()) router.back();
-  else router.replace('/snap');
+  else router.replace(snapCameraHref({ mode: 'dish' }));
 }
 
 function clearIfStill(id: string) {

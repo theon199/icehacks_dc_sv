@@ -3,10 +3,14 @@
  * exporting data and deleting the account. All of them talk to Supabase Auth or the account RPCs
  * described in docs/BACKEND.md.
  */
-import * as Linking from 'expo-linking';
 import { z } from 'zod';
 
-import { accountErrorMessage, isAccountError, useSessionStore } from '@/features/auth';
+import {
+  AUTH_CALLBACK_URL,
+  accountErrorMessage,
+  isAccountError,
+  useSessionStore,
+} from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
 import { queryClient } from '@/lib/query/client';
 import { getSupabase } from '@/lib/supabase/client';
@@ -107,7 +111,8 @@ export async function changeEmail(newEmail: string): Promise<void> {
   }
   const { error } = await getSupabase().auth.updateUser(
     { email },
-    { emailRedirectTo: Linking.createURL('/auth/callback') },
+    // The fixed callback, which is the one on the auth redirect allow list in every build.
+    { emailRedirectTo: AUTH_CALLBACK_URL },
   );
   if (error) throw toAccountError(error, 'Could not change your email. Try again.');
 }
