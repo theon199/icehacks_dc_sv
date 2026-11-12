@@ -1,4 +1,6 @@
+import { ingredientAllergens, ingredientAllergenStatus, ingredientDietFlags } from '../derive/ingredients.ts';
 import type { IngredientDef } from '../knowledge/define.ts';
+import { DietFlag, type AllergenId } from '../types.ts';
 import { normalizeKey, stripParentheticals, tokenize } from './normalize.ts';
 
 const MAX_NGRAM = 7;
@@ -128,6 +130,16 @@ const NON_INGREDIENT_WORDS = new Set([
   'you',
   'your',
   // cut, state, size, colour and preparation
+  'color',
+  'colored',
+  'colour',
+  'coloured',
+  'multicolor',
+  'multicolored',
+  'multicolour',
+  'multicoloured',
+  'pink',
+  'size',
   'breast',
   'chunk',
   'cube',
@@ -322,6 +334,76 @@ const GROUP_INGREDIENTS = new Set([
  */
 const STAND_IN_WORDS = new Set(['alternative', 'equivalent', 'imitation', 'replacement', 'similar', 'sub', 'substitute']);
 
+/** What a product made to replace another leaves out: a diet it keeps or allergens it is free of. */
+interface Replacement {
+  diet?: number;
+  without?: readonly AllergenId[];
+}
+
+const VEGAN: Replacement = { diet: DietFlag.vegan };
+const MEATLESS: Replacement = { diet: DietFlag.vegetarian };
+const DAIRY_FREE: Replacement = { diet: DietFlag.dairy_free };
+
+/**
+ * Words that mark a product made to replace another: "vegan cheese", "plant-based milk", "meatless
+ * crumbles". Such a product is made from something else (often soy, nuts or wheat), so a choice it
+ * marks is not the food it names, and stays unidentified like a stand-in. The exceptions are a known
+ * product ("vegan butter", "plant milk") and a food that already is what the word asks for ("vegan
+ * wine vinegar" is wine vinegar).
+ */
+const REPLACEMENT_WORDS: ReadonlyMap<string, Replacement> = new Map([
+  ['meatless', MEATLESS],
+  ['nondairy', DAIRY_FREE],
+  ['plant', VEGAN],
+  ['vegan', VEGAN],
+  ['vegetarian', MEATLESS],
+]);
+
+/** "Dairy-free", "egg-free", "gluten-free": the word before "free" names what the product leaves out. */
+const FREE_FROM_WORDS: ReadonlyMap<string, Replacement> = new Map<string, Replacement>([
+  ['dairy', DAIRY_FREE],
+  ['egg', { without: ['egg'] }],
+  ['gluten', { diet: DietFlag.gluten_free }],
+  ['meat', MEATLESS],
+  ['milk', DAIRY_FREE],
+  ['nut', { without: ['tree_nut', 'peanut'] }],
+  ['peanut', { without: ['peanut'] }],
+  ['soy', { without: ['soy'] }],
+  ['wheat', { without: ['wheat'] }],
+]);
+
+/** A replacement marker in a choice: the words it spans and what it leaves out. */
+interface ReplacementMark {
+  start: number;
+  end: number;
+  replacement: Replacement;
+}
+
+/** Finds "vegan", "plant-based", "non-dairy", "dairy-free" and the like among a choice's words. */
+function replacementMarks(tokens: readonly string[]): ReplacementMark[] {
+  const out: ReplacementMark[] = [];
+  tokens.forEach((token, k) => {
+    const next = tokens[k + 1] ?? '';
+    const word = REPLACEMENT_WORDS.get(token);
+    if (word) out.push({ start: k, end: k + 1, replacement: word });
+    const freeFrom = FREE_FROM_WORDS.get(token);
+    if (freeFrom && next === 'free') out.push({ start: k, end: k + 2, replacement: freeFrom });
+    const nonWhat = FREE_FROM_WORDS.get(next);
+    if (token === 'non' && nonWhat) out.push({ start: k, end: k + 2, replacement: nonWhat });
+  });
+  return out;
+}
+
+/** Whether a food already is what a replacement asks for ("vegan" wine vinegar). */
+function keeps(def: IngredientDef, replacement: Replacement): boolean {
+  if (replacement.diet !== undefined && (ingredientDietFlags(def) & replacement.diet) === 0) return false;
+  if (!replacement.without) return true;
+  // A product whose recipe varies may contain what the replacement leaves out.
+  if (ingredientAllergenStatus(def) !== 'resolved') return false;
+  const allergens = new Set(ingredientAllergens(def));
+  return !replacement.without.some((a) => allergens.has(a));
+}
+
 /** "(or halva spread)", ", or more to taste", "and/or ...": a clause offering another choice. */
 const CHOICE_CLAUSE = /^(?:and\s*\/\s*)?or\b\s*/i;
 
@@ -344,8 +426,21 @@ const describesFat = (tokens: readonly string[], k: number) => {
   return FAT_LEVEL_WORDS.has(before) || /^\d/.test(before) || tokens[k + 1] === 'free';
 };
 
-/** Whether the word at `k` describes, measures or comments rather than names something. */
-const describesAt = (tokens: readonly string[], k: number) => isDescription(tokens[k] ?? '') || describesFat(tokens, k);
+/** Words for a way foods vary that never changes what they are made of: "(any color)", "any size". */
+const APPEARANCE_WORDS = new Set(['color', 'colour', 'size']);
+
+/**
+ * Whether the word at `k` describes, measures or comments rather than names something. An
+ * open-ended or stand-in word that only speaks of colour or size ("any color", "pieces of similar
+ * size") describes too, and so does "another" before an amount ("plus another tbsp for serving").
+ */
+const describesAt = (tokens: readonly string[], k: number) => {
+  const token = tokens[k] ?? '';
+  const next = tokens[k + 1] ?? '';
+  if (isDescription(token) || describesFat(tokens, k)) return true;
+  if (token === 'another' && isMeasureToken(next)) return true;
+  return (OPEN_ENDED_WORDS.has(token) || STAND_IN_WORDS.has(token)) && APPEARANCE_WORDS.has(next);
+};
 
 /** A choice's words without its amounts. */
 const core = (tokens: readonly string[]) => tokens.filter((t) => !isMeasureToken(t));
@@ -375,16 +470,29 @@ interface Choice {
  * How strictly a clause's choices are checked:
  * - `offered`: the line or clause offers the choices outright ("peanut butter or halva spread",
  *   "(or halva spread)", ", or to taste"), so every choice must be identified;
- * - `qualifying`: an aside that lists choices without offering one ("(pinto or other type)",
- *   "(fresh, frozen or canned)", "(quick or old-fashioned)"). Such asides mostly narrow the name to
- *   varieties and preparations the knowledge base need not know, so a choice there is only
- *   unidentified when it is a stand-in, or open-ended and names no ingredient.
+ * - `qualifying`: any other aside or clause after a comma ("(pinto or other type)", "(any type)",
+ *   "(fresh, frozen or canned)", ", any flavor", ", dairy or soy", ", drained"). Such clauses mostly
+ *   narrow the name to varieties and preparations the knowledge base need not know, so a choice
+ *   there is only unidentified when it is a stand-in or a replacement product, when it widens a
+ *   named food to others ("try any type of onion"), or when it is open-ended, names no ingredient
+ *   and so widens the name ("broth (any type)"), unless the name is a group of foods with one
+ *   profile ("chopped nuts (any type)").
  */
 type ClauseMode = 'offered' | 'qualifying';
 
 interface Clause {
   text: string;
   mode: ClauseMode;
+}
+
+/** How `resolveChoices` checks a text: see `ClauseMode`, `NameWords` and `classify`. */
+interface ChoiceScope {
+  single: boolean;
+  mode: ClauseMode;
+  /** The words of the name a clause follows, which its choices can share. */
+  name?: NameWords;
+  /** The ingredients of the name a clause qualifies. */
+  base: readonly string[];
 }
 
 interface Choices {
@@ -411,59 +519,70 @@ function splitChoices(tokens: readonly string[]): Array<{ start: number; tokens:
   return out;
 }
 
-/** An aside that lists things: "pinto or other type", "fresh, frozen and/or canned", "ham & cheese". */
-const LISTS = /\b(?:or|and|plus)\b|&|[a-z]\s*\/\s*[a-z]/i;
-
 /**
- * Clauses outside the name part that hold choices: an offered choice ("(or halva spread)",
- * ", or to taste") and the parts of an aside that lists choices ("(pinto or other type)"). An aside
- * is split at commas, so an offer after a comma ("(try a mix, or other types)") is found even when
- * the aside does not start with one.
+ * Clauses outside the name part, each checked for choices: an offered choice ("(or halva spread)",
+ * ", or to taste") and every other part of an aside or clause after a comma ("(pinto or other
+ * type)", "(any type)", ", any flavor", ", dairy or soy", ", drained"), which qualifies the name. An
+ * aside is split at commas, so an offer after a comma ("(try a mix, or other types)") is found even
+ * when the aside does not start with one.
  */
 function choiceClauses(name: string): Clause[] {
   const out: Clause[] = [];
-  const offered = (text: string) => {
+  const add = (text: string) => {
     const trimmed = text.trim();
-    if (!CHOICE_CLAUSE.test(trimmed)) return false;
-    out.push({ text: trimmed.replace(CHOICE_CLAUSE, ''), mode: 'offered' });
-    return true;
+    if (CHOICE_CLAUSE.test(trimmed)) out.push({ text: trimmed.replace(CHOICE_CLAUSE, ''), mode: 'offered' });
+    else if (trimmed) out.push({ text: trimmed, mode: 'qualifying' });
   };
   for (const aside of name.matchAll(/\(([^()]*)\)|\[([^[\]]*)\]/g)) {
     const inner = (aside[1] ?? aside[2] ?? '').trim();
-    if (offered(inner)) continue;
-    const lists = LISTS.test(inner);
-    for (const part of inner.split(/[,;]/)) {
-      if (!offered(part) && lists && part.trim()) out.push({ text: part.trim(), mode: 'qualifying' });
-    }
+    if (CHOICE_CLAUSE.test(inner)) add(inner);
+    else for (const part of inner.split(/[,;]/)) add(part);
   }
-  for (const clause of stripParentheticals(name).split(/[,;:]|\s+-\s+/).slice(1)) offered(clause);
+  for (const clause of stripParentheticals(name).split(/[,;:]|\s+-\s+/).slice(1)) add(clause);
   return out;
 }
 
+/** What a choice's words came to, for `classify`. */
+interface ChoiceWords {
+  /** Words that no ingredient, amount or description accounts for. */
+  leftover: readonly string[];
+  /** Ingredients the choice names. */
+  named: readonly string[];
+  /** The choice is a product made to replace the food it names ("vegan cheese"). */
+  replacement: boolean;
+  /** The choice is one of several its clause lists ("lard or fat"), not the whole clause. */
+  listed: boolean;
+}
+
 /**
- * Classifies a choice from the words that no ingredient, amount or description accounts for. In a
- * qualifying aside an unknown word is taken as a variety or preparation of the named ingredient
- * rather than a choice of its own, and a mix ("try a mix of red and green") blends those varieties.
+ * Classifies a choice. In a qualifying clause an unknown word is taken as a variety or preparation
+ * of the named ingredient rather than a choice of its own, a mix ("try a mix of red and green") blends
+ * those varieties, and an open-ended choice that names nothing ("(any type)", ", any flavor") widens
+ * the food the clause qualifies: `base`, the ingredients of the line's name.
  */
-function classify(leftover: readonly string[], named: readonly string[], mode: ClauseMode): ChoiceKind {
-  if (leftover.some((w) => STAND_IN_WORDS.has(w))) return 'unidentified';
+function classify(words: ChoiceWords, mode: ClauseMode, base: readonly string[]): ChoiceKind {
+  const { leftover, named } = words;
+  if (words.replacement || leftover.some((w) => STAND_IN_WORDS.has(w))) return 'unidentified';
   if (mode === 'offered' && leftover.some((w) => !OPEN_ENDED_WORDS.has(w))) return 'unidentified';
-  const open = leftover.filter((w) => OPEN_ENDED_WORDS.has(w));
-  if (named.length > 0) {
-    const widened = open.some((w) => !NOT_WIDENING_WORDS.has(w));
-    return widened && !named.every((id) => GROUP_INGREDIENTS.has(id)) ? 'unidentified' : 'ingredient';
-  }
+  // A bare "fat" in a clause that qualifies the name is what a preparation trims or drains ("fat
+  // trimmed"), unless the clause lists it as a choice of its own ("(lard or fat)").
+  const open = leftover.filter((w) => OPEN_ENDED_WORDS.has(w) && (mode === 'offered' || w !== 'fat' || words.listed));
+  const widening = open.filter((w) => !NOT_WIDENING_WORDS.has(w));
+  const widensSafely = (ids: readonly string[]) => ids.length > 0 && ids.every((id) => GROUP_INGREDIENTS.has(id));
+  if (named.length > 0) return widening.length > 0 && !widensSafely(named) ? 'unidentified' : 'ingredient';
   if (open.length === 0) return 'note';
-  if (!open.every((w) => MIX_WORDS.has(w))) return 'unidentified';
-  return mode === 'offered' ? 'blend' : 'note';
+  if (mode === 'offered') return open.every((w) => MIX_WORDS.has(w)) ? 'blend' : 'unidentified';
+  return widening.length === 0 || widensSafely(base) ? 'note' : 'unidentified';
 }
 
 export class IngredientMatcher {
   private readonly index = new Map<string, string>();
+  private readonly defs = new Map<string, IngredientDef>();
   readonly collisions: Array<{ key: string; ids: [string, string] }> = [];
 
   constructor(defs: readonly IngredientDef[]) {
     for (const def of defs) {
+      this.defs.set(def.id, def);
       for (const phrase of [def.id.replace(/_/g, ' '), def.name, ...(def.plural ? [def.plural] : []), ...def.syn]) {
         const key = normalizeKey(phrase);
         if (!key) continue;
@@ -508,27 +627,29 @@ export class IngredientMatcher {
    * stock, and "chicken thighs or breasts" offers chicken breasts. A choice in a clause after the
    * name can share the name's words the same way: "milk (dairy or soy)" offers soy milk. Every word
    * of a choice must then belong to an ingredient or be a measure or description; one unexplained
-   * word ("cookie" in "cookie butter", "vegan" in "vegan mayo") leaves an offered choice
-   * unidentified (see `ClauseMode` for asides). With `single`, a text that lists only one choice is
-   * checked too.
+   * word ("cookie" in "cookie butter", "halva" in "halva spread") leaves an offered choice
+   * unidentified (see `ClauseMode` for qualifying clauses). A choice marked as a replacement product
+   * ("vegan mayo", "(regular or dairy-free)") is unidentified in either mode. With `single`, a text
+   * that lists only one choice is checked in full; without it, such a text is only checked for a
+   * replacement marker.
    */
-  private resolveChoices(text: string, single: boolean, mode: ClauseMode, name?: NameWords): Choices {
+  private resolveChoices(text: string, scope: ChoiceScope): Choices {
+    const { mode, name, base } = scope;
     const tokens = tokenize(text.replace(/([a-z])\s*\/\s*(?=[a-z])/gi, '$1 or '));
     const choices = splitChoices(tokens);
     const ids = new Set<string>();
     const out: Choices = { ids: [], firstId: null, choices: [] };
-    if (choices.length === 0 || (choices.length === 1 && !single)) return out;
+    if (choices.length === 0) return out;
+    const strict = scope.single || choices.length > 1;
     const matches = this.findInTokens(tokens);
     const first = core(choices[0]?.tokens ?? []);
     const last = core(choices.at(-1)?.tokens ?? []);
     choices.forEach((choice, i) => {
       const words = core(choice.tokens);
       const end = choice.start + choice.tokens.length;
+      const covers = (m: IngredientMatch, from: number, to: number) => m.start <= choice.start + from && choice.start + to <= m.start + m.length;
       /** Words of the choice that no match covers and that do not describe or measure. */
-      const unexplained = (found: readonly IngredientMatch[]) =>
-        choice.tokens.filter(
-          (_, k) => !describesAt(choice.tokens, k) && !found.some((m) => m.start <= choice.start + k && choice.start + k < m.start + m.length),
-        );
+      const unexplained = (found: readonly IngredientMatch[]) => choice.tokens.filter((_, k) => !describesAt(choice.tokens, k) && !found.some((m) => covers(m, k, k + 1)));
       let inChoice = matches.filter((m) => m.start < end && m.start + m.length > choice.start);
       // A phrase that spans a separator ("butter or margarine") can cut a choice short and leave
       // words behind ("margarine spread"); the choice is then also matched on its own words.
@@ -552,6 +673,11 @@ export class IngredientMatcher {
         for (let k = 1; k <= name.last.length && !shared; k++) shared = this.index.get([...words, ...name.last.slice(-k)].join(' ')) ?? null;
         for (let k = 1; k <= name.first.length && !shared; k++) shared = this.index.get([...name.first.slice(0, k), ...words].join(' ')) ?? null;
       }
+      const replacement = !shared && this.replaces(choice.tokens, inChoice.map((m) => ({ ...m, start: m.start - choice.start })), base);
+      if (!strict) {
+        if (replacement) out.choices.push({ text: choice.tokens.join(' '), kind: 'unidentified' });
+        return;
+      }
       if (shared) {
         ids.add(shared);
         if (i === 0) out.firstId = shared;
@@ -562,10 +688,33 @@ export class IngredientMatcher {
       // "Or substitute frozen berries" uses the word as a verb (use instead), not as a stand-in product;
       // a bare "or substitute" names nothing to use instead, so it stays open.
       if (leftover[0] === 'substitute' && words[0] === 'substitute') leftover[0] = inChoice.length > 0 ? 'instead' : 'other';
-      out.choices.push({ text: choice.tokens.join(' '), kind: classify(leftover, shared ? [shared] : inChoice.map((m) => m.id), mode) });
+      const named = shared ? [shared] : inChoice.map((m) => m.id);
+      out.choices.push({ text: choice.tokens.join(' '), kind: classify({ leftover, named, replacement, listed: choices.length > 1 }, mode, base) });
     });
     out.ids = [...ids];
     return out;
+  }
+
+  /**
+   * Whether a choice's words mark a product made to replace the food they name ("vegan cheese",
+   * "egg-free mayo"), or, when they name none, the food the clause qualifies ("cheese (dairy or
+   * vegan)"). A marker inside a known product ("dairy free milk", "egg plant") does not count, and
+   * neither does one the food already satisfies ("vegan wine vinegar"). `found` holds the choice's
+   * matches, positioned within `tokens`.
+   */
+  private replaces(tokens: readonly string[], found: readonly IngredientMatch[], base: readonly string[]): boolean {
+    const marks = replacementMarks(tokens).filter((mark) => !found.some((m) => m.start <= mark.start && mark.end <= m.start + m.length));
+    if (marks.length === 0) return false;
+    // A food named only inside the marker is what the product leaves out ("egg" in "egg-free").
+    const named = found.filter((m) => !marks.some((mark) => m.start < mark.end && m.start + m.length > mark.start)).map((m) => m.id);
+    const targets = named.length > 0 ? named : base;
+    if (targets.length === 0) return true;
+    return marks.some((mark) =>
+      targets.some((id) => {
+        const def = this.defs.get(id);
+        return !def || !keeps(def, mark.replacement);
+      }),
+    );
   }
 
   /**
@@ -580,18 +729,21 @@ export class IngredientMatcher {
     const listed = stripParentheticals(name).replace(/\s+-\s+.*$/, '').split(/[,;:]/)[0] ?? '';
     const named = splitChoices(tokenize(listed));
     const nameWords: NameWords = { first: core(named[0]?.tokens ?? []), last: core(named.at(-1)?.tokens ?? []) };
-    const groups = [
-      this.resolveChoices(listed, false, 'offered'),
-      ...choiceClauses(name).map((clause) => this.resolveChoices(clause.text, true, clause.mode, nameWords)),
-    ];
+    const nameChoices = this.resolveChoices(listed, { single: false, mode: 'offered', base: [] });
     // For "A or B" the amount was written for A, so A is the primary ingredient.
     const firstChoice = head.split(/\s+or\s+/i)[0] ?? head;
-    let primary = this.lookup(head) ?? groups[0]?.firstId ?? this.lookup(firstChoice);
+    let primary = this.lookup(head) ?? nameChoices.firstId ?? this.lookup(firstChoice);
     if (!primary) {
       const candidates = [this.findAll(firstChoice), this.findAll(head), this.findAll(cleaned), this.findAll(name)].find((m) => m.length > 0);
       primary = candidates?.[0]?.id ?? null;
     }
     if (!primary) return { id: null, all: [], unresolved: [] };
+    // Asides and clauses after a comma qualify what the name lists: "broth (any type)" widens broth.
+    const base = [...new Set([primary, ...nameChoices.ids])];
+    const groups = [
+      nameChoices,
+      ...choiceClauses(name).map((clause) => this.resolveChoices(clause.text, { single: true, mode: clause.mode, name: nameWords, base })),
+    ];
     // Everything the line names, including asides such as "(ham, chicken or tofu)" and
     // alternatives such as "butter or margarine", feeds the allergen and diet roll-ups.
     const all = new Set<string>([primary]);

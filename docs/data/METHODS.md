@@ -52,12 +52,33 @@ names at least two known choices. A leading *substitute* is the verb (*or substi
 blueberries*).
 
 Asides are split at commas, so a choice offered after a comma (*(try a mix, or other types)*) is
-checked like any other offered choice. An aside that lists choices without offering one (*(pinto or
-other type)*, *(fresh, frozen or canned and drained)*, *(quick or old-fashioned)*) mostly narrows
-the name to varieties and preparations, so an unknown word there is accepted; only a stand-in, or
-an open-ended choice that names no ingredient (*other type*, *or others*, *any type*), is
-unidentified. A choice in an aside or clause may share the name's words: *milk (dairy or soy)*
-offers soy milk, and *cheese (try parmesan, Swiss, or cheddar)* offers Swiss cheese.
+checked like any other offered choice. Every other part of an aside, and every clause after a comma
+(*(pinto or other type)*, *(any type)*, *(fresh, frozen or canned and drained)*, *, any flavor*,
+*, dairy or soy*, *, drained*), qualifies the name. It mostly narrows the name to varieties and
+preparations, so an unknown word there is accepted; a stand-in or a replacement product (below)
+is unidentified, and so is a choice that widens a named food to others (*try any type of onion*).
+An open-ended choice that names no ingredient (*(any type)*, *(your favourite)*, *, any flavor*,
+*(pinto or other type)*, *(… or others)*) widens the name itself, which is only identified when the
+name is one of the groups above: *chopped nuts (any type)* and *greens (try kale, chard or
+others)* are identified, while *low-sodium broth (any type)* (chicken, beef or pork broth),
+*vinegar (any type)* (malt vinegar has gluten), *oil (any kind)* (peanut or sesame oil), *milk
+(your favourite)* and *cheese (any type)* are not. Words that only leave the colour or size open
+(*(any color)*, *pieces of similar size*), an extra amount (*plus another tbsp for serving*), a
+bare *fat* that a preparation trims (*, fat trimmed*) and a serving note (*, for topping*) are
+descriptions. A choice in an aside or clause may share the name's words: *milk (dairy or soy)* and
+*milk, dairy or soy* offer soy milk, and *cheese (try parmesan, Swiss, or cheddar)* offers Swiss
+cheese.
+
+**Replacement products.** *Vegan*, *plant* (*plant-based*), *vegetarian*, *meatless*, *non-dairy*
+and *dairy-*, *milk-*, *egg-*, *gluten-*, *wheat-*, *soy-*, *nut-*, *peanut-* or *meat-free* mark a
+product made to replace another, usually from soy, nuts or wheat. Wherever it appears (the name, an
+offered choice or an aside), such a choice is unidentified like a stand-in: *milk (cow or
+plant-based)*, *cheese (dairy or vegan)*, *yogurt (dairy or non-dairy)*, *mayonnaise (regular or
+vegan)*, *cream cheese (regular or dairy-free)*, *mayo or egg-free mayo* and *vegan cheese* do not
+resolve to the dairy or egg food alone. There are two exceptions: the words name a known product,
+on their own or with a word shared with the name (*vegan butter*, *butter (dairy or vegan)*, *milk
+(dairy or plant)* → plant milk), or the food already is what the word asks for (*vegan white wine
+vinegar* is wine vinegar).
 
 An unidentified choice is recorded as an `unresolved_choice` build note: the line keeps its known
 ingredients, which still count as contained, and its primary ingredient for weights and nutrition,

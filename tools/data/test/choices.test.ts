@@ -4,7 +4,7 @@ import { rollupAllergens, rollupDiet, type MatchedLine } from '../src/derive/rol
 import { INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
 import { buildRecipe, type RecipeContext } from '../src/pipeline/recipes.ts';
 import type { BuildIssue } from '../src/pipeline/types.ts';
-import { ALLERGEN_IDS, type AllergenId, type SourceRecipe } from '../src/types.ts';
+import { ALLERGEN_IDS, DietFlag, type AllergenId, type SourceRecipe } from '../src/types.ts';
 import { matchedLine, matcher, matchText } from './support/lines.ts';
 
 const match = matchText;
@@ -347,5 +347,129 @@ describe('an open-ended word next to a single food', () => {
     for (const text of ['1/2 cup raisins or other dried fruit', '1 cup blueberries or other fruit', '2 cups spinach or other greens', '1 cup peas or other vegetables']) {
       assert.deepEqual(match(text).unresolved, [], text);
     }
+  });
+});
+
+describe('open-ended asides and clauses after a comma', () => {
+  const flagsOf = (text: string) => {
+    const lines = [matchedLine(text)];
+    return rollupDiet(lines, rollupAllergens(lines));
+  };
+
+  it('does not let "any type" of broth keep a meat or halal claim', () => {
+    for (const text of ['2 cups low-sodium broth (any type)', '3 cups low-sodium broth (any type) or water', '1 1/4 cups broth, any flavor']) {
+      const result = match(text);
+      assert.equal(result.id, 'broth', text);
+      assert.equal(result.unresolved.length, 1, text);
+      const flags = flagsOf(text);
+      for (const flag of [DietFlag.no_pork, DietFlag.no_beef, DietFlag.halal_friendly]) assert.equal(flags & flag, 0, `${text}: diet ${flag} kept`);
+      assert.deepEqual(statesOf([matchedLine(text)], 'free'), [], text);
+    }
+  });
+
+  it('does not let "any type" of vinegar stay gluten-free, since it may be malt vinegar', () => {
+    const text = '1 teaspoon vinegar (any type)';
+    assert.deepEqual(match(text).unresolved, ['any type']);
+    assert.notEqual(rollupAllergens([matchedLine(text)]).gluten, 'free');
+    assert.equal(flagsOf(text) & DietFlag.gluten_free, 0);
+  });
+
+  it('does not let "any kind" of oil stay free of peanut or sesame', () => {
+    for (const text of ['2 tbsp oil (any kind)', '2 tbsp oil, any kind', '1/4 cup olive oil (your favourite)']) {
+      assert.equal(match(text).unresolved.length, 1, text);
+      const free = statesOf([matchedLine(text)], 'free');
+      assert.ok(!free.includes('peanut') && !free.includes('sesame'), `${text}: ${free.join(' ')}`);
+    }
+  });
+
+  it('reads a choice after a comma like one in an aside', () => {
+    const result = match('1 cup milk, dairy or soy');
+    assert.deepEqual(result.unresolved, []);
+    assert.ok(result.all.includes('soy_milk'), result.all.join(' '));
+    assert.deepEqual(statesOf([matchedLine('1 cup milk, dairy or soy')], 'contains'), ['milk', 'soy']);
+  });
+
+  it('leaves milk or cheese of any type unidentified', () => {
+    for (const text of ['1 cup milk (your favourite)', '1 cup milk (any type)', '2 tbsp grated cheese (any type)']) {
+      assert.equal(match(text).unresolved.length, 1, text);
+      const free = statesOf([matchedLine(text)], 'free');
+      assert.ok(!free.includes('soy') && !free.includes('tree_nut'), `${text}: ${free.join(' ')}`);
+    }
+  });
+
+  it('widens a group of foods with one profile', () => {
+    for (const text of [
+      '1/4 cup chopped nuts (any type)',
+      '1 1/2 cups fresh or frozen berries, any type',
+      '8 cups greens (try kale, bok choy, chard, collard or others)',
+      '1/4 cup finely chopped vegetables (any type)',
+    ]) {
+      assert.deepEqual(match(text).unresolved, [], text);
+    }
+  });
+
+  it('reads colour, size, extra amounts, trimmed fat and serving notes as descriptions', () => {
+    for (const text of [
+      '1 cup bell pepper, chopped (any color)',
+      '1/2 cup chopped bell pepper (any colour)',
+      '12 ounces salmon, cut into 3 or 4 pieces of similar size',
+      '1 tbsp olive oil, plus another tbsp for serving',
+      '1 lb beef chuck, fat trimmed',
+      '1/2 cup grated cheese, for topping',
+      '2 carrots, peeled and chopped',
+      '2 cups chicken broth (homemade or store-bought)',
+    ]) {
+      assert.deepEqual(match(text).unresolved, [], text);
+    }
+  });
+
+  it('still treats a bare "fat" listed as a choice in an aside as open-ended', () => {
+    assert.deepEqual(match('2 tbsp shortening (lard or fat)').unresolved, ['fat']);
+  });
+});
+
+describe('words that mark a replacement product', () => {
+  it('never resolves a dairy food offered with a plant-based or free-from version to the dairy food alone', () => {
+    for (const text of [
+      '1 cup milk (cow or plant-based)',
+      '1/2 cup cheese (dairy or vegan)',
+      '1 cup yogurt (dairy or non-dairy)',
+      '1/2 cup sour cream (regular or vegan)',
+      '1/4 cup mayonnaise (regular or vegan)',
+      '4 ounces cream cheese (regular or dairy-free)',
+    ]) {
+      const result = match(text);
+      assert.notEqual(result.id, null, text);
+      assert.equal(result.unresolved.length, 1, text);
+      const lines = [matchedLine(text)];
+      const free = statesOf(lines, 'free');
+      assert.ok(!free.includes('soy') && !free.includes('tree_nut'), `${text}: ${free.join(' ')}`);
+      assert.equal(rollupDiet(lines, rollupAllergens(lines)), 0, text);
+    }
+  });
+
+  it('applies to an offered choice, to the name and to other free-from and meatless words', () => {
+    assert.deepEqual(match('1/2 cup mayo or egg-free mayo').unresolved, ['egg free mayo']);
+    assert.ok(!statesOf([matchedLine('1/2 cup mayo or egg-free mayo')], 'free').includes('soy'));
+    assert.deepEqual(match('1 cup vegan cheese').unresolved, ['vegan cheese']);
+    assert.deepEqual(match('8 ounces sausage (pork or vegetarian)').unresolved, ['vegetarian']);
+    assert.deepEqual(match('8 ounces pasta (regular or gluten-free)').unresolved, ['gluten free']);
+    assert.deepEqual(match('1 cup ground beef (or meatless crumbles)').unresolved.length, 1);
+  });
+
+  it('accepts a known replacement product found with a word shared with the name', () => {
+    const milk = match('1 cup milk (dairy or plant)');
+    assert.deepEqual(milk.unresolved, []);
+    assert.ok(milk.all.includes('plant_milk'), milk.all.join(' '));
+    const butter = match('2 tbsp butter (dairy or vegan)');
+    assert.deepEqual(butter.unresolved, []);
+    assert.ok(butter.all.includes('vegan_butter'), butter.all.join(' '));
+  });
+
+  it('accepts a food that already is what the word asks for', () => {
+    assert.deepEqual(match('3 tablespoons vegan white wine vinegar').unresolved, []);
+    assert.deepEqual(match('1 cup soy milk (dairy-free)').unresolved, []);
+    assert.deepEqual(match('2 tbsp olive oil (vegan)').unresolved, []);
+    assert.deepEqual(match('2 large egg plants').unresolved, []);
   });
 });
