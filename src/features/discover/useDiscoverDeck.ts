@@ -5,14 +5,13 @@
  * - Candidates come from one coarse catalog query per mode; ranking (`buildDeck`, which re-checks
  *   safety) runs in a deferred task so it never competes with a swipe.
  * - Ranking work is keyed by a cheap string (mode, seed, input versions, feedback version, fills),
- *   so re-renders never redo it. Changing mode, preferences, the day tilt or pantry starts a fresh
- *   deck.
+ *   so re-renders never redo it. Changing mode, preferences or pantry starts a fresh deck; a new
+ *   day tilt only steers the next fill.
  * - Swipes are held briefly so they can be undone (`useHeldDecision`).
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import {
-  buildDeck,
   isRecipeSafe,
   type DeckCard,
   type DeckMode,
@@ -20,7 +19,7 @@ import {
   type RecipeSummary,
   type Seed,
 } from '@/domain';
-import { useCandidates, type CandidateFilters, type RecipeCandidate } from '@/lib/catalog';
+import { useCandidates, type CandidateFilters } from '@/lib/catalog';
 
 import {
   FILL_SIZE,
@@ -31,8 +30,8 @@ import {
   type Decision,
 } from './deckQueue';
 import { runDeferred, type DeferredTask } from './deferred';
-import { toRankRecipe } from './deps';
 import { candidateFilters, resolveMode } from './modes';
+import { rankFill } from './rankFill';
 import { useDeckInputs } from './useDeckInputs';
 import { useHeldDecision } from './useHeldDecision';
 import { useIdentityVersion } from './useIdentityVersion';
@@ -72,31 +71,6 @@ export interface DiscoverDeck {
 }
 
 const NO_FILTERS: CandidateFilters = { limit: 1 };
-
-interface RankPool {
-  readonly recipes: readonly RecipeSummary[];
-  /** Recipe ids by dish family, so a fill can leave out variants of dishes already shown. */
-  readonly families: ReadonlyMap<string, readonly string[]>;
-}
-
-const poolCache = new WeakMap<readonly RecipeCandidate[], RankPool>();
-
-/** Candidates in the engine's shape, converted once per query result. */
-function rankPool(candidates: readonly RecipeCandidate[]): RankPool {
-  let pool = poolCache.get(candidates);
-  if (!pool) {
-    const recipes = candidates.map(toRankRecipe);
-    const families = new Map<string, string[]>();
-    for (const recipe of recipes) {
-      const members = families.get(recipe.familyId);
-      if (members) members.push(recipe.id);
-      else families.set(recipe.familyId, [recipe.id]);
-    }
-    pool = { recipes, families };
-    poolCache.set(candidates, pool);
-  }
-  return pool;
-}
 
 /** The ranking seed for a session: "Start over" must shuffle anew, not replay the first order. */
 export function sessionSeed(seed: Seed, sessionVersion: number): Seed {
@@ -149,7 +123,7 @@ export function useDiscoverDeck(
   );
 
   const candidates = query.data;
-  const fillKey = `${key}|f${inputs.feedbackVersion}|n${queue.fills}`;
+  const fillKey = `${key}|f${inputs.feedbackVersion}|t${inputs.tilt}|n${queue.fills}`;
   const wantsFill = queue.key === key && candidates !== undefined && needsFill(queue);
 
   useEffect(() => {
@@ -163,29 +137,21 @@ export function useDiscoverDeck(
     // Measured with the domain benchmark: about 6 ms per 1,000 candidates on a laptop, so a wide
     // (1,500) pool can pass the 8 ms budget on a phone. It runs in an idle slot, never mid-swipe.
     const task = runDeferred(() => {
-      const { recipes, families } = rankPool(candidates);
-      const history = historyRef.current;
-      for (const recipe of recipes) history.set(recipe.id, recipe);
-      // Cards on screen or swiped this session stay out, and so do other variants of their dishes.
-      const exclude = new Set([...queued, ...seen.keys()]);
-      for (const id of [...exclude]) {
-        const family = history.get(id)?.familyId;
-        for (const member of (family && families.get(family)) || []) exclude.add(member);
-      }
-      const deck = buildDeck({
-        candidates: recipes,
+      const cards = rankFill({
+        candidates,
+        history: historyRef.current,
+        // Cards on screen or swiped this session stay out, and so do other variants of their dishes.
+        hidden: [...queued, ...seen.keys()],
         prefs,
         feedback,
         pantry,
         shown,
-        history,
         now: clock(),
         mode,
         seed: rankSeed,
         size: FILL_SIZE,
-        exclude,
       });
-      dispatch({ type: 'fill', key, cards: deck.cards });
+      dispatch({ type: 'fill', key, cards });
     });
     taskRef.current = { key: fillKey, task };
   }, [wantsFill, fillKey, candidates, queue, inputs, clock, mode, rankSeed, key, seen]);
