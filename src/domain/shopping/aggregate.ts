@@ -1,17 +1,22 @@
 /**
  * Building a shopping list from planned recipes.
  *
- * 1. Every line is scaled by planned servings × portion ÷ recipe servings.
+ * 1. Every line is scaled by planned servings × portion ÷ recipe servings, then rounded per recipe
+ *    the way the recipe screen shows it (`scaleLines`): whole eggs, minimum pinches. So two
+ *    recipes that each need one egg after scaling add up to two eggs, not one.
  * 2. Lines for the same ingredient are merged per dimension: weights in grams, volumes in
  *    millilitres, counts per count unit. When one ingredient appears in more than one dimension,
  *    everything its `grams_per_unit` can weigh is folded into grams, so "1 cup flour" and
  *    "200 g flour" become one amount.
  * 3. Pantry quantities are subtracted (through grams when units differ). A pantry entry without a
- *    quantity covers the item entirely.
+ *    quantity covers the item entirely. A pantry unit that is present but not recognised only
+ *    matches amounts written in that same unit word; it is never treated as a count. A "to taste"
+ *    use is covered only by real stock left over after the measured amounts are subtracted.
  * 4. Counts are rounded up to whole items, because shops do not sell half an onion.
  * 5. Items are grouped by aisle in store-walk order and sorted by name, with the key as a final
  *    tie-break so the order never depends on input order.
  */
+import { scaleLines, type ScaleOptions } from '../portions';
 import {
   convertUnit,
   lookupUnit,
@@ -65,6 +70,7 @@ export function normalizeAisle(aisle: string | null | undefined): string {
   return id.length > 0 ? id : 'other';
 }
 
+/** English display title for an aisle id. Localised titles are a follow-up for the UI layer. */
 export function aisleTitle(aisle: string): string {
   const words = aisle.replace(/_/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -124,9 +130,23 @@ function newBucket(): Bucket {
   return { grams: 0, ml: 0, counts: new Map(), others: new Map() };
 }
 
+function isBlank(unit: string | null | undefined): boolean {
+  return unit == null || unit.trim() === '';
+}
+
+/** Lower-cased label used for amounts in a unit word we do not recognise. */
+function otherLabel(rawUnit: string): string {
+  return rawUnit.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Add one already-scaled line. `unit` is the recognised unit (the quantity is already expressed
+ * in it); when it is `null` and `rawUnit` is not blank, the unit word was not recognised.
+ */
 function addLine(
   acc: Accumulator,
   quantity: number | null,
+  unit: UnitId | null,
   rawUnit: string | null,
   grams: number | null,
 ): void {
@@ -136,22 +156,20 @@ function addLine(
     else acc.asNeeded = true;
     return;
   }
-  const found = rawUnit === null || rawUnit.trim() === '' ? null : lookupUnit(rawUnit);
-  if (found === null && rawUnit !== null && rawUnit.trim() !== '') {
+  if (unit === null && rawUnit !== null && !isBlank(rawUnit)) {
     // An unrecognised unit: its weight is the only way to merge it with anything else.
     if (grams !== null && Number.isFinite(grams) && grams > 0) b.grams += grams;
     else {
-      const label = rawUnit.trim().toLowerCase();
+      const label = otherLabel(rawUnit);
       b.others.set(label, (b.others.get(label) ?? 0) + quantity);
     }
     return;
   }
-  const unit: UnitId = found?.unit ?? 'each';
-  const q = quantity * (found?.scale ?? 1);
-  const dim = UNITS[unit].dimension;
-  if (dim === 'mass') b.grams += q * UNITS[unit].base;
-  else if (dim === 'volume') b.ml += q * UNITS[unit].base;
-  else b.counts.set(unit, (b.counts.get(unit) ?? 0) + q);
+  const u: UnitId = unit ?? 'each';
+  const dim = UNITS[u].dimension;
+  if (dim === 'mass') b.grams += quantity * UNITS[u].base;
+  else if (dim === 'volume') b.ml += quantity * UNITS[u].base;
+  else b.counts.set(u, (b.counts.get(u) ?? 0) + quantity);
 }
 
 /** Fold everything that can be weighed into grams when more than one dimension is present. */
@@ -191,13 +209,25 @@ function amountsOf(b: Bucket): Amount[] {
 
 /**
  * Subtract a pantry quantity from a bucket: first from the same count unit, then grams, millilitres
- * and other counts, converting through the ingredient's weights where the units differ.
+ * and other counts, converting through the ingredient's weights where the units differ. Returns
+ * how much of the pantry entry is left over, in its own unit.
+ *
+ * Only an absent or blank pantry unit means a count of items. A unit word we do not recognise
+ * ("tbsp chopped") is matched only against amounts recorded under the same word.
  */
-function subtractPantry(b: Bucket, entry: PantryEntry, gpu: GramsPerUnit): void {
-  const found = entry.unit == null || entry.unit.trim() === '' ? null : lookupUnit(entry.unit);
+function subtractPantry(b: Bucket, entry: PantryEntry, gpu: GramsPerUnit): number {
+  const raw = entry.quantity;
+  if (raw == null || !Number.isFinite(raw) || raw <= 0) return 0;
+  const found = isBlank(entry.unit) ? null : lookupUnit(entry.unit);
+  if (found === null && !isBlank(entry.unit)) {
+    const label = otherLabel(entry.unit ?? '');
+    const have = b.others.get(label) ?? 0;
+    const used = Math.min(have, raw);
+    if (used > 0) b.others.set(label, have - used);
+    return raw - used;
+  }
   const unit: UnitId = found?.unit ?? 'each';
-  let left = (entry.quantity ?? 0) * (found?.scale ?? 1);
-  if (!(left > 0)) return;
+  let left = raw * (found?.scale ?? 1);
 
   const targets: { unit: UnitId; get: () => number; set: (v: number) => void }[] = [];
   const countTarget = (u: UnitId) => ({
@@ -211,7 +241,7 @@ function subtractPantry(b: Bucket, entry: PantryEntry, gpu: GramsPerUnit): void 
   for (const u of [...b.counts.keys()].sort()) if (u !== unit) targets.push(countTarget(u));
 
   for (const t of targets) {
-    if (left <= EPSILON) return;
+    if (left <= EPSILON) return 0;
     const have = t.get();
     if (have <= EPSILON) continue;
     const available =
@@ -221,6 +251,7 @@ function subtractPantry(b: Bucket, entry: PantryEntry, gpu: GramsPerUnit): void 
     t.set(have - used);
     left *= 1 - used / available;
   }
+  return left > EPSILON ? left : 0;
 }
 
 function convertThroughGrams(
@@ -246,6 +277,8 @@ export interface BuildListInput {
   readonly recipes: readonly ShoppingRecipe[];
   readonly ingredients: Readonly<Record<string, ShoppingIngredient>>;
   readonly pantry?: readonly PantryEntry[] | undefined;
+  /** Same override as the recipe screen's scaling, so both round counts identically. */
+  readonly divisibility?: ScaleOptions['divisibility'];
 }
 
 export interface ShoppingList {
@@ -269,8 +302,10 @@ export function buildShoppingList(input: BuildListInput): ShoppingList {
         ? recipe.portion
         : 1;
     const factor = (planned * portion) / base;
+    const scaled = scaleLines(recipe.ingredients, factor, { divisibility: input.divisibility });
 
-    for (const line of recipe.ingredients) {
+    for (const s of scaled) {
+      const line = s.line;
       const info = line.ingredient_id === null ? undefined : input.ingredients[line.ingredient_id];
       const { key, name } =
         line.ingredient_id !== null
@@ -295,18 +330,21 @@ export function buildShoppingList(input: BuildListInput): ShoppingList {
       }
       acc.recipeIds.add(recipe.recipeId);
       if (!(line.optional === true || line.optional === 1)) acc.allOptional = false;
-      addLine(
-        acc,
-        line.quantity === null ? null : line.quantity * factor,
-        line.unit,
-        line.grams == null ? null : line.grams * factor,
-      );
+      if (s.unit === null && !isBlank(line.unit)) {
+        // Unrecognised unit word: keep the exact linear amount, there is nothing to round to.
+        const grams = line.grams == null ? null : line.grams * factor;
+        addLine(acc, s.exactQuantity, null, line.unit, grams);
+      } else {
+        addLine(acc, s.quantity, s.unit, line.unit, s.grams);
+      }
     }
   }
 
   const pantryById = new Map<string, PantryEntry[]>();
   for (const entry of input.pantry ?? []) {
-    pantryById.set(entry.ingredient_id, [...(pantryById.get(entry.ingredient_id) ?? []), entry]);
+    const list = pantryById.get(entry.ingredient_id);
+    if (list) list.push(entry);
+    else pantryById.set(entry.ingredient_id, [entry]);
   }
 
   const items: ShoppingItem[] = [];
@@ -321,12 +359,14 @@ export function buildShoppingList(input: BuildListInput): ShoppingList {
       pantry = 'covered';
     } else if (entries.length > 0) {
       const before = bucketSize(acc.bucket);
-      for (const e of entries) subtractPantry(acc.bucket, e, acc.gpu);
+      let leftover = 0;
+      for (const e of entries) leftover += subtractPantry(acc.bucket, e, acc.gpu);
       const after = bucketSize(acc.bucket);
-      // Having some at home covers a "to taste" use.
-      asNeeded = false;
-      if (after <= EPSILON) pantry = 'covered';
-      else if (after < before - EPSILON || acc.asNeeded) pantry = 'partial';
+      // Stock left after the measured amounts covers a "to taste" use; an empty or used-up
+      // pantry entry does not.
+      if (acc.asNeeded && leftover > EPSILON) asNeeded = false;
+      if (after <= EPSILON && !asNeeded) pantry = 'covered';
+      else if (after < before - EPSILON || asNeeded !== acc.asNeeded) pantry = 'partial';
     }
     const item: ShoppingItem = {
       key: acc.key,
@@ -354,7 +394,9 @@ export function buildShoppingList(input: BuildListInput): ShoppingList {
 export function groupByAisle(items: readonly ShoppingItem[]): AisleGroup[] {
   const groups = new Map<string, ShoppingItem[]>();
   for (const item of [...items].sort(compareItems)) {
-    groups.set(item.aisle, [...(groups.get(item.aisle) ?? []), item]);
+    const group = groups.get(item.aisle);
+    if (group) group.push(item);
+    else groups.set(item.aisle, [item]);
   }
   return [...groups.keys()]
     .sort(compareAisles)

@@ -5,7 +5,7 @@
  * an egg. Count-based lines are rounded to amounts a cook can actually use, and tiny measured
  * amounts are held at a usable minimum so a pinch of salt never scales to nothing.
  */
-import { toBase, UNITS, normalizeUnit, type UnitId } from '../units';
+import { lookupUnit, toBase, UNITS, type UnitId } from '../units';
 
 /** One ingredient line, shaped like a `recipe_ingredients` row (see docs/DATA.md). */
 export interface PortionLine {
@@ -127,7 +127,10 @@ function scaleLine<L extends PortionLine>(
   factor: number,
   divisibility: NonNullable<ScaleOptions['divisibility']>,
 ): ScaledLine<L> {
-  const unit = normalizeUnit(line.unit);
+  // Some unit spellings are scaled units ("cl" is 10 ml): apply that multiplier to the quantity.
+  const found = lookupUnit(line.unit);
+  const unit = found?.unit ?? null;
+  const aliasScale = found?.scale ?? 1;
   const grams = line.grams ?? null;
   if (line.quantity == null || !Number.isFinite(line.quantity) || line.quantity <= 0) {
     return {
@@ -139,7 +142,8 @@ function scaleLine<L extends PortionLine>(
       adjusted: false,
     };
   }
-  const exact = line.quantity * factor;
+  const original = line.quantity * aliasScale;
+  const exact = original * factor;
   let rounded = exact;
   const dimension = unit === null ? 'count' : UNITS[unit].dimension;
   if (dimension === 'count') {
@@ -151,7 +155,7 @@ function scaleLine<L extends PortionLine>(
     const min = dimension === 'volume' ? MIN_VOLUME_ML : MIN_MASS_G;
     if (base < min) rounded = min / UNITS[unit].base;
   }
-  const ratio = rounded / line.quantity;
+  const ratio = rounded / original;
   return {
     line,
     quantity: rounded,
@@ -160,6 +164,21 @@ function scaleLine<L extends PortionLine>(
     exactQuantity: exact,
     adjusted: Math.abs(rounded - exact) > exact * 0.1,
   };
+}
+
+/**
+ * Scale ingredient lines by an explicit factor (planned servings × portion ÷ recipe servings),
+ * with the same whole-item rounding and minimums as `scaleRecipe`. The shopping list uses this so
+ * each recipe is rounded on its own before amounts from different recipes are added up.
+ */
+export function scaleLines<L extends PortionLine>(
+  lines: readonly L[],
+  factor: number,
+  options: { readonly divisibility?: ScaleOptions['divisibility'] | undefined } = {},
+): ScaledLine<L>[] {
+  const f = Number.isFinite(factor) && factor > 0 ? factor : 1;
+  const divisibility = options.divisibility ?? defaultDivisibility;
+  return lines.map((line) => scaleLine(line, f, divisibility));
 }
 
 /**

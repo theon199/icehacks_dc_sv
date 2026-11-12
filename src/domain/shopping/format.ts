@@ -11,8 +11,9 @@ function amountText(a: Amount, options: FormatOptions): string {
 }
 
 /**
- * One line of text for an item: "2 onions", "1 ½ cups milk", "500 g chicken thighs + 2",
- * "salt (as needed)". Whole-item counts use the plural name above one.
+ * One line of text for an item: "2 onions", "1 ½ cups milk", "500 g + 2 chicken thighs",
+ * "salt (as needed)". Whole-item counts use the plural name above one. The notes are English only
+ * for now; localising them is a follow-up.
  */
 export function itemText(item: ShoppingItem, options: FormatOptions): string {
   const parts = item.amounts.map((a) => amountText(a, options));

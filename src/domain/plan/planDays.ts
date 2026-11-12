@@ -579,7 +579,11 @@ const STATUS_WORDS: Readonly<Record<TargetStatus, string>> = {
   info: 'compared with',
 };
 
-/** Plain-English lines describing a plan, for the "why this plan" sheet. */
+/**
+ * Plain-English lines describing a plan, for the "why this plan" sheet. English only for now:
+ * the structured `explanation` notes are the stable interface, and localised wording is a
+ * follow-up for the UI layer.
+ */
 export function explainPlan(result: PlanDaysResult): string[] {
   const lines: string[] = [];
   for (const note of result.explanation) {

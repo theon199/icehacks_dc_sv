@@ -1,6 +1,7 @@
 import {
   defaultDivisibility,
   halfPortion,
+  scaleLines,
   scaleNutrition,
   scaleRecipe,
   type PortionLine,
@@ -156,5 +157,24 @@ describe('scaleNutrition', () => {
       protein_g: 10,
       sodium_mg: null,
     });
+  });
+});
+
+describe('scaled unit spellings', () => {
+  it('applies the multiplier of a scaled unit alias such as cl', () => {
+    const r: PortionRecipe = { servings: 2, ingredients: [line('wine', 5, 'cl', 50)] };
+    const same = scaleRecipe(r, 2).lines[0];
+    expect(same?.unit).toBe('ml');
+    expect(same?.quantity).toBeCloseTo(50, 10);
+    expect(same?.grams).toBeCloseTo(50, 10);
+    expect(same?.adjusted).toBe(false);
+    expect(scaleRecipe(r, 4).lines[0]?.quantity).toBeCloseTo(100, 10);
+  });
+});
+
+describe('scaleLines', () => {
+  it('rounds like scaleRecipe for the same factor', () => {
+    const viaLines = scaleLines(frittata.ingredients, 0.25);
+    expect(viaLines.map((l) => l.quantity)).toEqual(quantities(scaleRecipe(frittata, 1)));
   });
 });

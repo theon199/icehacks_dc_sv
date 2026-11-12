@@ -467,3 +467,107 @@ describe('helpers', () => {
     });
   });
 });
+
+describe('review fixes', () => {
+  const oneEgg = (recipeId: string): ShoppingRecipe => ({
+    recipeId,
+    servings: 4,
+    plannedServings: 2,
+    ingredients: [l('egg', 1, null), l('salt', 0.02, 'tsp')],
+  });
+
+  it('rounds each recipe before merging, as the recipe screen does', () => {
+    // Each recipe scales to half an egg, which the recipe screen shows as one whole egg.
+    const list = buildShoppingList({
+      recipes: [oneEgg('a'), oneEgg('b')],
+      ingredients: INGREDIENTS,
+    });
+    expect(find(list.items, 'i:egg').amounts).toEqual([{ quantity: 2, unit: 'each', label: null }]);
+    // Minimum amounts are kept per recipe too: ⅛ tsp each.
+    expect(find(list.items, 'i:salt').amounts[0]?.quantity).toBeCloseTo((2 * 4.92892) / 8, 3);
+  });
+
+  it('honours scaled unit aliases', () => {
+    const list = buildShoppingList({
+      recipes: [
+        { recipeId: 'x', servings: 1, plannedServings: 1, ingredients: [l('milk', 5, 'cl')] },
+      ],
+      ingredients: INGREDIENTS,
+    });
+    expect(find(list.items, 'i:milk').amounts).toEqual([
+      { quantity: expect.closeTo(50, 6), unit: 'ml', label: null },
+    ]);
+  });
+
+  it('does not treat an unrecognised pantry unit as a count', () => {
+    const recipe: ShoppingRecipe = {
+      recipeId: 'x',
+      servings: 1,
+      plannedServings: 1,
+      ingredients: [l('onion', 2, null)],
+    };
+    const list = buildShoppingList({
+      recipes: [recipe],
+      ingredients: INGREDIENTS,
+      pantry: [{ ingredient_id: 'onion', quantity: 2, unit: 'tbsp chopped' }],
+    });
+    const onion = find(list.items, 'i:onion');
+    expect(onion.pantry).toBe('none');
+    expect(onion.amounts).toEqual([{ quantity: 2, unit: 'each', label: null }]);
+    // A blank unit is a count.
+    const blank = buildShoppingList({
+      recipes: [recipe],
+      ingredients: INGREDIENTS,
+      pantry: [{ ingredient_id: 'onion', quantity: 2, unit: ' ' }],
+    });
+    expect(find(blank.inPantry, 'i:onion').pantry).toBe('covered');
+  });
+
+  it('matches an unrecognised pantry unit only against the same unit word', () => {
+    const list = buildShoppingList({
+      recipes: [
+        { recipeId: 'x', servings: 1, plannedServings: 1, ingredients: [l('cumin', 3, 'Shakes')] },
+      ],
+      ingredients: INGREDIENTS,
+      pantry: [{ ingredient_id: 'cumin', quantity: 1, unit: 'shakes' }],
+    });
+    const cumin = find(list.items, 'i:cumin');
+    expect(cumin.pantry).toBe('partial');
+    expect(cumin.amounts).toEqual([{ quantity: 2, unit: null, label: 'shakes' }]);
+  });
+
+  it('needs real stock left over to cover a "to taste" use', () => {
+    const toTaste: ShoppingRecipe = {
+      recipeId: 'x',
+      servings: 1,
+      plannedServings: 1,
+      ingredients: [l('cumin', null, null)],
+    };
+    const empty = buildShoppingList({
+      recipes: [toTaste],
+      ingredients: INGREDIENTS,
+      pantry: [{ ingredient_id: 'cumin', quantity: 0, unit: 'tsp' }],
+    });
+    const cumin = find(empty.items, 'i:cumin');
+    expect(cumin.pantry).toBe('none');
+    expect(cumin.asNeeded).toBe(true);
+
+    const stocked = buildShoppingList({
+      recipes: [toTaste],
+      ingredients: INGREDIENTS,
+      pantry: [{ ingredient_id: 'cumin', quantity: 2, unit: 'tsp' }],
+    });
+    expect(find(stocked.inPantry, 'i:cumin').pantry).toBe('covered');
+
+    // Measured need larger than the stock: nothing is left for the "to taste" use.
+    const short = buildShoppingList({
+      recipes: [{ ...toTaste, ingredients: [l('cumin', null, null), l('cumin', 2, 'tbsp')] }],
+      ingredients: INGREDIENTS,
+      pantry: [{ ingredient_id: 'cumin', quantity: 1, unit: 'tbsp' }],
+    });
+    const shortCumin = find(short.items, 'i:cumin');
+    expect(shortCumin.pantry).toBe('partial');
+    expect(shortCumin.asNeeded).toBe(true);
+    expect(shortCumin.amounts[0]?.quantity).toBeCloseTo(14.7868, 3);
+  });
+});

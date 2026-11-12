@@ -7,6 +7,9 @@
  * with no price, a unit that cannot be converted to the price's unit, or no quantity are left out
  * of the total and listed in `missing`, so the UI can say "estimate excludes 2 items".
  * All money is in integer cents to avoid floating-point drift.
+ *
+ * Costing never checks safety: the planned recipes must already have been filtered for the
+ * person's allergens and diet upstream (fail-closed), before they reach the list or this module.
  */
 import {
   convertAmount,
@@ -155,9 +158,9 @@ const MISSING: ReadonlySet<CostStatus> = new Set<CostStatus>([
 
 export function estimateListCost(input: CostInput): CostEstimate {
   const all = [...input.items, ...(input.inPantry ?? [])];
-  const items = all.map((item) => costItem(item, input));
-  const missing = items
-    .map((c, i) => ({ c, item: all[i] as ShoppingItem }))
+  const pairs = all.map((item) => ({ item, c: costItem(item, input) }));
+  const items = pairs.map((p) => p.c);
+  const missing = pairs
     .filter(
       ({ c, item }) => MISSING.has(c.status) && !(item.optional && c.status === 'no_quantity'),
     )
