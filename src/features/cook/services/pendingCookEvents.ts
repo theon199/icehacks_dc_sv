@@ -160,7 +160,7 @@ async function runFlush(ownerId: string, deps: FlushDeps): Promise<number> {
 }
 
 // A queue only ever serves the account that is signed in. Leaving an account (signing out, which
-// also follows account deletion) forgets everything; arriving in one forgets other accounts' leftovers.
+// also follows account deletion) forgets everything; signing in forgets other accounts' leftovers.
 useSessionStore.subscribe((state, previous) => {
   if (state.userId !== previous.userId) usePendingCookEvents.getState().keepOnly(state.userId);
 });
