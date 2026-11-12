@@ -1,5 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
+import { useState } from 'react';
+import { Pressable } from 'react-native';
 
 import { ApiError } from '@/lib/api/errors';
 
@@ -84,6 +86,34 @@ describe('InviteScreen', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(screen.getByText("You're now friends")).toBeOnTheScreen());
     expect(redeem).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts fresh when a different invite link opens the same screen', async () => {
+    redeem.mockRejectedValueOnce(dbFailure('invite_used', 409));
+    function TwoLinks() {
+      const [code, setCode] = useState('abcde-fgh23');
+      return (
+        <>
+          <InviteScreen code={code} />
+          <Pressable
+            testID="open-next-link"
+            onPress={() => setCode('famara://invite/QRSTUVWX45')}
+          />
+        </>
+      );
+    }
+    await renderWithQuery(<TwoLinks />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Accept invite' }));
+    expect(await screen.findByText('This invite was already used')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByTestId('open-next-link'));
+    expect(await screen.findByText(/QRSTU VWX45/)).toBeOnTheScreen();
+    expect(screen.queryByText('This invite was already used')).toBeNull();
+
+    redeem.mockResolvedValueOnce({ inviter_id: 'inviter-2', inviter_handle: 'kofi' });
+    await fireEvent.press(screen.getByRole('button', { name: 'Accept invite' }));
+    expect(await screen.findByText(/@kofi/)).toBeOnTheScreen();
+    expect(redeem).toHaveBeenLastCalledWith('QRSTUVWX45');
   });
 
   it('closes from any state', async () => {

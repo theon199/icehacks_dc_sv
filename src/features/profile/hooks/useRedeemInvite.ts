@@ -8,6 +8,7 @@
  *   failed     carries why, so the screen can explain expired / used / own invites
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 import { isApiError } from '@/lib/api/errors';
 import type { RedeemedInvite } from '@/lib/supabase/database.types';
@@ -31,15 +32,29 @@ export function useRedeemInvite(rawCode: string) {
   const mutation = useMutation({
     mutationFn: (validCode: string) => redeemFriendInvite(validCode),
     onSuccess: async () => {
-      if (me) await queryClient.invalidateQueries({ queryKey: profileKeys.follows(me) });
+      if (!me) return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: profileKeys.follows(me) }),
+        queryClient.invalidateQueries({ queryKey: profileKeys.suggestions(me) }),
+      ]);
     },
   });
 
+  // The same screen can be reused for a different link. An outcome only counts for the code it
+  // was requested for; anything older is cleared so it cannot leak into the new invite.
+  const attempted = mutation.variables;
+  const forThisCode = code != null && attempted === code;
+  const { reset } = mutation;
+  useEffect(() => {
+    if (attempted !== undefined && attempted !== code) reset();
+  }, [attempted, code, reset]);
+
   let state: RedeemState;
   if (!code) state = { status: 'malformed' };
+  else if (!forThisCode || mutation.isIdle) state = { status: 'ready', code };
   else if (mutation.isPending) state = { status: 'redeeming', code };
   else if (mutation.isSuccess) state = { status: 'accepted', code, inviter: mutation.data };
-  else if (mutation.isError) {
+  else {
     const error = mutation.error;
     state = {
       status: 'failed',
@@ -47,10 +62,10 @@ export function useRedeemInvite(rawCode: string) {
       failure: classifyRedeemError(error),
       ...(isApiError(error) && error.serverMessage ? { serverMessage: error.serverMessage } : {}),
     };
-  } else state = { status: 'ready', code };
+  }
 
   const accept = () => {
-    if (code && !mutation.isPending) mutation.mutate(code);
+    if (code && state.status !== 'redeeming') mutation.mutate(code);
   };
   return { state, accept };
 }
