@@ -1,5 +1,5 @@
-import { AboutScreen } from '@/features/about/screens/AboutScreen';
+import { AboutPageScreen } from '@/features/settings/screens/AboutPageScreen';
 
 export default function SourcesAboutRoute() {
-  return <AboutScreen page="sources" />;
+  return <AboutPageScreen page="sources" />;
 }
