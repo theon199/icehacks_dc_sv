@@ -1,77 +1,88 @@
 /**
  * The narrow set of things the health feature needs from the rest of the app: the person's cooked
- * meals, dish names, and a way to sync health summaries. Each has a working implementation here
- * on top of Supabase and the catalog; when the shared cook log store and sync engine land, only
- * this file changes.
+ * meals (from the cook log kept on this device), dish names from the catalog, and a way to sync
+ * health summaries into the account.
  */
 import { z } from 'zod';
 
 import type { CookedMeal } from '@/domain/health';
-import { catalogQuery } from '@/lib/db/catalog';
-import { newId } from '@/lib/id';
+import { useSessionStore } from '@/features/auth';
+import { getRecipeSummaries } from '@/lib/catalog';
 import { describeError, logger } from '@/lib/logger';
-import { defineKvKey } from '@/lib/storage/kv';
 import { supabase } from '@/lib/supabase/client';
 import type { Json } from '@/lib/supabase/database.types';
+import { getDeviceId } from '@/lib/sync/deviceId';
+import { useCookLogStore, type CookEntry } from '@/stores';
 
 import type { TimeRange } from './healthKit';
 
-const cookEventRow = z.object({
-  id: z.string(),
-  recipe_ref: z.string().min(1),
-  cooked_at: z.string(),
-  local_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
+/**
+ * Cook log entries whose recipe id starts with this were logged from a photo estimate, not cooked
+ * from a recipe; they have no catalog dish to pair glucose with.
+ */
+const ESTIMATED_MEAL_PREFIX = 'snap:';
+
+/**
+ * The cook log is wiped when someone signs out, so reading it without an account would look like
+ * an empty log (and make every stored pair look deleted). Readers refuse instead.
+ */
+export class CookLogUnavailableError extends Error {
+  constructor() {
+    super('The cook log cannot be read while signed out');
+    this.name = 'CookLogUnavailableError';
+  }
+}
+
+function signedInCookLog(): Readonly<Record<string, CookEntry>> {
+  if (!useSessionStore.getState().userId) throw new CookLogUnavailableError();
+  return useCookLogStore.getState().entries;
+}
+
+const isCookedDish = (entry: CookEntry) => !entry.recipeId.startsWith(ESTIMATED_MEAL_PREFIX);
+
+const pad2 = (value: number) => String(value).padStart(2, '0');
+
+/** The device's calendar day for an instant, `YYYY-MM-DD`. */
+function localDateOf(at: number): string {
+  const date = new Date(at);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
 
 /** Meals the person logged as cooked within the range, oldest first. */
 export async function listCookedMeals(range: TimeRange): Promise<CookedMeal[]> {
-  const { data, error } = await supabase
-    .from('cook_events')
-    .select('id, recipe_ref, cooked_at, local_date')
-    .gte('cooked_at', new Date(range.from).toISOString())
-    .lte('cooked_at', new Date(range.to).toISOString())
-    .order('cooked_at', { ascending: true })
-    .limit(500);
-  if (error) throw new Error(error.message);
-  const rows = z.array(cookEventRow).parse(data ?? []);
+  const entries = signedInCookLog();
   const meals: CookedMeal[] = [];
-  for (const row of rows) {
-    const startedAt = Date.parse(row.cooked_at);
-    if (!Number.isFinite(startedAt)) continue;
-    meals.push({ id: row.id, recipeRef: row.recipe_ref, startedAt, localDate: row.local_date });
+  for (const entry of Object.values(entries)) {
+    if (!isCookedDish(entry)) continue;
+    const startedAt = Date.parse(entry.cookedAt);
+    if (!Number.isFinite(startedAt) || startedAt < range.from || startedAt > range.to) continue;
+    meals.push({
+      id: entry.id,
+      recipeRef: entry.recipeId,
+      startedAt,
+      localDate: localDateOf(startedAt),
+    });
   }
-  return meals;
+  return meals.sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id));
 }
 
-const idRow = z.object({ id: z.string() });
-const ID_CHUNK = 100;
-
-/** Which of the given cook event ids are still in the person's cook log. */
+/** Which of the given cook log entry ids are still in the person's cook log. */
 export async function findCookedMealIds(ids: readonly string[]): Promise<Set<string>> {
-  const unique = [...new Set(ids)];
+  const entries = signedInCookLog();
   const found = new Set<string>();
-  for (let i = 0; i < unique.length; i += ID_CHUNK) {
-    const chunk = unique.slice(i, i + ID_CHUNK);
-    const { data, error } = await supabase.from('cook_events').select('id').in('id', chunk);
-    if (error) throw new Error(error.message);
-    for (const row of z.array(idRow).parse(data ?? [])) found.add(row.id);
+  for (const id of ids) {
+    const entry = entries[id];
+    if (entry && isCookedDish(entry)) found.add(id);
   }
   return found;
 }
-
-const titleRow = z.object({ id: z.string(), title: z.string() });
 
 /** Catalog titles for the given recipe refs; refs outside the catalog are simply absent. */
 export async function getDishTitles(refs: readonly string[]): Promise<Record<string, string>> {
   const unique = [...new Set(refs)];
   if (unique.length === 0) return {};
-  const placeholders = unique.map(() => '?').join(', ');
-  const rows = await catalogQuery(
-    `SELECT id, title FROM recipes WHERE id IN (${placeholders})`,
-    unique,
-    titleRow,
-  );
-  return Object.fromEntries(rows.map((row) => [row.id, row.title]));
+  const summaries = await getRecipeSummaries(unique);
+  return Object.fromEntries(summaries.map((summary) => [summary.id, summary.title]));
 }
 
 /** Health summaries are synced under this collection, one document per kind. */
@@ -83,16 +94,6 @@ export interface HealthSyncDoc {
   /** `null` removes the document from the account. */
   data: Record<string, unknown> | null;
   updatedAt: number;
-}
-
-const deviceIdKey = defineKvKey('health.syncDeviceId', z.string().min(8).max(64));
-
-function deviceId(): string {
-  const existing = deviceIdKey.getSync();
-  if (existing) return existing;
-  const created = newId();
-  deviceIdKey.setSync(created);
-  return created;
 }
 
 const pushResult = z.object({
@@ -108,7 +109,8 @@ const pushResult = z.object({
 export async function pushHealthDocs(docs: readonly HealthSyncDoc[]): Promise<boolean> {
   if (docs.length === 0) return true;
   try {
-    const device = deviceId();
+    // The same device id as every other synced document, so versions compare consistently.
+    const device = getDeviceId();
     const payload = docs.map((doc) => ({
       collection: HEALTH_SYNC_COLLECTION,
       doc_id: doc.docId,
