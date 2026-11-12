@@ -89,7 +89,7 @@ describe('ranking performance', () => {
     const ms = time(() => {
       rankRecipes(candidates, input);
     });
-     
+
     console.info(`rankRecipes(${CANDIDATES}): ${ms.toFixed(2)} ms median`);
     expect(ms).toBeLessThan(CEILING_MS);
   });
@@ -98,7 +98,7 @@ describe('ranking performance', () => {
     const ms = time(() => {
       buildDeck({ ...input, candidates, mode: 'forYou', seed: 'bench', size: 20 });
     });
-     
+
     console.info(`buildDeck(${CANDIDATES}): ${ms.toFixed(2)} ms median`);
     expect(ms).toBeLessThan(CEILING_MS);
     const deck = buildDeck({ ...input, candidates, mode: 'forYou', seed: 'bench', size: 20 });
