@@ -12,6 +12,7 @@ import {
   estimateServings,
   estimateTimes,
   familyKey,
+  FRYING_METHOD,
   goalTags,
   isGentle,
   mapCourse,
@@ -19,10 +20,14 @@ import {
 import { healthScore } from '../score.ts';
 import { preferHttps, type LinkStatus } from '../sources/links.ts';
 import { DietFlag, type Nutrition, type NutritionConfidence, type SourceRecipe } from '../types.ts';
+import { joinSearchWords, SearchIndexer } from './search.ts';
 import type { BuildIssue, RecipeIngredientRow, RecipeRow, RecipeTutorialRow } from './types.ts';
 
 /** Minimum share of quantified lines whose weight and nutrients are known to report nutrition. */
 export const NUTRITION_COVERAGE_MIN = 0.8;
+/** Energy per serving below which a dish published as a main is listed as a side. */
+export const LIGHT_MAIN_KCAL = 150;
+
 /**
  * Sanity bounds for energy per serving; outside them nutrition is withheld rather than shown.
  * Estimated values must be at least 30 kcal. Published label values (MedlinePlus) may be as low
@@ -51,6 +56,8 @@ export interface RecipeContext {
 
 export interface ParsedLine {
   row: RecipeIngredientRow;
+  /** The line's ingredient wording, without the measure. */
+  name: string;
   measure: Measure;
   matched: MatchedLine;
   primary: IngredientDef | null;
@@ -115,6 +122,7 @@ function parseLine(source: SourceRecipe, index: number, ctx: RecipeContext, issu
     }
   }
   return {
+    name,
     row: {
       position: index + 1,
       ingredient_id: primary?.id ?? null,
@@ -142,26 +150,25 @@ export const FRYING_OIL_MAX_SHARE_OF_FOOD = 0.15;
 /** Oil lines at least this heavy count as a frying medium when the title or method fries. */
 const FRYING_OIL_MIN_GRAMS = 120;
 const FRYING_LINE = /(?<!stir[- ]?)\b(?:deep[- ]?)?fr(?:y|ying)\b/i;
-/** Any frying verb in the title or method ("stir-fry" and the noun "frying pan" do not count). */
-const FRYING_METHOD = /(?<!stir[- ]?)\b(?:deep[- ]?|shallow[- ]?)?(?:fry|fries|fried|frying)\b(?!\s+pan)|\b(?:deep[- ]fat|hot oil)\b/i;
 
 /**
  * Oil used as a frying medium is mostly left in the pan. A line counts as frying oil when it says
  * so ("oil for frying", "2 quarts frying oil") or when it weighs at least 120 g in a recipe whose
  * title or method fries something. Such lines contribute 15% of their weight, capped at 15% of the
  * weight of the other food, to nutrition and portion estimates. The ingredient row keeps the
- * measured weight.
+ * measured weight. Returns whether the recipe has a frying-oil line.
  */
-export function applyFryingAbsorption(lines: ParsedLine[], steps: readonly string[]): void {
+export function applyFryingAbsorption(lines: ParsedLine[], steps: readonly string[]): boolean {
   const fries = steps.some((s) => FRYING_METHOD.test(s));
   const isFrying = (l: ParsedLine) =>
     l.nutritionDef?.category === 'oil' && l.eatenGrams !== null && (FRYING_LINE.test(l.row.text) || (fries && l.eatenGrams >= FRYING_OIL_MIN_GRAMS));
   const frying = lines.filter(isFrying);
-  if (frying.length === 0) return;
+  if (frying.length === 0) return false;
   const otherFood = lines.filter((l) => !isFrying(l) && !l.nutritionDef?.water).reduce((sum, l) => sum + (l.eatenGrams ?? 0), 0);
   const oil = frying.reduce((sum, l) => sum + (l.eatenGrams ?? 0), 0);
   const absorbed = Math.min(oil * FRYING_OIL_ABSORBED_SHARE, otherFood * FRYING_OIL_MAX_SHARE_OF_FOOD);
   for (const line of frying) line.eatenGrams = oil > 0 ? ((line.eatenGrams ?? 0) / oil) * absorbed : 0;
+  return true;
 }
 
 interface Totals {
@@ -293,7 +300,7 @@ function tutorials(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[
 export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[]): Omit<RecipeRow, 'slug'> | null {
   const lines = source.lines.map((_, i) => parseLine(source, i, ctx, issues));
   const steps = splitSteps(source.instructions);
-  applyFryingAbsorption(lines, [source.title, ...steps]);
+  const fryingOil = applyFryingAbsorption(lines, [source.title, ...steps]);
   if (lines.length === 0 || steps.length === 0) {
     issues.push({ recipe_id: source.id, kind: 'excluded', detail: lines.length === 0 ? 'no ingredient lines' : 'no instructions' });
     return null;
@@ -302,7 +309,7 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     if (line.matched === null) issues.push({ recipe_id: source.id, kind: 'unmatched_line', detail: line.row.text });
   }
   const stepRows = steps.map((text, i) => ({ position: i + 1, text, timer_seconds: detectTimerSeconds(text) }));
-  const course = mapCourse(source.source, source.categories, source.title);
+  let course = mapCourse(source.source, source.categories, source.title);
   const fallbackCuisine = source.source === 'medlineplus' ? 'american' : 'international';
   const { cuisine, region } = resolveCuisine(source.area, source.title, fallbackCuisine);
   const cuisineDef = CUISINE_BY_ID.get(cuisine);
@@ -335,6 +342,9 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
   } else if (confidence === 'none') {
     issues.push({ recipe_id: source.id, kind: 'nutrition_withheld', detail: `coverage ${(sums.coverage * 100).toFixed(0)}%` });
   }
+
+  // A "main" that brings under LIGHT_MAIN_KCAL per serving is eaten alongside something else.
+  if (course === 'main' && confidence !== 'none' && nutrition.kcal !== null && nutrition.kcal < LIGHT_MAIN_KCAL) course = 'side';
 
   // Time and effort
   const estimate = estimateTimes(lines.length, stepRows.map((s) => s.timer_seconds), course);
@@ -376,6 +386,7 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     title: source.title,
     steps,
     ingredientIds,
+    fryingOil,
   });
   const score = healthScore({ ...nutrition, vegetableShare });
 
@@ -388,9 +399,10 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     goals,
   });
 
-  // Search text: each ingredient's name followed by its synonyms (so "garbanzo", "aubergine" and
-  // "courgette" find recipes), as unique words to keep the index small.
-  const searchNames = searchWords(lines.flatMap((l) => (l.primary ? [l.primary.name, ...l.primary.syn] : [])));
+  // Search text: canonical names, curated aliases and the line's own ingredient words (see
+  // SearchIndexer), as unique words to keep the index small.
+  const indexer = searchIndexer(ctx.defs);
+  const searchNames = joinSearchWords(lines.flatMap((l) => (l.matched ?? []).flatMap((def) => indexer.lineWords(def, l.name))));
   return {
     id: source.id,
     title: source.title,
@@ -423,13 +435,11 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
   };
 }
 
-/** Unique lower-case words of the given phrases, in first-seen order ("or" and "and" dropped). */
-export function searchWords(phrases: readonly string[]): string {
-  const words = new Set<string>();
-  for (const phrase of phrases) {
-    for (const word of phrase.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
-      if (word.length > 1 && word !== 'or' && word !== 'and') words.add(word);
-    }
-  }
-  return [...words].join(' ');
+const indexers = new WeakMap<ReadonlyMap<string, IngredientDef>, SearchIndexer>();
+
+/** One search indexer per knowledge base (built once, reused for every recipe). */
+export function searchIndexer(defs: ReadonlyMap<string, IngredientDef>): SearchIndexer {
+  let indexer = indexers.get(defs);
+  if (!indexer) indexers.set(defs, (indexer = new SearchIndexer(defs.values())));
+  return indexer;
 }

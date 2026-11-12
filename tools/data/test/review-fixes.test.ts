@@ -13,7 +13,6 @@ import {
   applyFryingAbsorption,
   FRYING_OIL_ABSORBED_SHARE,
   FRYING_OIL_MAX_SHARE_OF_FOOD,
-  searchWords,
   titleRank,
   type ParsedLine,
 } from '../src/pipeline/recipes.ts';
@@ -196,6 +195,7 @@ describe('frying oil absorption', () => {
   const line = (id: string, text: string, grams: number, position: number): ParsedLine => {
     const d = def(id);
     return {
+      name: text,
       row: { position, ingredient_id: id, text, quantity: null, unit: null, grams, section: null, optional: 0 },
       measure: parseMeasure(text),
       matched: [d],
@@ -277,14 +277,7 @@ describe('missing nutrients are never treated as zero', () => {
   });
 });
 
-describe('search text and summaries', () => {
-  it('indexes ingredient synonyms as unique words', () => {
-    const words = searchWords([def('chickpea').name, ...def('chickpea').syn]).split(' ');
-    assert.ok(words.includes('garbanzo'), words.join(' '));
-    assert.equal(new Set(words).size, words.length);
-    assert.ok(!words.includes('or'));
-  });
-
+describe('summaries', () => {
   it('ranks an ingredient made from a title food', () => {
     const named = new Set(['peanut']);
     assert.equal(titleRank(named, 'peanut'), 2);

@@ -136,16 +136,20 @@ const MAX_PROTEIN_PER_SERVING = 55;
 /**
  * Servings when a source does not publish them: total food grams divided by a typical portion
  * for the course, then nudged so energy per serving stays within the course's bounds and protein
- * stays at or below 55 g. Clamped to 1..12; 4 when the weight of the recipe is unknown.
+ * stays at or below 55 g. A serving is never more than twice the typical portion. Clamped to
+ * 1..12; 4 when the weight of the recipe is unknown.
  */
 export function estimateServings(course: Course, foodGrams: number | null, totalKcal: number | null, totalProtein: number | null = null): number {
   if (foodGrams === null || foodGrams <= 0) return 4;
-  let servings = Math.round(foodGrams / PORTION_GRAMS[course]);
-  servings = Math.min(12, Math.max(1, servings));
+  const byWeight = Math.min(12, Math.max(1, Math.round(foodGrams / PORTION_GRAMS[course])));
+  let servings = byWeight;
   if (totalKcal !== null && totalKcal > 0) {
     const [low, high] = KCAL_BOUNDS[course];
     while (servings < 12 && totalKcal / servings > high) servings++;
-    while (servings > 1 && totalKcal / servings < low) servings--;
+    // Light dishes (clear broths) may go below the energy floor rather than collapse into one
+    // huge bowl: a serving never weighs more than twice the typical portion.
+    const floor = Math.min(12, Math.max(1, Math.ceil(foodGrams / (2 * PORTION_GRAMS[course]))));
+    while (servings > floor && totalKcal / servings < low) servings--;
   }
   if (totalProtein !== null) while (servings < 12 && totalProtein / servings > MAX_PROTEIN_PER_SERVING) servings++;
   return servings;
@@ -205,6 +209,12 @@ export function goalTags(input: GoalInputs): GoalTag[] {
   return order.filter((t) => tags.has(t));
 }
 
+/** Any frying verb ("stir-fry" and the noun "frying pan" do not count). */
+export const FRYING_METHOD = /(?<!stir[- ]?)\b(?:deep[- ]?|shallow[- ]?)?(?:fry|fries|fried|frying)\b(?!\s+pan)|\b(?:deep[- ]fat|hot oil)\b/i;
+/** Frying in a pan of oil, as opposed to softening onions in a spoonful of it. */
+const OIL_FRYING = /\b(?:deep[- ]?fr(?:y|ies|ied|ying)|shallow[- ]?fr(?:y|ies|ied|ying)|deep[- ]fat|hot oil|fritters?|fry (?:them |it )?in batches)\b/i;
+/** Ingredients that arrive fried. */
+const FRIED_INGREDIENTS = new Set(['fries']);
 const HARSH_TECHNIQUE = /\b(deep[- ]?fr(y|ied|ying)|fry until (golden and )?crisp|crispy fried|pan[- ]?fry until crisp|char(red)?|blacken(ed)?)\b/i;
 const SOFT_TECHNIQUE = /\b(simmer|stew|steam|poach|mash|pur[eé]e|blend|bake|braise|slow[- ]?cook|porridge|scramble|soft|tender|creamy|smooth)\b/i;
 const VERY_SPICY = /\b(spicy|fiery|hot and sour|vindaloo|scotch bonnet|habanero|ghost pepper)\b/i;
@@ -218,12 +228,15 @@ export interface GentleInputs {
   title: string;
   steps: readonly string[];
   ingredientIds: readonly string[];
+  /** The recipe has a line of oil used as a frying medium. */
+  fryingOil?: boolean;
 }
 
 /**
  * Small-appetite friendly: a moderate portion (150–550 kcal), sodium <= 800 mg, ready within an
  * hour at effort 1–2, soft cooking (soup, breakfast, or a step that simmers/steams/bakes/mashes),
- * no deep-frying or charring, and not billed as very spicy. Drinks are excluded.
+ * no frying in oil (a fried title, deep/shallow frying or hot oil in a step, a frying-oil line,
+ * or fries as an ingredient), no charring, and not billed as very spicy. Drinks are excluded.
  */
 export function isGentle(input: GentleInputs): boolean {
   if (input.course === 'drink' || input.kcal === null) return false;
@@ -232,7 +245,8 @@ export function isGentle(input: GentleInputs): boolean {
   if (input.totalMinutes > 60 || input.effort > 2) return false;
   const text = `${input.title} ${input.steps.join(' ')}`;
   if (HARSH_TECHNIQUE.test(text) || VERY_SPICY.test(input.title)) return false;
-  if (input.ingredientIds.includes('scotch_bonnet')) return false;
+  if (input.fryingOil || FRYING_METHOD.test(input.title) || OIL_FRYING.test(text)) return false;
+  if (input.ingredientIds.some((id) => id === 'scotch_bonnet' || FRIED_INGREDIENTS.has(id))) return false;
   return input.course === 'soup' || input.course === 'breakfast' || input.steps.some((s) => SOFT_TECHNIQUE.test(s));
 }
 
