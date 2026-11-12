@@ -108,9 +108,12 @@ const NO_GROUPS: VariantGroups = Object.freeze({});
  * other user stores, but a version 1 copy can predate that: keep it only when it belongs to the
  * account this device's data belongs to (or to none), never one left behind after a sign-out.
  */
+const variantsV1Schema = z.looseObject({ owner: z.unknown().optional() });
+
 export function upgradeVariantsV1(state: unknown, dataOwner: string | null): unknown {
-  if (state == null || typeof state !== 'object') return state;
-  const { owner, ...rest } = state as { owner?: unknown };
+  const parsed = variantsV1Schema.safeParse(state);
+  if (!parsed.success) return state;
+  const { owner, ...rest } = parsed.data;
   if (typeof owner === 'string' && owner !== dataOwner) return { groups: {} };
   return rest;
 }
