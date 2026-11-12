@@ -11,8 +11,8 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
-import { usePathname, useRouter, type Href } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useNavigationContainerRef, useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
@@ -24,7 +24,7 @@ import { markNotificationsRead } from '../api';
 import { usePushEnabled } from '../deps';
 import { invalidateInbox, useUnreadCount } from '../queries';
 import { syncPushRegistration } from './pushDevice';
-import { isCurrentPath, resolvePushTap } from './routing';
+import { cookSessionIdFromUrl, findCookSession, resolvePushTap } from './routing';
 
 /** Response ids already acted on, so the launch response and its listener event route once. */
 const handledResponses = new Set<string>();
@@ -39,13 +39,9 @@ export function NotificationBridge() {
   const unread = useUnreadCount();
   const client = useQueryClient();
   const router = useRouter();
-  // Read inside the tap handler without resubscribing (and re-reading the launch tap) on every
-  // navigation.
-  const pathname = usePathname();
-  const pathnameRef = useRef(pathname);
-  useEffect(() => {
-    pathnameRef.current = pathname;
-  }, [pathname]);
+  // A stable ref: the tap handler reads the current screens when a tap arrives, so the bridge does
+  // not re-render (or re-read the launch tap) on every navigation.
+  const navigation = useNavigationContainerRef();
 
   // Foreground presentation and inbox refresh on arrival.
   useEffect(() => {
@@ -76,11 +72,19 @@ export function NotificationBridge() {
       handledResponses.add(key);
       if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
       const data = response.notification.request.content.data;
-      // A cook timer's local alert is not an inbox item: go back to the cook session, unless it is
-      // already on screen (pushing it again would stack a second copy of the session).
+      // A cook timer's local alert is not an inbox item: go back to the cook session. Opening it
+      // again when it is already open would stack a second copy, so stay put when it (or its
+      // finish screen) is showing, and return to it when it is further down the stack.
       const cookUrl = cookTimerTapUrl(data);
       if (cookUrl) {
-        if (!isCurrentPath(pathnameRef.current, cookUrl)) router.push(cookUrl as Href);
+        const id = cookSessionIdFromUrl(cookUrl);
+        if (!id) return;
+        const state = navigation.isReady() ? navigation.getRootState() : undefined;
+        const placement = findCookSession(state, id);
+        if (placement === 'onScreen') return;
+        const href = { pathname: '/cook/[id]', params: { id } } as const;
+        if (placement === 'underneath') router.dismissTo(href);
+        else router.push(href);
         return;
       }
       const tap = resolvePushTap(data, userId);
@@ -98,7 +102,7 @@ export function NotificationBridge() {
     }
     const subscription = Notifications.addNotificationResponseReceivedListener(open);
     return () => subscription.remove();
-  }, [client, router, userId]);
+  }, [client, navigation, router, userId]);
 
   // Registration: on sign-in, when the setting changes, when the app returns to the foreground and
   // when the OS rotates the device token.

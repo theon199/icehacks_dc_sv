@@ -54,20 +54,82 @@ export function resolvePushTap(data: unknown, currentUserId: string | null): Pus
   return { href, notificationId: parsed.notification_id };
 }
 
-function decodePath(path: string): string {
+function decodeSegment(segment: string): string | null {
   try {
-    return decodeURIComponent(path);
+    return decodeURIComponent(segment);
   } catch {
-    return path;
+    return null;
   }
 }
 
 /**
- * Whether `url` is the screen already showing at `pathname`, compared after decoding so an escaped
- * id (`/cook/mealdb%3A1`) matches its decoded form. Query strings are not part of either value.
+ * The recipe id in an in-app cook route such as `/cook/mealdb%3A1`, decoded, or null when the
+ * route is anything else or its escapes are malformed.
  */
-export function isCurrentPath(pathname: string | null | undefined, url: string): boolean {
-  if (!pathname) return false;
-  const strip = (path: string) => decodePath(path).replace(/\/+$/, '');
-  return strip(pathname) === strip(url);
+export function cookSessionIdFromUrl(url: string): string | null {
+  const match = /^\/cook\/([^/?#]+)\/?$/.exec(url);
+  const id = match?.[1] ? decodeSegment(match[1]) : null;
+  return id || null;
+}
+
+/**
+ * The parts of a navigation state this module reads. React Navigation's full and partial states
+ * both fit it; a partial state without `index` focuses its last route.
+ */
+export interface NavStateLike {
+  readonly index?: number | undefined;
+  readonly routes: readonly NavRouteLike[];
+}
+
+interface NavRouteLike {
+  readonly name: string;
+  readonly params?: object | undefined;
+  readonly state?: NavStateLike | undefined;
+}
+
+/** Where a cook session sits in the app's navigation, as seen from a tapped timer alert. */
+export type CookSessionPlacement =
+  /** The session, or its finish screen, is what the person is looking at. */
+  | 'onScreen'
+  /** The session is open further down the stack, under other screens. */
+  | 'underneath'
+  /** No screen for this session is open. */
+  | 'absent';
+
+const SESSION_ROUTE = /^cook\/\[id\](?:\/index)?$/;
+const FINISH_ROUTE = /^cook\/\[id\]\/done$/;
+
+function isRouteFor(route: NavRouteLike, pattern: RegExp, recipeId: string): boolean {
+  if (!pattern.test(route.name)) return false;
+  const id = (route.params as { id?: unknown } | undefined)?.id;
+  if (typeof id !== 'string') return false;
+  return id === recipeId || decodeSegment(id) === recipeId;
+}
+
+/**
+ * Finds the cook session for `recipeId` along the focused path of `state`. Only screens below the
+ * focused one count as underneath: a session in another tab or a dismissed screen does not.
+ */
+export function findCookSession(
+  state: NavStateLike | undefined,
+  recipeId: string,
+): CookSessionPlacement {
+  let underneath = false;
+  let current = state;
+  while (current && current.routes.length > 0) {
+    const focusedIndex = current.index ?? current.routes.length - 1;
+    const focused = current.routes[focusedIndex];
+    if (!focused) break;
+    for (const route of current.routes.slice(0, focusedIndex)) {
+      if (isRouteFor(route, SESSION_ROUTE, recipeId)) underneath = true;
+    }
+    if (!focused.state) {
+      const onScreen =
+        isRouteFor(focused, SESSION_ROUTE, recipeId) || isRouteFor(focused, FINISH_ROUTE, recipeId);
+      if (onScreen) return 'onScreen';
+      break;
+    }
+    current = focused.state;
+  }
+  return underneath ? 'underneath' : 'absent';
 }

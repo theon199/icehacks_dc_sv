@@ -1,4 +1,10 @@
-import { isCurrentPath, parsePushData, resolvePushTap } from './routing';
+import {
+  cookSessionIdFromUrl,
+  findCookSession,
+  parsePushData,
+  resolvePushTap,
+  type NavStateLike,
+} from './routing';
 
 const data = {
   notification_id: 'n-1',
@@ -46,20 +52,68 @@ describe('parsePushData', () => {
   });
 });
 
-describe('isCurrentPath', () => {
-  it('matches the same route whether or not its id is escaped', () => {
-    expect(isCurrentPath('/cook/mealdb:1', '/cook/mealdb%3A1')).toBe(true);
-    expect(isCurrentPath('/cook/mealdb%3A1', '/cook/mealdb%3A1')).toBe(true);
-    expect(isCurrentPath('/cook/mealdb:1/', '/cook/mealdb%3A1')).toBe(true);
+describe('cookSessionIdFromUrl', () => {
+  it('reads and decodes the recipe id', () => {
+    expect(cookSessionIdFromUrl('/cook/mealdb%3A1')).toBe('mealdb:1');
+    expect(cookSessionIdFromUrl('/cook/plain-id/')).toBe('plain-id');
   });
 
-  it('tells different routes apart', () => {
-    expect(isCurrentPath('/cook/mealdb:1/done', '/cook/mealdb%3A1')).toBe(false);
-    expect(isCurrentPath('/cook/mealdb:2', '/cook/mealdb%3A1')).toBe(false);
-    expect(isCurrentPath(null, '/cook/mealdb%3A1')).toBe(false);
+  it('rejects other routes and malformed escapes', () => {
+    expect(cookSessionIdFromUrl('/cook/mealdb%3A1/done')).toBeNull();
+    expect(cookSessionIdFromUrl('/recipe/mealdb%3A1')).toBeNull();
+    expect(cookSessionIdFromUrl('/cook/%E0%A4%A')).toBeNull();
+  });
+});
+
+describe('findCookSession', () => {
+  const route = (name: string, id?: string) => (id ? { name, params: { id } } : { name });
+  /** The signed-in app's stack under the root, the way expo-router nests it. */
+  const appStack = (...routes: ReturnType<typeof route>[]): NavStateLike => ({
+    index: 0,
+    routes: [{ name: '(app)', state: { index: routes.length - 1, routes } }],
   });
 
-  it('copes with a malformed escape', () => {
-    expect(isCurrentPath('/cook/%E0%A4%A', '/cook/%E0%A4%A')).toBe(true);
+  it('sees the session or its finish screen on screen', () => {
+    const tabs = route('(tabs)');
+    expect(findCookSession(appStack(tabs, route('cook/[id]/index', 'mealdb:1')), 'mealdb:1')).toBe(
+      'onScreen',
+    );
+    expect(findCookSession(appStack(tabs, route('cook/[id]/done', 'mealdb:1')), 'mealdb:1')).toBe(
+      'onScreen',
+    );
+  });
+
+  it('matches an id kept escaped in the params', () => {
+    const state = appStack(route('cook/[id]/index', 'mealdb%3A1'));
+    expect(findCookSession(state, 'mealdb:1')).toBe('onScreen');
+  });
+
+  it('finds the session under other screens', () => {
+    const state = appStack(
+      route('(tabs)'),
+      route('cook/[id]/index', 'mealdb:1'),
+      route('recipe/[id]', 'mealdb:9'),
+    );
+    expect(findCookSession(state, 'mealdb:1')).toBe('underneath');
+  });
+
+  it('does not count a finish screen underneath as an open session', () => {
+    const state = appStack(route('cook/[id]/done', 'mealdb:1'), route('compose'));
+    expect(findCookSession(state, 'mealdb:1')).toBe('absent');
+  });
+
+  it('tells sessions for other recipes apart', () => {
+    const state = appStack(route('(tabs)'), route('cook/[id]/index', 'mealdb:2'));
+    expect(findCookSession(state, 'mealdb:1')).toBe('absent');
+  });
+
+  it('treats a partial state as focused on its last route', () => {
+    const state: NavStateLike = { routes: [route('index'), route('cook/[id]/index', 'mealdb:1')] };
+    expect(findCookSession(state, 'mealdb:1')).toBe('onScreen');
+  });
+
+  it('copes with no state yet', () => {
+    expect(findCookSession(undefined, 'mealdb:1')).toBe('absent');
+    expect(findCookSession({ routes: [] }, 'mealdb:1')).toBe('absent');
   });
 });
