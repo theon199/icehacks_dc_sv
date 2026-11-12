@@ -37,15 +37,18 @@ export interface SyncCollectionAdapter {
   subscribe(listener: () => void): () => void;
 }
 
-/** A document as sent to `sync_push`. */
-export interface OutgoingDoc {
+/**
+ * A document as sent to `sync_push`. A type alias (not an interface) so it is assignable to the
+ * generated `Json` type and can be passed to the RPC as is.
+ */
+export type OutgoingDoc = {
   collection: string;
   doc_id: string;
   data: SyncData;
   updated_at: string;
   device_id: string;
   deleted_at: string | null;
-}
+};
 
 /** A document as returned by `sync_pull` or inside a stale-write rejection. */
 export interface ServerDoc {

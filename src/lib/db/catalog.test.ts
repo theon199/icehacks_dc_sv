@@ -143,7 +143,7 @@ describe('catalogQuery', () => {
 
   it('rejects rows that break the contract', async () => {
     mockDb.getAllAsync.mockResolvedValueOnce([{ id: 1 }]);
-    await expect(catalogQuery('SELECT 1', [], row)).rejects.toMatchObject({ kind: 'query_failed' });
+    await expect(catalogQuery('SELECT 1', [], row)).rejects.toMatchObject({ kind: 'bad_rows' });
   });
 
   it('wraps SQL errors and returns the first row helper', async () => {
@@ -202,7 +202,7 @@ describe('catalogPreparedQuery', () => {
       resetAsync: jest.fn(async () => undefined),
     });
     await expect(catalogPreparedQuery(sql, [], row)).rejects.toMatchObject({
-      kind: 'query_failed',
+      kind: 'bad_rows',
     });
     expect(mockDb.prepareAsync).toHaveBeenCalledTimes(2);
   });
