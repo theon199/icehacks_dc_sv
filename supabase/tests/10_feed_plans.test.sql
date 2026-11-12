@@ -105,9 +105,6 @@ prepare feed_author(uuid, timestamptz, uuid, integer) as
   order by p.created_at desc, p.id desc
   limit $4 + 1;
 
-select diag(tests.plan_of($$execute feed_new('aaaaaaaa-0000-4000-8000-000000000001', 'infinity', 'ffffffff-ffff-ffff-ffff-ffffffffffff', 20)$$));
-select diag(tests.plan_of($$execute feed_following('aaaaaaaa-0000-4000-8000-000000000001', 'infinity', 'ffffffff-ffff-ffff-ffff-ffffffffffff', 20)$$));
-select diag(tests.plan_of($$execute feed_author('bbbbbbbb-0000-4000-8000-000000000002', 'infinity', 'ffffffff-ffff-ffff-ffff-ffffffffffff', 20)$$));
 
 select matches(
   tests.plan_of($$execute feed_new('aaaaaaaa-0000-4000-8000-000000000001', 'infinity', 'ffffffff-ffff-ffff-ffff-ffffffffffff', 20)$$),
