@@ -1,0 +1,363 @@
+/**
+ * A small hand-written catalog for tests: enough cuisines, diets, allergens and goal tags to check
+ * that recommendations behave sensibly. Values are illustrative, not nutrition facts.
+ */
+import { makeRecipe, type RecipeOverrides } from './makeRecipe';
+import { ALL_DIET_BITS, dietMask } from '../../types/diet';
+import { type RecipeSummary } from '../../types/recipe';
+
+const VEGAN = ALL_DIET_BITS;
+const VEGETARIAN = dietMask([
+  'vegetarian',
+  'pescatarian',
+  'no_pork',
+  'no_beef',
+  'no_alcohol',
+  'halal_friendly',
+]);
+const PESCATARIAN = dietMask(['pescatarian', 'no_pork', 'no_beef', 'no_alcohol']);
+const POULTRY = dietMask(['no_pork', 'no_beef', 'no_alcohol', 'halal_friendly']);
+const PORK = dietMask(['no_beef', 'no_alcohol']);
+
+function dish(id: string, overrides: RecipeOverrides): RecipeSummary {
+  return makeRecipe({ id: `f:${id}`, title: id.replace(/-/g, ' '), familyId: id, ...overrides });
+}
+
+export const CATALOG: readonly RecipeSummary[] = [
+  // South Asia
+  dish('chana-masala', {
+    cuisine: 'indian',
+    totalMinutes: 30,
+    effort: 1,
+    dietFlags: VEGAN,
+    goalTags: ['high_fiber', 'plant_forward', 'high_protein'],
+    healthScore: 0.82,
+    coreIngredientIds: ['chickpea', 'tomato', 'onion', 'spinach', 'ginger'],
+  }),
+  dish('palak-paneer', {
+    cuisine: 'indian',
+    totalMinutes: 40,
+    effort: 2,
+    dietFlags: VEGETARIAN,
+    allergens: { milk: 'contains' },
+    goalTags: ['high_protein'],
+    healthScore: 0.64,
+    coreIngredientIds: ['paneer', 'spinach', 'onion', 'cream', 'ginger'],
+  }),
+  dish('chicken-tikka', {
+    cuisine: 'indian',
+    totalMinutes: 50,
+    effort: 2,
+    dietFlags: POULTRY,
+    allergens: { milk: 'contains' },
+    goalTags: ['high_protein'],
+    healthScore: 0.6,
+    coreIngredientIds: ['chicken_breast', 'yogurt', 'tomato', 'onion'],
+  }),
+  dish('dal-tadka', {
+    cuisine: 'indian',
+    totalMinutes: 35,
+    effort: 1,
+    dietFlags: VEGAN,
+    goalTags: ['high_fiber', 'plant_forward', 'high_protein'],
+    healthScore: 0.86,
+    familyId: 'dal',
+    coreIngredientIds: ['red_lentil', 'tomato', 'onion', 'cumin_seed'],
+  }),
+  dish('dal-tadka-weeknight', {
+    cuisine: 'indian',
+    totalMinutes: 20,
+    effort: 1,
+    dietFlags: VEGAN,
+    goalTags: ['high_fiber', 'plant_forward', 'high_protein'],
+    healthScore: 0.84,
+    familyId: 'dal',
+    coreIngredientIds: ['red_lentil', 'tomato', 'onion'],
+  }),
+  dish('butter-chicken', {
+    cuisine: 'indian',
+    totalMinutes: 70,
+    effort: 3,
+    dietFlags: POULTRY,
+    allergens: { milk: 'contains' },
+    healthScore: 0.3,
+    nutrition: { ...makeRecipe().nutrition, kcal: 760 },
+    coreIngredientIds: ['chicken_thigh', 'cream', 'butter', 'tomato'],
+  }),
+  dish('chicken-karahi', {
+    cuisine: 'pakistani',
+    totalMinutes: 40,
+    effort: 2,
+    dietFlags: POULTRY,
+    goalTags: ['high_protein'],
+    healthScore: 0.56,
+    coreIngredientIds: ['chicken_thigh', 'tomato', 'green_chili', 'ginger'],
+  }),
+  // Southeast Asia
+  dish('pad-thai', {
+    cuisine: 'thai',
+    totalMinutes: 30,
+    effort: 2,
+    dietFlags: 0,
+    allergens: { peanut: 'contains', egg: 'contains', fish: 'contains', shellfish: 'contains' },
+    healthScore: 0.45,
+    coreIngredientIds: ['rice_noodle', 'shrimp', 'peanut', 'egg', 'bean_sprout'],
+  }),
+  dish('green-curry-tofu', {
+    cuisine: 'thai',
+    totalMinutes: 30,
+    effort: 2,
+    dietFlags: VEGAN,
+    // Store-bought curry paste: contents vary by brand.
+    allergens: { soy: 'contains', peanut: 'unknown', shellfish: 'unknown', fish: 'unknown' },
+    goalTags: ['plant_forward'],
+    healthScore: 0.6,
+    coreIngredientIds: ['tofu', 'coconut_milk', 'green_curry_paste', 'green_bean'],
+  }),
+  dish('chicken-larb', {
+    cuisine: 'thai',
+    totalMinutes: 25,
+    effort: 1,
+    dietFlags: POULTRY,
+    allergens: { fish: 'contains' },
+    goalTags: ['high_protein', 'lower_calorie'],
+    healthScore: 0.76,
+    coreIngredientIds: ['chicken_mince', 'lime', 'shallot', 'mint'],
+  }),
+  dish('chicken-pho', {
+    cuisine: 'vietnamese',
+    totalMinutes: 60,
+    effort: 2,
+    dietFlags: POULTRY,
+    allergens: { fish: 'contains' },
+    goalTags: ['lower_calorie'],
+    healthScore: 0.7,
+    coreIngredientIds: ['chicken_breast', 'rice_noodle', 'star_anise', 'ginger'],
+  }),
+  dish('summer-rolls', {
+    cuisine: 'vietnamese',
+    totalMinutes: 25,
+    effort: 2,
+    dietFlags: PESCATARIAN,
+    allergens: { peanut: 'contains', shellfish: 'contains' },
+    goalTags: ['lower_calorie'],
+    healthScore: 0.7,
+    coreIngredientIds: ['rice_paper', 'shrimp', 'peanut', 'mint', 'lettuce'],
+  }),
+  // Latin America
+  dish('black-bean-tacos', {
+    cuisine: 'mexican',
+    totalMinutes: 20,
+    effort: 1,
+    dietFlags: VEGETARIAN,
+    allergens: { milk: 'contains' },
+    goalTags: ['high_fiber', 'plant_forward'],
+    healthScore: 0.76,
+    coreIngredientIds: ['black_bean', 'corn_tortilla', 'avocado', 'cheddar', 'lime'],
+  }),
+  dish('chicken-fajitas', {
+    cuisine: 'mexican',
+    totalMinutes: 30,
+    effort: 1,
+    dietFlags: POULTRY,
+    allergens: { wheat: 'contains', gluten: 'contains' },
+    goalTags: ['high_protein', 'lower_sodium'],
+    healthScore: 0.62,
+    coreIngredientIds: ['chicken_breast', 'bell_pepper', 'flour_tortilla', 'onion', 'lime'],
+  }),
+  dish('pork-pozole', {
+    cuisine: 'mexican',
+    totalMinutes: 150,
+    effort: 3,
+    dietFlags: PORK,
+    healthScore: 0.5,
+    coreIngredientIds: ['pork_shoulder', 'hominy', 'guajillo_chili', 'cabbage'],
+  }),
+  dish('ceviche', {
+    cuisine: 'peruvian',
+    totalMinutes: 30,
+    effort: 1,
+    dietFlags: PESCATARIAN,
+    allergens: { fish: 'contains' },
+    goalTags: ['high_protein', 'lower_calorie', 'lower_sodium'],
+    healthScore: 0.82,
+    coreIngredientIds: ['white_fish', 'lime', 'red_onion', 'cilantro'],
+  }),
+  // East Asia
+  dish('salmon-teriyaki', {
+    cuisine: 'japanese',
+    totalMinutes: 25,
+    effort: 1,
+    dietFlags: PESCATARIAN,
+    allergens: { fish: 'contains', soy: 'contains', wheat: 'contains', gluten: 'contains' },
+    goalTags: ['high_protein', 'heart_friendly'],
+    healthScore: 0.74,
+    coreIngredientIds: ['salmon', 'soy_sauce', 'mirin', 'rice', 'broccoli'],
+  }),
+  dish('miso-soup', {
+    cuisine: 'japanese',
+    course: 'soup',
+    totalMinutes: 15,
+    effort: 1,
+    dietFlags: PESCATARIAN,
+    allergens: { soy: 'contains', fish: 'contains' },
+    goalTags: ['lower_calorie'],
+    gentle: true,
+    healthScore: 0.7,
+    coreIngredientIds: ['miso', 'tofu', 'wakame', 'dashi'],
+  }),
+  dish('vegetable-udon', {
+    cuisine: 'japanese',
+    totalMinutes: 25,
+    effort: 1,
+    dietFlags: VEGAN,
+    allergens: { soy: 'contains', wheat: 'contains', gluten: 'contains' },
+    goalTags: ['plant_forward'],
+    healthScore: 0.6,
+    coreIngredientIds: ['udon', 'soy_sauce', 'shiitake', 'bok_choy'],
+  }),
+  dish('bibimbap', {
+    cuisine: 'korean',
+    totalMinutes: 45,
+    effort: 2,
+    dietFlags: 0,
+    allergens: { egg: 'contains', soy: 'contains', sesame: 'contains' },
+    goalTags: ['high_protein'],
+    healthScore: 0.66,
+    coreIngredientIds: ['rice', 'beef_mince', 'egg', 'spinach', 'gochujang'],
+  }),
+  // Northern Europe
+  dish('lentil-shepherds-pie', {
+    cuisine: 'british',
+    totalMinutes: 60,
+    effort: 2,
+    dietFlags: VEGETARIAN,
+    allergens: { milk: 'contains' },
+    goalTags: ['high_fiber'],
+    healthScore: 0.7,
+    coreIngredientIds: ['green_lentil', 'potato', 'carrot', 'onion', 'butter'],
+  }),
+  dish('leek-potato-soup', {
+    cuisine: 'british',
+    course: 'soup',
+    totalMinutes: 40,
+    effort: 1,
+    dietFlags: VEGETARIAN,
+    allergens: { milk: 'contains' },
+    goalTags: ['lower_sodium', 'lower_calorie'],
+    gentle: true,
+    healthScore: 0.62,
+    coreIngredientIds: ['leek', 'potato', 'milk'],
+  }),
+  dish('oat-porridge', {
+    cuisine: 'irish',
+    course: 'breakfast',
+    totalMinutes: 10,
+    effort: 1,
+    dietFlags: VEGETARIAN,
+    allergens: { milk: 'contains', gluten: 'unknown' },
+    goalTags: ['high_fiber', 'heart_friendly'],
+    gentle: true,
+    healthScore: 0.78,
+    coreIngredientIds: ['rolled_oat', 'milk', 'banana'],
+  }),
+  // Southern Europe
+  dish('minestrone', {
+    cuisine: 'italian',
+    course: 'soup',
+    totalMinutes: 45,
+    effort: 1,
+    dietFlags: VEGAN,
+    allergens: { wheat: 'contains', gluten: 'contains' },
+    goalTags: ['high_fiber', 'plant_forward', 'lower_sodium', 'heart_friendly'],
+    gentle: true,
+    healthScore: 0.86,
+    coreIngredientIds: ['cannellini_bean', 'zucchini', 'carrot', 'tomato', 'pasta'],
+  }),
+  dish('pasta-carbonara', {
+    cuisine: 'italian',
+    totalMinutes: 25,
+    effort: 2,
+    dietFlags: PORK,
+    allergens: { egg: 'contains', milk: 'contains', wheat: 'contains', gluten: 'contains' },
+    healthScore: 0.3,
+    nutrition: { ...makeRecipe().nutrition, kcal: 820 },
+    coreIngredientIds: ['spaghetti', 'pancetta', 'egg', 'parmesan'],
+  }),
+  dish('baked-cod', {
+    cuisine: 'italian',
+    totalMinutes: 30,
+    effort: 1,
+    dietFlags: PESCATARIAN,
+    allergens: { fish: 'contains' },
+    goalTags: ['heart_friendly', 'lower_sat_fat', 'high_protein', 'lower_sodium'],
+    gentle: true,
+    healthScore: 0.86,
+    coreIngredientIds: ['cod', 'cherry_tomato', 'olive', 'lemon'],
+  }),
+  dish('greek-salad', {
+    cuisine: 'greek',
+    course: 'salad',
+    totalMinutes: 15,
+    effort: 1,
+    dietFlags: VEGETARIAN,
+    allergens: { milk: 'contains' },
+    goalTags: ['lower_calorie'],
+    gentle: true,
+    healthScore: 0.7,
+    coreIngredientIds: ['cucumber', 'tomato', 'feta', 'olive', 'red_onion'],
+  }),
+  // North America
+  dish('turkey-chili', {
+    cuisine: 'american',
+    totalMinutes: 50,
+    effort: 2,
+    dietFlags: POULTRY,
+    goalTags: ['high_protein', 'high_fiber'],
+    healthScore: 0.72,
+    coreIngredientIds: ['turkey_mince', 'kidney_bean', 'tomato', 'onion', 'bell_pepper'],
+  }),
+  dish('stock-cube-stew', {
+    cuisine: 'american',
+    totalMinutes: 45,
+    effort: 1,
+    dietFlags: 0,
+    // A stock cube has brand-dependent contents, so several allergens are unverified.
+    allergensDefault: 'unknown',
+    allergens: { peanut: 'free', tree_nut: 'free', sesame: 'free' },
+    healthScore: 0.55,
+    coreIngredientIds: ['chicken_thigh', 'stock_cube', 'carrot', 'potato'],
+  }),
+  // Middle East
+  dish('red-lentil-soup', {
+    cuisine: 'turkish',
+    course: 'soup',
+    totalMinutes: 35,
+    effort: 1,
+    dietFlags: VEGAN,
+    goalTags: ['high_fiber', 'plant_forward', 'lower_sodium'],
+    gentle: true,
+    healthScore: 0.85,
+    coreIngredientIds: ['red_lentil', 'carrot', 'onion', 'cumin_seed'],
+  }),
+  dish('falafel-bowl', {
+    cuisine: 'lebanese',
+    totalMinutes: 40,
+    effort: 2,
+    dietFlags: VEGAN,
+    allergens: { sesame: 'contains' },
+    goalTags: ['high_fiber', 'plant_forward'],
+    healthScore: 0.74,
+    coreIngredientIds: ['chickpea', 'tahini', 'parsley', 'cucumber', 'tomato'],
+  }),
+];
+
+export const CATALOG_BY_ID: ReadonlyMap<string, RecipeSummary> = new Map(
+  CATALOG.map((recipe) => [recipe.id, recipe]),
+);
+
+export function recipe(id: string): RecipeSummary {
+  const found = CATALOG_BY_ID.get(`f:${id}`);
+  if (!found) throw new Error(`No fixture recipe ${id}`);
+  return found;
+}
