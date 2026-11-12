@@ -7,7 +7,12 @@ import { useEffect, useState } from 'react';
 import { planDaysSteps, type PlanDaysInput, type PlanDaysResult } from '@/domain/plan';
 import { describeError, logger } from '@/lib/logger';
 
-import { frameScheduler, runChunked, type ChunkScheduler } from '../model/runChunked';
+import {
+  frameScheduler,
+  runChunked,
+  type ChunkScheduler,
+  type FrameHandle,
+} from '../model/runChunked';
 
 export type ChunkedPlanState =
   | { phase: 'idle' }
@@ -21,22 +26,34 @@ export function progressOf(p: { depth: number; totalDepth: number }): number {
   return Math.min(1, Math.max(0, p.depth / p.totalDepth));
 }
 
-/**
- * Starts a run whenever `input` changes (pass a memoised object) and cancels the previous one.
- * `options` must be stable too.
- * `null` input leaves the planner idle.
- */
-export interface ChunkedPlanOptions {
-  scheduler: ChunkScheduler;
+export interface ChunkedPlanOptions<H> {
+  scheduler: ChunkScheduler<H>;
   /** Milliseconds of planning per frame. */
   budgetMs: number;
 }
 
-const DEFAULT_OPTIONS: ChunkedPlanOptions = { scheduler: frameScheduler, budgetMs: 8 };
+const FRAME_OPTIONS: ChunkedPlanOptions<FrameHandle> = { scheduler: frameScheduler, budgetMs: 8 };
 
-export function useChunkedPlan(
+function startPlan<H>(
+  input: PlanDaysInput,
+  { scheduler, budgetMs }: ChunkedPlanOptions<H>,
+  onProgress: (progress: number) => void,
+) {
+  return runChunked(planDaysSteps(input), {
+    scheduler,
+    budgetMs,
+    onProgress: (p) => onProgress(progressOf(p)),
+  });
+}
+
+/**
+ * Starts a run whenever `input` changes (pass a memoised object) and cancels the previous one.
+ * `options` must be stable too; without it the run is paced by animation frames.
+ * `null` input leaves the planner idle.
+ */
+export function useChunkedPlan<H>(
   input: PlanDaysInput | null,
-  options: ChunkedPlanOptions = DEFAULT_OPTIONS,
+  options?: ChunkedPlanOptions<H>,
 ): ChunkedPlanState {
   const [state, setState] = useState<{ input: PlanDaysInput | null; value: ChunkedPlanState }>({
     input: null,
@@ -45,11 +62,10 @@ export function useChunkedPlan(
 
   useEffect(() => {
     if (!input) return;
-    const run = runChunked(planDaysSteps(input), {
-      scheduler: options.scheduler,
-      budgetMs: options.budgetMs,
-      onProgress: (p) => setState({ input, value: { phase: 'running', progress: progressOf(p) } }),
-    });
+    const report = (progress: number) => setState({ input, value: { phase: 'running', progress } });
+    const run = options
+      ? startPlan(input, options, report)
+      : startPlan(input, FRAME_OPTIONS, report);
     run.done.then(
       (result) => {
         if (result) setState({ input, value: { phase: 'done', result } });

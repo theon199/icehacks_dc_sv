@@ -4,31 +4,33 @@
  * budget is spent, then reports the latest progress and yields to the next frame.
  */
 
-export interface ChunkScheduler {
-  schedule: (run: () => void) => unknown;
-  cancel: (handle: unknown) => void;
+/** Queues one slice of work; `H` is whatever the scheduler needs to call it off again. */
+export interface ChunkScheduler<H> {
+  schedule: (run: () => void) => H;
+  cancel: (handle: H) => void;
 }
 
+export type FrameHandle =
+  | { readonly kind: 'frame'; readonly id: number }
+  | { readonly kind: 'timeout'; readonly id: ReturnType<typeof setTimeout> };
+
 /** Next animation frame when available, otherwise a macrotask. */
-export const frameScheduler: ChunkScheduler = {
+export const frameScheduler: ChunkScheduler<FrameHandle> = {
   schedule: (run) =>
     typeof requestAnimationFrame === 'function'
-      ? { raf: requestAnimationFrame(() => run()) }
-      : { timeout: setTimeout(run, 0) },
+      ? { kind: 'frame', id: requestAnimationFrame(() => run()) }
+      : { kind: 'timeout', id: setTimeout(run, 0) },
   cancel: (handle) => {
-    const h = handle as { raf?: number; timeout?: ReturnType<typeof setTimeout> };
-    if (h.raf !== undefined && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(h.raf);
-    }
-    if (h.timeout !== undefined) clearTimeout(h.timeout);
+    if (handle.kind === 'timeout') clearTimeout(handle.id);
+    else if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(handle.id);
   },
 };
 
-export interface RunChunkedOptions<P> {
+export interface RunChunkedOptions<P, H> {
   onProgress?: (progress: P) => void;
   /** Milliseconds of work per slice. Default 8, half a 60 Hz frame. */
   budgetMs?: number;
-  scheduler?: ChunkScheduler;
+  scheduler: ChunkScheduler<H>;
   now?: () => number;
 }
 
@@ -38,17 +40,14 @@ export interface ChunkedRun<R> {
   cancel: () => void;
 }
 
-export function runChunked<P, R>(
+export function runChunked<P, R, H>(
   steps: Generator<P, R, void>,
-  {
-    onProgress,
-    budgetMs = 8,
-    scheduler = frameScheduler,
-    now = () => Date.now(),
-  }: RunChunkedOptions<P> = {},
+  { onProgress, budgetMs = 8, scheduler, now = () => Date.now() }: RunChunkedOptions<P, H>,
 ): ChunkedRun<R> {
+  // Read through the iterator interface, whose `return` takes no value, to close it on cancel.
+  const iterator: Iterator<P, R, void> = steps;
   let cancelled = false;
-  let handle: unknown = null;
+  let pending: { handle: H } | null = null;
   let settle: (value: R | null) => void = () => undefined;
   let fail: (error: unknown) => void = () => undefined;
   const done = new Promise<R | null>((resolve, reject) => {
@@ -57,13 +56,13 @@ export function runChunked<P, R>(
   });
 
   const slice = () => {
-    handle = null;
+    pending = null;
     if (cancelled) return;
     const start = now();
     let latest: P | undefined;
     try {
       for (;;) {
-        const step = steps.next();
+        const step = iterator.next();
         if (step.done) {
           settle(step.value);
           return;
@@ -76,19 +75,19 @@ export function runChunked<P, R>(
       return;
     }
     if (latest !== undefined) onProgress?.(latest);
-    handle = scheduler.schedule(slice);
+    pending = { handle: scheduler.schedule(slice) };
   };
 
-  handle = scheduler.schedule(slice);
+  pending = { handle: scheduler.schedule(slice) };
 
   return {
     done,
     cancel: () => {
       if (cancelled) return;
       cancelled = true;
-      if (handle !== null) scheduler.cancel(handle);
-      handle = null;
-      steps.return(undefined as never);
+      if (pending) scheduler.cancel(pending.handle);
+      pending = null;
+      iterator.return?.();
       settle(null);
     },
   };
