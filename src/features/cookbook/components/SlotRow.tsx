@@ -20,7 +20,8 @@ export interface SlotRowProps {
   /** Size of each serving relative to a standard one (0.5 for a small meal); 1 when empty. */
   portion: number;
   onAdd: (slot: MealSlot) => void;
-  onOpen: (recipeId: string) => void;
+  /** Opens the planned recipe, with the portion this meal is planned at. */
+  onOpen: (recipeId: string, portion: number) => void;
   onActions: (slot: MealSlot) => void;
   onMove: (slot: MealSlot) => void;
   onClear: (slot: MealSlot) => void;
@@ -105,7 +106,7 @@ export const SlotRow = memo(function SlotRow({
     .join(', ');
   const onA11yAction = (event: AccessibilityActionEvent) => {
     const name = event.nativeEvent.actionName;
-    if (name === 'activate') onOpen(entry.recipeId);
+    if (name === 'activate') onOpen(entry.recipeId, portion);
     else if (name === 'move' && !readOnly) onMove(slot);
     else if (name === 'clear' && !readOnly) onClear(slot);
   };
@@ -128,7 +129,7 @@ export const SlotRow = memo(function SlotRow({
           .join(', ')}
         accessibilityActions={readOnly ? [{ name: 'activate' }] : FILLED_ACTIONS}
         onAccessibilityAction={onA11yAction}
-        onPress={() => onOpen(entry.recipeId)}
+        onPress={() => onOpen(entry.recipeId, portion)}
         onLongPress={readOnly ? undefined : () => onActions(slot)}
         pressedOpacity={0.8}
         pressedScale={1}

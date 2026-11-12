@@ -30,8 +30,12 @@ export interface DayMealsProps {
   isSafe: (recipe: RecipeSummary) => boolean;
 }
 
-function openRecipe(id: string) {
-  router.push({ pathname: '/recipe/[id]', params: { id } });
+/**
+ * Opens a planned meal's recipe. The meal's portion travels with it (`portion`, the size of each
+ * serving relative to a standard one) so the recipe can be sized the way it was planned.
+ */
+function openRecipe(id: string, portion: number) {
+  router.push({ pathname: '/recipe/[id]', params: { id, portion: String(portion) } });
 }
 
 /** The meal slots of one day, with add, move and remove flows. */
