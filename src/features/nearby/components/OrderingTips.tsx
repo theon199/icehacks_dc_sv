@@ -53,8 +53,9 @@ function Tips({ dish, bucket, places }: OrderingTipsProps) {
       </View>
       {tips ? (
         <View style={styles.list} accessibilityLiveRegion="polite">
-          {tips.map((tip) => (
-            <View key={tip} style={styles.tip}>
+          {tips.map((tip, index) => (
+            // The model can repeat a sentence, so the text alone is not a unique key.
+            <View key={`${index}:${tip}`} style={styles.tip}>
               <Text variant="callout" tone="primary">
                 •
               </Text>

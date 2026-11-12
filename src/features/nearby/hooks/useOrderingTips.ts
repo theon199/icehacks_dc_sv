@@ -49,6 +49,12 @@ export function buildTipsRequest(
   };
 }
 
+/** Order-independent summary of the preferences that shape tips, for the query key. */
+export function tipsProfileKey(profile: TipsProfile): string {
+  const part = (values: readonly string[]) => [...values].sort().join(',');
+  return [part(profile.goals), part(profile.diets), part(profile.allergens)].join('|');
+}
+
 export function useOrderingTips(
   dish: NearbyDish | null,
   bucket: string | null,
@@ -57,7 +63,15 @@ export function useOrderingTips(
   const goals = usePreferencesStore((state) => state.prefs.goals);
   const diets = usePreferencesStore((state) => state.prefs.diets);
   const allergens = usePreferencesStore((state) => state.prefs.allergens);
-  const [requested, setRequested] = useState(false);
+  // Tips are written for these preferences, so changing them (adding an allergen, say) must not
+  // show tips generated without it.
+  const profileKey = useMemo(
+    () => tipsProfileKey({ goals, diets, allergens }),
+    [goals, diets, allergens],
+  );
+  // The profile the person asked for tips with. Tips are never fetched without a tap, so a later
+  // preference change waits for the next request instead of spending the allowance by itself.
+  const [requestedFor, setRequestedFor] = useState<string | null>(null);
 
   const placeIds = useMemo(
     () =>
@@ -69,8 +83,8 @@ export function useOrderingTips(
   );
 
   const query = useQuery({
-    queryKey: nearbyKeys.tips(dish?.key ?? '', bucket ?? '', placeIds),
-    enabled: requested && dish !== null && bucket !== null,
+    queryKey: nearbyKeys.tips(dish?.key ?? '', bucket ?? '', placeIds, profileKey),
+    enabled: requestedFor === profileKey && dish !== null && bucket !== null,
     staleTime: Infinity,
     gcTime: TIPS_GC_MS,
     retry: false,
@@ -86,9 +100,9 @@ export function useOrderingTips(
 
   const { refetch } = query;
   const request = useCallback(() => {
-    if (requested) void refetch();
-    else setRequested(true);
-  }, [requested, refetch]);
+    if (requestedFor === profileKey) void refetch();
+    else setRequestedFor(profileKey);
+  }, [requestedFor, profileKey, refetch]);
 
   return {
     tips: query.data?.tips ?? null,

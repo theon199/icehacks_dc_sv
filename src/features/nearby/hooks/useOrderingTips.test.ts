@@ -1,4 +1,4 @@
-import { buildTipsRequest } from './useOrderingTips';
+import { buildTipsRequest, tipsProfileKey } from './useOrderingTips';
 import { toPlaceView } from '../model/placeView';
 
 const place = (i: number) =>
@@ -57,5 +57,21 @@ describe('buildTipsRequest', () => {
     expect(request.goals).toEqual(['more_fiber']);
     expect(request.diet).toEqual([]);
     expect(request.allergens).toEqual(['peanut']);
+  });
+});
+
+describe('tipsProfileKey', () => {
+  const base = { goals: ['lower_sodium'], diets: ['vegetarian'], allergens: ['peanut'] };
+
+  it('changes when an allergen is added, so earlier tips are not reused', () => {
+    expect(tipsProfileKey({ ...base, allergens: ['peanut', 'sesame'] })).not.toBe(
+      tipsProfileKey(base),
+    );
+  });
+
+  it('ignores the order preferences were picked in', () => {
+    expect(tipsProfileKey({ ...base, allergens: ['sesame', 'peanut'] })).toBe(
+      tipsProfileKey({ ...base, allergens: ['peanut', 'sesame'] }),
+    );
   });
 });
