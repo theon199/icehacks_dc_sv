@@ -65,7 +65,15 @@ export function PostScreen({ postId, focusComments = false }: PostScreenProps) {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
-  const onBlockCommenter = useCallback((comment: Comment) => block(comment.author_id), [block]);
+  const onBlockCommenter = useCallback(
+    (comment: Comment) =>
+      block({
+        userId: comment.author_id,
+        displayName: comment.author_display_name,
+        handle: comment.author_handle || null,
+      }),
+    [block],
+  );
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<CommentEntry>) => (

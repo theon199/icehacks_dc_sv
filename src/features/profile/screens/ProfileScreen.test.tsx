@@ -5,6 +5,7 @@ import type { MyStats } from '@/lib/supabase/database.types';
 
 import { ProfileScreen } from './ProfileScreen';
 import { fetchBadgeCatalog, fetchMyStats, fetchProfile } from '../api/profileApi';
+import { myStatsSchema, parseResponse } from '../api/schemas';
 import { fetchAuthorPosts, listCatalogCuisines } from '../deps';
 import { renderWithQuery, signInForTest, TEST_USER_ID } from '../testing';
 
@@ -110,6 +111,19 @@ describe('ProfileScreen', () => {
     const retries = screen.getAllByRole('button', { name: 'Try again' });
     await fireEvent.press(retries[retries.length - 1]!);
     expect(await screen.findByText('1 of 2 earned')).toBeOnTheScreen();
+  });
+
+  it('shows a stats error for a malformed answer instead of zeros', async () => {
+    // The real schema is applied to a reply whose streak is not a number.
+    jest
+      .mocked(fetchMyStats)
+      .mockImplementation(async () =>
+        parseResponse('my_stats', myStatsSchema, { ...stats, current_streak: 'three' }),
+      );
+    await renderWithQuery(<ProfileScreen />);
+
+    expect(await screen.findByText("Stats didn't load")).toBeOnTheScreen();
+    expect(screen.queryByText(/of 2 earned/)).toBeNull();
   });
 
   it('invites a first post when there are none', async () => {

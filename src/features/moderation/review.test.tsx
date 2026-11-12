@@ -8,7 +8,7 @@ import { renderWithTheme } from '@/test/render';
 import { AppealReviewCard } from './components/AppealReviewCard';
 import type { AppealQueueItem } from './model';
 import { suspendedUntil } from './reviewTarget';
-import { ModerationReviewScreen } from './screens/ModerationReviewScreen';
+import { ModerationReviewScreen, reportHeading } from './screens/ModerationReviewScreen';
 
 type MockResult = { data: unknown; error: unknown };
 type MockResolver = (table: string, columns: string) => MockResult;
@@ -17,15 +17,24 @@ let mockResolve: MockResolver = () => ({ data: [], error: null });
 const mockSign = jest.fn();
 const mockRpc = jest.fn();
 const mockPush = jest.fn();
+const mockBack = jest.fn();
+const mockReplace = jest.fn();
+let mockCanGoBack = true;
+/** Every `or` filter sent, as `table: filter`. */
+const mockFilters: string[] = [];
 
 /** A PostgREST-like builder: every filter chains, awaiting it (or maybeSingle) resolves. */
 function mockBuilder(table: string) {
   let columns = '';
   const settle = () => Promise.resolve(mockResolve(table, columns));
   const chain: Record<string, unknown> = {};
-  for (const method of ['eq', 'in', 'order', 'limit', 'or']) {
+  for (const method of ['eq', 'in', 'order', 'limit']) {
     chain[method] = () => chain;
   }
+  chain.or = (filter: string) => {
+    mockFilters.push(`${table}: ${filter}`);
+    return chain;
+  };
   chain.select = (selected: string) => {
     columns = selected;
     return chain;
@@ -45,7 +54,12 @@ jest.mock('@/lib/supabase/client', () => ({
 }));
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
-  useRouter: () => ({ back: jest.fn(), push: mockPush }),
+  useRouter: () => ({
+    back: mockBack,
+    push: mockPush,
+    replace: mockReplace,
+    canGoBack: () => mockCanGoBack,
+  }),
 }));
 
 const MODERATOR = '00000000-0000-4000-8000-00000000000a';
@@ -116,6 +130,10 @@ beforeEach(() => {
   mockSign.mockReset();
   mockRpc.mockReset();
   mockPush.mockReset();
+  mockBack.mockReset();
+  mockReplace.mockReset();
+  mockCanGoBack = true;
+  mockFilters.length = 0;
   mockSign.mockImplementation((paths: string[]) =>
     Promise.resolve({
       data: paths.map((path) => ({ path, signedUrl: `https://signed.test/${path}`, error: null })),
@@ -170,6 +188,52 @@ describe('ModerationReviewScreen', () => {
 
     expect(await screen.findByTestId('action-suspend')).toBeTruthy();
     expect(screen.getByTestId('action-unsuspend')).toBeTruthy();
+  });
+
+  it('lists actions on a member’s posts in their review history', async () => {
+    const base = backend(null);
+    mockResolve = (table, columns) => {
+      if (table === 'moderation_actions' && columns.includes('moderator:')) {
+        return {
+          data: [
+            {
+              id: 'act-1',
+              automated: false,
+              target_kind: 'post',
+              target_id: POST_ID,
+              action: 'hide',
+              reason: 'Unsafe advice',
+              suspended_until: null,
+              created_at: '2026-11-05T10:00:00Z',
+              moderator: { handle: 'mod_lee' },
+              owner: { handle: 'cook_ana' },
+            },
+          ],
+          error: null,
+        };
+      }
+      return base(table, columns);
+    };
+    await renderWithClient(<ModerationReviewScreen kind="user" targetId={AUTHOR} />);
+
+    expect(await screen.findByText(/post by @cook_ana/)).toBeTruthy();
+    expect(mockFilters).toContain(
+      `moderation_actions: target_owner_id.eq.${AUTHOR},and(target_kind.eq.user,target_id.eq.${AUTHOR})`,
+    );
+  });
+
+  it('goes to the queue after a decision when there is nothing to go back to', async () => {
+    mockCanGoBack = false;
+    mockResolve = backend(hiddenPost(AUTHOR));
+    mockRpc.mockResolvedValue({ data: 'action-1', error: null });
+    await renderWithClient(<ModerationReviewScreen kind="post" targetId={POST_ID} />);
+
+    await fireEvent.press(await screen.findByTestId('action-restore'));
+    await fireEvent.changeText(screen.getByTestId('moderate-reason'), 'Reviewed, it is fine.');
+    await fireEvent.press(screen.getByTestId('moderate-submit'));
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/moderation'));
+    expect(mockBack).not.toHaveBeenCalled();
   });
 });
 
@@ -250,5 +314,26 @@ describe('AppealReviewCard', () => {
       pathname: '/moderation/review',
       params: { kind: 'post', id: POST_ID },
     });
+  });
+});
+
+describe('reportHeading', () => {
+  const report = (status: 'open' | 'dismissed') => ({
+    id: `r-${status}`,
+    reason: 'spam' as const,
+    details: '',
+    automated: false,
+    status,
+    created_at: '2026-11-02T10:00:00Z',
+  });
+
+  it('uses the server count, which is not capped at one page', () => {
+    expect(reportHeading([report('open')], 73)).toBe('73 open reports');
+  });
+
+  it('falls back to the loaded reports when no count came back', () => {
+    expect(reportHeading([report('open'), report('dismissed')], null)).toBe('1 open report');
+    expect(reportHeading([report('dismissed')], null)).toBe('No open reports');
+    expect(reportHeading([], null)).toBe('No reports');
   });
 });
