@@ -104,22 +104,30 @@ export function useNearbyLocation(service: LocationService = expoLocationService
       });
   }, [service]);
 
+  // Bumped by every new lookup and every way out of the city search, so only the latest lookup
+  // of a search that is still open reports back.
+  const lookup = useRef(0);
+
   const chooseCity = useCallback(() => {
+    lookup.current += 1;
     setCitySearch('idle');
     dispatch({ type: 'chooseCity' });
   }, []);
 
   const cancelCity = useCallback(() => {
+    lookup.current += 1;
     setCitySearch('idle');
     dispatch({ type: 'cancelCity' });
   }, []);
 
   const searchCity = useCallback(
     async (query: string) => {
+      const id = (lookup.current += 1);
+      const current = () => mounted.current && lookup.current === id;
       setCitySearch('searching');
       try {
         const match = await service.findCity(query);
-        if (!mounted.current) return;
+        if (!current()) return;
         if (!match) {
           setCitySearch('notFound');
           return;
@@ -127,13 +135,17 @@ export function useNearbyLocation(service: LocationService = expoLocationService
         setCitySearch('idle');
         dispatch({ type: 'citySelected', point: match.point, label: match.label });
       } catch {
-        if (mounted.current) setCitySearch('failed');
+        if (current()) setCitySearch('failed');
       }
     },
     [service],
   );
 
-  const useDevice = useCallback(() => dispatch({ type: 'useDevice' }), []);
+  const useDevice = useCallback(() => {
+    lookup.current += 1;
+    setCitySearch('idle');
+    dispatch({ type: 'useDevice' });
+  }, []);
 
   const openSettings = useCallback(() => {
     service.openSettings().catch(() => undefined);

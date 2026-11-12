@@ -26,6 +26,25 @@ export function registerSyncedStore(store: SyncedStore): () => void {
   };
 }
 
+let syncRunning: () => boolean = () => false;
+
+/**
+ * Set by the sync session: how to tell whether its engine is running. Asked on every check rather
+ * than stored as a flag, so an engine that stops on its own (another account's session) counts as
+ * stopped at once.
+ */
+export function setSyncRunning(running: () => boolean): void {
+  syncRunning = running;
+}
+
+/**
+ * Whether an engine is watching the registered stores. Resetting a store then reads as the person
+ * deleting everything, so resets must go through the session (sign-out), never directly.
+ */
+export function isSyncRunning(): boolean {
+  return syncRunning();
+}
+
 /** Every registered store, in registration order. */
 export function syncedStores(): readonly SyncedStore[] {
   return [...registered.values()];

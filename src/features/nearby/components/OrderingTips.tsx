@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Card, Icon, Skeleton, SkeletonGroup, Text, errorMessageFor } from '@/ui';
 
 import { AI_CONSENT_ROUTE, NearbyAiGate, type AiAccess } from '../deps';
+import { useAnnouncement } from '../hooks/useAnnouncement';
 import { useOrderingTips } from '../hooks/useOrderingTips';
 import type { NearbyDish } from '../model/dish';
 import type { PlaceView } from '../model/placeView';
@@ -45,6 +46,15 @@ function Locked({ access }: { access: Exclude<AiAccess, 'allowed'> }) {
 
 function Tips({ dish, bucket, places }: OrderingTipsProps) {
   const { tips, loading, error, request } = useOrderingTips(dish, bucket, places);
+  // Tips and errors replace the button in place; say so, since VoiceOver has no live regions.
+  useAnnouncement(
+    tips
+      ? `${tips.length} ordering ${tips.length === 1 ? 'tip' : 'tips'} ready`
+      : !loading && error
+        ? errorMessageFor(error)
+        : null,
+    dish.key,
+  );
   return (
     <Card variant="outlined" testID="nearby-tips">
       <View style={styles.header}>
@@ -52,7 +62,7 @@ function Tips({ dish, bucket, places }: OrderingTipsProps) {
         <Text variant="headline">Ordering tips</Text>
       </View>
       {tips ? (
-        <View style={styles.list} accessibilityLiveRegion="polite">
+        <View style={styles.list}>
           {tips.map((tip, index) => (
             // The model can repeat a sentence, so the text alone is not a unique key.
             <View key={`${index}:${tip}`} style={styles.tip}>

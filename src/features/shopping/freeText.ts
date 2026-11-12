@@ -10,10 +10,11 @@ const EPSILON = 1e-9;
 /** The pantry's unit limit; a long unit word is cut to fit. */
 const MAX_UNIT_LENGTH = 24;
 
-const normalise = (text: string) => text.trim().toLowerCase().replace(/\s+/g, ' ');
+/** Lower case with single spaces, so names compare the way people read them. */
+export const normaliseName = (text: string) => text.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /** Whether two names read the same, ignoring case and spacing. */
-export const sameName = (a: string, b: string) => normalise(a) === normalise(b);
+export const sameName = (a: string, b: string) => normaliseName(a) === normaliseName(b);
 
 /**
  * The unit word the pantry records for a bought amount. Whole items carry no unit (a bare count
@@ -26,7 +27,7 @@ export function pantryUnitWord(amount: Amount): string | null {
   return label ? label : null;
 }
 
-const unitKey = (unit: string | null | undefined) => (unit ? normalise(unit) : '');
+const unitKey = (unit: string | null | undefined) => (unit ? normaliseName(unit) : '');
 
 /** Subtracts matching free-text pantry items from one unmatched list line. */
 function coverLine(item: ShoppingItem, entries: readonly PantryItem[]): ShoppingItem {

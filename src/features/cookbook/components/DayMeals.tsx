@@ -12,6 +12,7 @@ import { AddMealSheet } from './AddMealSheet';
 import { SlotPickerSheet } from './SlotPickerSheet';
 import { SlotRow } from './SlotRow';
 import { plannerActions, type SlotRef } from '../hooks/usePlanner';
+import { ARCHIVED_WEEK_MESSAGE } from '../model/planToast';
 import { mealsForDay, SLOT_LABELS, type DayInfo } from '../model/week';
 
 export interface DayMealsProps {
@@ -162,8 +163,18 @@ export function DayMeals({
           onClose={() => setAdding(null)}
           onPick={(recipe) => {
             setAdding(null);
-            if (!isSafe(recipe)) return;
-            plannerActions.place(ref(adding), recipe.id);
+            if (!isSafe(recipe)) {
+              // The picker hides recipes that break the person's rules; one can still slip through
+              // when they changed while the sheet was open.
+              toast.show({
+                message: `${recipe.title} doesn't fit your allergies or diet, so it wasn't added`,
+                tone: 'danger',
+              });
+              return;
+            }
+            if (!plannerActions.place(ref(adding), recipe.id)) {
+              toast.show({ message: ARCHIVED_WEEK_MESSAGE, tone: 'danger' });
+            }
           }}
         />
       ) : null}
@@ -183,7 +194,7 @@ export function DayMeals({
             toast.show(
               moved
                 ? { message: 'Meal moved', tone: 'success' }
-                : { message: 'Archived weeks cannot be changed', tone: 'danger' },
+                : { message: ARCHIVED_WEEK_MESSAGE, tone: 'danger' },
             );
           }}
         />

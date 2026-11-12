@@ -75,12 +75,21 @@ export function utf8Bytes(text: string): number {
   for (let i = 0; i < text.length; i += 1) {
     const unit = text.charCodeAt(i);
     if (unit <= 0x7f) continue;
-    if (unit <= 0x7ff) total += 1;
-    else if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < text.length) {
-      // A surrogate pair is two UTF-16 units and four UTF-8 bytes.
-      total += 2;
-      i += 1;
-    } else total += 2;
+    if (unit <= 0x7ff) {
+      total += 1;
+      continue;
+    }
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = i + 1 < text.length ? text.charCodeAt(i + 1) : 0;
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        // A valid pair is two UTF-16 units and four UTF-8 bytes.
+        total += 2;
+        i += 1;
+        continue;
+      }
+    }
+    // Any other unit up to 0xFFFF, a lone surrogate included, takes three bytes.
+    total += 2;
   }
   return total;
 }

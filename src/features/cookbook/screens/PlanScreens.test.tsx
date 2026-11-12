@@ -1,4 +1,4 @@
-import { fireEvent, screen, userEvent, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import { getRecipeSummaries, listCandidates } from '@/lib/catalog/queries';
@@ -10,6 +10,7 @@ import { TwoDayPlanScreen } from './TwoDayPlanScreen';
 import { candidatePool } from '../__fixtures__/recipes';
 import { clearQueryClients, renderCookbook, resetCookbookStores } from '../__fixtures__/render';
 import { plannerActions } from '../hooks/usePlanner';
+import { ARCHIVED_WEEK_MESSAGE } from '../model/planToast';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/lib/catalog/queries', () => ({
@@ -23,6 +24,8 @@ const WEEK = '2026-11-09';
 const pool = candidatePool();
 const slots = (week = WEEK) => useMealPlanStore.getState().weeks[week]?.slots ?? {};
 const LONG = { timeout: 10_000 };
+/** Plan changes re-run the preview in a zero-delay timer; let it land inside act. */
+const settlePreview = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
 beforeEach(() => {
   resetCookbookStores();
@@ -48,6 +51,7 @@ describe('Plan my week', () => {
     const accept = screen.getByTestId('accept-fill');
     expect(accept).toHaveTextContent('Add 14 meals');
     await user.press(accept);
+    await settlePreview();
 
     const planned = Object.keys(slots());
     expect(planned).toHaveLength(15);
@@ -56,6 +60,24 @@ describe('Plan my week', () => {
     expect(new Set(Object.values(slots()).map((e) => e.recipeId)).size).toBe(15);
     expect(useToastStore.getState().queue[0]?.message).toBe('Added 14 meals to your plan');
     expect(router.back).toHaveBeenCalled();
+  });
+
+  it('does not claim meals were added when the week was archived meanwhile', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm0');
+    await renderCookbook(<PlanWeekScreen week={WEEK} />);
+    await screen.findByTestId('fill-preview', {}, LONG);
+
+    await act(async () => {
+      plannerActions.archive(WEEK);
+    });
+    await settlePreview();
+    await user.press(screen.getByTestId('accept-fill'));
+    expect(Object.keys(slots())).toEqual(['2-dinner']);
+    expect(useToastStore.getState().queue[0]).toMatchObject({
+      message: ARCHIVED_WEEK_MESSAGE,
+      tone: 'neutral',
+    });
   });
 
   it('adds a snack a day when planning small meals', async () => {
@@ -110,6 +132,37 @@ describe('Two-day nutrition plan', () => {
       '3-lunch',
     ]);
     expect(router.back).toHaveBeenCalled();
+  });
+
+  it('says an archived week took no meals instead of calling them already planned', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: WEEK, day: 0, slot: 'dinner' }, 'm0');
+    plannerActions.archive(WEEK);
+    await renderCookbook(<TwoDayPlanScreen />);
+    await screen.findByTestId('two-day-result', {}, LONG);
+    await screen.findAllByText(/^Dish /, {}, LONG);
+
+    await user.press(screen.getByTestId('add-two-day'));
+    expect(Object.keys(slots())).toEqual(['0-dinner']);
+    expect(useToastStore.getState().queue[0]).toMatchObject({
+      message: ARCHIVED_WEEK_MESSAGE,
+      tone: 'neutral',
+    });
+  });
+
+  it('says when the meals were already planned', async () => {
+    const user = userEvent.setup();
+    await renderCookbook(<TwoDayPlanScreen />);
+    await screen.findByTestId('two-day-result', {}, LONG);
+    await screen.findAllByText(/^Dish /, {}, LONG);
+    await user.press(screen.getByTestId('add-two-day'));
+    useToastStore.getState().clear();
+
+    await user.press(screen.getByTestId('add-two-day'));
+    expect(useToastStore.getState().queue[0]).toMatchObject({
+      message: 'Those meals are already planned',
+      tone: 'neutral',
+    });
   });
 
   it('labels the result estimated when a chosen recipe has estimated nutrition', async () => {

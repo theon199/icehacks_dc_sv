@@ -21,6 +21,10 @@ export interface SyncableStore<S> {
 
 export interface CollectionAdapterOptions<S, T extends object> {
   collection: string;
+  /** See `SyncCollectionAdapter.priority`. */
+  priority?: boolean;
+  /** See `SyncCollectionAdapter.uniqueIds`. */
+  uniqueIds?: boolean;
   store: SyncableStore<S>;
   select: (state: S) => Readonly<Record<string, T>>;
   schema: z.ZodType<T>;
@@ -42,6 +46,8 @@ export function createCollectionAdapter<S, T extends object>(
 
   return {
     collection,
+    ...(options.priority ? { priority: true } : {}),
+    ...(options.uniqueIds ? { uniqueIds: true } : {}),
 
     ready() {
       if (options.ready) return options.ready();

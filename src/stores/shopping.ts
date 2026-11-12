@@ -1,7 +1,8 @@
 /**
  * Check-offs on the shopping list. The list itself is derived from the meal plan and pantry; only
  * which lines are ticked is stored. One synced document per ticked line, so ticking on two
- * phones in the same shop never loses a tick.
+ * phones in the same shop never loses a tick. At most 500 ticks are kept (the oldest go first),
+ * which is far more than any one list and keeps a forgotten list from growing without end.
  */
 import { z } from 'zod';
 import { create } from 'zustand';
@@ -12,6 +13,7 @@ import { versionedPersist } from './persistence';
 import { applyToRecord, createCollectionAdapter } from './syncAdapter';
 
 const MAX_KEY_LENGTH = 120;
+export const MAX_SHOPPING_CHECKS = 500;
 
 export const shoppingCheckSchema = z.object({
   key: z.string().min(1).max(MAX_KEY_LENGTH),
@@ -35,10 +37,21 @@ export function shoppingLineKey(line: {
   return (unit ? `${base}|${unit}` : base).slice(0, MAX_KEY_LENGTH);
 }
 
+const byCheckedAt = (a: ShoppingCheck, b: ShoppingCheck) =>
+  a.checkedAt.localeCompare(b.checkedAt) || a.key.localeCompare(b.key);
+
+/** Keeps the `max` most recent ticks. */
+export function trimChecks(checks: Checks, max: number = MAX_SHOPPING_CHECKS): Checks {
+  const all = Object.values(checks);
+  if (all.length <= max) return checks;
+  const keep = all.sort(byCheckedAt).slice(-max);
+  return Object.fromEntries(keep.map((check) => [check.key, check]));
+}
+
 export function setChecked(checks: Checks, key: string, checked: boolean, at: string): Checks {
   if (!key || key.length > MAX_KEY_LENGTH) return checks;
   if (checked === !!checks[key]) return checks;
-  if (checked) return { ...checks, [key]: { key, checkedAt: at } };
+  if (checked) return trimChecks({ ...checks, [key]: { key, checkedAt: at } });
   const next = { ...checks };
   delete next[key];
   return next;
@@ -98,5 +111,6 @@ export const shoppingSync = createCollectionAdapter({
   store: useShoppingStore,
   select: (state) => state.checked,
   schema: shoppingCheckSchema,
-  apply: (state, changes) => ({ checked: applyToRecord(state.checked, changes) }),
+  // Merging another device's ticks can pass the cap; the engine deletes what is dropped remotely.
+  apply: (state, changes) => ({ checked: trimChecks(applyToRecord(state.checked, changes)) }),
 });

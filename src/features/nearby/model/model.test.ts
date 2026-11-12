@@ -13,6 +13,7 @@ import {
   phoneUrl,
   priceLabel,
   ratingLabel,
+  ratingValue,
   reviewCountLabel,
   tallyLabel,
   websiteUrl,
@@ -95,6 +96,9 @@ describe('place formatting', () => {
     expect(priceLabel(null)).toBeNull();
     expect(ratingLabel(4.56)).toBe('4.6');
     expect(ratingLabel(0)).toBeNull();
+    expect(ratingValue(4.56)).toBe(4.6);
+    expect(ratingValue(7)).toBe(5);
+    expect(ratingValue(Number.NaN)).toBeNull();
     expect(reviewCountLabel(950)).toBe('950');
     expect(reviewCountLabel(1200)).toBe('1.2k');
     expect(reviewCountLabel(15_400)).toBe('15k');

@@ -56,12 +56,15 @@ export function SearchPane() {
     [setQuery, remember],
   );
 
+  // The grid shows results for the settled text, which can lag behind what is still being typed;
+  // the recent search is the one that found the recipe.
+  const { settledQuery } = results;
   const openRecipe = useCallback(
     (item: SearchResultItem) => {
-      remember(useSearchStore.getState().query);
+      remember(settledQuery);
       router.push({ pathname: '/recipe/[id]', params: { id: item.recipe.id } });
     },
-    [remember, router],
+    [remember, router, settledQuery],
   );
 
   const chips = useMemo(

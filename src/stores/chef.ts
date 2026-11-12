@@ -1,21 +1,24 @@
 /**
  * Chef conversations. One synced document per thread. Threads are bounded so a document stays
- * well under the server's size limit: at most 200 messages and about 150 KB of JSON each (oldest
- * messages go first), and at most 100 threads (least recently active go first).
+ * under the size sync accepts: at most 200 messages and 180 KB of UTF-8 JSON each (oldest messages
+ * go first; bytes, not characters, because Cyrillic, CJK or emoji take two to four bytes each),
+ * and at most 100 threads (least recently active go first).
  */
 import { z } from 'zod';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { newId } from '@/lib/id';
+import { utf8Bytes } from '@/lib/sync/fingerprint';
 
 import { createSelector } from './memo';
-import { versionedPersist } from './persistence';
+import { BURST_WRITE_WINDOW_MS, versionedPersist } from './persistence';
 import { applyToRecord, createCollectionAdapter } from './syncAdapter';
 
 export const MAX_THREADS = 100;
 export const MAX_MESSAGES_PER_THREAD = 200;
-export const MAX_THREAD_JSON_CHARS = 150_000;
+/** UTF-8 bytes of a thread's JSON; sync refuses documents over 200 KB, so this leaves headroom. */
+export const MAX_THREAD_BYTES = 180 * 1024;
 export const MAX_MESSAGE_CHARS = 8000;
 const TITLE_CHARS = 80;
 
@@ -45,16 +48,18 @@ function titleFrom(text: string): string {
   return line.length > TITLE_CHARS ? `${line.slice(0, TITLE_CHARS - 1)}…` : line;
 }
 
+/** Size of a thread as sync measures it: UTF-8 bytes of its JSON. */
+export function threadBytes(thread: ChefThread): number {
+  return utf8Bytes(JSON.stringify(thread));
+}
+
 /** Drops the oldest messages until the thread fits its message and size budgets. */
 export function boundThread(thread: ChefThread): ChefThread {
   let messages =
     thread.messages.length > MAX_MESSAGES_PER_THREAD
       ? thread.messages.slice(-MAX_MESSAGES_PER_THREAD)
       : thread.messages;
-  while (
-    messages.length > 1 &&
-    JSON.stringify({ ...thread, messages }).length > MAX_THREAD_JSON_CHARS
-  ) {
+  while (messages.length > 1 && threadBytes({ ...thread, messages }) > MAX_THREAD_BYTES) {
     messages = messages.slice(Math.max(1, Math.ceil(messages.length / 10)));
   }
   return messages === thread.messages ? thread : { ...thread, messages };
@@ -164,6 +169,7 @@ export const useChefStore = create<ChefState>()(
     versionedPersist({
       name: 'user.chef',
       version: 1,
+      throttleMs: BURST_WRITE_WINDOW_MS,
       schema: z.object({ threads: z.record(z.string(), chefThreadSchema) }),
       partialize: (state) => ({ threads: state.threads }),
     }),
@@ -184,6 +190,8 @@ export const selectThread = (threadId: string) => (state: ChefState) =>
 
 export const chefSync = createCollectionAdapter({
   collection: 'chef_threads',
+  // Ids come from newId() and are never reused.
+  uniqueIds: true,
   store: useChefStore,
   select: (state) => state.threads,
   schema: chefThreadSchema,

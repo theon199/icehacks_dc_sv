@@ -14,10 +14,15 @@ export function priceAccessibilityLabel(level: number | null): string | null {
   return label ? `Price level ${label.length} of 4` : null;
 }
 
+/** A 0–5 rating to one decimal, as it is shown and sent; null when missing. */
+export function ratingValue(rating: number | null): number | null {
+  if (rating == null || !Number.isFinite(rating) || rating <= 0) return null;
+  return Math.round(Math.min(5, rating) * 10) / 10;
+}
+
 /** "4.6" for a 0–5 rating; null when missing. */
 export function ratingLabel(rating: number | null): string | null {
-  if (rating == null || !Number.isFinite(rating) || rating <= 0) return null;
-  return Math.min(5, rating).toFixed(1);
+  return ratingValue(rating)?.toFixed(1) ?? null;
 }
 
 /** "1.2k" style review counts so a card stays one line. */

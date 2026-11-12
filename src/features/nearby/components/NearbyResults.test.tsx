@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import type { ComponentType, ReactNode } from 'react';
+import { AccessibilityInfo } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import type { NearbyResponse } from '@/lib/api/commerce';
@@ -104,7 +105,10 @@ function renderResults() {
 const isSelected = (id: string) =>
   screen.getByTestId(`nearby-card-${id}`).props.accessibilityState?.selected === true;
 
+const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+
 beforeEach(() => {
+  announce.mockClear();
   mockFetchNearby.mockResolvedValue(response);
   useConfirmationStore.setState({ log: {} });
   useSessionStore.setState({ userId: 'user-1', birthYear: 1990, aiConsent: true });
@@ -162,6 +166,10 @@ describe('NearbyResults', () => {
     await fireEvent.press(await screen.findByTestId('nearby-confirm-yes'));
 
     expect(await screen.findByText('Thanks for letting us know')).toBeTruthy();
+    // VoiceOver has no live regions, so the thank-you is announced.
+    expect(announce).toHaveBeenCalledWith(
+      'Thanks for letting us know. You said they had Pad Thai. That helps others find it.',
+    );
     expect(mockRpc).toHaveBeenCalledTimes(1);
     expect(mockRpc).toHaveBeenCalledWith('confirm_dish', {
       p_place_id: 'b',
@@ -226,6 +234,7 @@ describe('NearbyResults', () => {
     expect(mockTips).not.toHaveBeenCalled();
     await fireEvent.press(await screen.findByTestId('nearby-tips-request'));
     expect(await screen.findByText('Ask for extra vegetables.')).toBeTruthy();
+    expect(announce).toHaveBeenCalledWith('2 ordering tips ready');
     expect(mockTips).toHaveBeenCalledWith(
       expect.objectContaining({
         dish: { name: 'Pad Thai', cuisine: 'thai' },

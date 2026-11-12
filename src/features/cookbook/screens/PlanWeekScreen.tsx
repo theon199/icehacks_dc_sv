@@ -9,7 +9,9 @@ import { Button, Card, Chip, EmptyState, Screen, space, Text, toast, Toggle } fr
 
 import { PlanStatus } from '../components/PlanStatus';
 import { useAutoFillPreview } from '../hooks/useAutoFillPreview';
+import { isWeekArchived } from '../hooks/usePlanner';
 import { useToday } from '../hooks/useToday';
+import { addedToPlanToast } from '../model/planToast';
 import { resolveWeekParam, SLOT_LABELS, weekDays, weekTitle, type DayInfo } from '../model/week';
 
 export const REASON_LABELS: Readonly<Record<FillReason, string>> = {
@@ -41,10 +43,7 @@ export function PlanWeekScreen({ week }: PlanWeekScreenProps) {
   const count = ready?.result.assignments.length ?? 0;
   const onAccept = () => {
     const placed = accept();
-    toast.show({
-      message: placed === 1 ? 'Added 1 meal to your plan' : `Added ${placed} meals to your plan`,
-      tone: 'success',
-    });
+    toast.show(addedToPlanToast({ offered: count, placed, archived: isWeekArchived(weekStart) }));
     router.back();
   };
 
@@ -72,7 +71,7 @@ export function PlanWeekScreen({ week }: PlanWeekScreenProps) {
       </View>
       <Toggle
         label="Plan small meals"
-        description="Half portions with a snack each day"
+        description="Favors gentle recipes and adds a snack each day"
         value={smallAppetite}
         onValueChange={setSmallAppetite}
         testID="small-meals"
