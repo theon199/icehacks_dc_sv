@@ -10,7 +10,7 @@ import { usePreferencesStore } from '@/stores';
 
 import { aiApi, describeAiProblem, type AiProblem } from './deps';
 import type { AllergenHit } from './logic/allergenCheck';
-import { makeoverAllergenHits } from './logic/request';
+import { allergenConflictOf, makeoverAllergenHits } from './logic/request';
 
 export type MakeoverState =
   | { readonly status: 'idle' }
@@ -23,7 +23,15 @@ export type MakeoverState =
       /** Every allergen the answer was checked against. */
       readonly checked: readonly AllergenId[];
     }
-  | { readonly status: 'failed'; readonly problem: AiProblem };
+  | {
+      readonly status: 'failed';
+      readonly problem: AiProblem;
+      /**
+       * When the server refused the makeover because its answer still contained a declared
+       * allergen: the ones it named (possibly none it could name). Null for any other failure.
+       */
+      readonly conflict: readonly AllergenId[] | null;
+    };
 
 const IDLE: MakeoverState = { status: 'idle' };
 const COPY = { feature: 'Make it healthier', unit: 'makeovers' } as const;
@@ -49,7 +57,11 @@ export function useMakeover() {
       setState({ status: 'done', makeover, hits, checked });
     } catch (error) {
       if (controller.signal.aborted) return;
-      setState({ status: 'failed', problem: describeAiProblem(error, COPY) });
+      setState({
+        status: 'failed',
+        problem: describeAiProblem(error, COPY),
+        conflict: allergenConflictOf(error),
+      });
     } finally {
       if (inFlight.current === controller) inFlight.current = null;
     }
