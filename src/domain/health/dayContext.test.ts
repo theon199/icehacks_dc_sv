@@ -8,6 +8,7 @@ import {
   mergedMinutes,
   rankingHintsFor,
   suggestionsFor,
+  workoutLoad,
 } from './dayContext';
 import { DAY_MS, HOUR_MS, MINUTE_MS, WORKOUT_KINDS, type WorkoutKind } from './types';
 
@@ -58,6 +59,28 @@ describe('computeDayContext', () => {
     expect(context.activityLoad).toBe(40 + 20 * INTENSITY_WEIGHTS.intervals);
     expect(context.activity).toBe('very_active');
     expect(context.suggestions).toEqual(['more_protein']);
+  });
+
+  it('counts a workout recorded by two sources once, at the higher weight', () => {
+    const watch = workout('running', 60, 30);
+    const phone = workout('walking', 50, 50);
+    const context = computeDayContext({ workouts: [watch, phone], sleep: [], now: NOW });
+    // The walk covers the 30 min run plus 10 min either side: 30 min at the running weight and
+    // 20 min at the walking weight, 50 min in total.
+    expect(context.workoutMinutes).toBe(50);
+    expect(context.activityLoad).toBe(
+      30 * INTENSITY_WEIGHTS.running + 20 * INTENSITY_WEIGHTS.walking,
+    );
+  });
+
+  it('counts identical duplicate workouts once', () => {
+    const once = computeDayContext({ workouts: [workout('cycling', 90, 45)], sleep: [], now: NOW });
+    const twice = computeDayContext({
+      workouts: [workout('cycling', 90, 45), workout('cycling', 90, 45)],
+      sleep: [],
+      now: NOW,
+    });
+    expect(twice).toEqual(once);
   });
 
   it('only counts the part of a workout inside the last 24 hours', () => {
@@ -118,6 +141,37 @@ describe('computeDayContext', () => {
       now: NOW,
     });
     expect(context.suggestions).toEqual(['more_protein', 'lighter_dinner', 'earlier_dinner']);
+  });
+});
+
+describe('workoutLoad', () => {
+  const from = NOW - DAY_MS;
+
+  it('is zero without workouts', () => {
+    expect(workoutLoad([], from, NOW)).toEqual({ minutes: 0, load: 0 });
+  });
+
+  it('adds workouts that touch end to start without merging their weights', () => {
+    const first = workout('strength', 60, 30);
+    const second = workout('intervals', 30, 30);
+    expect(workoutLoad([first, second], from, NOW)).toEqual({
+      minutes: 60,
+      load: 30 * INTENSITY_WEIGHTS.strength + 30 * INTENSITY_WEIGHTS.intervals,
+    });
+  });
+
+  it('keeps the higher weight when a lighter workout sits inside a harder one', () => {
+    const hard = workout('intervals', 0, 60);
+    const inside = workout('mind_body', 20, 20);
+    expect(workoutLoad([inside, hard], from, NOW)).toEqual({
+      minutes: 60,
+      load: 60 * INTENSITY_WEIGHTS.intervals,
+    });
+  });
+
+  it('applies the runaway cap to each workout before merging', () => {
+    const runaway = workout('walking', 0, 10 * 60);
+    expect(workoutLoad([runaway], from, NOW).minutes).toBe(DAY_CONTEXT_RULES.maxWorkoutMinutes);
   });
 });
 

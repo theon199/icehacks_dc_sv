@@ -63,13 +63,6 @@ export interface DayContext {
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
-/** Minutes of `[start, end)` that fall inside `[from, to)`. */
-function overlapMinutes(start: number, end: number, from: number, to: number): number {
-  const lo = Math.max(start, from);
-  const hi = Math.min(end, to);
-  return hi > lo ? (hi - lo) / MINUTE_MS : 0;
-}
-
 /**
  * Total minutes covered by the intervals inside the window. Overlaps are merged first, because a
  * watch and a phone often record the same night.
@@ -101,6 +94,46 @@ export function mergedMinutes(
   return total / MINUTE_MS;
 }
 
+/**
+ * Workout minutes and weighted load inside the window. The same session is often recorded by a
+ * watch and a phone (or two apps), so time covered by several workouts counts once, at the highest
+ * weight among them. A single workout longer than the cap is treated as left running and cut.
+ */
+export function workoutLoad(
+  workouts: readonly WorkoutSession[],
+  from: number,
+  to: number,
+): { minutes: number; load: number } {
+  const capMs = DAY_CONTEXT_RULES.maxWorkoutMinutes * MINUTE_MS;
+  const spans = workouts
+    .map((workout) => {
+      const start = Math.max(workout.start, from);
+      return {
+        start,
+        end: Math.min(workout.end, to, start + capMs),
+        weight: INTENSITY_WEIGHTS[workout.kind],
+      };
+    })
+    .filter((span) => span.end > span.start);
+
+  const edges = [...new Set(spans.flatMap((span) => [span.start, span.end]))].sort((a, b) => a - b);
+  let minutes = 0;
+  let load = 0;
+  for (let i = 0; i + 1 < edges.length; i += 1) {
+    const lo = edges[i] as number;
+    const hi = edges[i + 1] as number;
+    let weight = 0;
+    for (const span of spans) {
+      if (span.start <= lo && span.end >= hi) weight = Math.max(weight, span.weight);
+    }
+    if (weight === 0) continue;
+    const segment = (hi - lo) / MINUTE_MS;
+    minutes += segment;
+    load += segment * weight;
+  }
+  return { minutes, load };
+}
+
 export function activityLevelFor(load: number): ActivityLevel {
   if (load >= DAY_CONTEXT_RULES.veryActiveFrom) return 'very_active';
   if (load >= DAY_CONTEXT_RULES.activeFrom) return 'active';
@@ -125,17 +158,7 @@ export interface DayContextInput {
 export function computeDayContext({ workouts, sleep, now }: DayContextInput): DayContext {
   const from = now - DAY_CONTEXT_RULES.lookbackMs;
 
-  let workoutMinutes = 0;
-  let activityLoad = 0;
-  for (const workout of workouts) {
-    const minutes = Math.min(
-      overlapMinutes(workout.start, workout.end, from, now),
-      DAY_CONTEXT_RULES.maxWorkoutMinutes,
-    );
-    if (minutes <= 0) continue;
-    workoutMinutes += minutes;
-    activityLoad += minutes * INTENSITY_WEIGHTS[workout.kind];
-  }
+  const { minutes: workoutMinutes, load: activityLoad } = workoutLoad(workouts, from, now);
 
   const tracked = mergedMinutes(sleep, from, now);
   const sleepMinutes = tracked > 0 ? Math.round(tracked) : null;
