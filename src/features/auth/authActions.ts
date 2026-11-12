@@ -162,30 +162,49 @@ export async function completeCallback(
   });
 }
 
+/** `local` ends this device's session only; `global` also ends the account's other sessions. */
+export type SignOutScope = 'local' | 'global';
+
+export interface SignOutOptions {
+  /** Defaults to `local`. */
+  scope?: SignOutScope;
+}
+
+export interface SignOutResult {
+  /** True only when a `global` sign-out reached the server, so other devices are signed out too. */
+  everywhere: boolean;
+}
+
 /**
- * Signs out everywhere when possible. Offline, or when the server no longer knows the session,
- * the session is still dropped from this device so the person is never stuck signed in.
+ * Ends the session on this device, or on every device with `scope: 'global'`. A global sign-out
+ * that fails (offline, or the server no longer knows the session) still drops the session here,
+ * so the person is never stuck signed in; the result says whether other devices were reached.
  *
  * Pending changes are sent first (briefly, while the session can still authorise them), then every
  * user store on this device is wiped before the session goes.
  */
-export async function signOut(): Promise<void> {
+export async function signOut(options: SignOutOptions = {}): Promise<SignOutResult> {
+  const scope = options.scope ?? 'local';
   try {
     await signOutCleanup();
   } catch (error) {
     logger.error('Could not clear user data before signing out', { error: String(error) });
   }
   const auth = getSupabase().auth;
-  try {
-    const { error } = await auth.signOut();
-    if (!error) return;
-    logger.info('Global sign-out failed; signing out on this device', { error: error.message });
-  } catch (error) {
-    logger.info('Global sign-out threw; signing out on this device', { error: String(error) });
+  if (scope === 'global') {
+    try {
+      const { error } = await auth.signOut({ scope: 'global' });
+      if (!error) return { everywhere: true };
+      logger.info('Global sign-out failed; signing out on this device', { error: error.message });
+    } catch (error) {
+      logger.info('Global sign-out threw; signing out on this device', { error: String(error) });
+    }
   }
   try {
-    await auth.signOut({ scope: 'local' });
+    const { error } = await auth.signOut({ scope: 'local' });
+    if (error) logger.warn('Local sign-out reported an error', { error: error.message });
   } catch (error) {
     logger.warn('Local sign-out failed', { error: String(error) });
   }
+  return { everywhere: false };
 }
