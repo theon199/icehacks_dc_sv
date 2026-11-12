@@ -1,5 +1,7 @@
 import {
+  ageBandFor,
   ageFromBirthYear,
+  birthYearFromAge,
   resolveStatus,
   selectAge,
   selectCanUseAi,
@@ -117,5 +119,66 @@ describe('selectCanUseAi', () => {
     [null, true, false],
   ] as const)('birth year %p with consent %p -> %p', (birthYear, aiConsent, expected) => {
     expect(selectCanUseAi({ birthYear, aiConsent }, now)).toBe(expected);
+  });
+});
+
+describe('ageBandFor', () => {
+  const now = new Date('2026-06-01T00:00:00Z');
+
+  it.each([
+    [null, 'unknown'],
+    [2014, 'underMinimum'],
+    [2026, 'underMinimum'],
+    [2013, 'notYetEligible'],
+    [2012, 'teen'],
+    [2008, 'teen'],
+    [2007, 'adult'],
+  ] as const)('birth year %p is %p', (birthYear, band) => {
+    expect(ageBandFor(birthYear, now)).toBe(band);
+  });
+});
+
+describe('applyServerAge', () => {
+  const now = new Date('2026-06-01T00:00:00Z');
+
+  it('replaces the launch hint with the server record', () => {
+    useSessionStore
+      .getState()
+      .signedIn({ userId: 'u1', birthYear: null, onboardingComplete: true });
+    useSessionStore
+      .getState()
+      .applyServerAge({ userId: 'u1', hasBirthYear: true, ageYears: 30 }, now);
+    expect(useSessionStore.getState()).toMatchObject({ birthYear: 1995, status: 'ready' });
+    expect(birthYearFromAge(30, now)).toBe(1995);
+  });
+
+  it('keeps a local year that agrees with the server age', () => {
+    useSessionStore
+      .getState()
+      .signedIn({ userId: 'u1', birthYear: 1995, onboardingComplete: true });
+    useSessionStore
+      .getState()
+      .applyServerAge({ userId: 'u1', hasBirthYear: true, ageYears: 30 }, now);
+    expect(useSessionStore.getState().birthYear).toBe(1995);
+  });
+
+  it('sends the person back to the age gate when the server has no birth year', () => {
+    useSessionStore
+      .getState()
+      .signedIn({ userId: 'u1', birthYear: 1990, onboardingComplete: true });
+    useSessionStore
+      .getState()
+      .applyServerAge({ userId: 'u1', hasBirthYear: false, ageYears: null }, now);
+    expect(useSessionStore.getState()).toMatchObject({ birthYear: null, status: 'needsSetup' });
+  });
+
+  it('ignores a record for someone else', () => {
+    useSessionStore
+      .getState()
+      .signedIn({ userId: 'u1', birthYear: 1990, onboardingComplete: true });
+    useSessionStore
+      .getState()
+      .applyServerAge({ userId: 'u2', hasBirthYear: false, ageYears: null }, now);
+    expect(useSessionStore.getState().birthYear).toBe(1990);
   });
 });
