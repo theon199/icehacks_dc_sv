@@ -6,6 +6,7 @@ import { Button, ListRow, Screen, Text, space } from '@/ui';
 
 import { ABOUT_PAGE_LIST } from '../about/pages';
 import { signOutLocally } from '../account/accountApi';
+import { useAiConsentSync } from '../aiConsent';
 import { formatAppVersion, readAppVersion } from '../appVersion';
 import { AiConsentSection } from '../components/AiConsentSection';
 import { DataPrivacySection } from '../components/DataPrivacySection';
@@ -19,6 +20,7 @@ export function SettingsScreen() {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const version = formatAppVersion(readAppVersion());
+  useAiConsentSync();
 
   const signOut = async () => {
     setSigningOut(true);

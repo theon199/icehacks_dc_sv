@@ -5,7 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { MIN_AI_AGE, selectIsAdult, useSessionStore } from '@/features/auth';
 import { Button, Icon, SheetContent, Text, space, toast, type IconName } from '@/ui';
 
-import { setAiConsent } from '../aiConsent';
+import { setAiConsent, useAiConsentSync } from '../aiConsent';
 
 const points: readonly { icon: IconName; text: string }[] = [
   {
@@ -35,9 +35,12 @@ export function AiConsentScreen() {
   const consent = useSessionStore((s) => s.aiConsent);
   const adult = useSessionStore((s) => selectIsAdult(s));
   const [saving, setSaving] = useState(false);
+  useAiConsentSync();
 
+  // Opened from a link or a guard redirect there is nothing to go back to; land on Discover.
   const close = () => {
     if (router.canGoBack()) router.back();
+    else router.replace('/');
   };
 
   const decide = async (granted: boolean) => {
