@@ -290,6 +290,20 @@ describe('pantry subtraction', () => {
 });
 
 describe('check-off state', () => {
+  it('stores keys that look like object internals as ordinary entries', () => {
+    const at = '2026-11-11T09:00:00.000Z';
+    const keys = ['__proto__', 'constructor', 't:toString'];
+    let s = checkReducer(initialCheckState, { type: 'checkAll', keys, at });
+    expect(Object.getPrototypeOf(s.checked)).toBe(Object.prototype);
+    expect(Object.keys(s.checked).sort()).toEqual([...keys].sort());
+    for (const k of keys) expect(isChecked(s, k)).toBe(true);
+    s = checkReducer(s, { type: 'toggle', key: '__proto__', at });
+    expect(isChecked(s, '__proto__')).toBe(false);
+    s = checkReducer(s, { type: 'check', key: '__proto__', at });
+    expect(isChecked(s, '__proto__')).toBe(true);
+    expect(Object.getPrototypeOf(s.checked)).toBe(Object.prototype);
+  });
+
   const at = '2026-11-11T09:00:00.000Z';
 
   it('toggles, checks and unchecks', () => {

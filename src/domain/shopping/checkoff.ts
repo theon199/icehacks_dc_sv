@@ -25,12 +25,21 @@ export function isChecked(state: CheckState, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(state.checked, key);
 }
 
+// Maps are always rebuilt from entries, never by assignment or spread (which a compiler may lower
+// to assignment): a key such as `__proto__` must stay an ordinary entry and never reach the
+// object's prototype.
+function withChecked(state: CheckState, keys: readonly string[], at: string): CheckState {
+  const entries = Object.entries(state.checked);
+  for (const k of keys) entries.push([k, at]);
+  return { checked: Object.fromEntries(entries) };
+}
+
 function without(state: CheckState, keys: readonly string[]): CheckState {
-  const present = keys.filter((k) => isChecked(state, k));
-  if (present.length === 0) return state;
-  const checked = { ...state.checked };
-  for (const k of present) delete checked[k];
-  return { checked };
+  const present = new Set(keys.filter((k) => isChecked(state, k)));
+  if (present.size === 0) return state;
+  return {
+    checked: Object.fromEntries(Object.entries(state.checked).filter(([k]) => !present.has(k))),
+  };
 }
 
 export function checkReducer(state: CheckState, action: CheckAction): CheckState {
@@ -38,19 +47,15 @@ export function checkReducer(state: CheckState, action: CheckAction): CheckState
     case 'toggle':
       return isChecked(state, action.key)
         ? without(state, [action.key])
-        : { checked: { ...state.checked, [action.key]: action.at } };
+        : withChecked(state, [action.key], action.at);
     case 'check':
-      return isChecked(state, action.key)
-        ? state
-        : { checked: { ...state.checked, [action.key]: action.at } };
+      return isChecked(state, action.key) ? state : withChecked(state, [action.key], action.at);
     case 'uncheck':
       return without(state, [action.key]);
     case 'checkAll': {
-      const missing = action.keys.filter((k) => !isChecked(state, k));
+      const missing = [...new Set(action.keys)].filter((k) => !isChecked(state, k));
       if (missing.length === 0) return state;
-      const checked = { ...state.checked };
-      for (const k of missing) checked[k] = action.at;
-      return { checked };
+      return withChecked(state, missing, action.at);
     }
     case 'clearChecked':
       return Object.keys(state.checked).length === 0 ? state : initialCheckState;
