@@ -164,7 +164,8 @@ function writeServerRecordWithTimeout(userId: string, record: AiConsentRecord): 
  * sent again; with none known (after a restart, say) the usual reconcile runs, which resends an
  * unsent withdrawal or adopts the account record. When a newer agreement is still on its way, the
  * check is deferred to it: the stale write may be applied before or after that agreement, so
- * `setAiConsent` checks the account once the agreement is confirmed (see `lateSettles`).
+ * `setAiConsent` checks the account once the agreement is confirmed (see `lateSettles`). A yes that
+ * failed hands the check back to the answer the device kept following.
  */
 function afterLateWrite(userId: string): void {
   if (useSessionStore.getState().userId !== userId) return;
@@ -293,6 +294,9 @@ export async function setAiConsent(granted: boolean, now: Date = new Date()): Pr
       // write is then followed by resending the previous answer, so account and device agree.
       if (latest() && latestDecision?.userId === userId) {
         latestDecision = { ...latestDecision, seq: decision };
+        // A previous withdrawal is also kept on the device until it is confirmed again, so a
+        // later reconcile resends it instead of adopting a yes the person was told had failed.
+        if (!latestDecision.record.granted) rememberUnsent(userId, latestDecision.record);
       }
       throw error;
     }
@@ -384,6 +388,7 @@ export function useAiConsentSync(): void {
 /** Test hook. */
 export function resetAiConsentForTests(): void {
   decisionCount = 0;
+  lateSettles = 0;
   lateWriteGeneration += 1;
   outstandingLateWrites = 0;
   latestDecision = null;
