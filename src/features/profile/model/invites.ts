@@ -103,7 +103,10 @@ export interface RedeemFailureCopy {
   retryable: boolean;
 }
 
-export function redeemFailureCopy(failure: RedeemFailure, serverMessage?: string): RedeemFailureCopy {
+export function redeemFailureCopy(
+  failure: RedeemFailure,
+  serverMessage?: string,
+): RedeemFailureCopy {
   switch (failure) {
     case 'invalid_or_expired':
       return {

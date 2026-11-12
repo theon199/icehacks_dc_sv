@@ -26,12 +26,9 @@ describe('normalizeInviteCode', () => {
     expect(normalizeInviteCode(raw)).toBe(code);
   });
 
-  it.each([null, '', 'SHORT', 'ABCDEFGH231', 'ABCDEFGH10'])(
-    'rejects %p',
-    (raw) => {
-      expect(normalizeInviteCode(raw)).toBeNull();
-    },
-  );
+  it.each([null, '', 'SHORT', 'ABCDEFGH231', 'ABCDEFGH10'])('rejects %p', (raw) => {
+    expect(normalizeInviteCode(raw)).toBeNull();
+  });
 });
 
 describe('links and share text', () => {

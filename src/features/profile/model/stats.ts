@@ -1,8 +1,8 @@
 /**
  * Turns the `my_stats` result into the tiles and chips the profile shows.
  */
-import type { MyStats } from '@/lib/supabase/database.types';
 import { formatNumber } from '@/lib/format';
+import type { MyStats } from '@/lib/supabase/database.types';
 
 import { cuisineLabel } from './cuisines';
 

@@ -9,7 +9,6 @@ import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase/client';
 import type { FriendInvite, RedeemedInvite } from '@/lib/supabase/database.types';
 
-import type { Person, SecondDegreeEdge } from '../model/connections';
 import { dbError } from './errors';
 import {
   friendInviteSchema,
@@ -21,6 +20,7 @@ import {
   type OpenInvite,
   type PersonRow,
 } from './schemas';
+import type { Person, SecondDegreeEdge } from '../model/connections';
 
 /** Upper bound on each follow list; far beyond what one person's Friends screen shows. */
 const FOLLOW_LIST_LIMIT = 1000;

@@ -70,7 +70,9 @@ describe('topCuisines', () => {
   });
 
   it('respects the limit', () => {
-    expect(topCuisines(stats, 1)).toEqual([{ id: 'west_african', label: 'West African', count: 9 }]);
+    expect(topCuisines(stats, 1)).toEqual([
+      { id: 'west_african', label: 'West African', count: 9 },
+    ]);
   });
 });
 

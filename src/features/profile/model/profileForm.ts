@@ -22,8 +22,7 @@ export type ProfileField = keyof ProfileDraft;
 export type ProfileFieldErrors = Partial<Record<ProfileField, string>>;
 
 export type ProfileValidation =
-  | { ok: true; value: ProfileDraft }
-  | { ok: false; errors: ProfileFieldErrors };
+  { ok: true; value: ProfileDraft } | { ok: false; errors: ProfileFieldErrors };
 
 /** Characters as Postgres counts them (code points), not UTF-16 units. */
 export function charCount(text: string): number {
@@ -31,7 +30,6 @@ export function charCount(text: string): number {
 }
 
 // Control characters (C0 and DEL/C1), which the server refuses in display names.
-// eslint-disable-next-line no-control-regex -- matching control characters is the point here
 const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/;
 
 /** Trims and normalises a draft the way it will be stored. */

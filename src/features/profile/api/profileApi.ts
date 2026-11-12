@@ -10,14 +10,6 @@ import { newId } from '@/lib/id';
 import { getSupabase } from '@/lib/supabase/client';
 import type { MyStats } from '@/lib/supabase/database.types';
 
-import type { BadgeDefinition } from '../model/badges';
-import {
-  AVATAR_JPEG_QUALITY,
-  AVATAR_MAX_BYTES,
-  avatarObjectPath,
-  fitWithin,
-} from '../model/avatar';
-import type { ProfilePatch } from '../model/profileForm';
 import { dbError, storageError } from './errors';
 import {
   badgeDefinitionSchema,
@@ -27,6 +19,14 @@ import {
   profileRowSchema,
   type ProfileRow,
 } from './schemas';
+import {
+  AVATAR_JPEG_QUALITY,
+  AVATAR_MAX_BYTES,
+  avatarObjectPath,
+  fitWithin,
+} from '../model/avatar';
+import type { BadgeDefinition } from '../model/badges';
+import type { ProfilePatch } from '../model/profileForm';
 
 const AVATAR_BUCKET = 'avatars';
 

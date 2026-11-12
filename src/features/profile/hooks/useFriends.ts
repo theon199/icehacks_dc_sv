@@ -18,10 +18,10 @@ import {
   unfollowUser,
 } from '../api/friendsApi';
 import { fetchActiveCooks } from '../deps';
-import { groupConnections, rankSuggestions } from '../model/connections';
-import { inviteShareMessage } from '../model/invites';
 import { profileKeys } from './queryKeys';
 import { useMyUserId } from './useProfileData';
+import { groupConnections, rankSuggestions } from '../model/connections';
+import { inviteShareMessage } from '../model/invites';
 
 export function useConnections() {
   const userId = useMyUserId();
@@ -98,7 +98,9 @@ export function useShareInvite() {
     mutationFn: async () => {
       const invite = await createFriendInvite();
       if (userId) void queryClient.invalidateQueries({ queryKey: profileKeys.invites(userId) });
-      await Share.share({ message: inviteShareMessage(invite.code, invite.expires_at, new Date()) });
+      await Share.share({
+        message: inviteShareMessage(invite.code, invite.expires_at, new Date()),
+      });
       return invite;
     },
     onError: (error) => {

@@ -87,7 +87,9 @@ describe('charCount', () => {
 
 describe('profilePatch', () => {
   it('is empty when nothing changed', () => {
-    expect(isEmptyPatch(profilePatch(valid, { ...valid, cuisines: [...valid.cuisines] }))).toBe(true);
+    expect(isEmptyPatch(profilePatch(valid, { ...valid, cuisines: [...valid.cuisines] }))).toBe(
+      true,
+    );
   });
 
   it('contains only the changed columns', () => {

@@ -72,7 +72,10 @@ export type OpenInvite = z.infer<typeof openInviteSchema>;
 
 export const redeemedInviteSchema = z.object({
   inviter_id: z.string(),
-  inviter_handle: z.string().nullable().transform((value) => value ?? ''),
+  inviter_handle: z
+    .string()
+    .nullable()
+    .transform((value) => value ?? ''),
 });
 
 /** Parses a response, reporting a mismatch as a non-retryable server error. */

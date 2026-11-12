@@ -19,7 +19,8 @@ export interface Size {
  */
 export function fitWithin(size: Size, max = AVATAR_MAX_DIMENSION): Size | null {
   const { width, height } = size;
-  if (!(width > 0 && height > 0) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (!(width > 0 && height > 0) || !Number.isFinite(width) || !Number.isFinite(height))
+    return null;
   if (width <= max && height <= max) return null;
   const scale = max / Math.max(width, height);
   return {

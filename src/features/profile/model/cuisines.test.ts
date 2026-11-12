@@ -12,7 +12,10 @@ describe('cuisineLabel', () => {
 
 describe('cleanCuisineIds', () => {
   it('drops invalid and repeated ids', () => {
-    expect(cleanCuisineIds(['thai', 'Thai', 'thai', ' indian ', '9x', ''])).toEqual(['thai', 'indian']);
+    expect(cleanCuisineIds(['thai', 'Thai', 'thai', ' indian ', '9x', ''])).toEqual([
+      'thai',
+      'indian',
+    ]);
   });
 });
 

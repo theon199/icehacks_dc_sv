@@ -104,7 +104,9 @@ export function rankSuggestions({
       person,
       mutualCount: via.size,
       reason:
-        via.size === 1 ? 'Followed by someone you follow' : `Followed by ${via.size} people you follow`,
+        via.size === 1
+          ? 'Followed by someone you follow'
+          : `Followed by ${via.size} people you follow`,
     }))
     .sort((a, b) => b.mutualCount - a.mutualCount || byName(a.person, b.person));
 

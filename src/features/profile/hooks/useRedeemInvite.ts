@@ -12,10 +12,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { isApiError } from '@/lib/api/errors';
 import type { RedeemedInvite } from '@/lib/supabase/database.types';
 
-import { redeemFriendInvite } from '../api/friendsApi';
-import { classifyRedeemError, normalizeInviteCode, type RedeemFailure } from '../model/invites';
 import { profileKeys } from './queryKeys';
 import { useMyUserId } from './useProfileData';
+import { redeemFriendInvite } from '../api/friendsApi';
+import { classifyRedeemError, normalizeInviteCode, type RedeemFailure } from '../model/invites';
 
 export type RedeemState =
   | { status: 'malformed' }

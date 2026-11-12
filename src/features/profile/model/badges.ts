@@ -75,7 +75,11 @@ export function buildBadgeGrid(
       const { progress, progressLabel } = isEarned
         ? { progress: 1, progressLabel: null }
         : progressFor(definition, stats);
-      const state = isEarned ? 'earned' : progressLabel ? `not earned yet, ${progressLabel}` : 'not earned yet';
+      const state = isEarned
+        ? 'earned'
+        : progressLabel
+          ? `not earned yet, ${progressLabel}`
+          : 'not earned yet';
       return {
         id: definition.id,
         name: definition.name,

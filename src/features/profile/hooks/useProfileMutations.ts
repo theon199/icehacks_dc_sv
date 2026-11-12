@@ -7,11 +7,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { isApiError } from '@/lib/api/errors';
 import { toast } from '@/ui';
 
+import { profileKeys } from './queryKeys';
+import { useMyUserId } from './useProfileData';
 import { clearAvatar, replaceAvatar, updateProfile } from '../api/profileApi';
 import type { ProfileRow } from '../api/schemas';
 import type { ProfilePatch } from '../model/profileForm';
-import { profileKeys } from './queryKeys';
-import { useMyUserId } from './useProfileData';
 
 function useStoreProfile() {
   const queryClient = useQueryClient();

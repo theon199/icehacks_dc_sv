@@ -140,7 +140,7 @@ const cuisineRow = z.object({ cuisine: z.string() });
 /** Every cuisine id in the bundled catalog, alphabetically. */
 export async function listCatalogCuisines(): Promise<string[]> {
   const rows = await catalogQuery(
-    'SELECT DISTINCT cuisine FROM recipes WHERE cuisine <> \'\' ORDER BY cuisine',
+    "SELECT DISTINCT cuisine FROM recipes WHERE cuisine <> '' ORDER BY cuisine",
     [],
     cuisineRow,
   );

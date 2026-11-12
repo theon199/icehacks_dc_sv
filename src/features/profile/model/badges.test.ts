@@ -3,10 +3,38 @@ import type { MyStats } from '@/lib/supabase/database.types';
 import { buildBadgeGrid, earnedCount, metricValue, type BadgeDefinition } from './badges';
 
 const definitions: BadgeDefinition[] = [
-  { id: 'cooks_10', name: 'Ten dishes', description: 'Cook 10 dishes.', metric: 'cook_count', threshold: 10, sort_order: 2 },
-  { id: 'first_cook', name: 'First dish', description: 'Cook your first dish.', metric: 'cook_count', threshold: 1, sort_order: 1 },
-  { id: 'streak_3', name: 'Three in a row', description: 'Cook three days running.', metric: 'streak_days', threshold: 3, sort_order: 3 },
-  { id: 'mystery', name: 'Mystery', description: 'Something new.', metric: 'unknown_metric', threshold: 5, sort_order: 4 },
+  {
+    id: 'cooks_10',
+    name: 'Ten dishes',
+    description: 'Cook 10 dishes.',
+    metric: 'cook_count',
+    threshold: 10,
+    sort_order: 2,
+  },
+  {
+    id: 'first_cook',
+    name: 'First dish',
+    description: 'Cook your first dish.',
+    metric: 'cook_count',
+    threshold: 1,
+    sort_order: 1,
+  },
+  {
+    id: 'streak_3',
+    name: 'Three in a row',
+    description: 'Cook three days running.',
+    metric: 'streak_days',
+    threshold: 3,
+    sort_order: 3,
+  },
+  {
+    id: 'mystery',
+    name: 'Mystery',
+    description: 'Something new.',
+    metric: 'unknown_metric',
+    threshold: 5,
+    sort_order: 4,
+  },
 ];
 
 const stats: MyStats = {
@@ -41,7 +69,11 @@ describe('buildBadgeGrid', () => {
   });
 
   it('shows progress towards unearned badges', () => {
-    expect(badge('cooks_10')).toMatchObject({ earned: false, progress: 0.4, progressLabel: '4 of 10' });
+    expect(badge('cooks_10')).toMatchObject({
+      earned: false,
+      progress: 0.4,
+      progressLabel: '4 of 10',
+    });
     expect(badge('cooks_10')?.accessibilityLabel).toMatch(/not earned yet, 4 of 10/);
   });
 

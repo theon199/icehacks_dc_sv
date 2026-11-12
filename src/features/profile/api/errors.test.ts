@@ -35,7 +35,11 @@ describe('dbError', () => {
 
   it('maps invalid input raised by functions', () => {
     expect(
-      dbError('profiles.update', { code: '22023', message: 'handle_reserved', details: 'Reserved.' }),
+      dbError('profiles.update', {
+        code: '22023',
+        message: 'handle_reserved',
+        details: 'Reserved.',
+      }),
     ).toMatchObject({ kind: 'validation', code: 'handle_reserved', serverMessage: 'Reserved.' });
   });
 
@@ -56,13 +60,15 @@ describe('dbError', () => {
 
 describe('storageError', () => {
   it('maps a too-large upload to a friendly validation error', () => {
-    expect(storageError('avatars.upload', { status: 413, message: 'Payload too large' })).toMatchObject(
-      { kind: 'validation', code: 'too_large' },
-    );
+    expect(
+      storageError('avatars.upload', { status: 413, message: 'Payload too large' }),
+    ).toMatchObject({ kind: 'validation', code: 'too_large' });
   });
 
   it('maps missing status to offline', () => {
-    expect(storageError('avatars.upload', { message: 'Network request failed' }).kind).toBe('network');
+    expect(storageError('avatars.upload', { message: 'Network request failed' }).kind).toBe(
+      'network',
+    );
   });
 
   it('maps permission failures', () => {

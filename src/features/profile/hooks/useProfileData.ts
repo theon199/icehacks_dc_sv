@@ -8,9 +8,9 @@ import { useSessionStore } from '@/features/auth';
 
 import { fetchBadgeCatalog, fetchMyStats, fetchProfile } from '../api/profileApi';
 import { fetchAuthorPosts, listCatalogCuisines } from '../deps';
+import { profileKeys } from './queryKeys';
 import { buildBadgeGrid } from '../model/badges';
 import { localDateString } from '../model/stats';
-import { profileKeys } from './queryKeys';
 
 /** The signed-in person's id. Profile screens only mount inside the signed-in app. */
 export function useMyUserId(): string | null {
@@ -47,7 +47,9 @@ export function useBadgeGrid() {
   });
   const grid = useMemo(
     () =>
-      catalog.data ? buildBadgeGrid(catalog.data, stats.data ?? null, stats.data?.badges ?? []) : [],
+      catalog.data
+        ? buildBadgeGrid(catalog.data, stats.data ?? null, stats.data?.badges ?? [])
+        : [],
     [catalog.data, stats.data],
   );
   return { grid, isPending: catalog.isPending, error: catalog.error, refetch: catalog.refetch };
