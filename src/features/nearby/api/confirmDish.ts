@@ -1,5 +1,6 @@
 /**
- * The `confirm_dish` RPC: records whether a place had the dish and returns the new tally.
+ * Client for the `confirm_dish` database function. A member says whether a place served the dish;
+ * the function stores that answer and replies with the place's updated counts.
  */
 import { z } from 'zod';
 
@@ -7,47 +8,54 @@ import { supabase } from '@/lib/supabase/client';
 
 import type { Tally } from '../model/confirmations';
 
-const tallySchema = z
-  .object({
-    place_id: z.string(),
-    dish_key: z.string(),
-    yes_count: z.number().int().nonnegative(),
-    no_count: z.number().int().nonnegative(),
-    my_answer: z.boolean(),
-  })
-  .transform((row) => ({
-    yesCount: row.yes_count,
-    noCount: row.no_count,
-    myAnswer: row.my_answer,
-  }));
+const count = z.number().int().min(0);
+
+/** The row the function returns, in its snake_case column names. */
+const replySchema = z.object({
+  place_id: z.string(),
+  dish_key: z.string(),
+  yes_count: count,
+  no_count: count,
+  my_answer: z.boolean(),
+});
+
+type Reply = z.infer<typeof replySchema>;
+
+function toTally(reply: Reply): Tally {
+  return { yesCount: reply.yes_count, noCount: reply.no_count, myAnswer: reply.my_answer };
+}
 
 export type ConfirmFailure = 'rate_limited' | 'signed_out' | 'failed';
 
+const FAILURE_COPY: Record<ConfirmFailure, string> = {
+  rate_limited: "You've answered a lot just now. Try again later.",
+  signed_out: 'Please sign in again to answer.',
+  failed: "Your answer didn't save. Please try again.",
+};
+
 export class ConfirmDishError extends Error {
   readonly reason: ConfirmFailure;
+
   constructor(reason: ConfirmFailure, options?: { cause?: unknown }) {
     super(`confirm_dish: ${reason}`, options);
     this.name = 'ConfirmDishError';
     this.reason = reason;
   }
 
+  /** Copy for a toast. */
   get userMessage(): string {
-    if (this.reason === 'rate_limited') return "You've answered a lot just now. Try again later.";
-    if (this.reason === 'signed_out') return 'Please sign in again to answer.';
-    return "Your answer didn't save. Please try again.";
+    return FAILURE_COPY[this.reason];
   }
 }
 
-interface RpcError {
-  code?: string;
-  message?: string;
-}
+/** Error codes PostgREST and the function use, mapped to what the person can do about them. */
+const RATE_LIMIT_SIGNALS = new Set(['PT429', 'rate_limited']);
+const SIGNED_OUT_SIGNALS = new Set(['PT401', '28000', 'not_authenticated']);
 
-export function classifyRpcError(error: RpcError): ConfirmFailure {
-  if (error.code === 'PT429' || error.message === 'rate_limited') return 'rate_limited';
-  if (error.code === 'PT401' || error.code === '28000' || error.message === 'not_authenticated') {
-    return 'signed_out';
-  }
+export function classifyRpcError(error: { code?: string; message?: string }): ConfirmFailure {
+  const signals = [error.code, error.message].filter((s): s is string => typeof s === 'string');
+  if (signals.some((s) => RATE_LIMIT_SIGNALS.has(s))) return 'rate_limited';
+  if (signals.some((s) => SIGNED_OUT_SIGNALS.has(s))) return 'signed_out';
   return 'failed';
 }
 
@@ -57,21 +65,23 @@ export interface ConfirmDishInput {
   hadIt: boolean;
 }
 
-export async function confirmDish(input: ConfirmDishInput): Promise<Tally> {
-  let response;
+async function send({ placeId, dishKey, hadIt }: ConfirmDishInput) {
+  const args = { p_place_id: placeId, p_dish_key: dishKey, p_had_it: hadIt };
   try {
-    response = await supabase.rpc('confirm_dish', {
-      p_place_id: input.placeId,
-      p_dish_key: input.dishKey,
-      p_had_it: input.hadIt,
-    });
+    return await supabase.rpc('confirm_dish', args);
   } catch (cause) {
+    // Network failures and aborted requests land here rather than in `error`.
     throw new ConfirmDishError('failed', { cause });
   }
-  if (response.error) {
-    throw new ConfirmDishError(classifyRpcError(response.error), { cause: response.error });
+}
+
+/** Sends one answer. Rejects with a `ConfirmDishError` for every kind of failure. */
+export async function confirmDish(input: ConfirmDishInput): Promise<Tally> {
+  const outcome = await send(input);
+  if (outcome.error) {
+    throw new ConfirmDishError(classifyRpcError(outcome.error), { cause: outcome.error });
   }
-  const parsed = tallySchema.safeParse(response.data);
-  if (!parsed.success) throw new ConfirmDishError('failed', { cause: parsed.error });
-  return parsed.data;
+  const checked = replySchema.safeParse(outcome.data);
+  if (!checked.success) throw new ConfirmDishError('failed', { cause: checked.error });
+  return toTally(checked.data);
 }
