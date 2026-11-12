@@ -4,23 +4,22 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
   FadeOut,
-  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
-  type ExitAnimationsValues,
-  type LayoutAnimation,
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import type { DeckCard } from '@/domain';
 import { haptics } from '@/lib/haptics';
-import { Text, useTheme } from '@/ui';
-import { motion, space } from '@/ui/tokens';
+import { useTheme } from '@/ui';
+import { motion } from '@/ui/tokens';
 
+import { flyOut } from './flyOut';
 import { RecipeCard } from './RecipeCard';
+import { SwipeStamps } from './SwipeStamps';
 import { cardAccessibilityLabel } from '../cardText';
 import {
   STACK_OFFSET,
@@ -54,44 +53,6 @@ const ACCESSIBILITY_ACTIONS = [
   { name: 'save', label: 'Save to cookbook' },
   { name: 'notForMe', label: 'Not for me' },
 ] as const;
-
-const EXIT_DURATION = motion.duration.base;
-
-/** Flies the card off from wherever the drag left it. */
-function flyOut(
-  x: SharedValue<number>,
-  y: SharedValue<number>,
-  direction: SharedValue<number>,
-  width: number,
-) {
-  return (values: ExitAnimationsValues): LayoutAnimation => {
-    'worklet';
-    const dir = direction.get();
-    const startX = x.get();
-    const startY = y.get();
-    const endX = dir === 0 ? startX : dir * values.windowWidth * 1.3;
-    const endY = dir === 0 ? startY - values.windowHeight * 0.4 : startY + 40;
-    const config = { duration: EXIT_DURATION };
-    return {
-      initialValues: {
-        opacity: 1,
-        transform: [
-          { translateX: startX },
-          { translateY: startY },
-          { rotate: `${tiltFor(startX, width)}deg` },
-        ],
-      },
-      animations: {
-        opacity: withTiming(dir === 0 ? 0 : 1, config),
-        transform: [
-          { translateX: withTiming(endX, config) },
-          { translateY: withTiming(endY, config) },
-          { rotate: withTiming(`${tiltFor(endX, width)}deg`, config) },
-        ],
-      },
-    };
-  };
-}
 
 /** One card in the stack. Only the top card takes gestures and is visible to VoiceOver. */
 export const SwipeableCard = memo(function SwipeableCard({
@@ -181,12 +142,6 @@ export const SwipeableCard = memo(function SwipeableCard({
       ],
     };
   });
-  const likeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(x.get(), [0, distance], [0, 1], 'clamp'),
-  }));
-  const passStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(x.get(), [-distance, 0], [1, 0], 'clamp'),
-  }));
 
   const exiting = useMemo(
     () =>
@@ -231,50 +186,8 @@ export const SwipeableCard = memo(function SwipeableCard({
         pointerEvents={isTop ? 'auto' : 'none'}
       >
         <RecipeCard card={card} isTop={isTop} />
-        {isTop ? (
-          <>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.stamp,
-                styles.stampLeft,
-                { borderColor: theme.colors.primary },
-                likeStyle,
-              ]}
-            >
-              <Text variant="headline" color="primary" accessible={false}>
-                Like
-              </Text>
-            </Animated.View>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.stamp,
-                styles.stampRight,
-                { borderColor: theme.colors.accent },
-                passStyle,
-              ]}
-            >
-              <Text variant="headline" color="accent" accessible={false}>
-                Pass
-              </Text>
-            </Animated.View>
-          </>
-        ) : null}
+        {isTop ? <SwipeStamps x={x} distance={distance} /> : null}
       </Animated.View>
     </GestureDetector>
   );
-});
-
-const styles = StyleSheet.create({
-  stamp: {
-    position: 'absolute',
-    top: space.giant + space.xxl,
-    paddingHorizontal: space.md,
-    paddingVertical: space.xs,
-    borderWidth: 3,
-    borderRadius: 10,
-  },
-  stampLeft: { left: space.xl, transform: [{ rotate: '-12deg' }] },
-  stampRight: { right: space.xl, transform: [{ rotate: '12deg' }] },
 });

@@ -23,6 +23,7 @@ export const ModeSwitcher = memo(function ModeSwitcher({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={styles.bar}
       contentContainerStyle={styles.row}
       accessibilityRole="radiogroup"
       accessibilityLabel="Discover mode"
@@ -44,5 +45,8 @@ export const ModeSwitcher = memo(function ModeSwitcher({
 });
 
 const styles = StyleSheet.create({
+  // A horizontal ScrollView grows to fill its parent by default; the row must not take height from
+  // the deck below it.
+  bar: { flexGrow: 0, flexShrink: 0 },
   row: { gap: space.sm, paddingHorizontal: gutter, paddingVertical: space.xs },
 });

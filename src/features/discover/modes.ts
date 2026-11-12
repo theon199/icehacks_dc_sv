@@ -8,19 +8,13 @@ import type { CandidateFilters, Course } from '@/lib/catalog';
 export interface ModeOption {
   readonly value: DeckMode;
   readonly label: string;
-  /** Read by VoiceOver after the label. */
-  readonly hint: string;
 }
 
 export const MODE_OPTIONS: readonly ModeOption[] = [
-  { value: 'forYou', label: 'For you', hint: 'Recipes picked from everything you told us' },
-  {
-    value: 'quick',
-    label: 'Quick',
-    hint: `Ready in ${DEFAULT_RANKING_CONFIG.feed.quickMaxMinutes} minutes or less`,
-  },
-  { value: 'pantry', label: 'Use my pantry', hint: 'Dishes that use what you already have' },
-  { value: 'gentle', label: 'Gentle', hint: 'Smaller, gentler meals for a small appetite' },
+  { value: 'forYou', label: 'For you' },
+  { value: 'quick', label: 'Quick' },
+  { value: 'pantry', label: 'Use my pantry' },
+  { value: 'gentle', label: 'Gentle' },
 ];
 
 /** Gentle is only offered with small appetite mode on. */
