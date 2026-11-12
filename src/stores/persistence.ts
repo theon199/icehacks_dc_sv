@@ -96,10 +96,16 @@ export function securePersistStorage<P>(): PersistStorage<P> {
     queue = run.catch(() => undefined);
     return run;
   };
+  // Bumped by every removal. A read that was requested before a removal (a slow Keychain read
+  // still pending at sign-out) must not put the previous account's values back into memory.
+  const removals = new Map<string, number>();
+  const removalCount = (name: string) => removals.get(name) ?? 0;
   return {
-    getItem: (name) =>
-      serial(async () => {
+    getItem: (name) => {
+      const asked = removalCount(name);
+      return serial(async () => {
         const raw = await keychain.getItem(key(name));
+        if (asked !== removalCount(name)) return null;
         if (raw == null) return null;
         try {
           return JSON.parse(raw) as StorageValue<P>;
@@ -108,9 +114,13 @@ export function securePersistStorage<P>(): PersistStorage<P> {
           await keychain.removeItem(key(name));
           return null;
         }
-      }),
+      });
+    },
     setItem: (name, value) => serial(() => keychain.setItem(key(name), JSON.stringify(value))),
-    removeItem: (name) => serial(() => keychain.removeItem(key(name))),
+    removeItem: (name) => {
+      removals.set(name, removalCount(name) + 1);
+      return serial(() => keychain.removeItem(key(name)));
+    },
   };
 }
 

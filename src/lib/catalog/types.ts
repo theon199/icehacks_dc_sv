@@ -220,8 +220,10 @@ export interface CatalogMeta {
 export interface CandidateFilters {
   /**
    * Diet bits every candidate must satisfy: a recipe missing any bit of this mask is excluded.
-   * Build it from the person's diets with `dietMask()`.
+   * Build it from the person's diets with `dietMask()`. Same meaning as `SearchFilters.dietMask`.
    */
+  dietMask?: number;
+  /** @deprecated Old name of `dietMask` (it holds required bits, not excluded ones). */
   excludeDietMask?: number;
   /**
    * Allergens to keep out. Fail-closed: only recipes whose status is exactly `free` for every
