@@ -5,6 +5,7 @@ import {
   badgeMessage,
   buildCookEventRequest,
   completeCook,
+  COOK_EVENT_TIMEOUT_MS,
   type CompletionDeps,
   type CookCompletion,
 } from './completion';
@@ -105,6 +106,26 @@ describe('completeCook', () => {
         }),
       },
     ]);
+  });
+
+  it('queues the event when the server does not answer in time, so Save never hangs', async () => {
+    jest.useFakeTimers();
+    try {
+      const stalled = jest.fn(() => new Promise<never>(() => undefined));
+      const saving = completeCook(completion(), storeDeps(stalled));
+
+      await jest.advanceTimersByTimeAsync(COOK_EVENT_TIMEOUT_MS - 1);
+      expect(usePendingCookEvents.getState().events).toEqual([]);
+      await jest.advanceTimersByTimeAsync(1);
+
+      await expect(saving).resolves.toMatchObject({ status: 'queued' });
+      expect(usePendingCookEvents.getState().events.map((e) => e.request.clientEventId)).toEqual([
+        '11111111-1111-4111-8111-111111111111',
+      ]);
+      expect(selectCookEntries(useCookLogStore.getState())).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('reports local_only when there is no account to queue the event for', async () => {

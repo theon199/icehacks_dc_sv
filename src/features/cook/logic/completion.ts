@@ -95,13 +95,40 @@ export function recordLocally(completion: CookCompletion, deps: CompletionDeps):
   return entryId;
 }
 
-/** Reports a cook to the server, queueing it when the failure is temporary. */
+/**
+ * How long Save waits for the server before queueing the cook instead. A stalled connection would
+ * otherwise keep the button spinning; the queued retry reuses the `clientEventId`, so a response
+ * that turns up late never counts the cook twice.
+ */
+export const COOK_EVENT_TIMEOUT_MS = 8000;
+
+export class CookEventTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`No answer from the server within ${ms} ms`);
+    this.name = 'CookEventTimeoutError';
+  }
+}
+
+/** Settles like `promise`, or rejects with `CookEventTimeoutError` once `ms` have passed. */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new CookEventTimeoutError(ms)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Reports a cook to the server, queueing it when the failure is temporary or the server takes
+ * longer than `timeoutMs` to answer.
+ */
 export async function reportCook(
   request: CookEventRequest,
   deps: Pick<CompletionDeps, 'recordCookEvent' | 'classifyFailure' | 'enqueue'>,
+  timeoutMs: number = COOK_EVENT_TIMEOUT_MS,
 ): Promise<{ status: 'synced'; newBadges: string[] } | { status: 'queued' | 'local_only' }> {
   try {
-    const response = await deps.recordCookEvent(request);
+    const response = await withTimeout(deps.recordCookEvent(request), timeoutMs);
     return { status: 'synced', newBadges: response.newBadges };
   } catch (error) {
     if (deps.classifyFailure(error) === 'retry' && deps.enqueue(request)) {
