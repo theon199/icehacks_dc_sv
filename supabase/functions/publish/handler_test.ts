@@ -12,11 +12,15 @@ import {
   type CommentInput,
   type CommentRow,
   createPublishHandler,
-  HOLD_HEADER,
+  isLocalStack,
   type PostInput,
   type PostRow,
   type PublishDeps,
+  recordReviewWith,
+  type ReviewRecord,
+  reviewSwitchedOff,
   supabasePublishCaller,
+  VERDICT_TTL_SECONDS,
 } from "./handler.ts";
 import { reviewText } from "./moderation.ts";
 
@@ -26,7 +30,7 @@ const POST_ID = "bbbbbbbb-0000-4000-8000-000000000002";
 const verdict = (v: "allow" | "hide", category = "none") =>
   jsonResponse(claudeReply([{ type: "text", text: JSON.stringify({ verdict: v, category }) }]));
 
-function postRow(input: PostInput, hold: string | null): PostRow {
+function postRow(input: PostInput, cleared: boolean): PostRow {
   return {
     id: POST_ID,
     author_id: UID,
@@ -36,7 +40,7 @@ function postRow(input: PostInput, hold: string | null): PostRow {
     recipe_ref: input.recipe_ref ?? null,
     rating: input.rating ?? null,
     visibility: input.visibility,
-    status: hold ? "hidden" : "visible",
+    status: cleared ? "visible" : "hidden",
     parent_post_id: null,
     like_count: 0,
     comment_count: 0,
@@ -45,14 +49,14 @@ function postRow(input: PostInput, hold: string | null): PostRow {
   };
 }
 
-function commentRow(input: CommentInput, hold: string | null): CommentRow {
+function commentRow(input: CommentInput, cleared: boolean): CommentRow {
   return {
     id: "cccccccc-0000-4000-8000-000000000003",
     post_id: input.post_id,
     author_id: UID,
     parent_comment_id: null,
     body: input.body,
-    status: hold ? "hidden" : "visible",
+    status: cleared ? "visible" : "hidden",
     deleted_at: null,
     created_at: "2026-11-12T10:00:00Z",
     updated_at: "2026-11-12T10:00:00Z",
@@ -62,7 +66,10 @@ function commentRow(input: CommentInput, hold: string | null): CommentRow {
 interface Harness {
   deps: PublishDeps;
   claude: Request[];
-  holds: Array<string | null>;
+  /** Verdicts recorded with the service role, in order. */
+  records: ReviewRecord[];
+  /** What each recorded verdict said: "allow" or the hold category. */
+  holds: string[];
   published: PostInput[];
   checked: string[];
 }
@@ -74,11 +81,20 @@ function harness(options: {
   quotaLeft?: boolean;
   uploaded?: string[];
   rpcError?: HttpError;
+  recordFails?: boolean;
 } = {}): Harness {
   const { fetch, requests } = scriptedFetch(options.claude ?? []);
-  const holds: Array<string | null> = [];
+  const records: ReviewRecord[] = [];
+  const holds: string[] = [];
   const published: PostInput[] = [];
   const checked: string[] = [];
+  // Like the database: visible only when the newest unspent verdict is an allow.
+  let unspent: ReviewRecord | null = null;
+  const spend = () => {
+    const cleared = unspent?.verdict === "allow";
+    unspent = null;
+    return cleared;
+  };
   const deps: PublishDeps = {
     env: envOf(options.env ?? {}),
     caller: () =>
@@ -89,20 +105,23 @@ function harness(options: {
           checked.push(path);
           return Promise.resolve((options.uploaded ?? []).includes(path));
         },
-        publishPost: (input, hold) => {
+        publishPost: (input) => {
           if (options.rpcError) return Promise.reject(options.rpcError);
-          holds.push(hold);
           published.push(input);
-          return Promise.resolve(postRow(input, hold));
+          return Promise.resolve(postRow(input, spend()));
         },
-        addComment: (input, hold) => {
-          holds.push(hold);
-          return Promise.resolve(commentRow(input, hold));
-        },
+        addComment: (input) => Promise.resolve(commentRow(input, spend())),
       }),
     anthropic: () => (options.anthropic === false ? null : testAnthropic(fetch)),
+    recordReview: (record) => {
+      if (options.recordFails) return Promise.reject(new Error("db down"));
+      records.push(record);
+      holds.push(record.verdict === "allow" ? "allow" : record.category ?? "?");
+      unspent = record;
+      return Promise.resolve();
+    },
   };
-  return { deps, claude: requests, holds, published, checked };
+  return { deps, claude: requests, records, holds, published, checked };
 }
 
 async function call(h: Harness, body: unknown) {
@@ -125,7 +144,14 @@ Deno.test("allowed text is published visible and the row is returned", async () 
   assertEquals(res.body.held, false);
   assertEquals(res.body.post.status, "visible");
   assertEquals(res.body.post.author_id, UID);
-  assertEquals(h.holds, [null]);
+  assertEquals(h.records, [{
+    userId: UID,
+    target: "post",
+    title: "Toast your spices",
+    body: "Dry pan, 60 seconds.",
+    verdict: "allow",
+    category: null,
+  }]);
 
   const sent = await h.claude[0]!.json();
   assertEquals(sent.model, "claude-haiku-5-5");
@@ -181,11 +207,45 @@ Deno.test("no review model or no review allowance holds the text without calling
   assertEquals(limited.claude.length, 0);
 });
 
-Deno.test("the AI review can be switched off by the operator", async () => {
-  const h = harness({ env: { FAMARA_PUBLISH_AI_REVIEW: "off" } });
-  const res = await call(h, TIP);
+Deno.test("the AI review can be switched off on a local stack only", async () => {
+  const local = harness({
+    env: { FAMARA_PUBLISH_AI_REVIEW: "off", SUPABASE_URL: "http://kong:8000" },
+  });
+  const res = await call(local, TIP);
   assertEquals(res.body.held, false);
-  assertEquals(h.claude.length, 0);
+  assertEquals(local.claude.length, 0);
+  assertEquals(local.holds, ["allow"]);
+
+  const hosted = harness({
+    env: { FAMARA_PUBLISH_AI_REVIEW: "off", SUPABASE_URL: "https://abc.supabase.co" },
+    claude: [() => verdict("hide", "spam")],
+  });
+  const held = await call(hosted, TIP);
+  assertEquals(held.body.held, true, "the setting is ignored outside a local stack");
+  assertEquals(hosted.claude.length, 1);
+});
+
+Deno.test("isLocalStack and reviewSwitchedOff read the project URL", () => {
+  for (const url of ["http://127.0.0.1:54321", "http://localhost:54321", "http://kong:8000"]) {
+    assertEquals(isLocalStack(envOf({ SUPABASE_URL: url })), true, url);
+  }
+  for (const url of ["https://abc.supabase.co", "not a url", ""]) {
+    assertEquals(isLocalStack(envOf({ SUPABASE_URL: url })), false, url);
+  }
+  assertEquals(reviewSwitchedOff(envOf({ SUPABASE_URL: "http://127.0.0.1:54321" })), false);
+});
+
+Deno.test("an allow that cannot be recorded fails the request instead of holding the text", async () => {
+  const h = harness({ claude: [() => verdict("allow")], recordFails: true });
+  const res = await call(h, TIP);
+  assertEquals(res.status, 503);
+  assertEquals(h.published, [], "nothing is published without its clearance");
+});
+
+Deno.test("a hold that cannot be recorded still publishes the text held", async () => {
+  const h = harness({ claude: [() => verdict("hide", "spam")], recordFails: true });
+  const res = await call(h, TIP);
+  assertEquals([res.status, res.body.held], [201, true]);
 });
 
 Deno.test("comments are reviewed and published the same way", async () => {
@@ -194,6 +254,9 @@ Deno.test("comments are reviewed and published the same way", async () => {
   assertEquals(res.status, 201);
   assertEquals(res.body.comment.status, "hidden");
   assertEquals(h.holds, ["harassment"]);
+  assertEquals(h.records[0]?.target, "comment");
+  assertEquals(h.records[0]?.title, null);
+  assertEquals(h.records[0]?.body, "you again?!");
 });
 
 Deno.test("photos must be existing uploads in the caller's own folder", async () => {
@@ -278,23 +341,11 @@ Deno.test("reviewText sends the text as data, never as instructions", async () =
 // --- production wiring -------------------------------------------------------------------
 
 function fakeClient(result: { data: unknown; error: unknown }) {
-  const calls: Array<
-    { fn: string; args: Record<string, unknown>; headers: Record<string, string> }
-  > = [];
+  const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
   const client = {
     rpc(fn: string, args: Record<string, unknown>) {
-      const call = { fn, args, headers: {} as Record<string, string> };
-      calls.push(call);
-      const builder = {
-        setHeader(name: string, value: string) {
-          call.headers[name] = value;
-          return builder;
-        },
-        then<T>(resolve: (value: { data: unknown; error: unknown }) => T) {
-          return Promise.resolve(result).then(resolve);
-        },
-      };
-      return builder;
+      calls.push({ fn, args });
+      return Promise.resolve(result);
     },
   } as unknown as SupabaseClient;
   return { client, calls };
@@ -311,13 +362,12 @@ const POST_INPUT: PostInput = {
   media: [],
 };
 
-Deno.test("publishPost calls the RPC as the caller and adds the hold header only when held", async () => {
-  const row = postRow(POST_INPUT, null);
+Deno.test("publishPost calls the RPC as the caller with the post's fields", async () => {
+  const row = postRow(POST_INPUT, true);
   const { client, calls } = fakeClient({ data: row, error: null });
   const caller = supabasePublishCaller(UID, client);
 
-  await caller.publishPost(POST_INPUT, null);
-  await caller.publishPost(POST_INPUT, "spam");
+  await caller.publishPost(POST_INPUT);
   assertEquals(calls[0]?.fn, "publish_post");
   assertEquals(calls[0]?.args, {
     p_kind: "cook",
@@ -329,8 +379,30 @@ Deno.test("publishPost calls the RPC as the caller and adds the hold header only
     p_visibility: "followers",
     p_media: [],
   });
-  assertEquals(calls[0]?.headers, {});
-  assertEquals(calls[1]?.headers, { [HOLD_HEADER]: "spam" });
+});
+
+Deno.test("verdicts are recorded through the service-role RPC", async () => {
+  const { client, calls } = fakeClient({ data: 7, error: null });
+  await recordReviewWith(client, {
+    userId: UID,
+    target: "comment",
+    title: null,
+    body: "Buy my stuff",
+    verdict: "hold",
+    category: "spam",
+  });
+  assertEquals(calls, [{
+    fn: "record_text_review",
+    args: {
+      p_user_id: UID,
+      p_target: "comment",
+      p_title: null,
+      p_body: "Buy my stuff",
+      p_verdict: "hold",
+      p_category: "spam",
+      p_ttl_seconds: VERDICT_TTL_SECONDS,
+    },
+  }]);
 });
 
 Deno.test("RPC errors are mapped and unexpected rows are upstream errors", async () => {
@@ -341,12 +413,12 @@ Deno.test("RPC errors are mapped and unexpected rows are upstream errors", async
       error: { code: "PT429", message: "rate_limited", details: "Slow down." },
     }).client,
   );
-  const err = await limited.addComment({ type: "comment", post_id: POST_ID, body: "hi" }, null)
+  const err = await limited.addComment({ type: "comment", post_id: POST_ID, body: "hi" })
     .catch((e) => e);
   assertEquals([err.status, err.details.reason], [429, "rate_limited"]);
 
   const odd = supabasePublishCaller(UID, fakeClient({ data: { id: 1 }, error: null }).client);
-  const shape = await odd.publishPost(POST_INPUT, null).catch((e) => e);
+  const shape = await odd.publishPost(POST_INPUT).catch((e) => e);
   assertEquals(shape.code, "upstream_error");
 });
 

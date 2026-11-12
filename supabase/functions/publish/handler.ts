@@ -6,26 +6,32 @@
  * POST { type: "comment", post_id, body, parent_comment_id? }
  *
  * Steps: validate the input; check that every photo is an upload in the caller's own
- * `post-media/<uid>/` folder; review the text (moderation.ts); then call `publish_post` /
- * `add_comment` as the caller, so the author is always the caller and the RPCs' own checks apply
- * (age gate, suspension, visibility, rate limits, review terms). Text the review did not allow is
- * sent with the `x-famara-review-hold` header and stored hidden pending a moderator, with an
- * automated report the author can appeal. Returns the created row and whether it was held.
+ * `post-media/<uid>/` folder; review the text (moderation.ts); record the verdict with the
+ * service role (`record_text_review`); then call `publish_post` / `add_comment` as the caller, so
+ * the author is always the caller and the RPCs' own checks apply (age gate, suspension,
+ * visibility, rate limits, review terms).
+ *
+ * The database fails closed: it publishes visibly only when it finds a fresh, single-use allow
+ * for this member and this exact text. Anything else (a hold verdict, a direct RPC call, a
+ * failed review) is stored hidden pending a moderator, with an automated report that carries the
+ * review's category and that the author can appeal. Returns the created row and whether it was
+ * held.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { AnthropicClient } from "../_shared/anthropic.ts";
-import { requireUser } from "../_shared/auth.ts";
+import { createServiceClient, requireUser } from "../_shared/auth.ts";
 import { denoEnv, type EnvReader, readEnv } from "../_shared/env.ts";
 import { createHandler, type Handler, HttpError, json } from "../_shared/http.ts";
 import { AI_QUOTAS, consumeQuota } from "../_shared/quota.ts";
-import { rpcErrorToHttp } from "../_shared/rpc.ts";
+import { callRpc, rpcErrorToHttp } from "../_shared/rpc.ts";
 import { formatIssues, parseBody } from "../_shared/validate.ts";
 import { type ReviewOutcome, reviewText } from "./moderation.ts";
 
-export const HOLD_HEADER = "x-famara-review-hold";
 export const MEDIA_BUCKET = "post-media";
+/** Seconds an allow stays usable; the RPC call follows straight after it is recorded. */
+export const VERDICT_TTL_SECONDS = 120;
 
 const uuid = z.uuid();
 const MEDIA_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
@@ -116,8 +122,19 @@ export interface PublishCaller {
   /** Spends one unit of the daily text-review allowance; false once it is used up. */
   takeReviewQuota(): Promise<boolean>;
   mediaExists(path: string): Promise<boolean>;
-  publishPost(input: PostInput, hold: string | null): Promise<PostRow>;
-  addComment(input: CommentInput, hold: string | null): Promise<CommentRow>;
+  publishPost(input: PostInput): Promise<PostRow>;
+  addComment(input: CommentInput): Promise<CommentRow>;
+}
+
+/** The review of one post or comment, as the database checks it. */
+export interface ReviewRecord {
+  userId: string;
+  target: "post" | "comment";
+  title: string | null;
+  body: string;
+  verdict: "allow" | "hold";
+  /** The policy category or the reason no review happened; null for an allow. */
+  category: string | null;
 }
 
 export interface PublishDeps {
@@ -125,6 +142,8 @@ export interface PublishDeps {
   caller(req: Request): Promise<PublishCaller>;
   /** null when the review model is not configured. */
   anthropic(): AnthropicClient | null;
+  /** Records a review verdict with the service role (`record_text_review`). */
+  recordReview(record: ReviewRecord): Promise<void>;
 }
 
 /** Throws unless every path is an upload in the caller's own folder. */
@@ -147,20 +166,69 @@ export async function verifyMedia(caller: PublishCaller, paths: readonly string[
   }
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "kong", "host.docker.internal"]);
+
+/** True when the function runs against a local Supabase stack (`supabase start`). */
+export function isLocalStack(env: EnvReader): boolean {
+  const url = readEnv(["SUPABASE_URL"], env);
+  if (!url) return false;
+  try {
+    return LOCAL_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `FAMARA_PUBLISH_AI_REVIEW=off` skips the AI review, but only on a local stack: anywhere else
+ * the setting is ignored (with a warning), so it can never switch moderation off in production.
+ */
+export function reviewSwitchedOff(env: EnvReader): boolean {
+  if ((readEnv(["FAMARA_PUBLISH_AI_REVIEW"], env) ?? "on").toLowerCase() !== "off") return false;
+  if (isLocalStack(env)) return true;
+  console.warn("FAMARA_PUBLISH_AI_REVIEW=off is ignored: it only applies to a local stack");
+  return false;
+}
+
 async function review(
   deps: PublishDeps,
   caller: PublishCaller,
   text: string,
 ): Promise<ReviewOutcome> {
-  // An operator can turn the AI review off (e.g. local development); the SQL review terms and
-  // member reports still apply.
-  if ((readEnv(["FAMARA_PUBLISH_AI_REVIEW"], deps.env) ?? "on").toLowerCase() === "off") {
-    return { decision: "allow" };
-  }
+  // Local development can skip the AI review; the SQL review terms still apply.
+  if (reviewSwitchedOff(deps.env)) return { decision: "allow" };
   const client = deps.anthropic();
   if (!client) return { decision: "hold", reason: "review_unavailable" };
   if (!(await caller.takeReviewQuota())) return { decision: "hold", reason: "review_limit" };
   return await reviewText(client, text, { userId: caller.userId });
+}
+
+/**
+ * Records the verdict the database will look for. Without a recorded allow the text would be
+ * held, so failing to record one is an error the member can retry; a hold that cannot be
+ * recorded only loses its category (the text is held either way).
+ */
+async function recordVerdict(
+  deps: PublishDeps,
+  record: Omit<ReviewRecord, "verdict" | "category">,
+  outcome: ReviewOutcome,
+): Promise<void> {
+  const verdict = outcome.decision === "allow" ? "allow" : "hold";
+  const category = outcome.decision === "hold" ? outcome.reason : null;
+  try {
+    await deps.recordReview({ ...record, verdict, category });
+  } catch (error) {
+    console.error("review verdict could not be recorded", {
+      verdict,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    if (verdict === "allow") {
+      throw new HttpError(
+        "upstream_unavailable",
+        "Publishing is unavailable right now. Try again.",
+      );
+    }
+  }
 }
 
 export function createPublishHandler(deps: PublishDeps): Handler {
@@ -171,14 +239,24 @@ export function createPublishHandler(deps: PublishDeps): Handler {
     if (input.type === "post") {
       await verifyMedia(caller, input.media.map((m) => m.path));
       const outcome = await review(deps, caller, `${input.title}\n\n${input.body}`.trim());
-      const hold = outcome.decision === "hold" ? outcome.reason : null;
-      const post = await caller.publishPost(input, hold);
+      await recordVerdict(deps, {
+        userId: caller.userId,
+        target: "post",
+        title: input.title,
+        body: input.body,
+      }, outcome);
+      const post = await caller.publishPost(input);
       return json({ post, held: post.status !== "visible" }, { status: 201 });
     }
 
     const outcome = await review(deps, caller, input.body);
-    const hold = outcome.decision === "hold" ? outcome.reason : null;
-    const comment = await caller.addComment(input, hold);
+    await recordVerdict(deps, {
+      userId: caller.userId,
+      target: "comment",
+      title: null,
+      body: input.body,
+    }, outcome);
+    const comment = await caller.addComment(input);
     return json({ comment, held: comment.status !== "visible" }, { status: 201 });
   });
 }
@@ -187,17 +265,14 @@ export function createPublishHandler(deps: PublishDeps): Handler {
 // Production wiring
 // ---------------------------------------------------------------------------------------------
 
-/** Calls an RPC as the caller, optionally with the review-hold header. */
-async function callWithHold<S extends z.ZodType>(
+/** Calls an RPC as the caller and parses the row it returns. */
+async function callAsCaller<S extends z.ZodType>(
   client: SupabaseClient,
   fn: string,
   args: Record<string, unknown>,
   schema: S,
-  hold: string | null,
 ): Promise<z.output<S>> {
-  let builder = client.rpc(fn, args);
-  if (hold) builder = builder.setHeader(HOLD_HEADER, hold);
-  const { data, error } = await builder;
+  const { data, error } = await client.rpc(fn, args);
   if (error) throw rpcErrorToHttp(error);
   const parsed = schema.safeParse(data);
   if (!parsed.success) {
@@ -228,8 +303,8 @@ export function supabasePublishCaller(userId: string, client: SupabaseClient): P
       }
       return (data ?? []).some((object) => object.name === file);
     },
-    async publishPost(input, hold) {
-      return await callWithHold(
+    async publishPost(input) {
+      return await callAsCaller(
         client,
         "publish_post",
         {
@@ -248,11 +323,10 @@ export function supabasePublishCaller(userId: string, client: SupabaseClient): P
           })),
         },
         postRowSchema,
-        hold,
       );
     },
-    async addComment(input, hold) {
-      return await callWithHold(
+    async addComment(input) {
+      return await callAsCaller(
         client,
         "add_comment",
         {
@@ -261,10 +335,25 @@ export function supabasePublishCaller(userId: string, client: SupabaseClient): P
           p_parent_comment_id: input.parent_comment_id ?? null,
         },
         commentRowSchema,
-        hold,
       );
     },
   };
+}
+
+/** Writes review verdicts with the service role. */
+export async function recordReviewWith(
+  service: SupabaseClient,
+  record: ReviewRecord,
+): Promise<void> {
+  await callRpc(service, "record_text_review", {
+    p_user_id: record.userId,
+    p_target: record.target,
+    p_title: record.title,
+    p_body: record.body,
+    p_verdict: record.verdict,
+    p_category: record.category,
+    p_ttl_seconds: VERDICT_TTL_SECONDS,
+  }, z.unknown());
 }
 
 export function defaultPublishDeps(env: EnvReader = denoEnv): PublishDeps {
@@ -278,5 +367,6 @@ export function defaultPublishDeps(env: EnvReader = denoEnv): PublishDeps {
       readEnv(["ANTHROPIC_API_KEY"], env)
         ? AnthropicClient.fromEnv(env, { timeoutMs: 20_000 })
         : null,
+    recordReview: (record) => recordReviewWith(createServiceClient({ env }), record),
   };
 }
