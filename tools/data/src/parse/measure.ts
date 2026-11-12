@@ -448,6 +448,16 @@ export function parseMeasure(input: string): Measure {
       text = text.slice(second[0].length).trim();
     }
   }
+  // "1 cup plus 2 tablespoons": a second volume adds to the first, expressed in the first unit.
+  if (unit !== null && quantity !== null && unit in VOLUME_ML) {
+    const plus = new RegExp(`^(?:plus|\\+)\\s*(${NUMBER})\\s*(${unitAlternation})(?![a-z])\\.?\\s*`, 'i').exec(text);
+    const plusUnit = plus?.[2] ? readUnit(plus[2]) : null;
+    const plusQty = plus?.[1] ? parseNumber(plus[1]) : null;
+    if (plus && plusUnit && plusQty !== null && plusUnit.unit in VOLUME_ML) {
+      quantity += (plusQty * plusUnit.scale * VOLUME_ML[plusUnit.unit as VolumeUnit]) / VOLUME_ML[unit as VolumeUnit];
+      text = text.slice(plus[0].length).trim();
+    }
+  }
   if (!size) {
     const lateSize = /^(extra large|x-large|small|medium|med|large|big|jumbo)\b\.?\s*/i.exec(text);
     if (lateSize?.[1]) {

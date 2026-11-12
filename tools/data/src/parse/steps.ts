@@ -10,7 +10,11 @@ const SINGLE_PARAGRAPH_STEP_CHARS = 200;
 const SINGLE_PARAGRAPH_STEP_SENTENCES = 2;
 
 const HEADING_ONLY = /^(?:step\s*\d+|method|instructions?|directions?|preparation|to serve|\d+)[\s.:)-]*$/i;
-const LEADING_LABEL = /^(?:step\s*\d+\s*[:.)-]?\s*|\d{1,2}\s*[.)]\s+|\d{1,2}\s*-\s+|[-•*▪●]\s*)/i;
+const LEADING_LABEL = /^(?:step\s*\d+\s*[:.)-]?\s*|\d{1,2}\s*[.)]\s+|\d{1,2}\s*-\s+|[-•*▪●▢☐□]\s*)/i;
+/** Checkbox and bullet glyphs some sources leave inside step text. */
+const STRAY_GLYPHS = /[▢☐□▪●•]/g;
+/** A source line that stops mid-sentence (no closing punctuation). */
+const OPEN_ENDED = /[^.!?:;]$/;
 
 /** Abbreviations that end with a period but do not end a sentence. */
 const ABBREVIATIONS = /(?:\b(?:approx|tsp|tbsp|tbs|oz|lb|lbs|min|mins|hr|hrs|e\.g|i\.e|no|vs|pt|qt|fl|deg|st|dr|mr|mrs|approx)\.)$/i;
@@ -21,7 +25,7 @@ function tidy(text: string): string {
     .replace(/\s+/g, ' ')
     .replace(/\s+([,.;:!?])/g, '$1')
     .trim();
-  t = t.replace(LEADING_LABEL, '').trim();
+  t = t.replace(LEADING_LABEL, '').replace(STRAY_GLYPHS, ' ').replace(/\s+/g, ' ').replace(/\s+([,.;:!?])/g, '$1').trim();
   if (!t) return t;
   t = t.charAt(0).toUpperCase() + t.slice(1);
   if (!/[.!?)"']$/.test(t)) t += '.';
@@ -65,10 +69,22 @@ function chunk(sentences: string[], maxChars = MAX_STEP_CHARS, maxSentences = In
 export function splitSteps(blocks: readonly string[]): string[] {
   const lines: string[] = [];
   for (const block of blocks) {
+    let lastLine: string | null = null;
     for (const raw of block.replace(/\r\n?/g, '\n').split(/\n+/)) {
-      const line = raw.trim();
-      if (!line || HEADING_ONLY.test(line)) continue;
+      const line = raw.replace(STRAY_GLYPHS, ' ').replace(/\s+([,.;:!?])/g, '$1').trim();
+      if (!line || HEADING_ONLY.test(line)) {
+        lastLine = null;
+        continue;
+      }
+      // Hard-wrapped source text: a line that stops mid-sentence continues on the next line
+      // when that line starts in lower case ("Apply some oil all over and" / "keep it ...").
+      if (lastLine !== null && OPEN_ENDED.test(lastLine) && /^[a-z]/.test(line)) {
+        lastLine = `${lastLine} ${line}`;
+        lines[lines.length - 1] = lastLine;
+        continue;
+      }
       lines.push(line);
+      lastLine = line;
     }
   }
 
@@ -159,6 +175,8 @@ const MAX_TIMER_SECONDS = 24 * 3600;
 
 const TENS: Record<string, number> = { twenty: 20, thirty: 30, forty: 40, fifty: 50 };
 /** "twenty-four", "thirty five" -> 24, 35 (so they are not read as ranges). */
+/** "1h30", "2h 15", "1h30m": hours and minutes written clock-style. */
+const CLOCK_DURATION = /\b(\d{1,2})\s?h(?:rs?)?\s?([0-5]\d)(?:\s?(?:m|mins?|minutes?))?\b/gi;
 const COMPOUND_NUMBER = /\b(twenty|thirty|forty|fifty)[- ](one|two|three|four|five|six|seven|eight|nine)\b/gi;
 
 /**
@@ -169,7 +187,9 @@ const COMPOUND_NUMBER = /\b(twenty|thirty|forty|fifty)[- ](one|two|three|four|fi
 export function detectTimerSeconds(step: string): number | null {
   let best: number | null = null;
   // Unicode fractions become decimals first, so "1½ hours" and "1 ½ hours" both read as 1.5.
-  const text = replaceUnicodeFractions(step).replace(COMPOUND_NUMBER, (_, tens: string, ones: string) => String((TENS[tens.toLowerCase()] ?? 0) + (WORD_NUMBERS[ones.toLowerCase()] ?? 0)));
+  const text = replaceUnicodeFractions(step)
+    .replace(COMPOUND_NUMBER, (_, tens: string, ones: string) => String((TENS[tens.toLowerCase()] ?? 0) + (WORD_NUMBERS[ones.toLowerCase()] ?? 0)))
+    .replace(CLOCK_DURATION, '$1 hours $2 minutes');
   for (const match of text.matchAll(DURATION)) {
     const [, excluded, lowText, , unitText, extraMinutes] = match;
     if (excluded) continue;
