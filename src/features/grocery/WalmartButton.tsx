@@ -3,8 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Text, space, toast } from '@/ui';
 
 import {
+  useKnownWalmartReadiness,
   useWalmartCart,
-  useWalmartReadyIds,
   useWalmartStatus,
   type WalmartCartDeps,
 } from './useWalmart';
@@ -19,24 +19,28 @@ export interface WalmartButtonProps {
   cartDeps?: WalmartCartDeps;
 }
 
+function cartHint(readyCount: number, unknownCount: number): string {
+  if (unknownCount > 0) return 'Checks which items Walmart has in stock, then opens a cart';
+  return `Opens a Walmart cart with ${readyCount} ${readyCount === 1 ? 'item' : 'items'}`;
+}
+
 /**
- * "Buy at Walmart": renders nothing unless the Walmart integration is configured and at least
- * one item to buy has an in-stock Walmart item. Opens the cart link in the in-app browser.
+ * "Buy at Walmart": renders nothing unless the Walmart integration is configured and some item to
+ * buy is cart-ready or not yet checked. Which items Walmart has is looked up only on tap (the
+ * lookup spends a shared hourly allowance), then the cart opens in the in-app browser.
  */
 export function WalmartButton({ idsToBuy, names, cartDeps }: WalmartButtonProps) {
   const status = useWalmartStatus(idsToBuy.length > 0);
-  const configured = status.data?.configured === true;
-  const ready = useWalmartReadyIds(idsToBuy, configured);
+  const known = useKnownWalmartReadiness(idsToBuy, cartDeps?.readiness);
   const cart = useWalmartCart(cartDeps);
 
-  if (!shouldShowWalmart(status.data, idsToBuy, ready.data)) return null;
-  const readyIds = ready.data ?? new Set<string>();
-  const readyCount = idsToBuy.filter((id) => readyIds.has(id)).length;
+  if (!shouldShowWalmart(status.data, idsToBuy, known)) return null;
+  const readyCount = idsToBuy.filter((id) => known.ready.has(id)).length;
   const affiliate = status.data?.configured === true && status.data.affiliate;
 
   const onPress = () => {
     cart.mutate(
-      { idsToBuy, readyIds },
+      { idsToBuy },
       {
         onSuccess: (outcome) => {
           if (outcome.kind === 'opened') {
@@ -66,7 +70,7 @@ export function WalmartButton({ idsToBuy, names, cartDeps }: WalmartButtonProps)
         fullWidth
         loading={cart.isPending}
         onPress={onPress}
-        accessibilityHint={`Opens a Walmart cart with ${readyCount} ${readyCount === 1 ? 'item' : 'items'}`}
+        accessibilityHint={cartHint(readyCount, known.unknown.length)}
         testID="grocery-walmart-button"
       />
       {affiliate ? (

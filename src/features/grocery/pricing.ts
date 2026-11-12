@@ -85,7 +85,9 @@ export interface CostDisplay {
   readonly checking: readonly MissingItem[];
   /** At least one item has a price, so a total can be shown. */
   readonly hasEstimate: boolean;
-  /** Everything is a staple or already at home. */
+  /** The list has no items at all; there is nothing to show. */
+  readonly empty: boolean;
+  /** There are items, but every one is a staple or already at home. */
   readonly nothingToBuy: boolean;
   /** Every item that needs buying is priced. */
   readonly complete: boolean;
@@ -157,7 +159,8 @@ export function buildCostDisplay(input: CostDisplayInput): CostDisplay {
     missing,
     checking,
     hasEstimate,
-    nothingToBuy: toBuyCount === 0,
+    empty: estimate.items.length === 0,
+    nothingToBuy: estimate.items.length > 0 && toBuyCount === 0,
     complete: hasEstimate && missing.length === 0 && checking.length === 0,
   };
 }
@@ -227,11 +230,29 @@ export function retailerSummary(rows: readonly SourceRow[]): string[] {
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name);
 }
 
-/** Ingredient ids that must be bought: not staples, not covered by the pantry, sorted. */
+/**
+ * An optional item the recipes give no amount for ("chives to garnish, optional"): there is no
+ * share to cost and nobody needs to buy it, so it is neither priced nor counted as missing.
+ */
+export function isOptionalWithoutAmount(item: ShoppingItem): boolean {
+  return item.optional && item.amounts.length === 0;
+}
+
+/** The items an estimate covers: the list without optional items that have no amount. */
+export function itemsToCost(items: readonly ShoppingItem[]): readonly ShoppingItem[] {
+  const kept = items.filter((item) => !isOptionalWithoutAmount(item));
+  return kept.length === items.length ? items : kept;
+}
+
+/**
+ * Ingredient ids that must be bought, sorted: not staples, not covered by the pantry, and not
+ * optional items without an amount.
+ */
 export function idsToBuy(items: readonly ShoppingItem[]): string[] {
   const ids = new Set<string>();
   for (const item of items) {
     if (item.staple || item.pantry === 'covered' || item.ingredientId === null) continue;
+    if (isOptionalWithoutAmount(item)) continue;
     ids.add(item.ingredientId);
   }
   return [...ids].sort();
