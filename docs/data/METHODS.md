@@ -35,18 +35,33 @@ slashes, and each choice is resolved on its own. A word shared between choices i
 each one: *chicken or vegetable stock* offers chicken stock, *chicken thighs or 2 breasts* offers
 chicken breasts, and the amount belongs to the first choice, so the line's ingredient is chicken
 stock. Every word of a choice must then be part of a known ingredient, an amount or a description
-(*fresh*, *thawed*, *cut into cubes*). A choice made only of amounts, comments and descriptions (*or
-to taste*, *or more if needed*, *fresh or frozen*, *tidbits or chunks*) adds nothing. A choice is
-unidentified when it names no known ingredient (*halva spread*), when a word is left over beside a
-known one (*cookie* in *cookie butter*, *vegan* in *vegan mayo*, *spread* in *hazelnut spread*),
-when it is a stand-in (*or substitute*, *butter substitute*, *or equivalent*, *or similar*), or when
-it is open-ended and names nothing (*or other fat*, *or your favourite*, *or any other kind*, *or
-topping*). Open-ended words next to a known ingredient only widen it (*raisins or other dried fruit*
-is identified), and a blend of the other choices (*or a mix*, *or both*, *or a combination*) is
-identified only when the line names at least two known choices. A leading *substitute* is the verb
-(*or substitute frozen blueberries*). An unidentified choice is recorded as an `unresolved_choice`
-build note: the line keeps its known ingredients, which still count as contained, and its primary
-ingredient for weights and nutrition, but its other allergens and its diets fail closed (section 5).
+(*fresh*, *thawed*, *cut into cubes*, *low-fat*, *15% fat*, *fat-free*). A choice made only of
+amounts, comments and descriptions (*or to taste*, *or more if needed*, *fresh or frozen*, *tidbits
+or chunks*) adds nothing. A choice is unidentified when it names no known ingredient (*halva
+spread*), when a word is left over beside a known one (*cookie* in *cookie butter*, *vegan* in
+*vegan mayo*, *spread* in *hazelnut spread*), when it is a stand-in (*or substitute*, *butter
+substitute*, *or equivalent*, *or similar*), or when it is open-ended and names nothing (*or other
+fat*, *or your favourite*, *or any other kind*, *or topping*). A bare *fat* is open-ended, since it
+could be lard or suet: *oil or fat* is unidentified. An open-ended word next to a known ingredient
+widens it only when that ingredient already stands for a group of foods (dried fruit, mixed fruit,
+berries, salad greens, mixed vegetables, nuts, mixed spice): *raisins or other dried fruit* is
+identified, but *almond milk or other milk*, *olive oil or other oil* and *chicken broth or other
+broth* are not, because the other milk, oil or broth may carry other allergens or meats. A blend of
+the other choices (*or a mix*, *or both*, *or a combination*) is identified only when the line
+names at least two known choices. A leading *substitute* is the verb (*or substitute frozen
+blueberries*).
+
+Asides are split at commas, so a choice offered after a comma (*(try a mix, or other types)*) is
+checked like any other offered choice. An aside that lists choices without offering one (*(pinto or
+other type)*, *(fresh, frozen or canned and drained)*, *(quick or old-fashioned)*) mostly narrows
+the name to varieties and preparations, so an unknown word there is accepted; only a stand-in, or
+an open-ended choice that names no ingredient (*other type*, *or others*, *any type*), is
+unidentified. A choice in an aside or clause may share the name's words: *milk (dairy or soy)*
+offers soy milk, and *cheese (try parmesan, Swiss, or cheddar)* offers Swiss cheese.
+
+An unidentified choice is recorded as an `unresolved_choice` build note: the line keeps its known
+ingredients, which still count as contained, and its primary ingredient for weights and nutrition,
+but its other allergens and its diets fail closed (section 5).
 
 A synonym that covers a whole "A or B" phrase (*chicken or vegetable bouillon*) decides that line on
 its own, so the build checks every such synonym against each alternative it hides (*chicken*,
@@ -302,17 +317,16 @@ return recipes that do not contain what was asked for.
 
 `npm run build` fails unless all of these hold: knowledge tables validate; every FDC id exists and
 its description matches; no synonym maps to two ingredients; no "A or B" synonym is less
-restrictive than an alternative it hides; every `preparedAs` names an ingredient; no word indexed from a search alias is a cuisine label,
-cuisine place name or listed descriptor, and every alias entry names a known ingredient and
-indexes at least one word; substitutions reference known
+restrictive than an alternative it hides; every `preparedAs` names an ingredient; no word indexed
+from a search alias is a cuisine label, cuisine place name or listed descriptor, and every alias
+entry names a known ingredient and indexes at least one word; substitutions reference known
 ingredients, are unique and have notes; unique recipe ids and slugs; every recipe has ≥ 1
 ingredient and ≥ 1 step; enums are valid (course, cuisine, region, confidence, goal tags, allergen
 states, diet bits, effort 1–3); servings 1–48; active ≤ total minutes; health score 0–1; nutrient
 values non-negative, saturated fat ≤ fat, sodium ≤ 8,000 mg, protein energy ≤ total energy, energy
 within the ranges above; no `free` allergen or diet flag on a recipe with an unmatched line or an
-unidentified choice; every
-`ingredient_id` exists; ≥ 98 % of ingredient lines matched; SQLite `integrity_check` and
-`foreign_key_check` pass; one FTS row per recipe; database < 15 MB.
+unidentified choice; every `ingredient_id` exists; ≥ 98 % of ingredient lines matched; SQLite
+`integrity_check` and `foreign_key_check` pass; one FTS row per recipe; database < 15 MB.
 
 The database and manifest are written to `*.staging` files next to the assets and moved into place
 only after every gate, including the post-write SQLite checks and the size limit, has passed, so a

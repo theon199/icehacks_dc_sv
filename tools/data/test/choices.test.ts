@@ -1,28 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { rollupAllergens, rollupDiet, type MatchedLine } from '../src/derive/rollup.ts';
-import type { IngredientDef } from '../src/knowledge/define.ts';
-import { INGREDIENT_BY_ID, INGREDIENTS } from '../src/knowledge/index.ts';
-import { IngredientMatcher } from '../src/match/matcher.ts';
-import { parseMeasure } from '../src/parse/measure.ts';
+import { INGREDIENT_BY_ID } from '../src/knowledge/index.ts';
 import { buildRecipe, type RecipeContext } from '../src/pipeline/recipes.ts';
 import type { BuildIssue } from '../src/pipeline/types.ts';
 import { ALLERGEN_IDS, type AllergenId, type SourceRecipe } from '../src/types.ts';
+import { matchedLine, matcher, matchText } from './support/lines.ts';
 
-const matcher = new IngredientMatcher(INGREDIENTS);
-const match = (text: string) => matcher.matchLine(parseMeasure(text).rest);
-const def = (id: string): IngredientDef => {
-  const found = INGREDIENT_BY_ID.get(id);
-  assert.ok(found, `missing ingredient ${id}`);
-  return found;
-};
-/** Matches a line the way the pipeline does, including any unidentified choice. */
-const matchedLine = (text: string): MatchedLine => {
-  const result = match(text);
-  if (result.id === null) return null;
-  const defs = result.all.map(def);
-  return result.unresolved.length > 0 ? { defs, unresolved: result.unresolved } : defs;
-};
+const match = matchText;
 const statesOf = (lines: MatchedLine[], state: string): AllergenId[] => {
   const allergens = rollupAllergens(lines);
   return ALLERGEN_IDS.filter((a) => allergens[a] === state);
@@ -268,5 +253,99 @@ describe('open-ended choices', () => {
   it('lists each ingredient once', () => {
     const result = match('1 tsp cinnamon or cinnamon and nutmeg');
     assert.equal(new Set(result.all).size, result.all.length);
+  });
+});
+
+describe('asides that list choices', () => {
+  it('finds an open-ended choice offered after a comma', () => {
+    const text = '2 cans (15 ounces) black-eyed peas or black beans (try a mix, or other types)';
+    assert.deepEqual(match(text).unresolved, ['other type']);
+    const lines = [matchedLine(text)];
+    assert.deepEqual(statesOf(lines, 'free'), []);
+    assert.equal(rollupDiet(lines, rollupAllergens(lines)), 0);
+  });
+
+  it('leaves an aside listing an open-ended choice that names nothing unidentified', () => {
+    for (const [text, unresolved] of [
+      ['1 1/4 cups or 1 can (15 to 16 ounces) cooked beans (pinto or other type)', 'other type'],
+      ['2 pounds fish fillets (cod, tilapia, snapper or others)', 'other'],
+      ['1 cup salsa (any type, red or green)', 'any type'],
+      ['1 cup milk (dairy or soy substitute)', 'soy substitute'],
+    ] as const) {
+      const result = match(text);
+      assert.notEqual(result.id, null, text);
+      assert.deepEqual(result.unresolved, [unresolved], text);
+      const lines = [matchedLine(text)];
+      assert.ok(!statesOf(lines, 'free').includes('soy'), `${text}: soy reported free`);
+      assert.equal(rollupDiet(lines, rollupAllergens(lines)), 0, text);
+    }
+  });
+
+  it('completes a choice in an aside with the name it follows', () => {
+    const result = match('1 cup milk (dairy or soy)');
+    assert.deepEqual(result.unresolved, []);
+    assert.ok(result.all.includes('soy_milk'), result.all.join(' '));
+    assert.deepEqual(statesOf([matchedLine('1 cup milk (dairy or soy)')], 'contains'), ['milk', 'soy']);
+    assert.ok(match('1/3 cup shredded cheese (try parmesan, Swiss, or cheddar)').all.includes('swiss_cheese'));
+  });
+
+  it('accepts varieties, preparations and named choices in an aside', () => {
+    for (const text of [
+      '1 cup peas (fresh, frozen or canned and drained)',
+      '1 cup cooked protein (ham, chicken or tofu)',
+      '1 cup rolled oats (quick or old-fashioned)',
+      '1 1/2 cups whole grain pasta (try shells, elbow, or bow tie)',
+      '1 pound lean ground beef (15% fat or less)',
+      '1 cup tofu, diced (chicken or pork can be used instead)',
+      '1 pound fresh vegetables (such as carrots, onions, broccoli, peas, or zucchini)',
+    ]) {
+      const result = match(text);
+      assert.notEqual(result.id, null, text);
+      assert.deepEqual(result.unresolved, [], text);
+    }
+    assert.deepEqual(match('1 cup cooked protein (ham, chicken or tofu)').all.sort(), ['chicken', 'cooked_meat', 'ham', 'tofu']);
+  });
+});
+
+describe('a bare "fat" choice', () => {
+  it('is unidentified, since it could be lard or suet', () => {
+    for (const text of ['2 tbsp oil or fat', '1/4 cup shortening or fat', '2 tbsp butter or fat']) {
+      const result = match(text);
+      assert.deepEqual(result.unresolved, ['fat'], text);
+      const lines = [matchedLine(text)];
+      assert.equal(rollupDiet(lines, rollupAllergens(lines)), 0, text);
+      assert.deepEqual(statesOf(lines, 'free'), [], text);
+    }
+  });
+
+  it('is a fat level after a level word or a number, or before "free"', () => {
+    for (const text of ['1 cup low-fat yogurt or fat-free milk', '1 cup reduced fat milk or 1 cup non-fat yogurt', '1 lb ground beef (15% fat or less)']) {
+      assert.deepEqual(match(text).unresolved, [], text);
+    }
+    assert.deepEqual(match('1 cup low-fat yogurt or fat-free milk').all.length, 2);
+  });
+});
+
+describe('an open-ended word next to a single food', () => {
+  it('leaves the choice unidentified, since it could be another food with other allergens', () => {
+    const cases: Array<[string, AllergenId[]]> = [
+      ['1 cup almond milk or other milk', ['soy']],
+      ['1 cup flour or other flour', ['tree_nut', 'soy']],
+      ['1 cup yogurt or other yogurt', ['tree_nut', 'soy']],
+      ['2 tbsp olive oil or other oil', ['peanut', 'sesame']],
+    ];
+    for (const [text, allergens] of cases) {
+      assert.equal(match(text).unresolved.length, 1, text);
+      const free = statesOf([matchedLine(text)], 'free');
+      for (const allergen of allergens) assert.ok(!free.includes(allergen), `${text}: ${allergen} reported free`);
+    }
+    const broth = [matchedLine('2 cups chicken broth or other broth')];
+    assert.equal(rollupDiet(broth, rollupAllergens(broth)), 0);
+  });
+
+  it('only widens an ingredient that already stands for a group of foods', () => {
+    for (const text of ['1/2 cup raisins or other dried fruit', '1 cup blueberries or other fruit', '2 cups spinach or other greens', '1 cup peas or other vegetables']) {
+      assert.deepEqual(match(text).unresolved, [], text);
+    }
   });
 });
