@@ -1314,6 +1314,19 @@ export type Database = {
           target_kind: Database["public"]["Enums"]["report_target"];
         }[];
       };
+      my_reports: {
+        Args: { p_limit?: number };
+        Returns: {
+          created_at: string;
+          details: string;
+          id: string;
+          reason: Database["public"]["Enums"]["report_reason"];
+          resolved_at: string;
+          status: Database["public"]["Enums"]["report_status"];
+          target_id: string;
+          target_kind: Database["public"]["Enums"]["report_target"];
+        }[];
+      };
       my_stats: { Args: { p_today?: string }; Returns: Json };
       publish_post: {
         Args: {
@@ -1764,6 +1777,9 @@ export interface ModerationQueuePage {
 /** One row of `my_moderation_decisions()`: what was decided about your content, not by whom. */
 export type ModerationDecision =
   Database["public"]["Functions"]["my_moderation_decisions"]["Returns"][number];
+
+/** One row of `my_reports()`: a report you filed and where it stands, not who handled it. */
+export type MyReport = Database["public"]["Functions"]["my_reports"]["Returns"][number];
 
 /** `data` of an `appeal_decision` notification. */
 export interface AppealDecisionNotice {

@@ -135,9 +135,10 @@ as a privacy setting. Blocking is the way to keep a specific person out.
   `suspended_until`, `created_at` (wall clock, so actions within one transaction keep their
   order). Kept when the owner deletes their account (owner link set to null).
 - `moderation_appeals`: one per action and appellant; `status` pending\|upheld\|reversed.
-- Only moderators can read `reports` of others, `moderation_actions` and `moderation_appeals`.
+- Only moderators can read `reports`, `moderation_actions` and `moderation_appeals` directly.
   Owners see decisions about their content through `my_moderation_decisions()`, which never
-  includes the moderator, the triggering report or the appeal reviewer.
+  includes the moderator, the triggering report or the appeal reviewer. Reporters see their own
+  reports through `my_reports()`, which leaves out `resolved_by`.
 - `private.review_terms`: terms that hold new posts/comments for review (managed by staff).
 
 Automatic holds: text that matches a review term or contains more than two links is stored
@@ -216,7 +217,8 @@ limit. Ledger rows are purged after two days.
 | `report_content(p_target_kind, p_target_id, p_reason, p_details = '')` | uuid | Member only; target must exist and be visible to the reporter; not your own; idempotent per open report; 20 per day; three reporters auto-hide a post/comment. Reports on one target are serialised (advisory lock), so simultaneous reports still reach the threshold and never collide on the one-open-report index |
 | `appeal(p_action_id, p_message)` | uuid | Owner of the decision only; hide/remove/warn/suspend; within 30 days; once |
 | `my_moderation_decisions(p_limit = 50)` | table `(action_id, action, reason, target_kind, target_id, automated, suspended_until, created_at, appealable, appeal_status, appeal_note)` | Decisions about the caller's content or account, newest first (dismissals left out). `appealable` is true while an appeal can still be filed. Never exposes who decided |
-| `moderation_queue(p_status = 'open', p_limit = 50, p_cursor = null)` | `{items, next_cursor}` | Moderator only. Reports grouped by target, ordered by (first report time, target kind, target id), with a target snapshot and previous actions. Pass `next_cursor` back as `p_cursor`; groups first reported at the same instant are neither skipped nor repeated |
+| `my_reports(p_limit = 50)` | table `(id, target_kind, target_id, reason, details, status, created_at, resolved_at)` | The caller's own reports, newest first (1–200). Never exposes who resolved them |
+| `moderation_queue(p_status = 'open', p_limit = 50, p_cursor = null)` | `{items, next_cursor}` | Moderator only. Reports grouped by target, ordered by (first report time, target kind, target id), with a target snapshot (posts include `visibility` and their `media` paths) and previous actions. Pass `next_cursor` back as `p_cursor`; groups first reported at the same instant are neither skipped nor repeated |
 | `moderate(p_target_kind, p_target_id, p_action, p_reason, p_suspend_days = null)` | uuid (action id) | Moderator only. hide/remove/restore for posts and comments; warn/suspend (1–365 days)/unsuspend for owners; dismiss. Resolves all open reports on the target and notifies the owner. Refused (`forbidden`) on your own content or account, for suspending an admin, and for a non-admin suspending a moderator |
 | `appeal_queue(p_limit = 50)` | jsonb array | Moderator only. Pending appeals with the contested decision |
 | `decide_appeal(p_appeal_id, p_outcome, p_note = null)` | void | Moderator only, never for your own appeal. `reversed` undoes the hide/remove/suspension (audited) only while that action still decides the current state; if a newer hide/remove/restore (content) or suspend/unsuspend (account) has followed, that newer decision stands. The appellant is notified with `{outcome, note, state_restored}`; the notice links the post/comment only if it still exists |

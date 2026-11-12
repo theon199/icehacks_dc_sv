@@ -73,7 +73,8 @@ select lives_ok(
   $$select public.report_content('post', (select upper(id::text) from public.posts where title = 'Questionable tip'), 'unsafe_food')$$,
   'ben reports it again with a differently cased id'
 );
-select is((select count(*)::integer from public.reports), 1, 'duplicate open reports collapse into one');
+select is((select count(*)::integer from public.my_reports()), 1, 'duplicate open reports collapse into one');
+select is((select count(*)::integer from public.reports), 0, 'reporters cannot read report rows directly');
 
 -- The moderator reviews.
 select tests.login('dddddddd-0000-4000-8000-000000000004');
@@ -86,6 +87,11 @@ select is(
   (public.moderation_queue() -> 'items' -> 0 -> 'target' ->> 'title'),
   'Questionable tip',
   'the queue shows the reported content'
+);
+select is(
+  (public.moderation_queue() -> 'items' -> 0 -> 'target' -> 'media'),
+  '[]'::jsonb,
+  'the post snapshot lists its photos'
 );
 select lives_ok(
   $$select public.moderate('post', (select id::text from public.posts where title = 'Questionable tip'), 'hide', 'Unsafe food handling advice.')$$,
@@ -102,6 +108,26 @@ select is(
   'report is resolved'
 );
 select is(jsonb_array_length(public.moderation_queue() -> 'items'), 0, 'queue is empty');
+
+-- The reporter sees the outcome of the report but never who handled it.
+select tests.login('bbbbbbbb-0000-4000-8000-000000000002');
+select is(
+  (select status::text || '/' || (resolved_at is not null)::text from public.my_reports()),
+  'actioned/true',
+  'the reporter sees the report was actioned'
+);
+select is(
+  (select count(*)::integer from public.reports where resolved_by is not null),
+  0,
+  'the reporter cannot read resolved_by on their own report'
+);
+select ok(
+  not ('resolved_by' = any (
+    (select p.proargnames from pg_catalog.pg_proc p
+     where p.oid = 'public.my_reports(integer)'::regprocedure)
+  )),
+  'my_reports does not return resolved_by'
+);
 
 -- Ana is notified and appeals.
 select tests.login('aaaaaaaa-0000-4000-8000-000000000001');

@@ -6,9 +6,9 @@
 -- reverses. Text that trips the pre-publication check and content reported by several people
 -- is hidden automatically by a system action (automated = true) and queued for review.
 --
--- Only moderators read moderation_actions and moderation_appeals directly. Members see the
--- decisions about their own content through public.my_moderation_decisions(), which leaves out
--- who made the decision and which report triggered it.
+-- Only moderators read reports, moderation_actions and moderation_appeals directly. Members see
+-- the decisions about their own content through public.my_moderation_decisions() and the state of
+-- their own reports through public.my_reports(); neither says who handled anything.
 
 create table public.reports (
   id uuid default gen_random_uuid() primary key,
@@ -468,6 +468,30 @@ as $$
   limit least(greatest(coalesce(p_limit, 50), 1), 200);
 $$;
 
+-- The caller's own reports, newest first: what they reported and where it stands. Leaves out
+-- the moderator who resolved it, so a reporter can never learn who acted.
+create function public.my_reports(p_limit integer default 50)
+returns table (
+  id uuid,
+  target_kind public.report_target,
+  target_id text,
+  reason public.report_reason,
+  details text,
+  status public.report_status,
+  created_at timestamptz,
+  resolved_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select r.id, r.target_kind, r.target_id, r.reason, r.details, r.status, r.created_at, r.resolved_at
+  from public.reports r
+  where r.reporter_id = private.require_uid()
+  order by r.created_at desc, r.id desc
+  limit least(greatest(coalesce(p_limit, 50), 1), 200);
+$$;
 
 -- ---------------------------------------------------------------------------------------------
 -- Moderator RPCs
@@ -565,8 +589,18 @@ begin
         -- below hit the primary keys.
         'target', case n.target_kind
           when 'post' then (
-            select jsonb_build_object('title', p.title, 'body', p.body, 'status', p.status,
-                                      'recipe_ref', p.recipe_ref, 'created_at', p.created_at)
+            select jsonb_build_object(
+              'title', p.title, 'body', p.body, 'status', p.status, 'visibility', p.visibility,
+              'recipe_ref', p.recipe_ref, 'created_at', p.created_at,
+              -- Photos are part of what was reported; post-media read access for moderators
+              -- follows from post_media, so the paths can be signed for review.
+              'media', coalesce((
+                select jsonb_agg(jsonb_build_object(
+                  'path', m.path, 'width', m.width, 'height', m.height,
+                  'blurhash', m.blurhash, 'position', m.position
+                ) order by m.position)
+                from public.post_media m where m.post_id = p.id
+              ), '[]'::jsonb))
             from public.posts p where p.id = private.target_uuid(n.target_id))
           when 'comment' then (
             select jsonb_build_object('body', c.body, 'status', c.status, 'post_id', c.post_id,
@@ -858,10 +892,11 @@ alter table public.moderation_actions
 alter table public.moderation_appeals
   enable row level security;
 
-create policy reports_select_own_or_moderator
+-- Reporters read their own reports through my_reports(), which leaves out resolved_by.
+create policy reports_select_moderator
   on public.reports
   for select to authenticated
-  using (reporter_id = (select auth.uid()) or (select private.is_moderator()));
+  using ((select private.is_moderator()));
 
 create policy moderation_actions_select_moderator
   on public.moderation_actions
@@ -891,6 +926,7 @@ revoke all on function private.moderation_actions_after_insert() from public;
 grant execute on function public.report_content(public.report_target, text, public.report_reason, text) to authenticated;
 grant execute on function public.appeal(uuid, text) to authenticated;
 grant execute on function public.my_moderation_decisions(integer) to authenticated;
+grant execute on function public.my_reports(integer) to authenticated;
 grant execute on function public.moderation_queue(public.report_status, integer, text) to authenticated;
 grant execute on function public.moderate(public.report_target, text, public.moderation_action_kind, text, integer) to authenticated;
 grant execute on function public.appeal_queue(integer) to authenticated;
