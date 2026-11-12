@@ -34,7 +34,7 @@ export interface BuildDeckInput extends RankInput {
   readonly candidates: readonly RecipeSummary[];
   readonly mode: DeckMode;
   readonly seed: Seed;
-  /** Number of cards wanted. */
+  /** Number of cards wanted; clamped to `[0, MAX_DECK_SIZE]` (see `clampDeckSize`). */
   readonly size: number;
   /** Ids to leave out, e.g. cards already on screen. */
   readonly exclude?: Iterable<RecipeId>;
@@ -136,6 +136,21 @@ export function sampleOrder(
   return out;
 }
 
+/** Largest deck one call builds; diversity checks grow with the square of the deck size. */
+export const MAX_DECK_SIZE = 60;
+/** Cards built when the requested size is not a number at all. */
+export const DEFAULT_DECK_SIZE = 12;
+
+/**
+ * A whole number of cards in `[0, MAX_DECK_SIZE]`. A size that is not a number falls back to the
+ * default rather than silently building an empty deck, and an unbounded one is capped so a single
+ * call cannot diversify the whole catalog.
+ */
+export function clampDeckSize(requested: number): number {
+  if (Number.isNaN(requested)) return DEFAULT_DECK_SIZE;
+  return Math.min(MAX_DECK_SIZE, Math.max(0, Math.floor(requested)));
+}
+
 export function buildDeck(input: BuildDeckInput): Deck {
   const ctx = createRankContext(input, input.candidates);
   const { config } = ctx;
@@ -160,7 +175,7 @@ export function buildDeck(input: BuildDeckInput): Deck {
     else pool.push(recipe);
   }
 
-  const size = Math.max(0, Math.floor(input.size));
+  const size = clampDeckSize(input.size);
   const scored = scoreCandidates(pool, ctx);
   const ids = pool.map((recipe) => recipe.id);
   const order = sampleOrder(scored.score, ids, size, input.seed, config);
