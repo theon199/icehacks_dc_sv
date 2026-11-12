@@ -56,6 +56,7 @@ const detailCache = new LruCache<string, RecipeDetail>(40);
 const ingredientCache = new LruCache<string, Ingredient>(400);
 let cuisinesPromise: Promise<CuisineInfo[]> | null = null;
 let metaPromise: Promise<CatalogMeta> | null = null;
+let staplesPromise: Promise<Ingredient[]> | null = null;
 
 /** Forgets every cached result (tests, or after the catalog file is replaced). */
 export function clearCatalogCaches(): void {
@@ -64,6 +65,7 @@ export function clearCatalogCaches(): void {
   ingredientCache.clear();
   cuisinesPromise = null;
   metaPromise = null;
+  staplesPromise = null;
 }
 
 const jsonList = (values: readonly string[] | undefined): string | null =>
@@ -188,9 +190,21 @@ export async function getRecipeSummary(id: string): Promise<RecipeSummary | null
   return summary ?? null;
 }
 
+/**
+ * A recipe's core ingredients: matched, required and not a pantry staple. The staple list is a
+ * couple of dozen ids that SQLite collects once per statement, so each recipe costs one more short
+ * index walk. `coreIngredientIdsOf` (./toDomain) applies the same rule to a loaded recipe's lines.
+ */
+const CORE_INGREDIENT_WHERE = `ri.ingredient_id IS NOT NULL AND ri.optional = 0
+        AND ri.ingredient_id NOT IN (SELECT id FROM ingredients WHERE pantry_staple = 1)`;
+
+// The id lists follow line position only because each subquery walks the (recipe_id, position)
+// primary key; see `RecipeCandidate` for why no caller relies on that order.
 const CANDIDATES_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS},
     (SELECT json_group_array(ri.ingredient_id) FROM recipe_ingredients ri
-      WHERE ri.recipe_id = r.id AND ri.ingredient_id IS NOT NULL) AS ingredient_ids
+      WHERE ri.recipe_id = r.id AND ri.ingredient_id IS NOT NULL) AS ingredient_ids,
+    (SELECT json_group_array(ri.ingredient_id) FROM recipe_ingredients ri
+      WHERE ri.recipe_id = r.id AND ${CORE_INGREDIENT_WHERE}) AS core_ingredient_ids
   FROM recipes r
   WHERE 1 = 1 ${FILTER_SQL}
   ORDER BY r.health_score DESC, r.id
@@ -221,6 +235,58 @@ export async function listCandidates(filters: CandidateFilters): Promise<RecipeC
   // Not added to the summary cache: a candidate list is up to 2,000 rows and would evict the
   // summaries screens actually show.
   return rows.map(toRecipeCandidate);
+}
+
+/** Safety filters a family lookup accepts; a `CandidateFilters` object fits as is. */
+export type FamilyFilters = Pick<CandidateFilters, 'dietMask' | 'avoidAllergens'>;
+
+const FAMILY_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS} FROM recipes r
+  WHERE r.family_id = ? ${FILTER_SQL}
+  ORDER BY r.health_score DESC, r.id`;
+
+/**
+ * Every version of one dish (the recipes sharing `familyId`), healthiest first. Optional safety
+ * filters apply the same fail-closed rules as `listCandidates`, so an unsafe version is never read.
+ */
+export async function getRecipesByFamily(
+  familyId: string,
+  filters: FamilyFilters = {},
+): Promise<RecipeSummary[]> {
+  const rows = await catalogPreparedQuery(
+    FAMILY_SQL,
+    [
+      familyId,
+      ...filterParams({ dietMask: filters.dietMask, avoidAllergens: filters.avoidAllergens }),
+    ],
+    recipeRowSchema,
+  );
+  return rows.map((row) => {
+    const summary = toRecipeSummary(row);
+    summaryCache.set(summary.id, summary);
+    return summary;
+  });
+}
+
+const PANTRY_STAPLES_SQL = `SELECT ${INGREDIENT_COLUMNS} FROM ingredients i
+  WHERE i.pantry_staple = 1
+  ORDER BY i.category, i.name, i.id`;
+
+/** Ingredients most kitchens keep on hand (salt, oil and the like), by category then name. */
+export async function getPantryStaples(): Promise<Ingredient[]> {
+  staplesPromise ??= catalogPreparedQuery(PANTRY_STAPLES_SQL, [], ingredientRowSchema)
+    .then((rows) =>
+      rows.map((row) => {
+        const ingredient = toIngredient(row);
+        ingredientCache.set(ingredient.id, ingredient);
+        return ingredient;
+      }),
+    )
+    .catch((error: unknown) => {
+      staplesPromise = null;
+      throw error;
+    });
+  // A copy, so a caller sorting or trimming its list cannot change what the next caller gets.
+  return [...(await staplesPromise)];
 }
 
 const INGREDIENT_LINES_SQL = `SELECT position, ingredient_id, text, quantity, unit, grams, section, optional

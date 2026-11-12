@@ -25,6 +25,8 @@ const REGION: Record<string, string> = {
 export function candidate(id: string, overrides: Overrides = {}): RecipeCandidate {
   const { allergens = {}, ...rest } = overrides;
   const cuisine = rest.cuisine ?? 'american';
+  // Core ingredients default to the matched ids, as for a dish with no staples or optional lines.
+  const ingredientIds = rest.ingredientIds ?? [`${id}-a`, `${id}-b`, `${id}-c`];
   const statuses = Object.fromEntries(
     ALLERGEN_IDS.map((allergen) => [allergen, allergens[allergen] ?? 'free']),
   ) as Record<AllergenId, AllergenStatus>;
@@ -62,7 +64,8 @@ export function candidate(id: string, overrides: Overrides = {}): RecipeCandidat
     gentle: false,
     healthScore: 0.6,
     familyId: id,
-    ingredientIds: [`${id}-a`, `${id}-b`, `${id}-c`],
+    ingredientIds,
+    coreIngredientIds: [...new Set(ingredientIds)],
     ...rest,
     allergens: statuses,
   };

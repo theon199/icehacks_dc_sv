@@ -104,7 +104,7 @@ const ALL = [rich, lean, solo, nutty, satay];
 function candidatesFor(filters: CandidateFilters): RecipeCandidate[] {
   const avoid = filters.avoidAllergens ?? [];
   return ALL.filter((r: RecipeDetail) => avoid.every((a) => r.allergens[a] === 'free')).map(
-    (r) => ({ ...r, ingredientIds: [] }) as RecipeCandidate,
+    (r) => ({ ...r, ingredientIds: [], coreIngredientIds: [] }) as RecipeCandidate,
   );
 }
 

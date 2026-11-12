@@ -18,8 +18,8 @@ export interface PantryMeal {
 }
 
 export interface PantryMealsInput {
+  /** Catalog candidates; their core ingredients already leave out staples and optional lines. */
   readonly candidates: readonly RecipeCandidate[];
-  readonly staples: ReadonlySet<string>;
   readonly pantry: ReadonlySet<string>;
   readonly prefs: UserPreferences;
   /** Epoch milliseconds. */
@@ -32,7 +32,7 @@ const SEED = 'pantry-meals';
 
 export function rankPantryMeals(input: PantryMealsInput): PantryMeal[] {
   if (input.pantry.size === 0 || input.candidates.length === 0) return [];
-  const recipes = input.candidates.map((candidate) => toRankRecipe(candidate, input.staples));
+  const recipes = input.candidates.map(toRankRecipe);
   const deck = buildDeck({
     candidates: recipes,
     prefs: input.prefs,

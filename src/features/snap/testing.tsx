@@ -104,10 +104,14 @@ const FREE = {
   gluten: 'free',
 } as const;
 
-/** A catalog recipe as `listCandidates` / `searchRecipes` return it. */
+/**
+ * A catalog recipe as `listCandidates` / `searchRecipes` return it. Core ingredients default to the
+ * matched ids, as for a dish with no staples or optional lines.
+ */
 export function catalogRecipe(
   overrides: Partial<RecipeCandidate> & Pick<RecipeCandidate, 'id' | 'title'>,
 ): RecipeCandidate {
+  const ingredientIds = overrides.ingredientIds ?? [];
   return {
     slug: overrides.id.replace(/[^a-z0-9]+/gi, '-'),
     summary: '',
@@ -141,7 +145,8 @@ export function catalogRecipe(
     gentle: false,
     healthScore: 0.6,
     familyId: overrides.id,
-    ingredientIds: [],
+    ingredientIds,
+    coreIngredientIds: [...new Set(ingredientIds)],
     ...overrides,
   };
 }

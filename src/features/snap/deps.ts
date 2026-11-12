@@ -5,22 +5,15 @@
  * - `AiGate`: Chef's shared 18+ and AI-consent gate. Snap is a tab root, which `Stack.Protected`
  *   cannot guard, so the screen renders the gate itself. `describeAiProblem` and `waitPhrase` are
  *   Chef's wording for AI failures; Snap adds only what is specific to photos.
- * - Preference and recipe bridges: the user stores and the catalog use their own field names and
- *   vocabularies, while ranking and safety in `src/domain` expect the domain shapes. These
- *   functions translate one way only (store/catalog → domain) and fail closed.
+ * - Preference and recipe bridges: the app-wide translations from the user stores and the catalog
+ *   to the domain shapes ranking and safety expect (`@/stores/domainBridge`, `@/lib/catalog`).
+ *   They translate one way only (store/catalog → domain) and fail closed.
  * - `onAccountChange`: tells Snap when the signed-in account changes, so in-memory results from one
  *   account are never shown to the next.
  * - `logEstimatedMeal`: the cook log has no field for meals eaten out, so an estimate is recorded
  *   under a namespaced id with a readable note. See `ESTIMATED_MEAL_PREFIX`.
  */
-import type { SafetyPrefs } from '@/domain/safety';
-import { isRegionId } from '@/domain/types/cuisines';
-import type { Goal } from '@/domain/types/goals';
-import { DEFAULT_PREFERENCES, type UserPreferences } from '@/domain/types/preferences';
-import type { Nutrition, RecipeSummary as DomainRecipe } from '@/domain/types/recipe';
 import { useSessionStore } from '@/features/auth';
-import type { RecipeCandidate, RecipeSummary } from '@/lib/catalog';
-import type { HealthGoal, Preferences, Units } from '@/stores';
 import { useCookLogStore } from '@/stores';
 
 export { selectCanUseAi, useSessionStore } from '@/features/auth';
@@ -35,97 +28,10 @@ export function onAccountChange(listener: () => void): () => void {
   });
 }
 
-// --- Preferences --------------------------------------------------------------------------------
+// --- Preferences and recipes ------------------------------------------------------------------
 
-const GOAL_FROM_STORE: Readonly<Record<HealthGoal, Goal>> = {
-  more_protein: 'more_protein',
-  more_fiber: 'more_fiber',
-  lower_sodium: 'lower_sodium',
-  heart_friendly: 'heart_friendly',
-  lighter_meals: 'lighter_meals',
-  plant_forward: 'plant_forward',
-  steadier_energy: 'steady_energy',
-};
-
-/**
- * Allergen and diet answers in the shape the safety filter expects. Until the person has answered
- * the allergen question both are `null`, which the filter reads as "nothing is safe yet".
- */
-export function toSafetyPrefs(prefs: Preferences): SafetyPrefs {
-  if (!prefs.allergensAnswered) return { allergens: null, diets: null };
-  return { allergens: [...prefs.allergens], diets: [...prefs.diets] };
-}
-
-/** Full ranking preferences from the stored answers. */
-export function toUserPreferences(prefs: Preferences, units: Units): UserPreferences {
-  const safety = toSafetyPrefs(prefs);
-  return {
-    ...DEFAULT_PREFERENCES,
-    cuisines: [...prefs.cuisines],
-    diets: safety.diets,
-    allergens: safety.allergens,
-    goals: prefs.goals.map((goal) => GOAL_FROM_STORE[goal]),
-    timeBudgetMinutes: prefs.maxMinutes,
-    // No stated effort means any effort is fine.
-    effort: prefs.effort ?? 3,
-    householdSize: prefs.householdSize,
-    smallAppetite: prefs.smallAppetite,
-    units,
-  };
-}
-
-// --- Recipes -----------------------------------------------------------------------------------
-
-const NO_NUTRITION: Nutrition = Object.freeze({
-  kcal: null,
-  proteinG: null,
-  carbsG: null,
-  fatG: null,
-  satFatG: null,
-  fiberG: null,
-  sugarG: null,
-  addedSugarG: null,
-  sodiumMg: null,
-});
-
-/**
- * A catalog recipe in the domain shape. Core ingredients are the matched ingredient ids minus
- * pantry staples (salt, oil and the like), which is what pantry coverage counts.
- */
-export function toDomainRecipe(
-  recipe: RecipeSummary | RecipeCandidate,
-  staples: ReadonlySet<string> = new Set(),
-): DomainRecipe {
-  const ingredientIds = 'ingredientIds' in recipe ? recipe.ingredientIds : [];
-  const core = [...new Set(ingredientIds)].filter((id) => !staples.has(id));
-  return {
-    id: recipe.id,
-    slug: recipe.slug,
-    title: recipe.title,
-    summary: recipe.summary,
-    cuisine: recipe.cuisine,
-    region: isRegionId(recipe.region) ? recipe.region : 'global',
-    course: recipe.course,
-    totalMinutes: recipe.totalMinutes,
-    activeMinutes: recipe.activeMinutes,
-    servings: recipe.servings,
-    effort: recipe.effort,
-    imageUrl: recipe.imageUrl,
-    imageCredit: recipe.imageCredit,
-    sourceName: recipe.sourceName,
-    sourceUrl: recipe.sourceUrl,
-    license: recipe.license,
-    nutrition: recipe.nutrition ?? NO_NUTRITION,
-    nutritionConfidence: recipe.nutritionConfidence,
-    allergens: recipe.allergens,
-    dietFlags: recipe.dietFlags,
-    goalTags: recipe.goalTags,
-    gentle: recipe.gentle,
-    healthScore: recipe.healthScore,
-    familyId: recipe.familyId,
-    coreIngredientIds: core,
-  };
-}
+export { toSafetyPrefs, toUserPreferences } from '@/stores/domainBridge';
+export { toDomainRecipe } from '@/lib/catalog';
 
 // --- Cook log ----------------------------------------------------------------------------------
 

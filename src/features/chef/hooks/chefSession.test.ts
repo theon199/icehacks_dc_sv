@@ -90,7 +90,9 @@ beforeEach(() => {
   resetChefSession();
   usePreferencesStore.setState({ prefs: answeredPrefs() });
   askSpy.mockReset();
-  jest.mocked(listCandidates).mockResolvedValue([{ ...lentils, ingredientIds: [] }]);
+  jest
+    .mocked(listCandidates)
+    .mockResolvedValue([{ ...lentils, ingredientIds: [], coreIngredientIds: [] }]);
   jest.mocked(searchRecipes).mockResolvedValue({ items: [lentils], nextCursor: null });
   signIn('person-a');
 });

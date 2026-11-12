@@ -13,12 +13,15 @@ import {
   getCatalogMeta,
   getCuisines,
   getIngredients,
+  getPantryStaples,
   getRecipeDetail,
+  getRecipesByFamily,
   getRecipeSummaries,
   getSubstitutions,
   listCandidates,
   searchIngredients,
   searchRecipes,
+  type FamilyFilters,
 } from './queries';
 import { tokenize } from './searchQuery';
 import type { CandidateFilters, SearchFilters, SubstitutionGoal } from './types';
@@ -39,6 +42,12 @@ const catalogQueryOptions = {
   refetchOnReconnect: false,
 } as const;
 
+const allergenKey = (allergens: SearchFilters['avoidAllergens']): string =>
+  [...new Set(allergens ?? [])].sort().join(',');
+
+const dietKey = (mask: number | undefined): number =>
+  mask != null && Number.isFinite(mask) && mask > 0 ? Math.trunc(mask) : 0;
+
 /** Cache keys; normalised so equivalent inputs share one cache entry. */
 export const catalogKeys = {
   all: ['catalog'] as const,
@@ -52,6 +61,14 @@ export const catalogKeys = {
     ['catalog', 'ingredient-search', tokenize(text).join(' ')] as const,
   substitutions: (ids: readonly string[], goals: readonly SubstitutionGoal[] | undefined) =>
     ['catalog', 'substitutions', [...ids], goals ? [...goals] : null] as const,
+  family: (familyId: string, filters: FamilyFilters) =>
+    [
+      'catalog',
+      'family',
+      familyId,
+      { allergens: allergenKey(filters.avoidAllergens), dietMask: dietKey(filters.dietMask) },
+    ] as const,
+  pantryStaples: ['catalog', 'pantry-staples'] as const,
   cuisines: ['catalog', 'cuisines'] as const,
   meta: ['catalog', 'meta'] as const,
 };
@@ -77,12 +94,6 @@ export function useRecipes(ids: readonly string[]) {
     // briefly render the wrong cookbook or plan.
   });
 }
-
-const allergenKey = (allergens: SearchFilters['avoidAllergens']): string =>
-  [...new Set(allergens ?? [])].sort().join(',');
-
-const dietKey = (mask: number | undefined): number =>
-  mask != null && Number.isFinite(mask) && mask > 0 ? Math.trunc(mask) : 0;
 
 /**
  * True when two searches apply the same safety restrictions (avoided allergens and required diet
@@ -127,6 +138,32 @@ export function useCandidates(filters: CandidateFilters, options: { enabled?: bo
     queryKey: catalogKeys.candidates(filters),
     queryFn: () => listCandidates(filters),
     enabled: options.enabled ?? true,
+  });
+}
+
+/**
+ * Every version of one dish, healthiest first, read only once `familyId` is known. Safety filters
+ * are part of the cache key, so versions read under other allergen or diet answers are never reused.
+ */
+export function useRecipeFamily(
+  familyId: string | null | undefined,
+  filters: FamilyFilters = {},
+  options: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    ...catalogQueryOptions,
+    queryKey: catalogKeys.family(familyId ?? '', filters),
+    queryFn: () => getRecipesByFamily(familyId ?? '', filters),
+    enabled: !!familyId && (options.enabled ?? true),
+  });
+}
+
+/** Ingredients most kitchens keep on hand, by category then name. */
+export function usePantryStaples() {
+  return useQuery({
+    ...catalogQueryOptions,
+    queryKey: catalogKeys.pantryStaples,
+    queryFn: getPantryStaples,
   });
 }
 
