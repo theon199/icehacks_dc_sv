@@ -5,7 +5,8 @@
  * targets follow the Dietary Guidelines for Americans and the DRI tables:
  * - protein: the RDA of 0.8 g per kg body weight, and never below 10% of energy;
  * - fiber: 14 g per 1,000 kcal;
- * - sodium: at most 2,300 mg (2,200 mg under age 14);
+ * - sodium: the Chronic Disease Risk Reduction intake (CDRR) for the age group: 2,300 mg from age 14,
+ *   1,800 mg at 9–13, 1,500 mg at 4–8 and 1,200 mg at 1–3 (see `sodiumLimitForAge`);
  * - saturated fat and added sugars: each under 10% of energy;
  * - carbohydrate (50% of energy) and fat (30%) as mid-range reference shares.
  *
@@ -71,6 +72,21 @@ export function energyTarget(details: PersonalDetails): { kcal: number; personal
   return { kcal: Math.round(kcal / 10) * 10, personal: true };
 }
 
+/**
+ * Sodium CDRR (mg/day) by age, from the DRI tables the Dietary Guidelines use. No CDRR exists
+ * under age 1, so the lowest band is used there. Unknown age falls back to the adult value.
+ */
+export function sodiumLimitForAge(age: number | null | undefined): number {
+  if (!valid(age, 0, 130)) return 2300;
+  if (age < 4) return 1200;
+  if (age < 9) return 1500;
+  if (age < 14) return 1800;
+  return 2300;
+}
+
+/** The stricter limit used for the `lower_sodium` goal. */
+export const LOWER_SODIUM_MG = 1500;
+
 export function dailyTargets(
   details: PersonalDetails = {},
   options: TargetOptions = {},
@@ -87,8 +103,8 @@ export function dailyTargets(
       ? Math.max(goals.has('high_protein') ? 75 : REFERENCE_PROTEIN_G, proteinFloor)
       : Math.max(weight * proteinPerKg, proteinFloor);
 
-  const young = valid(details.age, 0, 13);
-  const sodiumLimit = goals.has('lower_sodium') ? 1500 : young ? 2200 : 2300;
+  const ageLimit = sodiumLimitForAge(details.age);
+  const sodiumLimit = goals.has('lower_sodium') ? Math.min(LOWER_SODIUM_MG, ageLimit) : ageLimit;
 
   return {
     kcal,

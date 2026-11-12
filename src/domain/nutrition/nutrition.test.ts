@@ -6,6 +6,7 @@ import {
   energyTarget,
   percentOfDailyValue,
   restingEnergy,
+  sodiumLimitForAge,
   sumNutrition,
   type ActivityLevel,
   type NutrientTotals,
@@ -106,9 +107,18 @@ describe('dailyTargets', () => {
     expect(dailyTargets({}, { goals: ['high_protein'] }).protein_g).toBe(100);
   });
 
-  it('uses the lower sodium limit for 13-year-olds', () => {
-    expect(dailyTargets({ age: 13 }).sodium_mg).toBe(2200);
+  it('uses the CDRR sodium limit for the age group', () => {
+    expect(dailyTargets({ age: 13 }).sodium_mg).toBe(1800);
+    expect(dailyTargets({ age: 9 }).sodium_mg).toBe(1800);
     expect(dailyTargets({ age: 14 }).sodium_mg).toBe(2300);
+    expect(dailyTargets({ age: 40 }).sodium_mg).toBe(2300);
+    expect(dailyTargets({}).sodium_mg).toBe(2300);
+    expect(sodiumLimitForAge(8)).toBe(1500);
+    expect(sodiumLimitForAge(4)).toBe(1500);
+    expect(sodiumLimitForAge(3)).toBe(1200);
+    // The lower-sodium goal never raises a younger person's limit.
+    expect(dailyTargets({ age: 5 }, { goals: ['lower_sodium'] }).sodium_mg).toBe(1500);
+    expect(dailyTargets({ age: 2 }, { goals: ['lower_sodium'] }).sodium_mg).toBe(1200);
   });
 
   it('keeps limits proportional to energy (property)', () => {
