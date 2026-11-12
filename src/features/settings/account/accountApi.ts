@@ -17,7 +17,7 @@ import {
   unregisterPushDevice,
   type SignOutScope,
 } from '../deps';
-import { discardLegacySettings } from '../legacySettings';
+import { discardLegacyAccount, migrateLegacySettings } from '../legacySettings';
 
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -155,11 +155,17 @@ export async function fetchServerExport(): Promise<Record<string, unknown>> {
   return parsed.data;
 }
 
+const DELETE_FAILED = 'Could not delete your account. Try again.';
+
 /**
  * Deletes the account through the auth feature, which removes it on the server and then stops
  * sync and wipes this device's copy of the account's data without pushing anything. The session
  * is then ended on this device. The server removes the account's push devices along with it, so
  * there is nothing to unregister.
+ *
+ * Once the server has deleted the account, a failure in the local cleanup is logged and sign-out
+ * carries on: staying signed in to an account that no longer exists helps no one, and the wipe
+ * also runs when the session ends.
  */
 export async function deleteAccount(): Promise<void> {
   const userId = useSessionStore.getState().userId;
@@ -167,16 +173,18 @@ export async function deleteAccount(): Promise<void> {
   try {
     await deleteSignedInAccount(userId);
   } catch (error) {
-    const fallback = 'Could not delete your account. Try again.';
+    // The auth feature reports every failure before or of the deletion call as an AccountError;
+    // anything else comes from the cleanup after the account was already deleted.
     if (isAccountError(error)) {
       throw new AccountError(
         error.kind,
-        error.kind === 'server' ? fallback : accountErrorMessage(error),
+        error.kind === 'server' ? DELETE_FAILED : accountErrorMessage(error),
       );
     }
-    throw toAccountError(error, fallback);
+    logger.error('Account deleted, but clearing this device failed', describeError(error));
   }
-  await discardLegacySettings(userId);
+  // The deleted account's own old answers have nowhere to go; other accounts' are left alone.
+  await discardLegacyAccount(userId);
   await finishSignOut(signOutHere);
 }
 
@@ -261,7 +269,13 @@ export interface SignOutOutcome {
 export async function signOutOfAccount(scope: SignOutScope): Promise<SignOutOutcome> {
   const userId = useSessionStore.getState().userId;
   await bestEffort(unregisterPushDevice, PUSH_UNREGISTER_TIMEOUT_MS);
-  await discardLegacySettings(userId);
+  // Old answers this account still has on the device are moved now, while sync can send them.
+  // When that is not safe yet they stay, to be moved on the account's next sign-in here.
+  if (userId) {
+    await migrateLegacySettings(userId).catch((error: unknown) => {
+      logger.warn('Could not move old Settings answers before signing out', describeError(error));
+    });
+  }
   let everywhere = false;
   await finishSignOut(async () => {
     everywhere = await endAuthSession(scope);

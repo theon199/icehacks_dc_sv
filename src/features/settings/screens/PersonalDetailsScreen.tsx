@@ -139,8 +139,8 @@ function PersonalDetailsForm() {
     >
       <Text variant="callout" tone="muted">
         All optional. Famara uses these only to estimate your daily energy and protein targets. They
-        are kept in this device&apos;s secure storage, backed up privately with your account so your
-        other devices have them, and never shown to anyone.
+        are saved to your Famara account and synced to the other devices you sign in on. On this
+        device they are kept in secure storage. They are never shown to other people.
       </Text>
 
       <Card style={styles.card}>

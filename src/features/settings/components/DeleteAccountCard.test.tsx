@@ -112,6 +112,17 @@ describe('DeleteAccountCard', () => {
     expect(await SecureStore.getItemAsync('famara.personal-details.user-1')).toBeNull();
   });
 
+  it('still signs out when clearing this device fails after the account was deleted', async () => {
+    mockDeletedCleanup.mockImplementationOnce(() => {
+      throw new Error('could not reset a store');
+    });
+    const user = await openAndType('DELETE');
+    await user.press(screen.getByTestId('account-delete-confirm'));
+
+    await waitFor(() => expect(useSessionStore.getState().status).toBe('signedOut'));
+    expect(mockClient.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
   it('shows the problem and stays signed in when deletion fails', async () => {
     rpcReply = { data: null, error: { code: 'XX000', message: 'boom' } };
     const user = await openAndType('DELETE');

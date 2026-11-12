@@ -4,8 +4,9 @@
  * That build saved food preferences and notification choices under the `settings.user` key (one
  * entry per account) and personal details in a per-account Keychain entry. Nothing else in the app
  * read them, so an allergen added there never reached the safety filter. Once the signed-in
- * account's stores are known to be its own, its entry is merged into the shared stores and every
- * old copy is deleted.
+ * account's stores hold its own, freshly synced data, its entry is merged into the shared stores
+ * and that account's old copies are deleted. Entries of other accounts are left alone: each is
+ * moved when that account next signs in on this device.
  *
  * Merging never loosens safety: declared allergens and diets are added to what the shared store
  * already holds, never used to replace it. Other answers only overwrite the shared store when the
@@ -13,6 +14,7 @@
  * with defaults when only a notification switch had been touched.
  */
 import * as SecureStore from 'expo-secure-store';
+import Storage from 'expo-sqlite/kv-store';
 import { useEffect } from 'react';
 import { z } from 'zod';
 
@@ -25,8 +27,8 @@ import {
   type DietFlagName,
 } from '@/domain/types';
 import { describeError, logger } from '@/lib/logger';
-import { defineKvKey } from '@/lib/storage/kv';
-import { selectSyncPhase, useSyncStatusStore } from '@/lib/sync';
+import { storageKey } from '@/lib/storage/kv';
+import { useSyncStatusStore } from '@/lib/sync';
 
 import {
   MAX_CUISINES,
@@ -45,12 +47,14 @@ import {
   type Preferences,
 } from './deps';
 
-/** The old zustand `persist` envelope: `{ state: { accounts: { [userId]: entry } } }`. */
-const legacyEnvelope = z.object({
-  state: z.object({ accounts: z.record(z.string(), z.unknown()) }),
+/** The old zustand `persist` envelope: `{ state: { accounts: { [userId]: entry } }, version }`. */
+const legacyEnvelope = z.looseObject({
+  state: z.looseObject({ accounts: z.record(z.string(), z.unknown()) }),
 });
+type LegacyEnvelope = z.infer<typeof legacyEnvelope>;
 
-const legacyKey = defineKvKey('settings.user', legacyEnvelope);
+/** Read directly, so an unreadable value is never deleted along with other accounts' answers. */
+const LEGACY_KEY = storageKey('settings.user');
 const legacyPersonalKey = (userId: string) => `famara.personal-details.${userId}`;
 
 /** Each field is read on its own, so one odd value cannot take the rest of the entry with it. */
@@ -143,13 +147,29 @@ export function planLegacyMigration(entry: unknown, current: Preferences): Legac
   return plan;
 }
 
-function readLegacyAccounts(): Record<string, unknown> | null {
+type LegacyRead =
+  | { kind: 'absent' }
+  /** Stored but unreadable. Nothing in it can be attributed to an account, so it is kept. */
+  | { kind: 'malformed' }
+  | { kind: 'ok'; envelope: LegacyEnvelope };
+
+function readLegacyEnvelope(): LegacyRead {
+  let raw: string | null;
   try {
-    return legacyKey.getSync()?.state.accounts ?? null;
+    raw = Storage.getItemSync(LEGACY_KEY);
   } catch (error) {
     logger.warn('Could not read the old settings entry', describeError(error));
-    return null;
+    return { kind: 'malformed' };
   }
+  if (raw == null) return { kind: 'absent' };
+  try {
+    const parsed = legacyEnvelope.safeParse(JSON.parse(raw));
+    if (parsed.success) return { kind: 'ok', envelope: parsed.data };
+  } catch {
+    // Not JSON; reported below.
+  }
+  logger.warn('The old settings entry is unreadable; leaving it in place');
+  return { kind: 'malformed' };
 }
 
 interface LegacyPersonalDetails {
@@ -175,44 +195,66 @@ async function readLegacyPersonalDetails(userId: string): Promise<LegacyPersonal
 }
 
 /**
- * Deletes every old copy: the shared key/value entry and the Keychain entry of each account it
- * names (plus `alsoFor`, which may have personal details without a key/value entry).
+ * Deletes one account's old copies: its entry in the shared key/value value (the key goes once no
+ * account is left in it) and its Keychain personal details. Other accounts' entries are kept.
  */
-export async function discardLegacySettings(alsoFor?: string | null): Promise<void> {
-  const accounts = Object.keys(readLegacyAccounts() ?? {});
-  if (alsoFor && !accounts.includes(alsoFor)) accounts.push(alsoFor);
-  try {
-    await legacyKey.remove();
-  } catch (error) {
-    logger.warn('Could not remove the old settings entry', describeError(error));
+export async function discardLegacyAccount(userId: string): Promise<void> {
+  const read = readLegacyEnvelope();
+  if (read.kind === 'ok' && userId in read.envelope.state.accounts) {
+    const { [userId]: _removed, ...rest } = read.envelope.state.accounts;
+    try {
+      if (Object.keys(rest).length === 0) Storage.removeItemSync(LEGACY_KEY);
+      else {
+        const next = { ...read.envelope, state: { ...read.envelope.state, accounts: rest } };
+        Storage.setItemSync(LEGACY_KEY, JSON.stringify(next));
+      }
+    } catch (error) {
+      logger.warn('Could not remove the old settings entry', describeError(error));
+    }
   }
-  await Promise.all(
-    accounts.map((id) =>
-      SecureStore.deleteItemAsync(legacyPersonalKey(id)).catch((error: unknown) => {
-        logger.warn('Could not remove old personal details', describeError(error));
-      }),
-    ),
-  );
+  await SecureStore.deleteItemAsync(legacyPersonalKey(userId)).catch((error: unknown) => {
+    logger.warn('Could not remove old personal details', describeError(error));
+  });
 }
 
 const stillSignedInAs = (userId: string) => useSessionStore.getState().userId === userId;
 
 /**
- * Moves the signed-in account's old Settings answers into the shared stores, then deletes every old
- * copy. Call it only once the stores are known to hold this account's data (sync has started).
- * Resolves true when old data was found and handled; leaves it in place to retry later when the
- * account changes meanwhile or its stores are not ready.
+ * True once this sync run has completed a pull. Only then do the stores hold the account's latest
+ * answers: writing earlier would stamp stale data as newest and could overwrite a change made on
+ * another device (an allergen added there, say). `lastSyncedAt` starts empty for every run.
  */
-export async function migrateLegacySettings(userId: string): Promise<boolean> {
-  if (!stillSignedInAs(userId) || !isOnboarded()) return false;
-  const accounts = readLegacyAccounts();
+function syncHasPulled(): boolean {
+  const status = useSyncStatusStore.getState();
+  return status.phase !== 'stopped' && status.lastSyncedAt != null;
+}
+
+const canWriteFor = (userId: string) => stillSignedInAs(userId) && isOnboarded() && syncHasPulled();
+
+export type LegacyMigrationResult =
+  /** Old answers were moved and this account's old copies deleted. */
+  | 'migrated'
+  /** This account has no old copies. */
+  | 'nothing'
+  /** Not safe to write yet (wrong account, not onboarded, or no completed pull); try later. */
+  | 'notReady';
+
+/**
+ * Moves the signed-in account's old Settings answers into the shared stores, then deletes that
+ * account's old copies. It checks for itself that `userId` is signed in, that the stores hold its
+ * onboarding answers and that sync has completed a pull, so it never writes into another account's
+ * data or ahead of newer synced answers.
+ */
+export async function migrateLegacySettings(userId: string): Promise<LegacyMigrationResult> {
+  if (!canWriteFor(userId)) return 'notReady';
+  const read = readLegacyEnvelope();
+  const entry = read.kind === 'ok' ? read.envelope.state.accounts[userId] : undefined;
   const old = await readLegacyPersonalDetails(userId);
-  if (accounts == null && !old.present) return false;
+  if (entry === undefined && !old.present) return 'nothing';
 
   await personalDetailsLoaded();
-  if (!stillSignedInAs(userId) || !isOnboarded()) return false;
+  if (!canWriteFor(userId)) return 'notReady';
 
-  const entry = accounts?.[userId];
   if (entry != null) {
     const prefs = usePreferencesStore.getState();
     const plan = planLegacyMigration(entry, prefs.prefs);
@@ -225,41 +267,43 @@ export async function migrateLegacySettings(userId: string): Promise<boolean> {
   if (old.details != null && !selectHasPersonalDetails(usePersonalDetailsStore.getState())) {
     usePersonalDetailsStore.getState().update(old.details);
   }
-  await discardLegacySettings(userId);
+  await discardLegacyAccount(userId);
   logger.info('Moved old Settings answers into the shared stores');
-  return true;
+  return 'migrated';
 }
 
-let checkedFor: string | null = null;
-let running: Promise<unknown> | null = null;
+/** Accounts whose old answers have been dealt with in this app session. */
+const checked = new Set<string>();
+/** Runs in flight, per account, so one account's run never holds up another's. */
+const running = new Map<string, Promise<void>>();
 
 /**
- * Runs the migration once per signed-in account, as soon as that account is in the app and sync
- * has started (which is when sync has confirmed the local stores belong to it).
+ * Runs the migration once per signed-in account, after sync has completed a pull for it. Each
+ * completed sync round re-evaluates, so an attempt that was not ready yet is retried, and a change
+ * of account starts that account's own attempt.
  */
 export function useLegacySettingsMigration(): void {
   const userId = useSessionStore((s) => (s.status === 'ready' ? s.userId : null));
-  const syncStarted = useSyncStatusStore((s) => selectSyncPhase(s) !== 'stopped');
+  const syncedAt = useSyncStatusStore((s) => (s.phase === 'stopped' ? null : s.lastSyncedAt));
 
   useEffect(() => {
-    if (!userId || !syncStarted || checkedFor === userId || running) return;
+    if (!userId || syncedAt == null || checked.has(userId) || running.has(userId)) return;
     const run = migrateLegacySettings(userId)
-      .then((done) => {
-        // Nothing to move also counts as checked; an unready store is tried again later.
-        if (done || (stillSignedInAs(userId) && isOnboarded())) checkedFor = userId;
+      .then((result) => {
+        if (result !== 'notReady') checked.add(userId);
       })
       .catch((error: unknown) => {
         logger.warn('Could not move old Settings answers yet', describeError(error));
       })
       .finally(() => {
-        running = null;
+        running.delete(userId);
       });
-    running = run;
-  }, [userId, syncStarted]);
+    running.set(userId, run);
+  }, [userId, syncedAt]);
 }
 
 /** Test hook. */
 export function resetLegacyMigrationForTests(): void {
-  checkedFor = null;
-  running = null;
+  checked.clear();
+  running.clear();
 }

@@ -13,15 +13,12 @@ import { GeneralSettings } from '../components/GeneralSettings';
 import { NotificationSettings } from '../components/NotificationSettings';
 import { SettingsSection } from '../components/SettingsSection';
 import { HealthConnections } from '../deps';
-import { useSettingsLaunchSync } from '../useSettingsLaunchSync';
 
 /** The settings hub: account, preferences, display, notifications, AI, privacy and about. */
 export function SettingsScreen() {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const version = formatAppVersion(readAppVersion());
-  // Also mounted near the root; repeating it here keeps Settings correct on its own.
-  useSettingsLaunchSync();
 
   const run = async (work: () => Promise<void>) => {
     setSigningOut(true);
