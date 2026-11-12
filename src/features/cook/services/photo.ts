@@ -3,7 +3,7 @@
  * on its longest side. Re-encoding also leaves out the original file's metadata (such as where it
  * was taken).
  */
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { ImageManipulator, SaveFormat, type ImageRef } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
 import { fitWithin } from '../logic/session';
@@ -27,11 +27,18 @@ export type PickResult =
 
 export async function compressPhoto(input: CookPhoto): Promise<CookPhoto> {
   const context = ImageManipulator.manipulate(input.uri);
-  const size = fitWithin(input.width, input.height, PHOTO_MAX_EDGE);
-  if (size) context.resize(size);
-  const image = await context.renderAsync();
-  const saved = await image.saveAsync({ compress: PHOTO_QUALITY, format: SaveFormat.JPEG });
-  return { uri: saved.uri, width: saved.width, height: saved.height };
+  let image: ImageRef | null = null;
+  try {
+    const size = fitWithin(input.width, input.height, PHOTO_MAX_EDGE);
+    if (size) context.resize(size);
+    image = await context.renderAsync();
+    const saved = await image.saveAsync({ compress: PHOTO_QUALITY, format: SaveFormat.JPEG });
+    return { uri: saved.uri, width: saved.width, height: saved.height };
+  } finally {
+    // Both hold a decoded full-size bitmap natively until released.
+    image?.release();
+    context.release();
+  }
 }
 
 export async function pickCookPhoto(source: PhotoSource): Promise<PickResult> {
