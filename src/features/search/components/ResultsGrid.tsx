@@ -54,7 +54,7 @@ export function ResultsGrid({
       keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
       ListHeaderComponent={header ? <View style={styles.header}>{header}</View> : null}
-      ListEmptyComponent={empty}
+      ListEmptyComponent={empty ? <View style={styles.empty}>{empty}</View> : null}
       ListFooterComponent={
         loadingMore ? (
           <ActivityIndicator
@@ -72,6 +72,7 @@ export function ResultsGrid({
 const styles = StyleSheet.create({
   content: { paddingHorizontal: gutter - GAP / 2, paddingBottom: space.huge },
   header: { paddingHorizontal: GAP / 2, paddingTop: space.md },
+  empty: { paddingHorizontal: GAP / 2 },
   cell: { flex: 1, paddingHorizontal: GAP / 2, paddingBottom: space.xl },
   footer: { paddingVertical: space.xl },
 });

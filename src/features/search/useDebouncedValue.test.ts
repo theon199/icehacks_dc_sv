@@ -8,9 +8,12 @@ afterEach(() => jest.useRealTimers());
 describe('useDebouncedValue', () => {
   it('waits 150 ms after the last change', async () => {
     expect(SEARCH_DEBOUNCE_MS).toBe(150);
-    const { result, rerender } = await renderHook(({ value }) => useDebouncedValue(value), {
-      initialProps: { value: '' },
-    });
+    const { result, rerender } = await renderHook(
+      ({ value }: { value: string }) => useDebouncedValue(value),
+      {
+        initialProps: { value: '' },
+      },
+    );
     await rerender({ value: 'l' });
     await act(async () => {
       jest.advanceTimersByTime(100);
@@ -32,9 +35,12 @@ describe('useDebouncedValue', () => {
   });
 
   it('applies clearing at once', async () => {
-    const { result, rerender } = await renderHook(({ value }) => useDebouncedValue(value), {
-      initialProps: { value: 'soup' },
-    });
+    const { result, rerender } = await renderHook(
+      ({ value }: { value: string }) => useDebouncedValue(value),
+      {
+        initialProps: { value: 'soup' },
+      },
+    );
     await rerender({ value: '' });
     expect(result.current).toBe('');
   });
