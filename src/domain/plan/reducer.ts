@@ -17,7 +17,7 @@ import {
   type WeekPlan,
 } from './types';
 
-/** How many archived weeks are kept; older ones are dropped first. */
+/** How many archived weeks are kept; the earliest archived are dropped first. */
 export const ARCHIVE_LIMIT = 52;
 
 export interface FillAssignment {

@@ -49,7 +49,7 @@ export interface ItemCost {
   readonly wholePackageCents: number | null;
   readonly source: string | null;
   readonly fetchedAt: string | null;
-  /** The price is older than the freshness window. */
+  /** The price was fetched before the freshness window began. */
   readonly stale: boolean;
 }
 
