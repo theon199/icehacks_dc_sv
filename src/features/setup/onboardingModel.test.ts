@@ -1,3 +1,5 @@
+import { userPreferencesSchema } from '@/domain/types';
+
 import {
   STEP_IDS,
   canContinue,
@@ -30,8 +32,10 @@ describe('steps', () => {
 
   it('needs an answer before continuing on optional questions', () => {
     expect(canContinue('time', emptyDraft)).toBe(false);
-    expect(canContinue('time', { ...emptyDraft, timeChosen: true, maxMinutes: null })).toBe(true);
-    expect(canContinue('effort', { ...emptyDraft, effort: 'easy' })).toBe(true);
+    expect(canContinue('time', { ...emptyDraft, timeChosen: true, timeBudgetMinutes: null })).toBe(
+      true,
+    );
+    expect(canContinue('effort', { ...emptyDraft, effort: 1 })).toBe(true);
     expect(canContinue('name', { ...emptyDraft, displayName: '  ' })).toBe(false);
   });
 
@@ -78,7 +82,7 @@ describe('answers', () => {
         displayName: '  Ana  ',
         cuisines: ['thai'],
         timeChosen: true,
-        maxMinutes: 30,
+        timeBudgetMinutes: 30,
         householdSize: 40,
       }),
     ).toEqual({
@@ -87,12 +91,33 @@ describe('answers', () => {
       diets: [],
       allergens: [],
       goals: [],
-      maxMinutes: 30,
+      timeBudgetMinutes: 30,
       effort: null,
-      householdSize: 12,
+      householdSize: 20,
       pantryStaples: [],
       smallAppetite: false,
     });
+  });
+
+  it('uses the shared preference fields, so the answers fit the preferences schema', () => {
+    const answers = toAnswers({
+      ...withAllergensAnswered,
+      cuisines: ['thai', 'Not A Cuisine'],
+      timeChosen: true,
+      timeBudgetMinutes: 45,
+      effort: 3,
+      householdSize: 6,
+    });
+    expect(answers.cuisines).toEqual(['thai']);
+    const { displayName: _name, pantryStaples: _pantry, ...shared } = answers;
+    expect(userPreferencesSchema.parse({ ...shared, effort: shared.effort ?? undefined })).toEqual(
+      expect.objectContaining({
+        cuisines: ['thai'],
+        timeBudgetMinutes: 45,
+        effort: 3,
+        householdSize: 6,
+      }),
+    );
   });
 
   it('refuses to finish without an allergen answer', () => {

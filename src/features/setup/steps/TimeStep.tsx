@@ -19,8 +19,10 @@ export function TimeStep({ draft, onChange }: StepProps) {
             testID={`time-${choice.minutes ?? 'any'}`}
             label={choice.label}
             icon="clock"
-            selected={draft.timeChosen && draft.maxMinutes === choice.minutes}
-            onSelect={() => onChange({ ...draft, maxMinutes: choice.minutes, timeChosen: true })}
+            selected={draft.timeChosen && draft.timeBudgetMinutes === choice.minutes}
+            onSelect={() =>
+              onChange({ ...draft, timeBudgetMinutes: choice.minutes, timeChosen: true })
+            }
           />
         ))}
       </View>

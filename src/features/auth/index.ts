@@ -44,6 +44,7 @@ export {
   GOAL_IDS,
   MAX_CUISINES,
   MAX_HOUSEHOLD,
+  TIME_BUDGET_CHOICES,
   aiConsent,
   preferences,
   type AllergenId,

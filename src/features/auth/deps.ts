@@ -15,11 +15,15 @@ import {
   DIET_FLAG_NAMES,
   GOAL_IDS as DOMAIN_GOAL_IDS,
   MAX_LOVED_CUISINES,
+  TIME_BUDGET_CHOICES as DOMAIN_TIME_BUDGET_CHOICES,
   allergenIdSchema,
+  cuisineIdSchema,
   dietFlagNameSchema,
+  effortSchema,
   goalIdSchema,
   type AllergenId as DomainAllergenId,
   type DietFlagName,
+  type Effort,
   type Goal,
 } from '@/domain/types';
 import { logger } from '@/lib/logger';
@@ -35,22 +39,38 @@ export type DietId = DietFlagName;
 export const GOAL_IDS = DOMAIN_GOAL_IDS;
 export type GoalId = Goal;
 
-export const EFFORT_LEVELS = ['easy', 'moderate', 'involved'] as const;
-export type EffortLevel = (typeof EFFORT_LEVELS)[number];
+/** 1 keeps it easy, 2 is some effort, 3 is involved cooking (the shared `Effort` scale). */
+export const EFFORT_LEVELS: readonly Effort[] = [1, 2, 3];
+export type EffortLevel = Effort;
+
+/** Weeknight time budgets offered, in minutes; "no limit" is stored as null. */
+export const TIME_BUDGET_CHOICES = DOMAIN_TIME_BUDGET_CHOICES;
 
 export const MAX_CUISINES = MAX_LOVED_CUISINES;
-export const MAX_HOUSEHOLD = 12;
+/** Largest household `userPreferencesSchema` accepts. */
+export const MAX_HOUSEHOLD = 20;
 
+/**
+ * Onboarding answers use the field names and value types of the shared `UserPreferences`
+ * (src/domain/types/preferences.ts), plus the few answers that live elsewhere (display name,
+ * pantry starters). Skipped optional questions are null or empty rather than a default.
+ */
 const answersSchema = z.object({
   displayName: z.string().trim().min(1).max(50).nullable(),
-  cuisines: z.array(z.string().min(1)).max(MAX_CUISINES),
+  cuisines: z.array(cuisineIdSchema).max(MAX_CUISINES),
   diets: z.array(dietFlagNameSchema),
   /** An empty list is an explicit "no allergies", given on its own screen. */
   allergens: z.array(allergenIdSchema),
   goals: z.array(goalIdSchema),
-  /** Longest a typical weekday cook should take, in minutes; null for no limit. */
-  maxMinutes: z.number().int().positive().nullable(),
-  effort: z.enum(EFFORT_LEVELS).nullable(),
+  /** Minutes available on a typical weeknight; null for no limit. */
+  timeBudgetMinutes: z
+    .number()
+    .int()
+    .min(5)
+    .max(24 * 60)
+    .nullable(),
+  /** The most involved cooking the person is happy with; null when skipped. */
+  effort: effortSchema.nullable(),
   householdSize: z.number().int().min(1).max(MAX_HOUSEHOLD),
   pantryStaples: z.array(z.string().min(1)),
   smallAppetite: z.boolean(),

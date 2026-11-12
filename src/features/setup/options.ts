@@ -2,10 +2,16 @@
  * Labels and helper copy for the onboarding answers. Identifiers come from the preferences
  * contract; this file only decides how they read on screen.
  */
-import type { AllergenId, DietId, EffortLevel, GoalId } from '@/features/auth';
+import {
+  TIME_BUDGET_CHOICES,
+  type AllergenId,
+  type DietId,
+  type EffortLevel,
+  type GoalId,
+} from '@/features/auth';
 import type { IconName } from '@/ui';
 
-export interface Choice<T extends string> {
+export interface Choice<T extends string | number> {
   id: T;
   label: string;
   description?: string;
@@ -47,29 +53,30 @@ export const goalChoices: readonly Choice<GoalId>[] = [
   { id: 'steady_energy', label: 'Steadier energy', icon: 'bolt.heart' },
 ];
 
+function budgetLabel(minutes: number): string {
+  return minutes === 60 ? 'An hour' : `${minutes} minutes`;
+}
+
 export const timeChoices: readonly { minutes: number | null; label: string }[] = [
-  { minutes: 15, label: '15 minutes' },
-  { minutes: 30, label: '30 minutes' },
-  { minutes: 45, label: '45 minutes' },
-  { minutes: 60, label: 'An hour' },
+  ...TIME_BUDGET_CHOICES.map((minutes) => ({ minutes, label: budgetLabel(minutes) })),
   { minutes: null, label: 'No limit' },
 ];
 
 export const effortChoices: readonly Choice<EffortLevel>[] = [
   {
-    id: 'easy',
+    id: 1,
     label: 'Keep it simple',
     description: 'Few steps and everyday techniques.',
     icon: 'hare.fill',
   },
   {
-    id: 'moderate',
+    id: 2,
     label: 'Happy to cook',
     description: 'A few more steps for a better result.',
     icon: 'frying.pan',
   },
   {
-    id: 'involved',
+    id: 3,
     label: 'Bring it on',
     description: 'Projects and new techniques welcome.',
     icon: 'flame',

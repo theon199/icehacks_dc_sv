@@ -2,6 +2,7 @@
  * The onboarding questionnaire as data: the steps, the draft answers, the rules for moving on and
  * how a finished draft becomes the saved preferences. Pure, so it is tested without rendering.
  */
+import { cuisineIdSchema } from '@/domain/types';
 import {
   MAX_CUISINES,
   MAX_HOUSEHOLD,
@@ -49,7 +50,7 @@ export interface Draft {
   noAllergens: boolean;
   goals: GoalId[];
   /** Null means "no limit" once `timeChosen` is true. */
-  maxMinutes: number | null;
+  timeBudgetMinutes: number | null;
   timeChosen: boolean;
   effort: EffortLevel | null;
   householdSize: number;
@@ -64,7 +65,7 @@ export const emptyDraft: Draft = {
   allergens: [],
   noAllergens: false,
   goals: [],
-  maxMinutes: null,
+  timeBudgetMinutes: null,
   timeChosen: false,
   effort: null,
   householdSize: 1,
@@ -83,7 +84,7 @@ export function draftFrom(saved: OnboardingAnswers | null, suggestedName: string
     // Saved answers always went through the allergen question.
     noAllergens: saved.allergens.length === 0,
     goals: [...saved.goals],
-    maxMinutes: saved.maxMinutes,
+    timeBudgetMinutes: saved.timeBudgetMinutes,
     timeChosen: true,
     effort: saved.effort,
     householdSize: saved.householdSize,
@@ -125,7 +126,7 @@ export function skipStep(step: StepId, draft: Draft): Draft {
     case 'goals':
       return { ...draft, goals: [] };
     case 'time':
-      return { ...draft, maxMinutes: null, timeChosen: false };
+      return { ...draft, timeBudgetMinutes: null, timeChosen: false };
     case 'effort':
       return { ...draft, effort: null };
     case 'pantry':
@@ -181,11 +182,14 @@ export function toAnswers(draft: Draft): OnboardingAnswers {
   const name = draft.displayName.trim().slice(0, 50);
   return {
     displayName: name || null,
-    cuisines: draft.cuisines.slice(0, MAX_CUISINES),
+    // Catalog ids that are not valid cuisine ids cannot be saved, so they are left out.
+    cuisines: draft.cuisines
+      .filter((id) => cuisineIdSchema.safeParse(id).success)
+      .slice(0, MAX_CUISINES),
     diets: [...draft.diets],
     allergens: draft.noAllergens ? [] : [...draft.allergens],
     goals: [...draft.goals],
-    maxMinutes: draft.timeChosen ? draft.maxMinutes : null,
+    timeBudgetMinutes: draft.timeChosen ? draft.timeBudgetMinutes : null,
     effort: draft.effort,
     householdSize: clampHousehold(draft.householdSize),
     pantryStaples: [...draft.pantryStaples],

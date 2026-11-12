@@ -131,7 +131,7 @@ describe('OnboardingScreen', () => {
       diets: ['vegetarian'],
       allergens: ['peanut'],
       goals: [],
-      maxMinutes: 30,
+      timeBudgetMinutes: 30,
       effort: null,
       householdSize: 2,
       pantryStaples: ['olive_oil'],

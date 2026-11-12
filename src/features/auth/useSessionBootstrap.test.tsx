@@ -70,7 +70,7 @@ const answers = (overrides: Partial<OnboardingAnswers> = {}): OnboardingAnswers 
   diets: [],
   allergens: [],
   goals: [],
-  maxMinutes: null,
+  timeBudgetMinutes: null,
   effort: null,
   householdSize: 1,
   pantryStaples: [],
@@ -105,7 +105,7 @@ describe('useSessionBootstrap', () => {
       userId: 'user-1',
       birthYear: null,
     });
-    expect(mockAuth.rpc).toHaveBeenCalledWith('my_account_status', undefined);
+    expect(mockAuth.rpc).toHaveBeenCalledWith('my_account_status');
   });
 
   it('takes the birth year from the server and remembers it as a launch hint', async () => {
