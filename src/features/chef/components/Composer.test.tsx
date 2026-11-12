@@ -106,6 +106,15 @@ describe('Composer', () => {
       expect(announce).toHaveBeenCalledTimes(1);
     });
 
+    it('reads the note out on mount when Chef is already limited', async () => {
+      const limitedUntil = Date.now() + 60 * 60 * 1000;
+      await renderWithTheme(
+        <Composer busy={false} limitedUntil={limitedUntil} onSend={jest.fn()} />,
+      );
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(limitResetNote(limitedUntil));
+    });
+
     it('stays quiet while Chef is not limited', async () => {
       await renderWithTheme(<Composer busy={false} onSend={jest.fn()} />);
       expect(announce).not.toHaveBeenCalled();

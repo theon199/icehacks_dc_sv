@@ -83,8 +83,10 @@ function useDayStart(active: boolean): number {
 }
 
 /**
- * Reads the limit note out once when the limit starts (or moves to another reset time). The note
- * is plain text that appears above the field, which VoiceOver would otherwise never mention.
+ * Reads the limit note out once whenever a limit is shown: when the composer mounts already limited
+ * (opening or switching to a thread after the allowance ran out), when the limit starts while it is
+ * open, and when the reset time moves. The note is plain text above the field, which VoiceOver
+ * would otherwise never mention, so a person reopening Chef learns why the field is unavailable.
  */
 function useAnnounceLimit(limitedUntil: number | null): void {
   useEffect(() => {
