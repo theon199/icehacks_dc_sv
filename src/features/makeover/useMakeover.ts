@@ -4,10 +4,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { AllergenId } from '@/domain/types/allergens';
 import type { MakeoverRequest, MakeoverResponse } from '@/lib/api/ai';
 import { usePreferencesStore } from '@/stores';
-
-import type { AllergenId } from '@/domain/types/allergens';
 
 import { aiApi, describeAiProblem, type AiProblem } from './deps';
 import type { AllergenHit } from './logic/allergenCheck';

@@ -81,6 +81,13 @@ export function dismissChefProblem(threadId: string): void {
   useChefSession.setState((state) => ({ failures: omit(state.failures, threadId) }));
 }
 
+/** Forgets a spent allowance once its reset time (`until`) has come. */
+export function expireLimit(until: number): void {
+  if (useChefSession.getState().limitedUntil === until) {
+    useChefSession.setState({ limitedUntil: null, quotaNote: null });
+  }
+}
+
 /** Clears a thread's suggestions once the person asks something new in it. */
 export function clearFollowUps(threadId: string): void {
   useChefSession.setState((state) => ({ followUps: omit(state.followUps, threadId) }));

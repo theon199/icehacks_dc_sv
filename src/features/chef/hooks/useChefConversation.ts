@@ -7,19 +7,20 @@
  * preferences before they are stored, and again whenever a message is displayed. A question keeps
  * running when the screen goes away, and its answer lands in the thread.
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 import { selectThread, useChefStore, type ChefMessage } from '@/stores';
 
-import { withPhotoMark } from '../logic/conversation';
-import type { AiProblem } from '../logic/problems';
 import {
   askChef,
   clearFollowUps,
   dismissChefProblem,
+  expireLimit,
   isChefBusy,
   useChefSession,
 } from './chefSession';
+import { withPhotoMark } from '../logic/conversation';
+import type { AiProblem } from '../logic/problems';
 
 const NO_MESSAGES: readonly ChefMessage[] = [];
 const NO_FOLLOW_UPS: readonly string[] = [];
@@ -62,6 +63,18 @@ export function useChefConversation(
   const quotaNote = useChefSession((state) => state.quotaNote);
   const limitedUntil = useChefSession((state) => state.limitedUntil);
 
+  useEffect(() => {
+    if (limitedUntil == null) return;
+    const wait = limitedUntil - Date.now();
+    if (wait <= 0) {
+      expireLimit(limitedUntil);
+      return;
+    }
+    // Browsers and Hermes cap timers at about 24.8 days; a daily allowance never gets near it.
+    const timer = setTimeout(() => expireLimit(limitedUntil), Math.min(wait, 2 ** 31 - 1));
+    return () => clearTimeout(timer);
+  }, [limitedUntil]);
+
   const send = useCallback(
     ({ text, photo }: SendInput) => {
       const trimmed = text.trim();
@@ -98,8 +111,7 @@ export function useChefConversation(
     problem: failure?.problem ?? null,
     followUps: followUps ?? NO_FOLLOW_UPS,
     quotaNote,
-    // Read at render: the screen re-renders often enough while someone is looking at it.
-    limited: limitedUntil != null && limitedUntil > Date.now(),
+    limited: limitedUntil != null,
     send,
     retry,
     dismissProblem,

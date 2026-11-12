@@ -2,11 +2,10 @@
  * Builds a makeover request from a catalog recipe and lists the parts of an answer that the local
  * allergen check reads.
  */
+import type { AllergenId } from '@/domain/types/allergens';
 import type { MakeoverRequest, MakeoverResponse } from '@/lib/api/ai';
 import type { RecipeDetail } from '@/lib/catalog';
 import { HEALTH_GOALS, type HealthGoal, type Preferences } from '@/stores';
-
-import type { AllergenId } from '@/domain/types/allergens';
 
 import {
   findAllergenMentions,
