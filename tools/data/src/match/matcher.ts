@@ -48,6 +48,7 @@ const MEASURE_WORDS = new Set([
   'gram',
   'handful',
   'head',
+  'inch',
   'jar',
   'kg',
   'knob',
@@ -87,29 +88,18 @@ const NON_INGREDIENT_WORDS = new Set([
   // serving notes and quantities
   'about',
   'additional',
-  'alternative',
-  'alternatively',
-  'another',
-  'any',
   'approx',
   'approximately',
   'around',
   'as',
   'at',
-  'both',
   'brushing',
-  'choice',
-  'combination',
   'decorate',
   'decoration',
   'desired',
   'drizzling',
   'dusting',
-  'either',
-  'equivalent',
   'extra',
-  'favorite',
-  'favourite',
   'for',
   'frying',
   'garnish',
@@ -117,46 +107,35 @@ const NON_INGREDIENT_WORDS = new Set([
   'greasing',
   'if',
   'in',
-  'instead',
-  'kind',
   'less',
-  'like',
   'liking',
-  'mix',
-  'mixture',
   'more',
   'necessary',
   'needed',
   'of',
   'optional',
-  'other',
-  'prefer',
-  'preference',
-  'preferred',
   'required',
   'roughly',
   'serve',
   'serving',
-  'similar',
   'so',
   'sprinkling',
-  'substitute',
-  'such',
   'taste',
   'the',
   'to',
-  'topping',
-  'type',
   'use',
-  'variety',
   'with',
   'you',
   'your',
   // cut, state, size, colour and preparation
+  'breast',
   'chunk',
   'cube',
+  'cut',
+  'fillet',
   'floret',
   'half',
+  'into',
   'ring',
   'round',
   'segment',
@@ -219,9 +198,13 @@ const NON_INGREDIENT_WORDS = new Set([
   'minced',
   'organic',
   'peeled',
+  'pitted',
+  'powdered',
   'plain',
   'prepared',
   'purple',
+  'puree',
+  'pureed',
   'quality',
   'quartered',
   'range',
@@ -249,30 +232,98 @@ const NON_INGREDIENT_WORDS = new Set([
   'thick',
   'thin',
   'thinly',
+  'thawed',
   'trimmed',
   'uncooked',
   'unsalted',
   'unsweetened',
   'virgin',
   'warm',
+  'whipped',
   'white',
   'whole',
   'yellow',
   'young',
 ]);
 
+/**
+ * Words that leave a choice open to anything ("or other fat", "or your favourite", "or any kind").
+ * Next to a named ingredient they only widen it ("or other dried fruit" still means dried fruit),
+ * but a choice that names no ingredient and uses one of them could be anything, so it stays
+ * unidentified.
+ */
+const OPEN_ENDED_WORDS = new Set([
+  'alternatively',
+  'another',
+  'any',
+  'anything',
+  'brand',
+  'choice',
+  'etc',
+  'favorite',
+  'favourite',
+  'instead',
+  'kind',
+  'like',
+  'other',
+  'prefer',
+  'preference',
+  'preferred',
+  'something',
+  'such',
+  'topping',
+  'type',
+  'variety',
+  'whatever',
+  'whichever',
+  // A blend of the choices already named ("or a mix", "or both"): see MIX_WORDS.
+  'both',
+  'combination',
+  'either',
+  'mix',
+  'mixture',
+]);
+
+/**
+ * Open-ended words that only refer back to choices the line already names. A choice made of these
+ * and descriptions ("or a mix of both") is harmless when the line names at least two identified
+ * choices to blend.
+ */
+const MIX_WORDS = new Set(['both', 'combination', 'either', 'mix', 'mixture']);
+
+/**
+ * Words saying a choice is a stand-in for something rather than the thing itself: "egg substitute"
+ * is not egg, and "milk or equivalent" could be any drink. Such a choice is never identified.
+ */
+const STAND_IN_WORDS = new Set(['alternative', 'equivalent', 'imitation', 'replacement', 'similar', 'sub', 'substitute']);
+
 /** "(or halva spread)", ", or more to taste", "and/or ...": a clause offering another choice. */
 const CHOICE_CLAUSE = /^(?:and\s*\/\s*)?or\b\s*/i;
 
 const isMeasureToken = (token: string) => /^\d/.test(token) || MEASURE_WORDS.has(token);
-const isNonIngredient = (token: string) => isMeasureToken(token) || NON_INGREDIENT_WORDS.has(token);
+const isDescription = (token: string) => isMeasureToken(token) || NON_INGREDIENT_WORDS.has(token);
+
+/**
+ * What one choice turned out to be:
+ * - `ingredient`: every word is part of a known ingredient or describes it;
+ * - `note`: no ingredient, only amounts, comments or descriptions ("or to taste", "fresh");
+ * - `blend`: no ingredient, only a reference to the other choices ("or a mix");
+ * - `unidentified`: it names something the knowledge base does not know, is open-ended, or is a
+ *   stand-in. Any ingredient it does name still counts.
+ */
+type ChoiceKind = 'ingredient' | 'note' | 'blend' | 'unidentified';
+
+interface Choice {
+  text: string;
+  kind: ChoiceKind;
+}
 
 interface Choices {
-  /** Ingredients the choices resolve to, beyond plain matches of the text. */
+  /** Every ingredient the choices name, including those completed with a shared word. */
   ids: string[];
   /** The first choice's ingredient when it is only complete with a shared word ("chicken ... stock"). */
   firstId: string | null;
-  unresolved: string[];
+  choices: Choice[];
 }
 
 /** Splits tokens at separators into the choices or items they list, skipping empty ones. */
@@ -303,6 +354,16 @@ function choiceClauses(name: string): string[] {
     if (CHOICE_CLAUSE.test(trimmed)) out.push(trimmed.replace(CHOICE_CLAUSE, ''));
   }
   return out;
+}
+
+/** Classifies a choice from the words that no ingredient accounts for. */
+function classify(leftover: readonly string[], named: boolean): ChoiceKind {
+  if (leftover.some((w) => STAND_IN_WORDS.has(w))) return 'unidentified';
+  if (leftover.some((w) => !isDescription(w) && !OPEN_ENDED_WORDS.has(w))) return 'unidentified';
+  if (named) return 'ingredient';
+  const open = leftover.filter((w) => OPEN_ENDED_WORDS.has(w));
+  if (open.length === 0) return 'note';
+  return open.every((w) => MIX_WORDS.has(w)) ? 'blend' : 'unidentified';
 }
 
 export class IngredientMatcher {
@@ -352,14 +413,16 @@ export class IngredientMatcher {
   /**
    * Resolves each choice or item a text lists ("peanut butter or halva spread", "salt and pepper").
    * Words shared between choices are distributed: "chicken or vegetable stock" offers chicken
-   * stock, and "chicken thighs or breasts" offers chicken breasts. A choice that names no known
-   * ingredient and is not just a comment ("to taste") or a description ("fresh or frozen") is
-   * reported as unresolved. With `single`, a text that lists only one choice is checked too.
+   * stock, and "chicken thighs or breasts" offers chicken breasts. Every word of a choice must then
+   * belong to an ingredient or be a measure or description; one unexplained word ("cookie" in
+   * "cookie butter", "vegan" in "vegan mayo") leaves the choice unidentified. With `single`, a
+   * text that lists only one choice is checked too.
    */
   private resolveChoices(text: string, single: boolean): Choices {
     const tokens = tokenize(text.replace(/([a-z])\s*\/\s*(?=[a-z])/gi, '$1 or '));
     const choices = splitChoices(tokens);
-    const out: Choices = { ids: [], firstId: null, unresolved: [] };
+    const ids = new Set<string>();
+    const out: Choices = { ids: [], firstId: null, choices: [] };
     if (choices.length === 0 || (choices.length === 1 && !single)) return out;
     const matches = this.findInTokens(tokens);
     const core = (tokens: readonly string[]) => tokens.filter((t) => !isMeasureToken(t));
@@ -368,7 +431,15 @@ export class IngredientMatcher {
     choices.forEach((choice, i) => {
       const words = core(choice.tokens);
       const end = choice.start + choice.tokens.length;
-      const found = matches.filter((m) => m.start < end && m.start + m.length > choice.start).map((m) => m.id);
+      const uncovered = (found: readonly IngredientMatch[]) =>
+        choice.tokens.filter((_, k) => !found.some((m) => m.start <= choice.start + k && choice.start + k < m.start + m.length));
+      let inChoice = matches.filter((m) => m.start < end && m.start + m.length > choice.start);
+      // A phrase that spans a separator ("butter or margarine") can cut a choice short and leave
+      // words behind ("margarine spread"); the choice is then also matched on its own words.
+      const crossing = inChoice.some((m) => m.start < choice.start || m.start + m.length > end);
+      if (crossing && !uncovered(inChoice).every(isDescription)) {
+        inChoice = [...inChoice, ...this.findInTokens(choice.tokens).map((m) => ({ ...m, start: m.start + choice.start }))];
+      }
       // A shared trailing word ("chicken or vegetable stock"), unless the last choice merely
       // extends this one ("cream or cream cheese"), where this choice stands on its own.
       let shared: string | null = null;
@@ -377,17 +448,21 @@ export class IngredientMatcher {
         for (let k = 1; k < last.length && !shared; k++) shared = this.index.get([...words, ...last.slice(-k)].join(' ')) ?? null;
       }
       // A shared leading word ("chicken thighs or breasts"), for a choice that is not complete alone.
-      if (!shared && words.length > 0 && i > 0 && found.length === 0) {
+      if (!shared && words.length > 0 && i > 0 && inChoice.length === 0) {
         for (let k = first.length - 1; k >= 1 && !shared; k--) shared = this.index.get([...first.slice(0, k), ...words].join(' ')) ?? null;
       }
       if (shared) {
-        out.ids.push(shared);
+        ids.add(shared);
         if (i === 0) out.firstId = shared;
       }
-      out.ids.push(...found);
-      if (shared || found.length > 0 || words.every(isNonIngredient)) return;
-      out.unresolved.push(choice.tokens.join(' '));
+      for (const m of inChoice) ids.add(m.id);
+      // A shared-word ingredient spans the whole choice; otherwise only the matched words count.
+      const leftover = shared ? [] : uncovered(inChoice);
+      // "Or substitute frozen berries" uses the word as a verb (use instead), not as a stand-in product.
+      if (leftover[0] === 'substitute' && words[0] === 'substitute') leftover[0] = 'instead';
+      out.choices.push({ text: choice.tokens.join(' '), kind: classify(leftover, shared !== null || inChoice.length > 0) });
     });
+    out.ids = [...ids];
     return out;
   }
 
@@ -401,10 +476,10 @@ export class IngredientMatcher {
     // Asides are removed before the note after a dash, so a dash inside "(... - try a mix)" never
     // pulls the aside's words into the name.
     const listed = stripParentheticals(name).replace(/\s+-\s+.*$/, '').split(/[,;:]/)[0] ?? '';
-    const choices = [this.resolveChoices(listed, false), ...choiceClauses(name).map((clause) => this.resolveChoices(clause, true))];
+    const groups = [this.resolveChoices(listed, false), ...choiceClauses(name).map((clause) => this.resolveChoices(clause, true))];
     // For "A or B" the amount was written for A, so A is the primary ingredient.
     const firstChoice = head.split(/\s+or\s+/i)[0] ?? head;
-    let primary = this.lookup(head) ?? choices[0]?.firstId ?? this.lookup(firstChoice);
+    let primary = this.lookup(head) ?? groups[0]?.firstId ?? this.lookup(firstChoice);
     if (!primary) {
       const candidates = [this.findAll(firstChoice), this.findAll(head), this.findAll(cleaned), this.findAll(name)].find((m) => m.length > 0);
       primary = candidates?.[0]?.id ?? null;
@@ -413,8 +488,12 @@ export class IngredientMatcher {
     // Everything the line names, including asides such as "(ham, chicken or tofu)" and
     // alternatives such as "butter or margarine", feeds the allergen and diet roll-ups.
     const all = new Set<string>([primary]);
-    for (const resolved of choices) for (const id of resolved.ids) all.add(id);
+    for (const group of groups) for (const id of group.ids) all.add(id);
     for (const match of this.findAll(name)) all.add(match.id);
-    return { id: primary, all: [...all], unresolved: [...new Set(choices.flatMap((c) => c.unresolved))] };
+    // "Or a mix" blends the other choices, so it is only identified when there are two to blend.
+    const choices = groups.flatMap((g) => g.choices);
+    const identified = choices.filter((c) => c.kind === 'ingredient').length;
+    const unresolved = choices.filter((c) => c.kind === 'unidentified' || (c.kind === 'blend' && identified < 2)).map((c) => c.text);
+    return { id: primary, all: [...all], unresolved: [...new Set(unresolved)] };
   }
 }

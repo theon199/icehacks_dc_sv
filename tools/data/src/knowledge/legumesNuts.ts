@@ -47,6 +47,7 @@ export const LEGUMES_NUTS: IngredientDef[] = [
   ing('sesame_seed', 'nut_seed', { syn: ['sesame seeds', 'sesame seed', 'toasted sesame seeds', 'black sesame seeds', 'white sesame seeds', 'seeds'], allergens: ['sesame'], aisle: 'spices', fdc: [170150, 'Seeds, sesame seeds, whole, dried'] }),
   ing('tahini', 'nut_seed', { syn: ['tahini paste', 'sesame tahini', 'sesame paste', 'chinese sesame sauce', 'sesame butter'], allergens: ['sesame'], aisle: 'international', fdc: [168604, 'Seeds, sesame butter, tahini, type of kernels unspecified'] }),
   ing('sunflower_seed', 'nut_seed', { syn: ['sunflower seeds', 'sunflower kernels'], fdc: [170562, 'Seeds, sunflower seed kernels, dried'] }),
+  ing('sunflower_seed_butter', 'nut_seed', { syn: ['sunflower butter', 'sunbutter', 'sunflower seed spread'], aisle: 'pantry', fdc: [170155, 'Seeds, sunflower seed butter, without salt'] }),
   ing('pumpkin_seed', 'nut_seed', { syn: ['pumpkin seeds', 'pepitas'], fdc: [170556, 'Seeds, pumpkin and squash seed kernels, dried'] }),
   ing('flaxseed', 'nut_seed', { syn: ['flax seeds', 'linseed', 'ground flaxseed', 'flax eggs', 'flax egg'], fdc: [169414, 'Seeds, flaxseed'] }),
   ing('chia_seed', 'nut_seed', { syn: ['chia seeds', 'chia'], fdc: [170554, 'Seeds, chia seeds, dried'] }),
