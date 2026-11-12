@@ -135,10 +135,11 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
       request: wish.trim() || null,
       at: new Date().toISOString(),
     });
-    if (!variant || !saveVariant(variant)) {
+    if (!variant) {
       toast.error("This version couldn't be saved. Try again.");
       return;
     }
+    saveVariant(variant);
     setSavedId(variant.id);
     toast.success('Saved as your version');
     openCompare(variant.id);

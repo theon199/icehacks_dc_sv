@@ -1,25 +1,23 @@
 /**
- * Saved recipe variants on this device.
+ * Saved recipe variants, synced as the `variants` collection: one document per base recipe,
+ * holding its variants newest first (see `logic/variants.ts`).
  *
- * Variants belong in the synced saved-recipes store as its `variants` collection; until that
- * collection exists this store keeps them locally, with the same document shape (one group per
- * base recipe, see `logic/variants.ts`), so moving them is a matter of registering the collection.
- * Reach it only through `deps.ts`.
- *
- * Because this store is not part of the account-wide reset, it guards account boundaries itself:
- * variants are tagged with the account that saved them, are invisible to any other account and
- * are wiped when the person signs out.
+ * The collection belongs next to the saved recipes in `src/stores`; until it moves there it lives
+ * here and registers itself with sync like every other per-account store, so it is mirrored to
+ * the account and wiped on sign-out. Reach it only through `deps.ts`.
  */
 import { z } from 'zod';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { useSessionStore } from '@/features/auth';
+import { registerSyncedStore } from '@/lib/sync/registry';
 import { versionedPersist } from '@/stores/persistence';
+import { applyToRecord, createCollectionAdapter } from '@/stores/syncAdapter';
 
 import {
   addVariant,
   removeVariant,
+  trimGroups,
   variantGroupSchema,
   type RecipeVariant,
   type VariantGroups,
@@ -28,57 +26,49 @@ import {
 const EMPTY: VariantGroups = Object.freeze({});
 
 export interface VariantState {
-  /** Account the stored variants belong to. */
-  ownerId: string | null;
   groups: VariantGroups;
-  save: (ownerId: string, variant: RecipeVariant) => void;
-  remove: (ownerId: string, baseRecipeId: string, variantId: string, at?: string) => void;
+  save: (variant: RecipeVariant) => void;
+  remove: (baseRecipeId: string, variantId: string, at?: string) => void;
   reset: () => void;
 }
 
 export const useVariantStore = create<VariantState>()(
   persist(
     (set, get) => {
-      /** The groups owned by `ownerId`; anything stored for another account is discarded. */
-      const ownGroups = (ownerId: string) => (get().ownerId === ownerId ? get().groups : EMPTY);
+      const commit = (next: VariantGroups) => {
+        if (next !== get().groups) set({ groups: next });
+      };
       return {
-        ownerId: null,
         groups: EMPTY,
-        save: (ownerId, variant) => {
-          const current = ownGroups(ownerId);
-          const next = addVariant(current, variant);
-          if (next !== current || get().ownerId !== ownerId) set({ ownerId, groups: next });
-        },
-        remove: (ownerId, baseRecipeId, variantId, at = new Date().toISOString()) => {
-          const current = ownGroups(ownerId);
-          const next = removeVariant(current, baseRecipeId, variantId, at);
-          if (next !== current) set({ ownerId, groups: next });
-        },
-        reset: () => set({ ownerId: null, groups: EMPTY }),
+        save: (variant) => commit(addVariant(get().groups, variant)),
+        remove: (baseRecipeId, variantId, at = new Date().toISOString()) =>
+          commit(removeVariant(get().groups, baseRecipeId, variantId, at)),
+        reset: () => set({ groups: EMPTY }),
       };
     },
     versionedPersist({
       name: 'user.variants',
       version: 1,
-      schema: z.object({
-        ownerId: z.string().nullable(),
-        groups: z.record(z.string(), variantGroupSchema),
-      }),
-      partialize: (state) => ({ ownerId: state.ownerId, groups: state.groups }),
+      schema: z.object({ groups: z.record(z.string(), variantGroupSchema) }),
+      partialize: (state) => ({ groups: state.groups }),
     }),
   ),
 );
 
-/** Variant groups of the signed-in account (empty for anyone else). */
-export function selectOwnGroups(ownerId: string | null) {
-  return (state: VariantState): VariantGroups =>
-    ownerId != null && state.ownerId === ownerId ? state.groups : EMPTY;
-}
+export const selectVariantGroups = (state: VariantState) => state.groups;
 
-// Signing out wipes the device copy, like every other per-account store.
-useSessionStore.subscribe((session, previous) => {
-  if (previous.userId != null && session.userId !== previous.userId) {
+export const variantsSync = createCollectionAdapter({
+  collection: 'variants',
+  store: useVariantStore,
+  select: (state) => state.groups,
+  schema: variantGroupSchema,
+  apply: (state, changes) => ({ groups: trimGroups(applyToRecord(state.groups, changes)) }),
+});
+
+registerSyncedStore({
+  adapter: variantsSync,
+  reset: () => {
     useVariantStore.getState().reset();
     useVariantStore.persist.clearStorage();
-  }
+  },
 });
