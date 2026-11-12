@@ -1,10 +1,10 @@
 /**
  * `usePrices(ingredientIds)`: grocery prices for catalog ingredients.
  *
- * Answers saved on this device in the last 7 days show immediately (and offline); the rest are
- * requested from the `prices` function, which looks unknown prices up in the background. While
- * any answer is `pending` the hook polls, at the pace the server asks for, a bounded number of
- * times.
+ * Answers saved on this device that are still fresh (see `priceCache`) show immediately (and
+ * offline); the rest are requested from the `prices` function, which looks unknown prices up in
+ * the background. While any answer is `pending` the hook polls, at the pace the server asks for,
+ * a bounded number of times.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
