@@ -1,0 +1,70 @@
+/**
+ * Ranked, safety-screened recipes for "Plan my week" and the two-day plan. The catalog query does
+ * the coarse SQL filtering; ranking runs after interactions settle so opening a planner screen
+ * never stutters.
+ */
+import { useEffect, useMemo, useState } from 'react';
+import { InteractionManager } from 'react-native';
+
+import type { RankInput } from '@/domain/recommend';
+import { dietMask, useCandidates, type CandidateFilters } from '@/lib/catalog';
+import {
+  selectFeedbackEvents,
+  useFeedbackStore,
+  usePantryStore,
+  usePreferencesStore,
+  type Preferences,
+} from '@/stores';
+
+import { toDomainFeedback, toDomainPreferences, toPantryIds } from '../deps';
+import { rankForPlanning, type Ranked } from '../model/candidates';
+
+/** Enough variety for a full week and a beam search, small enough to rank in a few ms. */
+export const PLANNING_POOL = 600;
+
+export type CandidatesState =
+  | { status: 'loading' }
+  | { status: 'error'; error: unknown; retry: () => void }
+  /** Allergens not answered yet: nothing can be shown as safe. */
+  | { status: 'needs_safety' }
+  | { status: 'ready'; ranked: readonly Ranked[] };
+
+export function candidateFilters(prefs: Preferences): CandidateFilters {
+  return {
+    excludeDietMask: dietMask(prefs.diets),
+    avoidAllergens: prefs.allergens,
+    limit: PLANNING_POOL,
+  };
+}
+
+export function usePlanningCandidates(): CandidatesState {
+  const prefs = usePreferencesStore((s) => s.prefs);
+  const pantry = usePantryStore((s) => s.items);
+  const feedback = useFeedbackStore(selectFeedbackEvents);
+  const filters = useMemo(() => candidateFilters(prefs), [prefs]);
+  const needsSafety = !prefs.allergensAnswered;
+  const query = useCandidates(filters, { enabled: !needsSafety });
+  const [ranked, setRanked] = useState<{ source: unknown; list: readonly Ranked[] } | null>(null);
+
+  const data = query.data;
+  useEffect(() => {
+    if (!data) return;
+    const input: RankInput = {
+      prefs: toDomainPreferences(prefs),
+      now: Date.now(),
+      feedback: toDomainFeedback(feedback),
+      pantry: toPantryIds(pantry),
+    };
+    const task = InteractionManager.runAfterInteractions(() => {
+      setRanked({ source: data, list: rankForPlanning(data, input) });
+    });
+    return () => task.cancel();
+  }, [data, prefs, pantry, feedback]);
+
+  if (needsSafety) return { status: 'needs_safety' };
+  if (query.isError) {
+    return { status: 'error', error: query.error, retry: () => void query.refetch() };
+  }
+  if (!ranked || ranked.source !== data) return { status: 'loading' };
+  return { status: 'ready', ranked: ranked.list };
+}
