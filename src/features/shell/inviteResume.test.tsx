@@ -51,6 +51,8 @@ function label(text: string) {
   };
 }
 
+// Stands in for the signed-in layout, which mounts SignedInEffects the same way. The test checks
+// the shell's own wiring; it does not prove the real layout mounts it.
 function AppLayoutStandIn() {
   return (
     <>
