@@ -23,6 +23,8 @@ export {
   fetchAccountStatus,
   isAccountError,
   saveBirthYear,
+  suggestedFirstName,
+  updateDisplayName,
   type AccountError,
   type AccountErrorKind,
   type AccountStatus,
