@@ -70,6 +70,12 @@ const ProfileSchema = z.strictObject({
   goals: z.array(SlugSchema).max(10).default([]),
   time_budget_minutes: z.number().int().min(5).max(600).nullable().default(null),
   small_appetite: z.boolean().default(false),
+  /**
+   * Whether the person has answered the allergen and diet questions (they are asked together).
+   * While false, an empty `allergens` list means "unknown", not "none". Builds that do not send
+   * the field always sent answered profiles, so it defaults to true.
+   */
+  allergens_answered: z.boolean().default(true),
 });
 
 const CandidateSchema = z.strictObject({

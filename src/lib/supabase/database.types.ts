@@ -1433,6 +1433,7 @@ export type Database = {
           p_client_event_id?: string;
           p_cooked_at?: string;
           p_cuisine?: string;
+          p_expected_user?: string;
           p_local_date: string;
           p_rating?: number;
           p_recipe_ref: string;

@@ -44,6 +44,8 @@ export interface ChefProfile {
   goals: string[];
   time_budget_minutes: number | null;
   small_appetite: boolean;
+  /** False while the allergen and diet questions are unanswered: empty lists mean "unknown". */
+  allergens_answered: boolean;
 }
 
 export interface ChefCandidate {
@@ -74,12 +76,34 @@ function list(values: readonly string[], empty: string): string {
   return values.length === 0 ? empty : values.map(words).join(", ");
 }
 
-function profileLines(profile: ChefProfile): string[] {
+export const ALLERGENS_UNANSWERED_LINE =
+  "Allergens: not answered yet. Treat every allergen as possible and never claim a dish is allergen-free.";
+
+function allergenLine(profile: ChefProfile): string {
   const allergens = profile.allergens.map(allergenLabel);
+  if (profile.allergens_answered) {
+    return `Allergens (never include): ${
+      allergens.length === 0 ? "none declared" : allergens.join(", ")
+    }`;
+  }
+  // Anything already named is still excluded; the rest stays unknown rather than "none".
+  return allergens.length === 0
+    ? ALLERGENS_UNANSWERED_LINE
+    : `${ALLERGENS_UNANSWERED_LINE} Mentioned so far (never include): ${allergens.join(", ")}`;
+}
+
+function dietLine(profile: ChefProfile): string {
+  if (!profile.allergens_answered && profile.diet.length === 0) {
+    return "Diet: not answered yet. Do not assume they eat everything.";
+  }
+  return `Diet: ${list(profile.diet, "no restrictions")}`;
+}
+
+function profileLines(profile: ChefProfile): string[] {
   return [
     `Favourite cuisines: ${list(profile.cuisines, "no preference")}`,
-    `Diet: ${list(profile.diet, "no restrictions")}`,
-    `Allergens (never include): ${allergens.length === 0 ? "none declared" : allergens.join(", ")}`,
+    dietLine(profile),
+    allergenLine(profile),
     `Goals: ${list(profile.goals, "general healthy eating")}`,
     `Time budget: ${
       profile.time_budget_minutes === null

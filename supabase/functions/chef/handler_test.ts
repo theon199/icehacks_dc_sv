@@ -198,6 +198,8 @@ Deno.test("chef rejects invalid input before spending quota", async () => {
     validBody({ candidates: [CANDIDATES[0], CANDIDATES[0]] }),
     validBody({ candidates: [{ ...CANDIDATES[0], id: "bad id with spaces" }] }),
     validBody({ profile: { allergens: ["strawberry"] } }),
+    validBody({ profile: { allergens_answered: "no" } }),
+    validBody({ profile: { allergens_answered: null } }),
     validBody({ unexpected: true }),
   ];
   for (const body of invalid) {
@@ -301,6 +303,52 @@ Deno.test("chef only returns recipe ids the device offered", async () => {
   assertStringIncludes(last[0]!.text!, "Allergens (never include): peanut, sesame");
   assertStringIncludes(last[0]!.text!, "mealdb:1 | Chana Masala | indian | 35 min");
   assertEquals(last[1]!.text, "About 30 minutes, something with chickpeas.");
+});
+
+Deno.test("chef tells Claude when the allergen questions are unanswered", async () => {
+  const { handler, claudeCalls } = harness({
+    replies: [claudeJson({ reply: "Happy to help.", recipe_ids: [], follow_ups: [] })],
+  });
+  const profile = {
+    cuisines: [],
+    diet: [],
+    allergens: [],
+    goals: [],
+    time_budget_minutes: null,
+    small_appetite: false,
+    allergens_answered: false,
+  };
+  const res = await silenced(() => handler(post(validBody({ profile, candidates: [] }))));
+  assertEquals(res.status, 200);
+  const messages = claudeCalls[0]!["messages"] as { content: { text?: string }[] }[];
+  const context = messages[messages.length - 1]!.content[0]!.text!;
+  assertStringIncludes(
+    context,
+    "Allergens: not answered yet. Treat every allergen as possible and never claim a dish is allergen-free.",
+  );
+  assertStringIncludes(context, "Diet: not answered yet.");
+  assertEquals(context.includes("none declared"), false);
+  assertEquals(context.includes("no restrictions"), false);
+});
+
+Deno.test("a profile without allergens_answered reads its lists as answered", async () => {
+  const { handler, claudeCalls } = harness({
+    replies: [claudeJson({ reply: "Sure.", recipe_ids: [], follow_ups: [] })],
+  });
+  const profile = {
+    cuisines: [],
+    diet: [],
+    allergens: [],
+    goals: [],
+    time_budget_minutes: null,
+    small_appetite: false,
+  };
+  const res = await silenced(() => handler(post(validBody({ profile }))));
+  assertEquals(res.status, 200);
+  const messages = claudeCalls[0]!["messages"] as { content: { text?: string }[] }[];
+  const context = messages[messages.length - 1]!.content[0]!.text!;
+  assertStringIncludes(context, "Allergens (never include): none declared");
+  assertStringIncludes(context, "Diet: no restrictions");
 });
 
 Deno.test("with no candidates chef never returns recipe ids", async () => {
