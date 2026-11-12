@@ -15,7 +15,13 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { useSessionStore } from '@/features/auth';
-import { unregisterPushDevice } from '@/features/notifications';
+import {
+  fetchPushCategories,
+  savePushCategories,
+  syncPushRegistration,
+  unregisterPushDevice,
+  type PushCategory,
+} from '@/features/notifications';
 import { logger } from '@/lib/logger';
 import { persistStorage } from '@/lib/storage/kv';
 
@@ -166,11 +172,19 @@ export interface UserPreferences {
   units: Units;
 }
 
+/**
+ * `cookTimers` is local to this device (cook mode schedules those alerts itself). `social` and
+ * `follows` mirror the account's push categories on the server, which decide what is sent; the
+ * copy here is what the switches show until the server's answer arrives.
+ */
 export interface NotificationChoices {
   cookTimers: boolean;
   social: boolean;
   follows: boolean;
 }
+
+/** Account push categories, stored server-side by the notifications feature. */
+export { fetchPushCategories, savePushCategories, syncPushRegistration, type PushCategory };
 
 export type Sex = 'female' | 'male';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
