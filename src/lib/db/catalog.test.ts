@@ -4,6 +4,8 @@ import { z } from 'zod';
 import {
   CATALOG_SCHEMA_VERSION,
   catalogFileName,
+  catalogPreparedQuery,
+  catalogPreparedQueryFirst,
   catalogQuery,
   catalogQueryFirst,
   checkSchemaVersion,
@@ -18,7 +20,16 @@ jest.mock('expo-asset', () => ({
   Asset: { fromModule: jest.fn(() => ({ hash: 'abcdef0123456789ffff' })) },
 }));
 
+const mockStatement = {
+  executeAsync: jest.fn(async (_params: unknown[]) => ({
+    getAllAsync: jest.fn(async (): Promise<unknown[]> => [{ id: 'mealdb:1', title: 'Dal' }]),
+    resetAsync: jest.fn(async () => undefined),
+  })),
+  finalizeAsync: jest.fn(async () => undefined),
+};
+
 const mockDb = {
+  prepareAsync: jest.fn(async (_sql: string) => mockStatement),
   execAsync: jest.fn(async () => undefined),
   getFirstAsync: jest.fn(async (): Promise<unknown> => ({ value: String(CATALOG_SCHEMA_VERSION) })),
   getAllAsync: jest.fn(async (): Promise<unknown[]> => []),
@@ -132,7 +143,7 @@ describe('catalogQuery', () => {
 
   it('rejects rows that break the contract', async () => {
     mockDb.getAllAsync.mockResolvedValueOnce([{ id: 1 }]);
-    await expect(catalogQuery('SELECT 1', [], row)).rejects.toMatchObject({ kind: 'query_failed' });
+    await expect(catalogQuery('SELECT 1', [], row)).rejects.toMatchObject({ kind: 'bad_rows' });
   });
 
   it('wraps SQL errors and returns the first row helper', async () => {
@@ -140,5 +151,59 @@ describe('catalogQuery', () => {
     await expect(catalogQuery('SELECT x', [], row)).rejects.toMatchObject({ kind: 'query_failed' });
     mockDb.getAllAsync.mockResolvedValueOnce([]);
     await expect(catalogQueryFirst('SELECT 1', [], row)).resolves.toBeNull();
+  });
+});
+
+describe('catalogPreparedQuery', () => {
+  const row = z.object({ id: z.string(), title: z.string() });
+
+  it('prepares each SQL text once and reuses the statement', async () => {
+    await catalogPreparedQuery('SELECT id, title FROM recipes WHERE id = ?', ['a'], row);
+    await catalogPreparedQuery('SELECT id, title FROM recipes WHERE id = ?', ['b'], row);
+    await expect(
+      catalogPreparedQueryFirst('SELECT id, title FROM recipes WHERE id = ?', ['c'], row),
+    ).resolves.toEqual({ id: 'mealdb:1', title: 'Dal' });
+    expect(mockDb.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(mockStatement.executeAsync.mock.calls.map(([params]) => params)).toEqual([
+      ['a'],
+      ['b'],
+      ['c'],
+    ]);
+  });
+
+  it('runs executions of one statement one at a time', async () => {
+    let active = 0;
+    let peak = 0;
+    mockStatement.executeAsync.mockImplementation(async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      return {
+        getAllAsync: jest.fn(async () => {
+          active -= 1;
+          return [] as unknown[];
+        }),
+        resetAsync: jest.fn(async () => undefined),
+      };
+    });
+    const sql = 'SELECT id, title FROM recipes WHERE course = ?';
+    await Promise.all([1, 2, 3].map((n) => catalogPreparedQuery(sql, [n], row)));
+    expect(peak).toBe(1);
+  });
+
+  it('wraps failures and does not keep a statement that failed to prepare', async () => {
+    mockDb.prepareAsync.mockRejectedValueOnce(new Error('syntax error'));
+    const sql = 'SELECT nonsense';
+    await expect(catalogPreparedQuery(sql, [], row)).rejects.toMatchObject({
+      kind: 'query_failed',
+    });
+    mockStatement.executeAsync.mockResolvedValueOnce({
+      getAllAsync: jest.fn(async () => [{ id: 1 }] as unknown[]),
+      resetAsync: jest.fn(async () => undefined),
+    });
+    await expect(catalogPreparedQuery(sql, [], row)).rejects.toMatchObject({
+      kind: 'bad_rows',
+    });
+    expect(mockDb.prepareAsync).toHaveBeenCalledTimes(2);
   });
 });
