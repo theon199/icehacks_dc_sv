@@ -6,8 +6,14 @@
  * data belongs in proper tables.
  */
 import Storage from 'expo-sqlite/kv-store';
+import { AppState } from 'react-native';
 import type { z } from 'zod';
-import { createJSONStorage, type StateStorage } from 'zustand/middleware';
+import {
+  createJSONStorage,
+  type PersistStorage,
+  type StateStorage,
+  type StorageValue,
+} from 'zustand/middleware';
 
 import { logger } from '../logger';
 
@@ -90,4 +96,82 @@ export const zustandKvStorage: StateStorage = {
 /** Ready-made JSON storage for `persist({ storage: persistStorage() })`. */
 export function persistStorage<T>() {
   return createJSONStorage<T>(() => zustandKvStorage);
+}
+
+// -------------------------------------------------------------------------------------------------
+// Deferred writes for stores that change in bursts
+
+/** Flush functions of throttled storages that hold a write not yet on disk. */
+const pendingFlushes = new Set<() => void>();
+let watchingAppState = false;
+
+/** Writes every deferred store write to disk now. Safe to call at any time. */
+export function flushPendingWrites(): void {
+  for (const flush of [...pendingFlushes]) flush();
+}
+
+/** Deferred writes go to disk as soon as the app leaves the foreground, where it can be killed. */
+function watchAppState(): void {
+  if (watchingAppState) return;
+  watchingAppState = true;
+  AppState.addEventListener('change', (state) => {
+    if (state !== 'active') flushPendingWrites();
+  });
+}
+
+/**
+ * Wraps persist storage so a burst of state changes costs one write: the first change starts a
+ * window of `windowMs`, later changes in the window replace the pending value, and the latest
+ * value is written when the window ends (or earlier through `flushPendingWrites`, which also runs
+ * when the app goes to the background). Reads see the pending value, and a removal discards it,
+ * so a wipe is never undone by a late write.
+ */
+export function throttleWrites<P>(
+  storage: PersistStorage<P> | undefined,
+  windowMs: number,
+): PersistStorage<P> | undefined {
+  if (!storage) return undefined;
+  const inner = storage;
+  const pending = new Map<string, StorageValue<P>>();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  function cancel(): void {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    pendingFlushes.delete(flush);
+  }
+
+  function write(name: string, value: StorageValue<P>): void {
+    const report = (error: unknown) =>
+      logger.warn('Could not save a store', { store: name, message: String(error) });
+    try {
+      const result: unknown = inner.setItem(name, value);
+      if (result instanceof Promise) result.catch(report);
+    } catch (error) {
+      report(error);
+    }
+  }
+
+  function flush(): void {
+    cancel();
+    const writes = [...pending];
+    pending.clear();
+    for (const [name, value] of writes) write(name, value);
+  }
+
+  return {
+    getItem: (name) => pending.get(name) ?? inner.getItem(name),
+    setItem: (name, value) => {
+      pending.set(name, value);
+      if (timer) return;
+      watchAppState();
+      pendingFlushes.add(flush);
+      timer = setTimeout(flush, windowMs);
+    },
+    removeItem: (name) => {
+      pending.delete(name);
+      if (pending.size === 0) cancel();
+      return inner.removeItem(name);
+    },
+  };
 }
