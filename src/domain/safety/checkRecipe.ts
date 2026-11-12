@@ -4,7 +4,8 @@
  * never read as safe, and neither are preferences whose safety answers are missing.
  *
  * Diet bits from the catalog are cross-checked against allergen statuses for the diets an allergen
- * can disprove: a recipe flagged vegan whose milk status is `unknown` is not shown to vegans.
+ * can disprove: a recipe flagged vegan whose milk status is `unknown` is not shown to vegans, and
+ * one flagged vegetarian whose fish status is `unknown` is not shown to vegetarians.
  */
 import { ALLERGEN_LABELS, type AllergenId } from '../types/allergens';
 import {
@@ -45,11 +46,14 @@ export interface SafetyVerdict {
 
 /**
  * Allergens that must be verified `free` before a recipe's diet bit is believed. Only diets an
- * allergen status can disprove are listed; the others rely on the catalog bit alone.
+ * allergen status can disprove are listed; the others rely on the catalog bit alone. The catalog
+ * build applies the same requirements before it sets a diet bit (tools/data/src/derive/rollup.ts),
+ * so a recipe the build flags is expected to pass these checks.
  */
 export const DIET_ALLERGEN_CHECKS: Readonly<Partial<Record<DietFlagName, readonly AllergenId[]>>> =
   {
     vegan: ['milk', 'egg', 'fish', 'shellfish'],
+    vegetarian: ['fish', 'shellfish'],
     dairy_free: ['milk'],
     gluten_free: ['gluten', 'wheat'],
   };

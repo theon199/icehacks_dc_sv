@@ -238,12 +238,13 @@ const FAMILY_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS} FROM recipes r
   ORDER BY r.health_score DESC, r.id`;
 
 /**
- * Every version of one dish (the recipes sharing `familyId`), healthiest first. Optional safety
- * filters apply the same fail-closed rules as `listCandidates`, so an unsafe version is never read.
+ * Every version of one dish (the recipes sharing `familyId`), healthiest first. The safety filters
+ * apply the same fail-closed rules as `listCandidates`, so an unsafe version is never read. They
+ * are required so every caller decides what to screen; `{}` asks for the family unscreened.
  */
 export async function getRecipesByFamily(
   familyId: string,
-  filters: FamilyFilters = {},
+  filters: FamilyFilters,
 ): Promise<RecipeSummary[]> {
   const rows = await catalogPreparedQuery(
     FAMILY_SQL,
