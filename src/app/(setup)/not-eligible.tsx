@@ -1,4 +1,4 @@
-import { NotEligibleScreen } from '@/features/onboarding/screens/NotEligibleScreen';
+import { NotEligibleScreen } from '@/features/setup/screens/NotEligibleScreen';
 
 export default function SetupNotEligibleRoute() {
   return <NotEligibleScreen />;

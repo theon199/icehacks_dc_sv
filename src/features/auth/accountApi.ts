@@ -126,3 +126,31 @@ export async function saveBirthYear(birthYear: number): Promise<AccountStatus> {
 export async function deleteMyAccount(): Promise<void> {
   await callRpc('delete_my_account', undefined, deletionSchema);
 }
+
+/** Sets the public display name on the person's profile (1–50 characters). */
+export async function updateDisplayName(userId: string, name: string): Promise<void> {
+  const displayName = name.trim().slice(0, 50);
+  if (!displayName) return;
+  const { error } = await getSupabase()
+    .from('profiles')
+    .update({ display_name: displayName })
+    .eq('id', userId);
+  if (error) throw toAccountError(error, error);
+}
+
+/** A first name from what the sign-in provider shared, to prefill onboarding. */
+export async function suggestedFirstName(): Promise<string | null> {
+  try {
+    const { data } = await getSupabase().auth.getSession();
+    const meta: Record<string, unknown> = data.session?.user.user_metadata ?? {};
+    for (const key of ['given_name', 'full_name', 'name']) {
+      const value = meta[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim().split(/\s+/)[0]?.slice(0, 50) ?? null;
+      }
+    }
+  } catch {
+    // No suggestion is fine; the field simply starts empty.
+  }
+  return null;
+}
