@@ -125,6 +125,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   let ledger: Ledger = freshLedger(userId);
   let active = false;
   let started: Promise<void> | null = null;
+  let stopRequested = false;
   let applyingRemote = false;
   let unsubscribers: (() => void)[] = [];
   let pushTimer: Timer | null = null;
@@ -365,14 +366,16 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     const full = ledger.fullPull;
     if (!full) return;
     for (const [collection, entries] of Object.entries(ledger.docs)) {
+      // Only collections this build manages could have been refreshed by the pull.
+      const adapter = adapters.get(collection);
+      if (!adapter) continue;
       const deletes: string[] = [];
       for (const [docId, entry] of Object.entries(entries)) {
         if (!entry.s || entry.e === full.epoch) continue;
         if (!entry.x && !entry.k) deletes.push(docId);
         delete entries[docId];
       }
-      const adapter = adapters.get(collection);
-      if (adapter && deletes.length > 0) applyToAdapter(adapter, [], deletes);
+      if (deletes.length > 0) applyToAdapter(adapter, [], deletes);
     }
     ledger.cursor = full.cursor;
     ledger.fullPull = null;
@@ -648,6 +651,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
 
   async function doStart(): Promise<void> {
     await Promise.all([...adapters.values()].map((adapter) => adapter.ready()));
+    // Stopped while waiting for local data to load: never start.
+    if (stopRequested) return;
     ledger = storage.load(userId) ?? freshLedger(userId);
     active = true;
     pruneTombstones();
@@ -692,7 +697,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   }
 
   async function stop(): Promise<void> {
-    if (started) await started.catch(() => undefined);
+    stopRequested = true;
     if (!active) return;
     active = false;
     for (const unsubscribe of unsubscribers) unsubscribe();

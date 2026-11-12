@@ -26,8 +26,21 @@ export type AllergenId = (typeof ALLERGEN_IDS)[number];
 export type AllergenStatus = 'contains' | 'free' | 'unknown';
 export type AllergenMap = Readonly<Record<AllergenId, AllergenStatus>>;
 
+export const DIET_IDS = [
+  'vegetarian',
+  'vegan',
+  'pescatarian',
+  'no_pork',
+  'no_alcohol',
+  'no_beef',
+  'gluten_free',
+  'dairy_free',
+  'halal_friendly',
+] as const;
+export type DietId = (typeof DIET_IDS)[number];
+
 /** Diet bitmask values (`diet_flags` columns). */
-export const DietFlag = {
+export const DietFlag: Readonly<Record<DietId, number>> = {
   vegetarian: 1,
   vegan: 2,
   pescatarian: 4,
@@ -37,9 +50,7 @@ export const DietFlag = {
   gluten_free: 64,
   dairy_free: 128,
   halal_friendly: 256,
-} as const;
-export type DietId = keyof typeof DietFlag;
-export const DIET_IDS = Object.keys(DietFlag) as DietId[];
+};
 
 export const GOAL_TAGS = [
   'high_protein',
