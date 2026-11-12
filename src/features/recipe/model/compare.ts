@@ -249,11 +249,17 @@ export function summariseComparison(
  * Orders two versions of a dish for comparison: the one with the lower health score is treated as
  * the original and the other as its healthier adaptation. Null when no other version exists.
  */
-export function pairFamily<T extends { id: string; familyId: string; healthScore: number }>(
-  recipe: T,
-  candidates: readonly T[],
-): { original: T; adapted: T } | null {
-  let best: T | null = null;
+export interface FamilyMember {
+  readonly id: string;
+  readonly familyId: string;
+  readonly healthScore: number;
+}
+
+export function pairFamily(
+  recipe: FamilyMember,
+  candidates: readonly FamilyMember[],
+): { original: FamilyMember; adapted: FamilyMember } | null {
+  let best: FamilyMember | null = null;
   for (const other of candidates) {
     if (other.id === recipe.id || other.familyId !== recipe.familyId) continue;
     if (
