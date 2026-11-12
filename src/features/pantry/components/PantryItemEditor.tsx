@@ -38,7 +38,7 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
   const expiry = expiryHint(form.expiresAt, now);
 
   const save = () => {
-    const result = parsePantryForm(form);
+    const result = parsePantryForm(form, item);
     if (!result.ok) {
       setError({ field: result.field, message: result.message });
       return;
@@ -120,7 +120,7 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
               key={choice.days}
               label={choice.label}
               mode="radio"
-              selected={false}
+              selected={form.expiresAt === dueInDays(choice.days, now)}
               onToggle={() => set({ expiresAt: dueInDays(choice.days, now) })}
             />
           ))}

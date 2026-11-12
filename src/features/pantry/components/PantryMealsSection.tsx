@@ -80,10 +80,10 @@ export function PantryMealsSection() {
     body = (
       <View style={styles.message}>
         <Text variant="callout" tone="muted">
-          Tell us about allergies first, so every suggestion is safe for you.
+          Tell us about allergies and diets first, so every suggestion is safe for you.
         </Text>
         <Button
-          label="Set allergies"
+          label="Set preferences"
           variant="secondary"
           size="sm"
           onPress={() => router.push('/preferences')}

@@ -52,6 +52,20 @@ describe('pantry editing', () => {
     }
   });
 
+  it('rejects an amount too small to store', () => {
+    expect(parsePantryForm(form({ qty: '0.0004' }))).toMatchObject({ ok: false, field: 'qty' });
+    expect(parsePantryForm(form({ qty: '0.001' }))).toMatchObject({ ok: true, patch: { qty: 0.001 } });
+  });
+
+  it('drops the catalog match when the item is renamed to something else', () => {
+    const milk = { ...rice, ingredientId: 'milk', name: 'Milk' };
+    const renamed = parsePantryForm({ ...formFromItem(milk), name: 'Oat milk' }, milk);
+    expect(renamed).toMatchObject({ ok: true, patch: { ingredientId: null, name: 'Oat milk' } });
+    // Only a real rename unlinks it; case and spacing changes keep the match.
+    const tidied = parsePantryForm({ ...formFromItem(milk), name: ' milk ' }, milk);
+    expect(tidied.ok && 'ingredientId' in tidied.patch).toBe(false);
+  });
+
   it('needs a name, and an amount whenever a unit is given', () => {
     expect(parsePantryForm(form({ name: '   ' }))).toMatchObject({ ok: false, field: 'name' });
     expect(parsePantryForm(form({ qty: '', unit: 'cups' }))).toMatchObject({

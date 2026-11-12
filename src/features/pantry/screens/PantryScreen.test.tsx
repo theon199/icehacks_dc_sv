@@ -6,6 +6,7 @@ import { act, fireEvent, screen, userEvent, waitFor, within } from '@testing-lib
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 
+import { useSessionStore } from '@/features/auth';
 import { clearCatalogCaches } from '@/lib/catalog';
 import { nodeSqliteAvailable } from '@/lib/catalog/__fixtures__/nodeCatalogDb';
 import { resetCatalogForTests } from '@/lib/db/catalog';
@@ -56,6 +57,8 @@ beforeEach(() => {
   });
   useSettingsStore.getState().reset();
   useToastStore.getState().clear();
+  useSessionStore.setState({ birthYear: null, aiConsent: false });
+  jest.mocked(router.push).mockClear();
 });
 
 afterEach(() => client.clear());
@@ -104,12 +107,14 @@ describeDb('PantryScreen', () => {
     expect(await screen.findByText('Enter an amount like 2, 1.5 or 1/2.')).toBeOnTheScreen();
     expect(itemNamed('Rice')?.qty).toBe(1.5);
 
+    const before = itemNamed('Rice');
     await user.press(screen.getByTestId('pantry-editor-remove'));
     expect(itemNamed('Rice')).toBeUndefined();
     const toast = useToastStore.getState().queue[0];
     expect(toast?.message).toBe('Rice removed');
     await act(async () => toast?.action?.onPress());
-    expect(itemNamed('Rice')).toMatchObject({ qty: 1.5, unit: 'cups', ingredientId: 'rice' });
+    // Undo brings back the same item (same id and added date), not a copy.
+    expect(itemNamed('Rice')).toEqual(before);
   });
 
   it('adds a catalog ingredient from search, or free text as written', async () => {
@@ -138,10 +143,27 @@ describeDb('PantryScreen', () => {
   });
 
   it('opens Snap to add from a photo', async () => {
+    useSessionStore.setState({ birthYear: 1990, aiConsent: true });
     const user = userEvent.setup();
     await renderPantry();
     await user.press(screen.getByTestId('pantry-snap'));
     expect(router.push).toHaveBeenCalledWith('/snap/pantry');
+  });
+
+  it('asks for the AI agreement before Snap', async () => {
+    useSessionStore.setState({ birthYear: 1990, aiConsent: false });
+    const user = userEvent.setup();
+    await renderPantry();
+    await user.press(screen.getByTestId('pantry-snap'));
+    expect(router.push).toHaveBeenCalledWith('/ai-consent');
+    expect(router.push).not.toHaveBeenCalledWith('/snap/pantry');
+  });
+
+  it('does not offer Snap to anyone under the AI age', async () => {
+    useSessionStore.setState({ birthYear: new Date().getFullYear() - 15, aiConsent: true });
+    await renderPantry();
+    expect(await screen.findByText('Your pantry is empty')).toBeOnTheScreen();
+    expect(screen.queryByTestId('pantry-snap')).toBeNull();
   });
 
   it('suggests meals the pantry covers', async () => {

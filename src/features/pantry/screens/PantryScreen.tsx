@@ -18,6 +18,7 @@ import { PantryItemEditor } from '../components/PantryItemEditor';
 import { PantryItemRow } from '../components/PantryItemRow';
 import { PantryMealsSection } from '../components/PantryMealsSection';
 import { QuickStaples } from '../components/QuickStaples';
+import { restorePantryItem, useSnapAccess } from '../deps';
 import type { PantryPatch } from '../editForm';
 import { SHELF_TITLES } from '../shelves';
 
@@ -49,6 +50,7 @@ export function PantryScreen() {
   const editing = usePantryStore((state) => (editingId ? (state.items[editingId] ?? null) : null));
   // One "now" per visit keeps use-by hints stable while scrolling.
   const [now] = useState(() => new Date());
+  const snap = useSnapAccess();
 
   const rows = useMemo<Row[]>(
     () =>
@@ -81,20 +83,12 @@ export function PantryScreen() {
           message: `${item.name} removed`,
           action: {
             label: 'Undo',
-            onPress: () =>
-              add({
-                ingredientId: item.ingredientId,
-                name: item.name,
-                qty: item.qty,
-                unit: item.unit,
-                category: item.category,
-                expiresAt: item.expiresAt,
-              }),
+            onPress: () => restorePantryItem(item),
           },
         });
       }
     },
-    [add, remove],
+    [remove],
   );
 
   const renderItem = useCallback(
@@ -111,14 +105,20 @@ export function PantryScreen() {
     <View style={styles.header}>
       <PantryAddBar onAdd={onAdd} />
       <QuickStaples onHand={onHand} onAdd={onAdd} />
-      <Button
-        testID="pantry-snap"
-        label="Scan your shelves with Snap"
-        icon="camera"
-        variant="secondary"
-        onPress={() => router.push('/snap/pantry')}
-        accessibilityHint="Take a photo and add what it finds"
-      />
+      {snap === 'unavailable' ? null : (
+        <Button
+          testID="pantry-snap"
+          label="Scan your shelves with Snap"
+          icon="camera"
+          variant="secondary"
+          onPress={() => router.push(snap === 'open' ? '/snap/pantry' : '/ai-consent')}
+          accessibilityHint={
+            snap === 'open'
+              ? 'Take a photo and add what it finds'
+              : 'Snap uses AI. Opens the AI agreement first'
+          }
+        />
+      )}
       <PantryMealsSection />
       {rows.length > 0 ? <Text variant="title3">On your shelves</Text> : null}
     </View>
