@@ -3,8 +3,8 @@ import { ActivityIndicator } from 'react-native';
 
 import { ListRow, useTheme } from '@/ui';
 
-import { useDataExport } from '../account/useDataExport';
 import { SettingsSection } from './SettingsSection';
+import { useDataExport } from '../account/useDataExport';
 
 export const EXPORT_FOOTNOTE =
   'Your export is a JSON file with everything Famara stores about you, on our servers and on this device.';
