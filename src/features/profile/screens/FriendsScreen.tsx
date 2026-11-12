@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { ErrorState, gutter, Skeleton, SkeletonGroup, space, Text, useTheme } from '@/ui';
@@ -8,7 +8,14 @@ import { ErrorState, gutter, Skeleton, SkeletonGroup, space, Text, useTheme } fr
 import { InviteSection } from '../components/InviteSection';
 import { PersonRow } from '../components/PersonRow';
 import { SectionTitle } from '../components/SectionTitle';
-import { useConnections, useFollowToggle, useSuggestions } from '../hooks/useFriends';
+import {
+  useConnections,
+  useFollowToggle,
+  usePendingFollowIds,
+  useSuggestions,
+} from '../hooks/useFriends';
+import { usePullRefresh } from '../hooks/useProfileRefresh';
+import type { Person } from '../model/connections';
 import { buildFriendRows, type FriendRow } from '../model/friendRows';
 
 /** Friends (mutual follows), one-way follows, suggestions and invites. */
@@ -17,19 +24,27 @@ export function FriendsScreen() {
   const connections = useConnections();
   const suggestions = useSuggestions();
   const follow = useFollowToggle();
-  const [refreshing, setRefreshing] = useState(false);
+  const pendingIds = usePendingFollowIds();
+  const pull = usePullRefresh(() => Promise.all([connections.refetch(), suggestions.refetch()]));
 
   const rows = useMemo(
     () => (connections.groups ? buildFriendRows(connections.groups, suggestions.data ?? []) : []),
     [connections.groups, suggestions.data],
   );
-  const pendingId = follow.isPending ? follow.variables.userId : null;
+  const peopleById = useMemo(() => {
+    const map = new Map<string, Person>();
+    for (const row of rows) if (row.type === 'person') map.set(row.person.id, row.person);
+    return map;
+  }, [rows]);
 
   const openPerson = useCallback((personId: string) => router.push(`/author/${personId}`), []);
   const { mutate } = follow;
   const changeFollow = useCallback(
-    (userId: string, next: boolean) => mutate({ userId, follow: next }),
-    [mutate],
+    (userId: string, next: boolean) => {
+      const person = peopleById.get(userId);
+      if (person) mutate({ person, follow: next });
+    },
+    [mutate, peopleById],
   );
 
   const renderItem = useCallback(
@@ -60,24 +75,15 @@ export function FriendsScreen() {
               person={item.person}
               relation={item.relation}
               detail={item.detail}
-              busy={pendingId === item.person.id}
+              busy={pendingIds.has(item.person.id)}
               onOpen={openPerson}
               onFollowChange={changeFollow}
             />
           );
       }
     },
-    [pendingId, openPerson, changeFollow],
+    [pendingIds, openPerson, changeFollow],
   );
-
-  const refresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([connections.refetch(), suggestions.refetch()]);
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   const header = (
     <View style={styles.header}>
@@ -109,15 +115,15 @@ export function FriendsScreen() {
         keyExtractor={(row) => row.key}
         getItemType={(row) => row.type}
         renderItem={renderItem}
-        extraData={pendingId}
+        extraData={pendingIds}
         contentInsetAdjustmentBehavior="automatic"
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void refresh()}
+            refreshing={pull.refreshing}
+            onRefresh={pull.refresh}
             tintColor={theme.colors.primary}
           />
         }

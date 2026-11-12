@@ -1,7 +1,7 @@
 /**
  * Server state for the Friends screen: follow lists, suggestions, follow actions and invites.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Share } from 'react-native';
 
@@ -20,7 +20,13 @@ import {
 import { fetchActiveCooks } from '../deps';
 import { profileKeys } from './queryKeys';
 import { useMyUserId } from './useProfileData';
-import { groupConnections, rankSuggestions } from '../model/connections';
+import {
+  applyFollowChange,
+  groupConnections,
+  rankSuggestions,
+  type FollowLists,
+  type Person,
+} from '../model/connections';
 import { inviteShareMessage } from '../model/invites';
 
 export function useConnections() {
@@ -37,38 +43,70 @@ export function useConnections() {
   return { ...query, groups };
 }
 
+/**
+ * People to follow. The cached query holds only the raw candidates (keyed by a cheap per-person key
+ * and refreshed whenever a follow changes); ranking and filtering run against the live follow lists,
+ * so someone who just followed me or whom I just followed never shows up as a suggestion.
+ */
 export function useSuggestions() {
   const userId = useMyUserId();
   const { groups } = useConnections();
-  const followingKey = groups ? [...groups.followingIds].sort().join(',') : null;
-  return useQuery({
-    queryKey: [...profileKeys.suggestions(userId ?? ''), followingKey],
-    enabled: userId != null && groups != null,
+  const followingIds = groups?.followingIds;
+  const candidates = useQuery({
+    queryKey: profileKeys.suggestions(userId ?? ''),
+    enabled: userId != null && followingIds != null,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      if (!userId || !groups) return [];
       // Suggestions are a nice-to-have: one failing source should not hide the other.
       const [secondDegree, activeCooks] = await Promise.all([
-        fetchSecondDegree([...groups.followingIds]).catch(() => []),
+        fetchSecondDegree([...(followingIds ?? [])]).catch(() => []),
         fetchActiveCooks().catch(() => []),
       ]);
-      return rankSuggestions({ myId: userId, groups, secondDegree, activeCooks });
+      return { secondDegree, activeCooks };
     },
   });
+  const ranked = useMemo(
+    () =>
+      userId && groups && candidates.data
+        ? rankSuggestions({ myId: userId, groups, ...candidates.data })
+        : undefined,
+    [userId, groups, candidates.data],
+  );
+  return { ...candidates, data: ranked };
 }
 
 export interface FollowChange {
-  userId: string;
+  person: Person;
   follow: boolean;
 }
 
+const followMutationKey = [...profileKeys.all, 'follow'] as const;
+
+/**
+ * Follows or unfollows someone. The follow lists change straight away and are put back if the
+ * server refuses; each tap is its own mutation, so several rows can be in flight at once.
+ */
 export function useFollowToggle() {
   const me = useMyUserId();
   const queryClient = useQueryClient();
+  const listsKey = profileKeys.follows(me ?? '');
+
+  const patchLists = (person: Person, follow: boolean) =>
+    queryClient.setQueryData<FollowLists>(listsKey, (lists) =>
+      lists ? applyFollowChange(lists, person, follow) : lists,
+    );
+
   return useMutation({
-    mutationFn: ({ userId, follow }: FollowChange) =>
-      follow ? followUser(userId) : unfollowUser(userId),
-    onError: (error) => {
+    mutationKey: followMutationKey,
+    mutationFn: ({ person, follow }: FollowChange) =>
+      follow ? followUser(person.id) : unfollowUser(person.id),
+    onMutate: async ({ person, follow }) => {
+      await queryClient.cancelQueries({ queryKey: listsKey });
+      patchLists(person, follow);
+    },
+    onError: (error, { person, follow }) => {
+      // Undo only this change, so other taps still in flight keep their optimistic state.
+      patchLists(person, !follow);
       toast.show({
         tone: 'danger',
         message: isApiError(error) ? error.userMessage : 'That did not go through. Try again.',
@@ -76,9 +114,24 @@ export function useFollowToggle() {
     },
     onSettled: async () => {
       if (!me) return;
-      await queryClient.invalidateQueries({ queryKey: profileKeys.follows(me) });
+      // Reconcile once the last tap in a burst has landed.
+      if (queryClient.isMutating({ mutationKey: followMutationKey }) > 1) return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: listsKey }),
+        queryClient.invalidateQueries({ queryKey: profileKeys.suggestions(me) }),
+      ]);
     },
   });
+}
+
+/** Ids of people whose follow change is still on its way to the server. */
+export function usePendingFollowIds(): ReadonlySet<string> {
+  const ids = useMutationState({
+    filters: { mutationKey: followMutationKey, status: 'pending' },
+    select: (mutation) => (mutation.state.variables as FollowChange | undefined)?.person.id,
+  });
+  const joined = ids.filter(Boolean).join(',');
+  return useMemo(() => new Set(joined ? joined.split(',') : []), [joined]);
 }
 
 export function useOpenInvites() {
@@ -112,9 +165,13 @@ export function useShareInvite() {
   });
 }
 
-/** Shares an invite that already exists again. */
+/** Opens the share sheet again for an invite that already exists. */
 export async function reshareInvite(code: string, expiresAt: string): Promise<void> {
-  await Share.share({ message: inviteShareMessage(code, expiresAt, new Date()) });
+  try {
+    await Share.share({ message: inviteShareMessage(code, expiresAt, new Date()) });
+  } catch {
+    toast.show({ tone: 'danger', message: 'The share sheet did not open. Try again.' });
+  }
 }
 
 export function useRevokeInvite() {
@@ -122,7 +179,12 @@ export function useRevokeInvite() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: revokeInvite,
-    onSuccess: () => toast.show({ message: 'Invite withdrawn. That link no longer works.' }),
+    onSuccess: (withdrawn) =>
+      toast.show({
+        message: withdrawn
+          ? 'Invite withdrawn. That link no longer works.'
+          : 'That invite was already used or has expired, so there was nothing to withdraw.',
+      }),
     onError: (error) => {
       toast.show({
         tone: 'danger',

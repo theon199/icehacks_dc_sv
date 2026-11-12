@@ -120,3 +120,28 @@ export function rankSuggestions({
 
   return [...fromGraph, ...fromActivity].slice(0, Math.max(0, limit));
 }
+
+/** Both directions of my follow graph, as the Friends screen loads it. */
+export interface FollowLists {
+  following: Person[];
+  followers: Person[];
+}
+
+/**
+ * My follow lists as they will look once a follow or unfollow lands, so the screen can update
+ * before the server answers. Returns the same object when nothing would change.
+ */
+export function applyFollowChange(
+  lists: FollowLists,
+  person: Person,
+  follow: boolean,
+): FollowLists {
+  const isFollowing = lists.following.some((p) => p.id === person.id);
+  if (follow === isFollowing) return lists;
+  return {
+    ...lists,
+    following: follow
+      ? [person, ...lists.following]
+      : lists.following.filter((p) => p.id !== person.id),
+  };
+}

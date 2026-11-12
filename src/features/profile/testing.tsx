@@ -11,7 +11,10 @@ export const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
 
 export async function renderWithQuery(ui: ReactElement) {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, gcTime: Infinity },
+      mutations: { retry: false, gcTime: Infinity },
+    },
   });
   const result = await renderWithTheme(
     <QueryClientProvider client={client}>{ui}</QueryClientProvider>,

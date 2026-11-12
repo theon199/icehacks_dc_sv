@@ -1,4 +1,4 @@
-import { groupConnections, rankSuggestions, type Person } from './connections';
+import { applyFollowChange, groupConnections, rankSuggestions, type Person } from './connections';
 
 const person = (id: string, displayName = id, isTeam = false): Person => ({
   id,
@@ -94,5 +94,34 @@ describe('rankSuggestions', () => {
       limit: 2,
     });
     expect(suggestions).toHaveLength(2);
+  });
+});
+
+describe('applyFollowChange', () => {
+  const me = (id: string): Person => ({
+    id,
+    handle: id,
+    displayName: id,
+    avatarPath: null,
+    isTeam: false,
+  });
+  const lists = { following: [me('ana')], followers: [me('cy')] };
+
+  it('adds a newly followed person at the top', () => {
+    expect(applyFollowChange(lists, me('cy'), true).following.map((p) => p.id)).toEqual([
+      'cy',
+      'ana',
+    ]);
+  });
+
+  it('removes an unfollowed person and leaves followers alone', () => {
+    const next = applyFollowChange(lists, me('ana'), false);
+    expect(next.following).toEqual([]);
+    expect(next.followers).toBe(lists.followers);
+  });
+
+  it('returns the same lists when nothing changes', () => {
+    expect(applyFollowChange(lists, me('ana'), true)).toBe(lists);
+    expect(applyFollowChange(lists, me('ben'), false)).toBe(lists);
   });
 });

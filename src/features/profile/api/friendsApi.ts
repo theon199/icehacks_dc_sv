@@ -20,7 +20,7 @@ import {
   type OpenInvite,
   type PersonRow,
 } from './schemas';
-import type { Person, SecondDegreeEdge } from '../model/connections';
+import type { FollowLists, Person, SecondDegreeEdge } from '../model/connections';
 
 /** Upper bound on each follow list; far beyond what one person's Friends screen shows. */
 const FOLLOW_LIST_LIMIT = 1000;
@@ -43,11 +43,6 @@ const followerRows = z.array(z.object({ follower: personRowSchema.nullable() }))
 const edgeRows = z.array(
   z.object({ follower_id: z.string(), followee: personRowSchema.nullable() }),
 );
-
-export interface FollowLists {
-  following: Person[];
-  followers: Person[];
-}
 
 export async function fetchFollowLists(userId: string): Promise<FollowLists> {
   const client = getSupabase();
@@ -131,12 +126,17 @@ export async function fetchOpenInvites(now: Date): Promise<OpenInvite[]> {
   return parseResponse('friend_invites.select', z.array(openInviteSchema), data);
 }
 
-/** Withdraws an unused invite so its link stops working. */
-export async function revokeInvite(code: string): Promise<void> {
-  const { error } = await getSupabase()
+/**
+ * Withdraws an unused invite so its link stops working. Resolves to false when there was nothing to
+ * withdraw, for example because a friend redeemed the invite a moment earlier.
+ */
+export async function revokeInvite(code: string): Promise<boolean> {
+  const { data, error } = await getSupabase()
     .from('friend_invites')
     .delete()
     .eq('code', code)
-    .is('redeemed_by', null);
+    .is('redeemed_by', null)
+    .select('code');
   if (error) throw dbError('friend_invites.delete', error);
+  return (data ?? []).length > 0;
 }

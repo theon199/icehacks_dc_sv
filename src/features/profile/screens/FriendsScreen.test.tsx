@@ -68,6 +68,28 @@ describe('FriendsScreen', () => {
     await waitFor(() => expect(followUser).toHaveBeenCalledWith('cy'));
   });
 
+  it('moves someone into Friends as soon as I follow back, before the server answers', async () => {
+    jest.mocked(followUser).mockReturnValue(new Promise<void>(() => undefined));
+    await renderWithQuery(<FriendsScreen />);
+    await fireEvent.press(await screen.findByTestId('follow-cy'));
+
+    await waitFor(() => expect(screen.queryByRole('header', { name: 'Follows you' })).toBeNull());
+    expect(screen.getByLabelText('Cy, @cy')).toBeOnTheScreen();
+    expect(screen.getByRole('header', { name: 'Friends' })).toBeOnTheScreen();
+  });
+
+  it('puts the row back when a follow fails', async () => {
+    jest.mocked(followUser).mockRejectedValue(new Error('offline'));
+    await renderWithQuery(<FriendsScreen />);
+    await fireEvent.press(await screen.findByTestId('follow-dee'));
+
+    await waitFor(() => expect(followUser).toHaveBeenCalledWith('dee'));
+    expect(
+      await screen.findByLabelText('Dee, @dee, Followed by someone you follow'),
+    ).toBeOnTheScreen();
+    expect(screen.getByTestId('follow-dee')).toBeOnTheScreen();
+  });
+
   it('opens a person', async () => {
     await renderWithQuery(<FriendsScreen />);
     await fireEvent.press(await screen.findByTestId('person-ben'));
