@@ -32,7 +32,7 @@ import { suggestSubstitutions, type SubstitutionSuggestion } from '../model/subs
 
 const EMPTY_IDS: readonly string[] = [];
 const EMPTY_INGREDIENTS: ReadonlyMap<string, Ingredient> = new Map();
-/** Recipes from recent feedback used to learn taste; older ones barely count after decay. */
+/** Recipes from recent feedback used to learn taste; earlier ones barely count after decay. */
 const HISTORY_LIMIT = 150;
 
 function uniqueIngredientIds(recipe: RecipeDetail | null | undefined): string[] {

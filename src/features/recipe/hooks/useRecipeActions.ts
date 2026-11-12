@@ -1,6 +1,6 @@
 /** What the recipe screen's buttons do. Store writes and navigation only; no rendering. */
-import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useRouter, type Href } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 
 import type { RecipeSummary } from '@/lib/catalog';
 import { selectIsSaved, useFeedbackStore, useSavedStore } from '@/stores';
@@ -61,24 +61,25 @@ export function useRecipeActions(recipe: Pick<RecipeSummary, 'id' | 'title'> | n
     [router, sheet],
   );
 
-  const push = router.push;
-  return {
-    saved,
-    sheet,
-    toggleSave,
-    openPlan: useCallback(() => setSheet('plan'), []),
-    openShop: useCallback(() => setSheet('shop'), []),
-    closeSheet: useCallback(() => setSheet(null), []),
-    onPlanned,
-    cook: useCallback(() => id && push(cookHref(id)), [id, push]),
-    openWhy: useCallback(() => id && push(whyHref(id)), [id, push]),
-    compare: useCallback(() => id && push(compareHref(id)), [id, push]),
-    makeHealthier: useCallback(() => {
-      if (!id) return;
-      push(canUseAi ? makeoverHref(id) : aiConsentHref);
-    }, [id, push, canUseAi]),
-    nearby: useCallback(() => id && push(nearbyHref({ id, title })), [id, title, push]),
-    share: useCallback(() => id && push(composeHref(id)), [id, push]),
-    report: useCallback(() => id && push(reportHref({ id, title })), [id, title, push]),
-  };
+  return useMemo(() => {
+    const go = (href: Href) => {
+      if (id) router.push(href);
+    };
+    return {
+      saved,
+      sheet,
+      toggleSave,
+      openPlan: () => setSheet('plan'),
+      openShop: () => setSheet('shop'),
+      closeSheet: () => setSheet(null),
+      onPlanned,
+      cook: () => go(cookHref(id)),
+      openWhy: () => go(whyHref(id)),
+      compare: () => go(compareHref(id)),
+      makeHealthier: () => go(canUseAi ? makeoverHref(id) : aiConsentHref),
+      nearby: () => go(nearbyHref({ id, title })),
+      share: () => go(composeHref(id)),
+      report: () => go(reportHref({ id, title })),
+    };
+  }, [id, title, router, canUseAi, saved, sheet, toggleSave, onPlanned]);
 }
