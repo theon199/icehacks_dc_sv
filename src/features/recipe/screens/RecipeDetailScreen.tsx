@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { UnitSystem } from '@/domain/units';
 import { useRecipe } from '@/lib/catalog';
 import { selectSmallAppetite, selectUnits, usePreferencesStore, useSettingsStore } from '@/stores';
-import { Button, EmptyState, ErrorState, gutter, space, useTheme } from '@/ui';
+import { Button, EmptyState, ErrorState, gutter, space, Text, useTheme } from '@/ui';
 
 import { DetailRow } from '../components/DetailRow';
 import { PlanSlotSheet } from '../components/PlanSlotSheet';
@@ -20,10 +20,20 @@ import { useRecipeFit, useRecipeIngredients, useSwapSuggestions } from '../hooks
 import { lineAllergenNotes } from '../model/allergens';
 import { buildDetailItems, type DetailItem } from '../model/detailItems';
 import { buildIngredientRows, clampServings } from '../model/ingredients';
+import {
+  plannedPortionNote,
+  servesHalfPortions,
+  type PlannedPortion,
+} from '../model/plannedPortion';
 import { tutorialItems } from '../model/tutorials';
 
 export interface RecipeDetailScreenProps {
   recipeId: string;
+  /**
+   * The portion the meal was planned at, when opened from the plan. It sizes ingredients,
+   * nutrition and cost in place of the small-appetite setting.
+   */
+  plannedPortion?: PlannedPortion | undefined;
 }
 
 const keyOf = (item: DetailItem) => item.key;
@@ -33,7 +43,7 @@ const typeOf = (item: DetailItem) => item.type;
  * A recipe: photo, why it fits, scalable ingredients with pantry checks and swaps, method preview,
  * nutrition, allergens, tutorials and every action. The whole page is one virtualised list.
  */
-export function RecipeDetailScreen({ recipeId }: RecipeDetailScreenProps) {
+export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScreenProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
@@ -43,7 +53,10 @@ export function RecipeDetailScreen({ recipeId }: RecipeDetailScreenProps) {
   const prefs = useDomainPreferences();
   const pantry = usePantryIds();
   const targets = useDailyTargets();
-  const smallAppetite = usePreferencesStore(selectSmallAppetite);
+  const smallAppetiteSetting = usePreferencesStore(selectSmallAppetite);
+  // Everything below scales from this one flag, so ingredients, nutrition and cost always agree.
+  const smallAppetite = servesHalfPortions(plannedPortion, smallAppetiteSetting);
+  const portionNote = plannedPortionNote(plannedPortion, smallAppetiteSetting);
   const savedUnits = useSettingsStore(selectUnits);
   const [units, setUnits] = useState<UnitSystem | null>(null);
   const system = units ?? savedUnits;
@@ -205,6 +218,16 @@ export function RecipeDetailScreen({ recipeId }: RecipeDetailScreenProps) {
           },
         ]}
       >
+        {portionNote ? (
+          <Text
+            variant="footnote"
+            tone="muted"
+            style={styles.portionNote}
+            testID="recipe-planned-portion"
+          >
+            {portionNote}
+          </Text>
+        ) : null}
         <Button
           label="Cook now"
           icon="frying.pan"
@@ -236,4 +259,5 @@ const styles = StyleSheet.create({
     paddingTop: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  portionNote: { textAlign: 'center', marginBottom: space.sm },
 });
