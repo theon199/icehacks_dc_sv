@@ -3,6 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { memo, useCallback } from 'react';
 import { Modal, StyleSheet, View } from 'react-native';
 
+import { describeError, logger } from '@/lib/logger';
 import {
   Button,
   Icon,
@@ -11,6 +12,7 @@ import {
   SheetContent,
   space,
   Text,
+  toast,
   useTheme,
 } from '@/ui';
 
@@ -116,6 +118,19 @@ function ExcludedSection({ excluded }: { excluded: readonly MissingItem[] }) {
   );
 }
 
+/**
+ * Opens a store listing. A browser that cannot open (no browser, link refused) gets a toast, not
+ * an unhandled rejection; a synchronous throw from the opener is caught the same way.
+ */
+export function openListing(url: string, openUrl: (url: string) => unknown): void {
+  Promise.resolve()
+    .then(() => openUrl(url))
+    .catch((error: unknown) => {
+      logger.warn('Store listing could not be opened', describeError(error));
+      toast.show({ message: "Couldn't open that store page.", tone: 'danger' });
+    });
+}
+
 /** Where every price in an estimate came from: store, listing link and the day it was checked. */
 export function SourcesSheet({
   visible,
@@ -124,7 +139,7 @@ export function SourcesSheet({
   excluded,
   openUrl = WebBrowser.openBrowserAsync,
 }: SourcesSheetProps) {
-  const onOpen = useCallback((url: string) => void openUrl(url), [openUrl]);
+  const onOpen = useCallback((url: string) => openListing(url, openUrl), [openUrl]);
   const renderItem = useCallback(
     ({ item }: { item: SourceRow }) => <SourceRowView row={item} onOpen={onOpen} />,
     [onOpen],
