@@ -14,18 +14,38 @@ export interface ResultCardProps {
   onOpen: (item: SearchResultItem) => void;
 }
 
-/** "Indian · 35 min · 420 kcal", leaving out whatever the catalog does not know. */
-export function resultMeta(item: SearchResultItem): string {
-  const { recipe } = item;
-  const parts = [cuisineLabel(recipe.cuisine)];
-  if (recipe.totalMinutes != null) parts.push(formatMinutes(recipe.totalMinutes));
-  const kcal = recipe.nutrition?.kcal;
-  if (kcal != null) parts.push(formatKcal(kcal));
-  return parts.join(' · ');
+export interface ResultFacts {
+  /** "Indian · 35 min · 420 kcal", or "~420 kcal est." when the calories are an estimate. */
+  readonly text: string;
+  /** The same facts worded for VoiceOver, with an estimate said in full. */
+  readonly spoken: string;
 }
 
-function accessibilityLabelFor(item: SearchResultItem, meta: string): string {
-  const base = `${item.recipe.title}. ${meta}`;
+/**
+ * Quick facts under a card's title, leaving out whatever the catalog does not know. Calories always
+ * carry their confidence: an estimated figure never reads like a computed one.
+ */
+export function resultFacts(item: SearchResultItem): ResultFacts {
+  const { recipe } = item;
+  const shown = [cuisineLabel(recipe.cuisine)];
+  if (recipe.totalMinutes != null) shown.push(formatMinutes(recipe.totalMinutes));
+  const spoken = [...shown];
+  const kcal = recipe.nutrition?.kcal;
+  if (kcal != null) {
+    const amount = formatKcal(kcal);
+    if (recipe.nutritionConfidence === 'computed') {
+      shown.push(amount);
+      spoken.push(amount);
+    } else {
+      shown.push(`~${amount} est.`);
+      spoken.push(`about ${amount}, estimated`);
+    }
+  }
+  return { text: shown.join(' · '), spoken: spoken.join(', ') };
+}
+
+function accessibilityLabelFor(item: SearchResultItem, facts: ResultFacts): string {
+  const base = `${item.recipe.title}. ${facts.spoken}`;
   return item.eligible ? base : `${base}. Does not fit you: ${item.reasons.join('; ')}`;
 }
 
@@ -33,12 +53,12 @@ function accessibilityLabelFor(item: SearchResultItem, meta: string): string {
 export const ResultCard = memo(function ResultCard({ item, onOpen }: ResultCardProps) {
   const theme = useTheme();
   const { recipe } = item;
-  const meta = resultMeta(item);
+  const facts = resultFacts(item);
   return (
     <PressableScale
       testID={`search-result-${recipe.id}`}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabelFor(item, meta)}
+      accessibilityLabel={accessibilityLabelFor(item, facts)}
       accessibilityHint="Opens the recipe"
       onPress={() => onOpen(item)}
       style={styles.card}
@@ -77,7 +97,7 @@ export const ResultCard = memo(function ResultCard({ item, onOpen }: ResultCardP
         {recipe.title}
       </Text>
       <Text variant="footnote" tone="subtle" numberOfLines={1} accessible={false}>
-        {meta}
+        {facts.text}
       </Text>
     </PressableScale>
   );
