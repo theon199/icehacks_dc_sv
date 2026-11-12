@@ -121,11 +121,13 @@ select is(
   0,
   'the reporter cannot read resolved_by on their own report'
 );
-select ok(
-  not ('resolved_by' = any (
+select is(
+  array_position(
     (select p.proargnames from pg_catalog.pg_proc p
-     where p.oid = 'public.my_reports(integer)'::regprocedure)
-  )),
+     where p.oid = 'public.my_reports(integer)'::regprocedure),
+    'resolved_by'::text
+  ),
+  null,
   'my_reports does not return resolved_by'
 );
 
