@@ -816,7 +816,14 @@ export interface ToolContext {
   signal: AbortSignal;
 }
 
-/** A tool plus the code that runs it. `invoke` validates the raw input before running. */
+/**
+ * A tool plus the code that runs it. `invoke` validates the raw input before running.
+ *
+ * Build handlers with `toolHandler()` rather than writing this object by hand: it validates the
+ * input and always hands `run` a context whose signal fires on the call's deadline or the caller's
+ * abort. A hand-written `invoke` that ignores `context` keeps working after the call is cancelled;
+ * the loop stops waiting for it, but its side effects still happen.
+ */
 export interface ToolHandler {
   tool: ZodTool;
   invoke(
