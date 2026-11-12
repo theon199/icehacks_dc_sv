@@ -1,15 +1,28 @@
 import {
+  GOAL_DETAILS,
+  GOAL_IDS,
   GOAL_TAGS,
-  GOAL_TAGS_FOR,
-  GOALS,
+  goalIdSchema,
   goalsTagMask,
   goalTagListJsonSchema,
   goalTagMask,
 } from './goals';
 
 describe('goals', () => {
-  it('maps every goal to at least one recipe tag', () => {
-    for (const goal of GOALS) expect(GOAL_TAGS_FOR[goal].length).toBeGreaterThan(0);
+  it('lists every goal once, in schema order', () => {
+    expect(new Set(GOAL_IDS).size).toBe(GOAL_IDS.length);
+    expect(Object.keys(GOAL_DETAILS).sort()).toEqual([...GOAL_IDS].sort());
+    expect(goalIdSchema.safeParse('more_protein').success).toBe(true);
+    expect(goalIdSchema.safeParse('bulk_up').success).toBe(false);
+  });
+
+  it('maps every goal to at least one recipe tag and a matching mask', () => {
+    for (const goal of GOAL_IDS) {
+      const { servedBy, mask, label } = GOAL_DETAILS[goal];
+      expect(servedBy.length).toBeGreaterThan(0);
+      expect(mask).toBe(goalTagMask(servedBy));
+      expect(label.length).toBeGreaterThan(0);
+    }
   });
 
   it('builds one bit per tag', () => {

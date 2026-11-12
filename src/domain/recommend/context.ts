@@ -7,7 +7,7 @@ import { buildTasteProfile, DAY_MS, type TasteLookup, type TasteProfile } from '
 import { compileSafetyRules, type SafetyRules } from '../safety/checkRecipe';
 import { cuisineRegion, type CuisineId, type RegionId } from '../types/cuisines';
 import { type FeedbackEvent, type Impression } from '../types/feedback';
-import { GOAL_TAGS_FOR, goalTagMask, type Goal } from '../types/goals';
+import { GOAL_DETAILS, type Goal } from '../types/goals';
 import { type IngredientId } from '../types/ingredient';
 import { type PantryItem } from '../types/pantry';
 import { type UserPreferences } from '../types/preferences';
@@ -101,7 +101,7 @@ export function createRankContext(
   }
 
   const goals = [...new Set(prefs.goals)];
-  const goalMasks = Int32Array.from(goals, (goal) => goalTagMask(GOAL_TAGS_FOR[goal]));
+  const goalMasks = Int32Array.from(goals, (goal) => GOAL_DETAILS[goal].mask);
 
   const lastShown = new Map<RecipeId, number>();
   const seenCuisines = new Set<CuisineId>();

@@ -6,7 +6,7 @@
 import { type RankContext } from './context';
 import { isNovel, pantryOwned, type FeatureVector } from './score';
 import { cuisineLabel, REGION_LABELS } from '../types/cuisines';
-import { GOAL_TAGS_FOR, goalTagMask, type Goal } from '../types/goals';
+import { GOAL_DETAILS, recipeGoalMask, type Goal } from '../types/goals';
 import { type RecipeSummary } from '../types/recipe';
 
 export type FitReasonCode =
@@ -82,8 +82,8 @@ export function explainRecipe(
     found.push({ code, text, strength: strength + (MODE_REASON[mode] === code ? 1 : 0) });
   };
 
-  const tagMask = goalTagMask(recipe.goalTags);
-  const servedGoal = ctx.goals.find((goal) => tagMask & goalTagMask(GOAL_TAGS_FOR[goal]));
+  const tagMask = recipeGoalMask(recipe.goalTags);
+  const servedGoal = ctx.goals.find((goal) => tagMask & GOAL_DETAILS[goal].mask);
   if (servedGoal) push('goal', GOAL_REASON[servedGoal], w.goalMatch * features.goalMatch);
 
   const minutes = recipe.totalMinutes;

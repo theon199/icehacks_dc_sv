@@ -6,7 +6,7 @@
 import { F, FEATURE_COUNT, type FeatureName } from './config';
 import { type RankContext } from './context';
 import { decayWeight, DAY_MS, tasteValue, worstIngredientAffinity } from './taste';
-import { goalTagMask } from '../types/goals';
+import { recipeGoalMask } from '../types/goals';
 import { type RecipeSummary } from '../types/recipe';
 
 export type FeatureVector = Readonly<Record<FeatureName, number>>;
@@ -32,7 +32,7 @@ export function goalMatch(
 ) {
   const health = clamp01(recipe.healthScore);
   if (ctx.goals.length === 0) return health;
-  const coverage = goalsServed(goalTagMask(recipe.goalTags), ctx) / ctx.goals.length;
+  const coverage = goalsServed(recipeGoalMask(recipe.goalTags), ctx) / ctx.goals.length;
   const share = ctx.config.goal.coverageShare;
   return share * coverage + (1 - share) * health;
 }
