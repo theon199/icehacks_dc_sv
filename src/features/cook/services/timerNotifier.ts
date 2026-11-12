@@ -5,6 +5,8 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+import { COOK_TIMER_NOTIFICATION_KIND } from '../logic/timerNotification';
+
 export type NotificationPermission = 'granted' | 'denied' | 'undetermined';
 
 export interface TimerAlert {
@@ -74,7 +76,7 @@ export const expoTimerNotifier: TimerNotifier = {
         title: alert.title,
         body: alert.body,
         sound: 'default',
-        data: { kind: 'cook_timer', url: alert.url },
+        data: { kind: COOK_TIMER_NOTIFICATION_KIND, url: alert.url },
         ...(Platform.OS === 'android'
           ? { priority: Notifications.AndroidNotificationPriority.HIGH }
           : {}),
