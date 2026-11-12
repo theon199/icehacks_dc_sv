@@ -170,8 +170,11 @@ describe('catalog writer', () => {
     assert.equal(check.ingredientListMismatches, 1);
   });
 
-  it('indexes recipes by family', () => {
-    const family = write([recipeRow()]).indexes.find((index) => index.name === 'recipes_family');
-    assert.match(family?.sql ?? '', /ON recipes\(family_id\)/);
+  it('indexes recipes by family and in ranking order', () => {
+    const { indexes } = write([recipeRow()]);
+    const sqlOf = (name: string) => indexes.find((index) => index.name === name)?.sql ?? '';
+    assert.match(sqlOf('recipes_family'), /ON recipes\(family_id\)/);
+    // Candidate and browse queries order by health score then id; this index spares them a sort.
+    assert.match(sqlOf('recipes_rank'), /ON recipes\(health_score DESC, id\)/);
   });
 });

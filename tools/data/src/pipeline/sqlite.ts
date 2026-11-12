@@ -51,6 +51,7 @@ CREATE INDEX recipes_cuisine ON recipes(cuisine);
 CREATE INDEX recipes_course ON recipes(course);
 CREATE INDEX recipes_diet ON recipes(diet_flags);
 CREATE INDEX recipes_family ON recipes(family_id);
+CREATE INDEX recipes_rank ON recipes(health_score DESC, id);
 
 CREATE TABLE recipe_ingredients (
   recipe_id TEXT NOT NULL REFERENCES recipes(id),
