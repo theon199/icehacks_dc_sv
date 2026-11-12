@@ -41,7 +41,7 @@ export function buildPreview(
   return autoFillWeek({
     weekStart,
     candidates: toFillCandidates(ranked),
-    plan: toWeekPlan(slots, weekStart),
+    plan: toWeekPlan(slots, weekStart, smallAppetite),
     days: remainingDays(weekStart, today),
     maxMinutesPerMeal: minutesPerDay(prefs.maxMinutes),
     goals: goalTagsFor(prefs.goals),

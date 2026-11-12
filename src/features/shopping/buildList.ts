@@ -38,11 +38,6 @@ export interface PlannedListInput {
   readonly recipes: ReadonlyMap<string, ListRecipe>;
   readonly ingredients: readonly Ingredient[];
   readonly pantry: readonly PantryItem[];
-  /**
-   * Size of each breakfast, lunch and dinner serving: 0.5 in small appetite mode, otherwise 1.
-   * Snacks are always planned as full portions, so they are never scaled by this.
-   */
-  readonly portion: number;
 }
 
 export interface PlannedList {
@@ -116,7 +111,8 @@ export function buildPlannedList(input: PlannedListInput): PlannedList {
     recipeId: recipe.id,
     servings: recipe.servings,
     plannedServings: meal.servings,
-    portion: meal.meal === 'snack' ? 1 : input.portion,
+    // Each meal buys for its own portion: two half-portion servings need one standard serving.
+    portion: meal.portion,
     ingredients: recipe.ingredients.map((line) => ({
       ingredient_id: line.ingredientId ?? resolveUnmatchedLine(line.text, catalogNames),
       text: line.text,

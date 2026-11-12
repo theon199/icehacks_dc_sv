@@ -147,7 +147,7 @@ describeDb('PantryScreen', () => {
     const user = userEvent.setup();
     await renderPantry();
     await user.press(screen.getByTestId('pantry-snap'));
-    expect(router.push).toHaveBeenCalledWith('/snap');
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/snap', params: { mode: 'pantry' } });
     expect(router.push).not.toHaveBeenCalledWith('/snap/pantry');
   });
 
@@ -157,7 +157,7 @@ describeDb('PantryScreen', () => {
     await renderPantry();
     await user.press(screen.getByTestId('pantry-snap'));
     expect(router.push).toHaveBeenCalledWith('/ai-consent');
-    expect(router.push).not.toHaveBeenCalledWith('/snap');
+    expect(router.push).toHaveBeenCalledTimes(1);
   });
 
   it('does not offer Snap to anyone under the AI age', async () => {

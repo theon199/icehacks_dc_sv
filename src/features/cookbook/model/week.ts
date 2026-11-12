@@ -133,17 +133,23 @@ export function toCellKey(key: SlotKey): CellKey {
 }
 
 /**
- * A stored week as the planner domain reads it. Each meal keeps the portion it was planned at;
- * `portion` stands in for meals stored without one.
+ * A stored week as the planner domain reads it. Each meal counts at the portion it is shown and
+ * bought at (`entryPortion`): the one it was planned at, or the small-appetite setting's for a meal
+ * stored without one, so auto-fill balances the rest of the week against what will be eaten.
  */
-export function toWeekPlan(week: PlanWeek | undefined, weekStart: IsoDate, portion = 1): WeekPlan {
+export function toWeekPlan(
+  week: PlanWeek | undefined,
+  weekStart: IsoDate,
+  smallAppetite: boolean,
+): WeekPlan {
   const cells: Partial<Record<CellKey, PlannedMeal>> = {};
   if (week) {
     for (const [key, entry] of Object.entries(week.slots) as [SlotKey, PlanEntry][]) {
+      const meal = key.split('-')[1] as MealSlot;
       cells[toCellKey(key)] = {
         recipeId: entry.recipeId,
         servings: entry.servings,
-        portion: entry.portion ?? portion,
+        portion: entryPortion(entry, meal, smallAppetite),
       };
     }
   }

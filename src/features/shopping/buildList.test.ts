@@ -11,11 +11,17 @@ import {
 import { catalogNameIndex } from './pantryLink';
 import type { PlannedMealRef } from './planRange';
 
-const meal = (recipeId: string, servings: number, date = '2026-11-12'): PlannedMealRef => ({
+const meal = (
+  recipeId: string,
+  servings: number,
+  date = '2026-11-12',
+  portion = 1,
+): PlannedMealRef => ({
   date,
   meal: 'dinner',
   recipeId,
   servings,
+  portion,
 });
 
 function build(overrides: Partial<PlannedListInput> = {}) {
@@ -24,7 +30,6 @@ function build(overrides: Partial<PlannedListInput> = {}) {
     recipes: RECIPES,
     ingredients: INGREDIENTS,
     pantry: [],
-    portion: 1,
     ...overrides,
   });
 }
@@ -44,16 +49,39 @@ describe('list generation from the plan', () => {
     expect(list.mealCount).toBe(2);
   });
 
-  it('scales by planned servings and by the small-appetite portion', () => {
+  it('scales by planned servings and by the portion each meal is planned at', () => {
     expect(amountsOf(build({ meals: [meal('test:curry', 4)] }), 'i:rice')).toEqual([[400, 'g']]);
-    expect(amountsOf(build({ meals: [meal('test:curry', 4)], portion: 0.5 }), 'i:rice')).toEqual([
-      [200, 'g'],
-    ]);
+    const half = build({ meals: [meal('test:curry', 4, '2026-11-12', 0.5)] });
+    expect(amountsOf(half, 'i:rice')).toEqual([[200, 'g']]);
   });
 
-  it('keeps snacks at a full portion in small appetite mode', () => {
-    const snack: PlannedMealRef = { ...meal('test:curry', 4), meal: 'snack' };
-    expect(amountsOf(build({ meals: [snack], portion: 0.5 }), 'i:rice')).toEqual([[400, 'g']]);
+  it('buys each meal at its own portion when portions are mixed', () => {
+    const list = build({
+      meals: [
+        meal('test:curry', 4, '2026-11-12', 0.5),
+        meal('test:fried-rice', 4, '2026-11-12', 1),
+        // A snack planned whole stays whole next to half-size meals.
+        { ...meal('test:curry', 2, '2026-11-13', 1), meal: 'snack' },
+      ],
+    });
+    // Curry 2 × 100 g + 2 × 100 g, fried rice 4 × 100 g.
+    expect(amountsOf(list, 'i:rice')).toEqual([[800, 'g']]);
+    // Eggs come from the fried rice alone, planned at full size.
+    expect(amountsOf(list, 'i:egg')).toEqual([[4, 'each']]);
+    expect(list.mealCount).toBe(3);
+  });
+
+  it('matches the list for the same food planned as fewer whole servings', () => {
+    const portioned = build({
+      meals: [
+        meal('test:curry', 4, '2026-11-12', 0.5),
+        meal('test:fried-rice', 2, '2026-11-13', 2),
+      ],
+    });
+    const folded = build({
+      meals: [meal('test:curry', 2, '2026-11-12'), meal('test:fried-rice', 4, '2026-11-13')],
+    });
+    expect(portioned.items).toEqual(folded.items);
   });
 
   it('counts a recipe planned twice twice', () => {

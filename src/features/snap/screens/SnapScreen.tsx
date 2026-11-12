@@ -1,3 +1,4 @@
+import type { SnapMode } from '@/lib/api/ai';
 import { Screen } from '@/ui';
 
 import { AiGate, selectCanUseAi, useSessionStore } from '../deps';
@@ -10,11 +11,11 @@ const PURPOSE =
  * The Snap tab. Tabs cannot sit inside the `Stack.Protected` guard that covers AI routes, so the
  * tab gates itself: the camera only mounts for people who are 18+ and have agreed to AI use.
  */
-export function SnapScreen() {
+export function SnapScreen({ mode }: { mode?: SnapMode | undefined } = {}) {
   const unlocked = useSessionStore((state) => selectCanUseAi(state));
   const gated = (
     <AiGate feature="Snap" purpose={PURPOSE} testID="snap-ai-gate">
-      <SnapCameraScreen />
+      <SnapCameraScreen requestedMode={mode} />
     </AiGate>
   );
   // The camera runs edge to edge under the status bar. The shared gate has no top inset of its

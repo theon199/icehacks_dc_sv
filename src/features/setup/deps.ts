@@ -3,11 +3,14 @@
  * cuisine and pantry questions, and the per-account user stores (`@/stores`) the answers land in.
  * The rest of the app reads those same stores, so the answers are what it sees.
  */
-import { getCuisines, getIngredients, getPantryStaples, type Ingredient } from '@/lib/catalog';
+import { getCuisines, getIngredients, type Ingredient } from '@/lib/catalog';
 import { preferencesSchema, usePantryStore, usePreferencesStore } from '@/stores';
 
 import type { OnboardingAnswers } from './onboardingModel';
 import { answersFromPreferences, toPreferencesPatch } from './preferencesMapping';
+
+/** Ingredients most kitchens keep on hand, read through the catalog's shared, cached query. */
+export { usePantryStaples } from '@/lib/catalog';
 
 export interface CuisineOption {
   /** Catalog cuisine id, e.g. `west_african`. */
@@ -25,11 +28,13 @@ export async function loadCuisineOptions(): Promise<CuisineOption[]> {
   return cuisines.map(({ cuisine, region, recipeCount }) => ({ id: cuisine, region, recipeCount }));
 }
 
-/** Ingredients most kitchens already have, offered as a quick start for the pantry. */
-export async function loadPantryStaples(): Promise<PantryStaple[]> {
-  const staples = await getPantryStaples();
-  // Sorted for display with the reader's collation rather than SQLite's byte order.
-  return staples.sort(
+/**
+ * Pantry staples in display order, by category then name, using the reader's collation rather than
+ * SQLite's byte order. Returns a new array: the input is a cached query result shared with other
+ * screens and must not be reordered in place.
+ */
+export function sortStaplesForDisplay<T extends PantryStaple>(staples: readonly T[]): T[] {
+  return [...staples].sort(
     (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name),
   );
 }

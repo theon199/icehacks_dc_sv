@@ -48,6 +48,7 @@ export const mockRouter = {
   replace: jest.fn(),
   back: jest.fn(),
   canGoBack: jest.fn(() => true),
+  setParams: jest.fn(),
 };
 
 /**
