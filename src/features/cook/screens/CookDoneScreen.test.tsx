@@ -1,6 +1,8 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
 
 import { useSessionStore } from '@/features/auth';
+import { profileKeys } from '@/features/profile';
+import { queryClient } from '@/lib/query/client';
 import { selectCookEntries, useCookLogStore, useFeedbackStore } from '@/stores';
 import { renderWithTheme } from '@/test/render';
 
@@ -100,6 +102,25 @@ describe('CookDoneScreen', () => {
       },
     ]);
     expect(mockNav.back).toHaveBeenCalled();
+  });
+
+  it('marks the profile stats out of date once the server has the cook', async () => {
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    await rateAndNote();
+    await act(async () => fireEvent.press(screen.getByTestId('cook-done-save')));
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: profileKeys.statsAll('user-1') });
+    invalidate.mockRestore();
+  });
+
+  it('leaves the profile stats alone when the cook was only queued', async () => {
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    mockServer.reply = { data: null, error: { message: 'Network request failed', code: '' } };
+    await rateAndNote();
+    await act(async () => fireEvent.press(screen.getByTestId('cook-done-save')));
+
+    expect(invalidate).not.toHaveBeenCalled();
+    invalidate.mockRestore();
   });
 
   it('queues the cook event when offline and still closes', async () => {

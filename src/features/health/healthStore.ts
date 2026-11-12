@@ -42,6 +42,8 @@ const persistedSchema = z.object({
   glucosePairs: z.array(glucosePairSchema).max(5000),
   lastRefreshAt: z.number().nullable(),
   lastSyncedAt: z.number().nullable(),
+  /** When the glucose pairs were first built from the longer lookback; null until that worked. */
+  glucoseBackfilledAt: z.number().nullable().default(null),
   /** Account whose synced summaries still have to be removed (the last attempt failed). */
   removalPendingFor: z.string().nullable().default(null),
 });
@@ -56,6 +58,8 @@ export interface HealthState extends PersistedHealth {
     at: number;
     dayContext?: DayContext;
     glucosePairs?: GlucosePair[];
+    /** The glucose pairs came from the longer first lookback. */
+    glucoseBackfilled?: boolean;
   }) => void;
   markSynced: (at: number) => void;
   /** Records that `userId`'s synced summaries must be removed, or (with null) that they were. */
@@ -73,6 +77,7 @@ export const initialHealth: PersistedHealth = {
   glucosePairs: [],
   lastRefreshAt: null,
   lastSyncedAt: null,
+  glucoseBackfilledAt: null,
   removalPendingFor: null,
 };
 
@@ -81,6 +86,7 @@ const cleared = (): Partial<PersistedHealth> => ({
   glucosePairs: [],
   lastRefreshAt: null,
   lastSyncedAt: null,
+  glucoseBackfilledAt: null,
 });
 
 export const useHealthStore = create<HealthState>()(
@@ -96,11 +102,12 @@ export const useHealthStore = create<HealthState>()(
             ? { syncEnabled, removalPendingFor: null }
             : { syncEnabled, lastSyncedAt: null },
         ),
-      applyRefresh: ({ at, dayContext, glucosePairs }) =>
+      applyRefresh: ({ at, dayContext, glucosePairs, glucoseBackfilled = false }) =>
         set({
           lastRefreshAt: at,
           ...(dayContext ? { dayContext } : {}),
           ...(glucosePairs ? { glucosePairs } : {}),
+          ...(glucosePairs && glucoseBackfilled ? { glucoseBackfilledAt: at } : {}),
         }),
       markSynced: (at) => set({ lastSyncedAt: at }),
       setRemovalPending: (removalPendingFor) => set({ removalPendingFor }),
@@ -128,6 +135,7 @@ export const useHealthStore = create<HealthState>()(
         glucosePairs: state.glucosePairs,
         lastRefreshAt: state.lastRefreshAt,
         lastSyncedAt: state.lastSyncedAt,
+        glucoseBackfilledAt: state.glucoseBackfilledAt,
         removalPendingFor: state.removalPendingFor,
       }),
       merge: (persisted, current) => {
