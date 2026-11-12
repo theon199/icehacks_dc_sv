@@ -46,7 +46,7 @@ describe('mergeIntoCache', () => {
     expect(map.flour?.savedAt).toBe(NOW);
   });
 
-  it('forgets answers older than 7 days', () => {
+  it('forgets answers saved more than 7 days ago', () => {
     const old = mergeIntoCache({}, [priced('flour', 400, 1, 'kg')], NOW - 8 * DAY);
     const next = mergeIntoCache(old, [priced('egg', 360, 12, 'each')], NOW);
     expect(Object.keys(next)).toEqual(['egg']);

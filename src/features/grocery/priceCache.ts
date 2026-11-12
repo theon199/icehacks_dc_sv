@@ -107,7 +107,7 @@ export function createPriceCache(key: KvKey<z.infer<typeof cacheSchema>>): Price
 
   function persist(map: PriceCacheMap) {
     const snapshot = { ...map };
-    // Writes are chained so an older snapshot can never land after a newer one.
+    // Writes are chained so a stale snapshot can never land after a fresher one.
     writing = writing
       .then(() => key.set(snapshot))
       .catch((error: unknown) => {

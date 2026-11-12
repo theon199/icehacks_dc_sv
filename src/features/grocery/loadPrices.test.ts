@@ -1,5 +1,5 @@
-import { ApiError } from '@/lib/api/errors';
 import type { PriceRequest, PricesResponse } from '@/lib/api/commerce';
+import { ApiError } from '@/lib/api/errors';
 
 import { loadPrices, PRICE_BATCH_SIZE } from './loadPrices';
 import type { PriceCache } from './priceCache';

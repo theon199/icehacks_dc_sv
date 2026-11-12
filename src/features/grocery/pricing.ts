@@ -8,7 +8,7 @@ import type { CostEstimate, PriceRecord, ShoppingItem } from '@/domain/shopping'
 import type { IngredientPrice } from '@/lib/api/commerce';
 
 /** Package units from the price lookup that the unit model spells differently. */
-const UNIT_REWRITES: Readonly<Record<string, { unit: string; factor: number }>> = {
+const PACKAGE_UNIT_ALIASES: Readonly<Record<string, { unit: string; factor: number }>> = {
   count: { unit: 'each', factor: 1 },
   dozen: { unit: 'each', factor: 12 },
 };
@@ -22,12 +22,12 @@ export const UNKNOWN_RETAILER = 'Online listing';
  */
 export function toPriceRecord(price: IngredientPrice): PriceRecord | null {
   if (price.status !== 'priced' || price.priceCents == null || !price.unit) return null;
-  const rewrite = UNIT_REWRITES[price.unit];
+  const alias = PACKAGE_UNIT_ALIASES[price.unit];
   const qty = price.packageQty ?? 1;
   return {
     price: price.priceCents / 100,
-    packageQty: rewrite ? qty * rewrite.factor : qty,
-    unit: rewrite ? rewrite.unit : price.unit,
+    packageQty: alias ? qty * alias.factor : qty,
+    unit: alias ? alias.unit : price.unit,
     source: price.retailer?.trim() || UNKNOWN_RETAILER,
     fetchedAt: price.fetchedAt ?? '',
   };
