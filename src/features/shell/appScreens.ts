@@ -53,7 +53,11 @@ export const appScreens: readonly AppScreen[] = [
   // Community
   { name: 'post/[id]', options: titled('Post') },
   { name: 'author/[id]', options: titled('') },
-  { name: 'compose', options: titled('Share a dish', { presentation: 'modal' }) },
+  // A tall sheet that keeps its header, so the screen's Close button stays reachable.
+  {
+    name: 'compose',
+    options: (t) => ({ ...sheetOptions(t, [0.9, 1]), headerShown: true, title: 'Share a dish' }),
+  },
   { name: 'notifications', options: titled('Notifications') },
   { name: 'profile', options: titled('Profile') },
   { name: 'friends', options: titled('Friends') },
@@ -69,6 +73,7 @@ export const appScreens: readonly AppScreen[] = [
 
   // Moderation and safety
   { name: 'moderation/index', options: titled('Review queue') },
+  { name: 'moderation/review', options: titled('Review') },
   { name: 'moderation/report', options: (t) => sheetOptions(t, [0.6, 1]) },
   { name: 'moderation/blocked', options: titled('Blocked people') },
   { name: 'moderation/notice/[id]', options: titled('Content notice') },
