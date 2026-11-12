@@ -111,8 +111,7 @@ as $$
 $$;
 
 -- Badge inputs. Cook-based metrics only use cooks logged live (see private.streaks), so a member
--- cannot earn streak or count badges by back-filling a month of history in one sitting. Only
--- visible posts count: a post held for review has not been shared with anyone yet.
+-- cannot earn streak or count badges by back-filling a month of history in one sitting.
 create function private.badge_metrics(p_user uuid)
 returns table (cook_count integer, streak_days integer, cuisine_count integer, post_count integer)
 language sql
@@ -129,7 +128,7 @@ as $$
     (select count(*)::integer from live),
     (select s.longest_streak from private.streaks(p_user, (now() at time zone 'utc')::date, true) s),
     (select count(distinct l.cuisine)::integer from live l where l.cuisine is not null),
-    (select count(*)::integer from public.posts p where p.author_id = p_user and p.status = 'visible');
+    (select count(*)::integer from public.posts p where p.author_id = p_user and p.status <> 'removed');
 $$;
 
 -- Grants every badge whose threshold the user has reached and notifies them of new ones.
@@ -199,14 +198,6 @@ create trigger posts_award_badges
   after insert on public.posts
   for each row
   when (new.status = 'visible')
-  execute function private.posts_award_badges();
-
--- A post held for review counts once a moderator restores it or an appeal reverses the hold.
--- Awards are idempotent, so a post that was visible before earns nothing twice.
-create trigger posts_award_badges_on_visible
-  after update of status on public.posts
-  for each row
-  when (old.status <> 'visible' and new.status = 'visible')
   execute function private.posts_award_badges();
 
 -- ---------------------------------------------------------------------------------------------

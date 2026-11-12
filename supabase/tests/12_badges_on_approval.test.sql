@@ -108,6 +108,24 @@ select is(
   'nor notify the author twice'
 );
 
+-- An update that leaves a post visible, such as an edit, does not evaluate badges. With Ana's award
+-- cleared, any evaluation would grant it again, so a missing award proves none ran.
+reset role;
+delete from public.notifications where recipient_id = 'aaaaaaaa-0000-4000-8000-000000000001' and kind = 'badge';
+delete from public.badge_awards where user_id = 'aaaaaaaa-0000-4000-8000-000000000001' and badge_id = 'first_post';
+update public.posts set title = 'Held tip, edited', status = 'visible' where title = 'Held tip';
+select is(
+  (select count(*)::integer from public.badge_awards where user_id = 'aaaaaaaa-0000-4000-8000-000000000001' and badge_id = 'first_post'),
+  0,
+  'editing a visible post does not evaluate badges'
+);
+select is(
+  (select count(*)::integer from public.notifications where recipient_id = 'aaaaaaaa-0000-4000-8000-000000000001' and kind = 'badge'),
+  0,
+  'nor notify the author'
+);
+set local role authenticated;
+
 -- Ben's held post is approved through an appeal against the automatic hold.
 select tests.login('bbbbbbbb-0000-4000-8000-000000000002');
 select is(
