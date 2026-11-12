@@ -67,13 +67,9 @@ function useDayStart(active: boolean): number {
   const [dayStart, setDayStart] = useState(() => startOfDay(Date.now()));
   useEffect(() => {
     if (!active) return;
-    const now = Date.now();
-    const today = startOfDay(now);
-    if (today !== dayStart) {
-      setDayStart(today);
-      return;
-    }
-    const timer = setTimeout(() => setDayStart(startOfDay(Date.now())), nextDayStart(now) - now);
+    // A day that has already ended (the screen sat idle while not limited) refreshes at once.
+    const wait = Math.max(0, nextDayStart(dayStart) - Date.now());
+    const timer = setTimeout(() => setDayStart(startOfDay(Date.now())), wait);
     return () => clearTimeout(timer);
   }, [active, dayStart]);
   return dayStart;
