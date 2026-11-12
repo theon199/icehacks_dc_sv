@@ -2,7 +2,8 @@
  * Things the person adds to the shopping list by hand ("dish soap", "birthday candles"). They sit
  * beside the plan-derived items and are ticked with the same check-off store, under `x:<id>` keys.
  * Stored on this device and tied to the account that added them: when a different account signs
- * in on the same phone, the list starts empty instead of showing someone else's extras.
+ * in on the same phone, the list starts empty instead of showing someone else's extras, and
+ * signing out (or deleting the account) removes them from the device altogether.
  */
 import { z } from 'zod';
 import { create } from 'zustand';
@@ -11,6 +12,8 @@ import { persist } from 'zustand/middleware';
 import { newId } from '@/lib/id';
 import { createSelector } from '@/stores/memo';
 import { versionedPersist } from '@/stores/persistence';
+
+import { whenSignedOut } from './deps';
 
 export const MAX_EXTRAS = 200;
 
@@ -93,6 +96,14 @@ export const useShoppingExtrasStore = create<ExtrasState>()(
     }),
   ),
 );
+
+/** Removes every extra and the stored copy, as sign-out does for the synced user stores. */
+export function wipeShoppingExtras(): void {
+  useShoppingExtrasStore.getState().reset();
+  useShoppingExtrasStore.persist.clearStorage();
+}
+
+whenSignedOut(wipeShoppingExtras);
 
 const NO_EXTRAS: readonly ExtraItem[] = [];
 

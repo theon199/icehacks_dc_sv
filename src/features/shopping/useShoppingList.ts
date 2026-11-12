@@ -13,7 +13,10 @@ import { selectSmallAppetite, usePreferencesStore } from '@/stores/preferences';
 import { buildPlannedList, ingredientIdsOf, type ListRecipe, type PlannedList } from './buildList';
 import { plannedMealsInRange, recipeIdsOf, type DateRange } from './planRange';
 
-/** Small appetite mode plans half portions, so the list buys half as much per serving. */
+/**
+ * Small appetite mode plans half-portion meals (snacks stay whole), so the list buys half as much
+ * per meal serving.
+ */
 const SMALL_APPETITE_PORTION = 0.5;
 
 // The catalog ships with the app and never changes while it runs.

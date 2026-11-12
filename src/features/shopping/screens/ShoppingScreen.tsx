@@ -159,14 +159,28 @@ export function ShoppingScreen() {
         onAction={() => router.push('/cookbook')}
       />
     );
-  } else if (status === 'ready' && rows.length === 0) {
-    empty = (
-      <EmptyState
-        icon="checkmark.seal"
-        title="You have everything"
-        message="Your pantry covers every planned meal."
-      />
-    );
+  }
+
+  // Nothing left to buy is told apart from nothing to build a list from: every planned recipe
+  // having left the catalog is not the same as the pantry covering everything.
+  let nothingToBuy = null;
+  if (status === 'ready' && list && list.items.length === 0 && actions.extras.length === 0) {
+    nothingToBuy =
+      list.mealCount === 0 ? (
+        <EmptyState
+          icon="calendar"
+          title="These recipes aren’t available"
+          message="The meals planned for these days are no longer in the recipe collection. Swap them in your plan to build a list."
+          actionLabel="Open plan"
+          onAction={() => router.push('/cookbook')}
+        />
+      ) : (
+        <EmptyState
+          icon="checkmark.seal"
+          title="You have everything"
+          message="Your pantry covers every planned meal."
+        />
+      );
   }
 
   return (
@@ -178,23 +192,26 @@ export function ShoppingScreen() {
         getItemType={(row) => row.type}
         extraData={showPantry}
         ListHeaderComponent={
-          <ShoppingHeader
-            preset={preset}
-            onPresetChange={setPreset}
-            rangeText={rangeLabel(range)}
-            summary={
-              list
-                ? summaryFor(plannedMeals, list.items.length, list.missingRecipeIds.length)
-                : null
-            }
-            toBuy={list?.items ?? []}
-            checkedCount={tickedOnList}
-            canShare={actions.canShare}
-            onShare={actions.share}
-            onMarkBought={actions.markBought}
-            onClearTicks={actions.clearTicks}
-            onAddExtra={actions.addExtra}
-          />
+          <>
+            <ShoppingHeader
+              preset={preset}
+              onPresetChange={setPreset}
+              rangeText={rangeLabel(range)}
+              summary={
+                list
+                  ? summaryFor(plannedMeals, list.items.length, list.missingRecipeIds.length)
+                  : null
+              }
+              toBuy={list?.items ?? []}
+              checkedCount={tickedOnList}
+              canShare={actions.canShare}
+              onShare={actions.share}
+              onMarkBought={actions.markBought}
+              onClearTicks={actions.clearTicks}
+              onAddExtra={actions.addExtra}
+            />
+            {nothingToBuy}
+          </>
         }
         ListEmptyComponent={empty}
         contentInsetAdjustmentBehavior="automatic"

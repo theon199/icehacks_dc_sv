@@ -54,7 +54,10 @@ describe('pantry editing', () => {
 
   it('rejects an amount too small to store', () => {
     expect(parsePantryForm(form({ qty: '0.0004' }))).toMatchObject({ ok: false, field: 'qty' });
-    expect(parsePantryForm(form({ qty: '0.001' }))).toMatchObject({ ok: true, patch: { qty: 0.001 } });
+    expect(parsePantryForm(form({ qty: '0.001' }))).toMatchObject({
+      ok: true,
+      patch: { qty: 0.001 },
+    });
   });
 
   it('drops the catalog match when the item is renamed to something else', () => {

@@ -1,5 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 
+import { useSessionStore } from '@/features/auth';
 import { storageKey } from '@/lib/storage/kv';
 import { selectIsChecked, useShoppingStore } from '@/stores/shopping';
 
@@ -12,6 +13,7 @@ import {
   selectExtrasFor,
   useShoppingExtrasStore,
 } from './extrasStore';
+import { staleTickKeys } from './ticks';
 
 jest.mock('expo-crypto', () => ({
   randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
@@ -62,6 +64,16 @@ describe('check-off persistence', () => {
     expect(selectIsChecked(riceAfter?.key ?? '')(useShoppingStore.getState())).toBe(true);
   });
 
+  it('lets ticks from an earlier trip expire', () => {
+    const now = new Date('2026-11-20T10:00:00.000Z');
+    const checked = {
+      'i:egg': { key: 'i:egg', checkedAt: '2026-11-11T10:00:00.000Z' },
+      'i:rice': { key: 'i:rice', checkedAt: '2026-11-19T18:00:00.000Z' },
+      'i:salt': { key: 'i:salt', checkedAt: 'not a time' },
+    };
+    expect(staleTickKeys(checked, now).sort()).toEqual(['i:egg', 'i:salt']);
+  });
+
   it('can untick everything at once', () => {
     useShoppingStore.getState().toggle('i:onion', at);
     useShoppingStore.getState().toggle(extraKey('x1'), at);
@@ -95,5 +107,21 @@ describe('hand-added extras', () => {
     expect(selectExtrasFor(null)(store.getState())).toEqual([]);
     store.getState().claim('person-2');
     expect(store.getState().extras).toEqual({});
+  });
+
+  it('are removed from the device on sign-out', () => {
+    useSessionStore.getState().signedIn({
+      userId: 'person-1',
+      birthYear: 1990,
+      onboardingComplete: true,
+    });
+    const store = useShoppingExtrasStore;
+    store.getState().claim('person-1');
+    store.getState().add('Candles', at);
+    expect(Storage.getItemSync(storageKey('user.shopping_extras'))).not.toBeNull();
+
+    useSessionStore.getState().signedOut();
+    expect(store.getState()).toMatchObject({ ownerId: null, extras: {} });
+    expect(Storage.getItemSync(storageKey('user.shopping_extras'))).toBeNull();
   });
 });

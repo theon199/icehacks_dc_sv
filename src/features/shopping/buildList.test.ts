@@ -49,6 +49,11 @@ describe('list generation from the plan', () => {
     ]);
   });
 
+  it('keeps snacks at a full portion in small appetite mode', () => {
+    const snack: PlannedMealRef = { ...meal('test:curry', 4), meal: 'snack' };
+    expect(amountsOf(build({ meals: [snack], portion: 0.5 }), 'i:rice')).toEqual([[400, 'g']]);
+  });
+
   it('counts a recipe planned twice twice', () => {
     const list = build({ meals: [meal('test:curry', 2), meal('test:curry', 2, '2026-11-13')] });
     expect(amountsOf(list, 'i:chickpea')).toEqual([[2, 'can']]);

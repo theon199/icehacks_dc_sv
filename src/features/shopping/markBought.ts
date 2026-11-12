@@ -4,11 +4,18 @@
  */
 import type { Amount, ShoppingItem } from '@/domain/shopping';
 import type { Ingredient } from '@/lib/catalog';
-import type { NewPantryItem } from '@/stores/pantry';
+import {
+  MAX_PANTRY_ITEMS,
+  addPantryItem,
+  type NewPantryItem,
+  type PantryItem,
+} from '@/stores/pantry';
 
 import type { ExtraItem } from './extrasStore';
 
 const MAX_UNIT_LENGTH = 24;
+/** The pantry's name limit; a long free-text line is cut rather than refused. */
+const MAX_NAME_LENGTH = 80;
 
 /**
  * Grams and millilitres to one decimal, rounded up: what was bought always covers what the list
@@ -37,7 +44,8 @@ function pantryUnit(amount: Amount): string | null {
  * left for the "to taste" use, and the item would come straight back onto the list.
  */
 function withTasteMargin(amount: Amount, quantity: number): number {
-  if (amount.unit === 'g' || amount.unit === 'ml') return tidy(quantity + Math.max(quantity * 0.1, 1));
+  if (amount.unit === 'g' || amount.unit === 'ml')
+    return tidy(quantity + Math.max(quantity * 0.1, 1));
   return quantity + 1;
 }
 
@@ -54,7 +62,7 @@ export function pantryInputsForItems(
   for (const item of items) {
     const base = {
       ingredientId: item.ingredientId,
-      name: item.name,
+      name: item.name.slice(0, MAX_NAME_LENGTH).trim(),
       category:
         (item.ingredientId ? ingredients.get(item.ingredientId)?.category : undefined) ?? 'other',
     } as const;
@@ -73,6 +81,64 @@ export function pantryInputsForItems(
     });
   }
   return out;
+}
+
+const sameText = (a: string, b: string) =>
+  a.trim().toLowerCase().replace(/\s+/g, ' ') === b.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** Whether the pantry already has an entry this input would top up (same thing, same unit). */
+function alreadyThere(items: Readonly<Record<string, PantryItem>>, input: NewPantryItem): boolean {
+  const unit = input.unit?.trim() || null;
+  return Object.values(items).some(
+    (item) =>
+      (item.unit ?? null) === unit &&
+      (input.ingredientId && item.ingredientId
+        ? item.ingredientId === input.ingredientId
+        : sameText(item.name, input.name)),
+  );
+}
+
+/** One bought line (a list item or an extra) and the pantry entries it becomes. */
+export interface BoughtLine {
+  /** Its check-off key. */
+  readonly key: string;
+  readonly inputs: readonly NewPantryItem[];
+}
+
+/**
+ * Splits bought lines into those the pantry can take and those it cannot because it is full
+ * (`MAX_PANTRY_ITEMS`). A line moves only if all of its entries fit; topping up an item that is
+ * already there always fits. Lines that do not fit stay ticked on the list.
+ */
+export function fitIntoPantry(
+  items: Readonly<Record<string, PantryItem>>,
+  lines: readonly BoughtLine[],
+  at: string,
+): { readonly fits: readonly BoughtLine[]; readonly left: readonly BoughtLine[] } {
+  const fits: BoughtLine[] = [];
+  const left: BoughtLine[] = [];
+  let current = items;
+  let probe = 0;
+  for (const line of lines) {
+    let next = current;
+    let ok = true;
+    for (const input of line.inputs) {
+      const full = Object.keys(next).length >= MAX_PANTRY_ITEMS;
+      const after = addPantryItem(next, input, { id: `fit-${probe++}`, at });
+      // Unchanged while full means there was no room for a new item, unless it matched one
+      // already there and the top-up changed nothing ("have some" onto "have some").
+      if (after === next && full && !alreadyThere(next, input)) {
+        ok = false;
+        break;
+      }
+      next = after;
+    }
+    if (ok) {
+      current = next;
+      fits.push(line);
+    } else left.push(line);
+  }
+  return { fits, left };
 }
 
 /** Hand-added extras go on the "Other" shelf with no quantity. */

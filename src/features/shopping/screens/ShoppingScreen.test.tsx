@@ -100,6 +100,35 @@ describeDb('ShoppingScreen', () => {
     await waitFor(() => expect(screen.queryByTestId(`shopping-row-${ticked[0]}`)).toBeNull());
   });
 
+  it('says so when the pantry covers everything planned', async () => {
+    planToday();
+    const user = userEvent.setup();
+    await renderShopping();
+    for (const box of await screen.findAllByRole('checkbox')) await user.press(box);
+    await user.press(screen.getByTestId('shopping-mark-bought'));
+    expect(await screen.findByText('You have everything')).toBeOnTheScreen();
+    expect(screen.getByTestId('shopping-pantry-toggle')).toBeOnTheScreen();
+  });
+
+  it('explains when every planned recipe is unavailable', async () => {
+    const today = localIsoDate(new Date());
+    useMealPlanStore.getState().setSlot(weekStartOf(today), slotKey(dayIndexOf(today), 'dinner'), {
+      recipeId: 'mealdb:0',
+      servings: 2,
+    });
+    await renderShopping();
+    expect(await screen.findByText('These recipes aren’t available')).toBeOnTheScreen();
+    expect(screen.queryByText('You have everything')).toBeNull();
+  });
+
+  it('clears ticks left from an earlier trip', async () => {
+    planToday();
+    useShoppingStore.getState().toggle('i:old', '2020-01-01T00:00:00.000Z');
+    await renderShopping();
+    await screen.findAllByRole('checkbox');
+    expect(useShoppingStore.getState().checked).toEqual({});
+  });
+
   it('keeps ticks when the screen is opened again', async () => {
     planToday();
     const user = userEvent.setup();

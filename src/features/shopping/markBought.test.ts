@@ -1,9 +1,9 @@
 import type { ShoppingItem } from '@/domain/shopping';
-import { addPantryItem, type PantryItem } from '@/stores/pantry';
+import { MAX_PANTRY_ITEMS, addPantryItem, type PantryItem } from '@/stores/pantry';
 
 import { INGREDIENTS, RECIPES, ingredient, line } from './__fixtures__/catalog';
 import { buildPlannedList } from './buildList';
-import { pantryInputsForExtras, pantryInputsForItems } from './markBought';
+import { fitIntoPantry, pantryInputsForExtras, pantryInputsForItems } from './markBought';
 
 const at = '2026-11-11T10:00:00.000Z';
 const meals = [
@@ -133,6 +133,26 @@ describe('mark bought → pantry', () => {
       items = addPantryItem(items, input, { id: 'new', at });
     }
     expect(Object.values(items)).toEqual([expect.objectContaining({ id: 'existing', qty: 600 })]);
+  });
+
+  it('keeps lines on the list when the pantry is full, except top-ups', () => {
+    let items: Readonly<Record<string, PantryItem>> = {};
+    for (let i = 0; i < MAX_PANTRY_ITEMS - 1; i += 1) {
+      items = addPantryItem(items, { name: `thing ${i}` }, { id: `t${i}`, at });
+    }
+    items = addPantryItem(
+      items,
+      { ingredientId: 'rice', name: 'rice', qty: 100, unit: 'g' },
+      { id: 'rice', at },
+    );
+    const lines = [
+      { key: 'i:rice', inputs: [{ ingredientId: 'rice', name: 'rice', qty: 200, unit: 'g' }] },
+      { key: 'x:a', inputs: [{ name: 'Candles' }] },
+      { key: 'x:b', inputs: [{ name: 'thing 3' }] },
+    ];
+    const { fits, left } = fitIntoPantry(items, lines, at);
+    expect(fits.map((line) => line.key)).toEqual(['i:rice', 'x:b']);
+    expect(left.map((line) => line.key)).toEqual(['x:a']);
   });
 
   it('adds hand-added extras to the Other shelf', () => {
