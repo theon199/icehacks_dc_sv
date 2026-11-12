@@ -44,7 +44,10 @@ export const MAKEOVER_LIMITS = {
   maxBodyBytes: 128 * 1024,
   /** Deadline for the first Claude call. */
   timeoutMs: 100_000,
-  /** Both calls together stay inside the 150 s edge-function limit. */
+  /**
+   * The whole request, from its first line through both calls, stays inside the 150 s
+   * edge-function limit. The app's timeout (`AI_TIMEOUTS_MS.makeover`) must stay above it.
+   */
   totalBudgetMs: 140_000,
   /** The allergen retry only runs when at least this much of the budget is left. */
   minRetryMs: 30_000,
@@ -246,6 +249,9 @@ export function createMakeoverHandler(deps: MakeoverDeps = {}): Handler {
   const env = deps.env ?? denoEnv;
   const now = deps.now ?? Date.now;
   return createHandler(async (req) => {
+    // The budget covers the whole request, so auth, the body read and the quota count too.
+    const startedAt = now();
+    const leftMs = () => MAKEOVER_LIMITS.totalBudgetMs - (now() - startedAt);
     const ctx = await requireUser(req, { ...deps.auth, env });
     await requireAdult(ctx);
     const input = await parseBody(req, MakeoverInputSchema, {
@@ -253,9 +259,9 @@ export function createMakeoverHandler(deps: MakeoverDeps = {}): Handler {
     });
     const clientFor = (timeoutMs: number) =>
       AnthropicClient.fromEnv(env, { timeoutMs, ...deps.anthropic });
-    const client = clientFor(MAKEOVER_LIMITS.timeoutMs);
+    // Built before the quota is spent, so a missing API key costs the person nothing.
+    const client = clientFor(Math.min(MAKEOVER_LIMITS.timeoutMs, leftMs()));
     const quota = await enforceQuota(ctx.client, makeoverQuota(env));
-    const startedAt = now();
 
     const ask = async (target: AnthropicClient, messages: MessageParam[], attempt: 1 | 2) => {
       const message = await target.createMessage({
@@ -276,15 +282,15 @@ export function createMakeoverHandler(deps: MakeoverDeps = {}): Handler {
       const first = await ask(client, [request], 1);
       result = first.result;
       const conflicts = findMakeoverConflicts(result, input.allergens);
-      const leftMs = MAKEOVER_LIMITS.totalBudgetMs - (now() - startedAt);
-      if (conflicts.length > 0 && leftMs >= MAKEOVER_LIMITS.minRetryMs) {
+      const retryMs = leftMs();
+      if (conflicts.length > 0 && retryMs >= MAKEOVER_LIMITS.minRetryMs) {
         console.warn(JSON.stringify({
           event: "makeover_allergen_retry",
           allergens: conflicts.map((conflict) => conflict.allergen),
         }));
         // The first answer is sent back unchanged (thinking blocks included), then the words the
         // guard found, so Claude can fix just those.
-        const second = await ask(clientFor(leftMs), [
+        const second = await ask(clientFor(retryMs), [
           request,
           { role: "assistant", content: first.message.content },
           { role: "user", content: buildAllergenRetryPrompt(conflicts) },

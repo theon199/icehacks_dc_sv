@@ -237,6 +237,18 @@ Deno.test("the allergen retry is skipped when the time budget is nearly spent", 
   assertEquals(claudeCalls.length, 1);
 });
 
+Deno.test("the time budget starts when the request arrives, not when Claude is called", async () => {
+  // Auth, the body read and the quota "take" 30 s, then the first call ends at 115 s: only 25 s
+  // of the 140 s budget is left, too little for a retry.
+  const { handler, claudeCalls, quotaCalls } = harness({
+    replies: [claudeJson(LEAKY)],
+    now: () => (claudeCalls.length > 0 ? 115_000 : quotaCalls().length > 0 ? 30_000 : 0),
+  });
+  const res = await silenced(() => handler(post(INPUT)));
+  assertEquals(res.status, 422);
+  assertEquals(claudeCalls.length, 1);
+});
+
 Deno.test("the allergen guard checks title, steps, swap targets and note but not what was removed", async () => {
   const leaks = [
     { ...SAFE_MAKEOVER, steps: ["Melt the ghee.", ...SAFE_MAKEOVER.steps] },
