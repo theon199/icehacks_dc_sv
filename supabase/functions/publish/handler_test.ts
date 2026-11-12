@@ -349,3 +349,41 @@ Deno.test("RPC errors are mapped and unexpected rows are upstream errors", async
   const shape = await odd.publishPost(POST_INPUT, null).catch((e) => e);
   assertEquals(shape.code, "upstream_error");
 });
+
+Deno.test("mediaExists looks for the exact file in the caller's folder", async () => {
+  const listed: Array<{ folder: string; search: string | undefined }> = [];
+  const storageClient = (result: { data: unknown; error: unknown }) =>
+    ({
+      storage: {
+        from: (bucket: string) => {
+          assertEquals(bucket, "post-media");
+          return {
+            list: (folder: string, options: { search?: string }) => {
+              listed.push({ folder, search: options.search });
+              return Promise.resolve(result);
+            },
+          };
+        },
+      },
+    }) as unknown as SupabaseClient;
+
+  const found = supabasePublishCaller(
+    UID,
+    storageClient({ data: [{ name: "plate.jpg.bak" }, { name: "plate.jpg" }], error: null }),
+  );
+  assertEquals(await found.mediaExists(`${UID}/plate.jpg`), true);
+  assertEquals(listed[0], { folder: UID, search: "plate.jpg" });
+
+  const prefixOnly = supabasePublishCaller(
+    UID,
+    storageClient({ data: [{ name: "plate.jpg.bak" }], error: null }),
+  );
+  assertEquals(await prefixOnly.mediaExists(`${UID}/plate.jpg`), false);
+
+  const failing = supabasePublishCaller(
+    UID,
+    storageClient({ data: null, error: { message: "boom" } }),
+  );
+  const error = await failing.mediaExists(`${UID}/plate.jpg`).catch((e) => e);
+  assertEquals(error.code, "upstream_error");
+});

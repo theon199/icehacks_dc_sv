@@ -214,13 +214,19 @@ export function supabasePublishCaller(userId: string, client: SupabaseClient): P
       return (await consumeQuota(client, AI_QUOTAS.text_review)).allowed;
     },
     async mediaExists(path) {
-      try {
-        const { data } = await client.storage.from(MEDIA_BUCKET).exists(path);
-        return data;
-      } catch (error) {
+      // Listing the caller's folder (readable to its owner under the bucket policy) answers
+      // "not there" with an empty list rather than an error.
+      const slash = path.indexOf("/");
+      const folder = path.slice(0, slash);
+      const file = path.slice(slash + 1);
+      const { data, error } = await client.storage
+        .from(MEDIA_BUCKET)
+        .list(folder, { search: file, limit: 100 });
+      if (error) {
         console.error("media check failed", error);
         throw new HttpError("upstream_error", "Photos could not be checked. Try again.");
       }
+      return (data ?? []).some((object) => object.name === file);
     },
     async publishPost(input, hold) {
       return await callWithHold(
