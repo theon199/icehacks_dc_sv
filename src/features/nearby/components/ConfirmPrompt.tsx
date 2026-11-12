@@ -2,6 +2,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { Button, Card, Icon, Text } from '@/ui';
 
+import { useAnnouncement } from '../hooks/useAnnouncement';
 import { useConfirmDish } from '../hooks/useConfirmDish';
 import { tallyLabel } from '../model/placeFormat';
 import type { PlaceView } from '../model/placeView';
@@ -16,19 +17,28 @@ export interface ConfirmPromptProps {
 export function ConfirmPrompt({ dishName, dishKey, place }: ConfirmPromptProps) {
   const { prompt, answer, pending } = useConfirmDish(dishKey, place.id, place.myAnswer);
   const tally = tallyLabel(place.yesCount, place.noCount);
+  const thanks =
+    prompt?.kind === 'thanks'
+      ? prompt.hadIt
+        ? `You said they had ${dishName}. That helps others find it.`
+        : `You said they didn't have ${dishName}. We'll rank them lower for it.`
+      : null;
+  // The buttons are replaced in place, so VoiceOver would otherwise say nothing after a tap.
+  useAnnouncement(
+    thanks ? `Thanks for letting us know. ${thanks}` : null,
+    `${dishKey}|${place.id}`,
+  );
   if (!prompt) return null;
 
   return (
     <Card variant="sunken" padding="lg" testID="nearby-confirm">
-      {prompt.kind === 'thanks' ? (
-        <View style={styles.thanks} accessibilityLiveRegion="polite">
+      {thanks ? (
+        <View style={styles.thanks}>
           <Icon name="checkmark.circle.fill" size={22} color="success" />
           <View style={styles.flex}>
             <Text variant="bodyStrong">Thanks for letting us know</Text>
             <Text variant="footnote" tone="muted">
-              {prompt.hadIt
-                ? `You said they had ${dishName}. That helps others find it.`
-                : `You said they didn't have ${dishName}. We'll rank them lower for it.`}
+              {thanks}
             </Text>
           </View>
         </View>
