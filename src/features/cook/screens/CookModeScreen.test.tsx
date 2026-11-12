@@ -1,18 +1,22 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { Alert, type AlertButton } from 'react-native';
 
 import type { RecipeDetail } from '@/lib/catalog';
 import { renderWithTheme } from '@/test/render';
 
 import { CookModeScreen } from './CookModeScreen';
 
-const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn(), canGoBack: () => true };
+const mockRouter = {
+  back: jest.fn(),
+  replace: jest.fn(),
+  push: jest.fn(),
+  canGoBack: (): boolean => true,
+};
 jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
 jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn() }));
-jest.mock('react-native-webview', () => {
-  const { View } = jest.requireActual<{ View: unknown }>('react-native');
-  return { WebView: View };
-});
+// The player itself is native; the screen only needs something to mount in its place.
+jest.mock('react-native-webview', () => ({ WebView: () => null }));
 jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
   requestPermissionsAsync: jest.fn(),
@@ -25,23 +29,27 @@ jest.mock('expo-notifications', () => ({
   IosAuthorizationStatus: { PROVISIONAL: 3, EPHEMERAL: 4 },
 }));
 
-type Listener = (event: unknown) => void;
-const mockSpeechListeners = new Map<string, Listener>();
-const mockSpeech = {
-  isRecognitionAvailable: jest.fn(() => true),
-  supportsOnDeviceRecognition: jest.fn(() => true),
-  requestPermissionsAsync: jest.fn(async () => ({ granted: true })),
-  start: jest.fn(),
-  abort: jest.fn(),
+/** A stand-in recognizer: the hook's event handlers by name, and what the device says it can do. */
+const mockVoice = {
+  handlers: {} as Record<string, ((event: unknown) => void) | undefined>,
+  device: { canRecognize: true, onDevice: true },
+  module: {
+    isRecognitionAvailable: () => mockVoice.device.canRecognize,
+    supportsOnDeviceRecognition: () => mockVoice.device.onDevice,
+    requestPermissionsAsync: jest.fn(async () => ({ granted: true })),
+    start: jest.fn(),
+    abort: jest.fn(),
+  },
 };
 jest.mock('expo-speech-recognition', () => ({
   get ExpoSpeechRecognitionModule() {
-    return mockSpeech;
+    return mockVoice.module;
   },
-  useSpeechRecognitionEvent: (name: string, listener: Listener) => {
-    mockSpeechListeners.set(name, listener);
+  useSpeechRecognitionEvent: (name: string, handler: (event: unknown) => void) => {
+    mockVoice.handlers[name] = handler;
   },
 }));
+const hear = (name: string, event: unknown) => mockVoice.handlers[name]?.(event);
 
 const mockRecipe: RecipeDetail = {
   id: 'mealdb:1',
@@ -110,8 +118,11 @@ jest.mock('@/lib/catalog', () => ({
 }));
 
 beforeEach(() => {
+  jest.clearAllMocks();
+  mockRouter.canGoBack = () => true;
   mockRecipeResult = { data: mockRecipe, isSuccess: true };
-  mockSpeechListeners.clear();
+  mockVoice.handlers = {};
+  mockVoice.device = { canRecognize: true, onDevice: true };
 });
 
 describe('CookModeScreen', () => {
@@ -133,6 +144,24 @@ describe('CookModeScreen', () => {
     expect(screen.getByText('Blend and season.')).toBeTruthy();
     expect(screen.getByTestId('cook-timer-tray')).toBeTruthy();
 
+    // A timer is still going, so finishing asks first.
+    const confirm = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await act(async () => fireEvent.press(screen.getByTestId('cook-finish')));
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    const buttons: AlertButton[] = confirm.mock.calls[0]?.[2] ?? [];
+    expect(confirm.mock.calls[0]?.[0]).toBe('Finish cooking?');
+    await act(async () => buttons.find((button) => button.text === 'Finish')?.onPress?.());
+    expect(mockRouter.replace).toHaveBeenCalledWith({
+      pathname: '/cook/[id]/done',
+      params: { id: 'mealdb:1' },
+    });
+    confirm.mockRestore();
+  });
+
+  it('finishes straight away when no timer is running', async () => {
+    await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
+    await act(async () => fireEvent.press(screen.getByTestId('cook-next')));
+    await act(async () => fireEvent.press(screen.getByTestId('cook-next')));
     await act(async () => fireEvent.press(screen.getByTestId('cook-finish')));
     expect(mockRouter.replace).toHaveBeenCalledWith({
       pathname: '/cook/[id]/done',
@@ -140,19 +169,35 @@ describe('CookModeScreen', () => {
     });
   });
 
+  it('closes to home when cook mode was opened directly', async () => {
+    mockRouter.canGoBack = () => false;
+    await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
+    await act(async () => fireEvent.press(screen.getByLabelText('Leave cook mode')));
+    expect(mockRouter.replace).toHaveBeenCalledWith('/');
+    expect(mockRouter.back).not.toHaveBeenCalled();
+  });
+
+  it('lets the cook dismiss the voice permission notice', async () => {
+    mockVoice.module.requestPermissionsAsync.mockResolvedValueOnce({ granted: false });
+    await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
+    await act(async () => fireEvent.press(screen.getByTestId('cook-voice-toggle')));
+    await act(async () => fireEvent.press(screen.getByTestId('cook-voice-banner-dismiss')));
+    expect(screen.queryByTestId('cook-voice-banner')).toBeNull();
+  });
+
   it('moves between steps by voice', async () => {
     await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
     await act(async () => fireEvent.press(screen.getByTestId('cook-voice-toggle')));
 
-    expect(mockSpeech.start).toHaveBeenCalledWith(
+    expect(mockVoice.module.start).toHaveBeenCalledWith(
       expect.objectContaining({ requiresOnDeviceRecognition: true, lang: 'en-US' }),
     );
 
-    await act(async () => mockSpeechListeners.get('start')?.(null));
+    await act(async () => hear('start', null));
     expect(screen.getByTestId('cook-voice-banner')).toBeTruthy();
 
     await act(async () =>
-      mockSpeechListeners.get('result')?.({
+      hear('result', {
         isFinal: false,
         results: [{ transcript: 'next step', confidence: 0.9, segments: [] }],
       }),
@@ -160,7 +205,7 @@ describe('CookModeScreen', () => {
     expect(screen.getByText('Simmer for 20 minutes.')).toBeTruthy();
 
     await act(async () =>
-      mockSpeechListeners.get('result')?.({
+      hear('result', {
         isFinal: true,
         results: [{ transcript: 'next step', confidence: 0.9, segments: [] }],
       }),
@@ -170,13 +215,13 @@ describe('CookModeScreen', () => {
   });
 
   it('explains when voice control is not allowed', async () => {
-    mockSpeech.requestPermissionsAsync.mockResolvedValueOnce({ granted: false });
+    mockVoice.module.requestPermissionsAsync.mockResolvedValueOnce({ granted: false });
     await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
     await act(async () => fireEvent.press(screen.getByTestId('cook-voice-toggle')));
     expect(
       screen.getByText('Voice control needs microphone and speech recognition access.'),
     ).toBeTruthy();
-    expect(mockSpeech.start).not.toHaveBeenCalled();
+    expect(mockVoice.module.start).not.toHaveBeenCalled();
   });
 
   it('shows the tutorial video on request', async () => {

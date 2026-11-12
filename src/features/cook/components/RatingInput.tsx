@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type AccessibilityActionEvent } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
 import { Icon, PressableScale } from '@/ui';
@@ -9,23 +9,34 @@ export interface RatingInputProps {
 }
 
 const STARS = [1, 2, 3, 4, 5] as const;
+const TOP = STARS.length;
+
+/** VoiceOver swipes up/down on the row; the step each one makes to the rating. */
+const SWIPE_DELTA: Readonly<Record<string, 1 | -1>> = { increment: 1, decrement: -1 };
+const ADJUST_ACTIONS = Object.keys(SWIPE_DELTA).map((name) => ({ name }));
+
+/** The rating after one adjustment; stepping below one star means "not rated". */
+export function nudgeRating(value: number | null, delta: 1 | -1): number | null {
+  const moved = (value ?? 0) + delta;
+  if (moved < 1) return null;
+  return moved > TOP ? TOP : moved;
+}
 
 /** One to five stars. Tapping the current rating again clears it. */
 export function RatingInput({ value, onChange }: RatingInputProps) {
+  const adjust = ({ nativeEvent }: AccessibilityActionEvent) => {
+    const delta = SWIPE_DELTA[nativeEvent.actionName];
+    if (delta !== undefined) onChange(nudgeRating(value, delta));
+  };
+
   return (
     <View
       style={styles.row}
       accessibilityRole="adjustable"
       accessibilityLabel="Rating"
-      accessibilityValue={{ text: value ? `${value} of 5 stars` : 'Not rated' }}
-      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-      onAccessibilityAction={(event) => {
-        const current = value ?? 0;
-        if (event.nativeEvent.actionName === 'increment') onChange(Math.min(5, current + 1));
-        if (event.nativeEvent.actionName === 'decrement') {
-          onChange(current <= 1 ? null : current - 1);
-        }
-      }}
+      accessibilityValue={{ text: value ? `${value} of ${TOP} stars` : 'Not rated' }}
+      accessibilityActions={ADJUST_ACTIONS}
+      onAccessibilityAction={adjust}
       testID="cook-rating"
     >
       {STARS.map((star) => {
@@ -55,7 +66,10 @@ export function RatingInput({ value, onChange }: RatingInputProps) {
   );
 }
 
+/** Each star keeps a full 48pt touch target. */
+const STAR_BOX = 48;
+
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 4 },
-  star: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  row: { gap: 4, flexDirection: 'row' },
+  star: { height: STAR_BOX, width: STAR_BOX, justifyContent: 'center', alignItems: 'center' },
 });

@@ -5,7 +5,16 @@ import { StyleSheet, View } from 'react-native';
 import { useRecipe } from '@/lib/catalog';
 import { haptics } from '@/lib/haptics';
 import { newId } from '@/lib/id';
-import { Button, ChoiceChip, IconButton, Screen, Text, TextField } from '@/ui';
+import {
+  Button,
+  ChoiceChip,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  Screen,
+  Text,
+  TextField,
+} from '@/ui';
 
 import { PhotoField } from '../components/PhotoField';
 import { RatingInput } from '../components/RatingInput';
@@ -27,7 +36,11 @@ type Again = 'yes' | 'no' | null;
  */
 export function CookDoneScreen({ recipeId }: CookDoneScreenProps) {
   const router = useRouter();
-  const recipe = useRecipe(recipeId || null).data ?? null;
+  const query = useRecipe(recipeId || null);
+  // Nothing is saved until the catalog confirms the dish exists: a deep link to an unknown id must
+  // not write a cook log entry, a feedback signal or a server event.
+  const recipe = query.data ?? null;
+  const missing = !recipeId || (query.isSuccess && !query.data);
   const [clientEventId] = useState(newId);
   const [cookedAt] = useState(() => new Date());
   const [rating, setRating] = useState<number | null>(null);
@@ -40,21 +53,46 @@ export function CookDoneScreen({ recipeId }: CookDoneScreenProps) {
   const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
   const submit = async (share: boolean) => {
-    if (!recipeId) return;
+    if (!recipe) return;
     await save({
-      recipeId,
-      cuisine: recipe?.cuisine ?? null,
+      recipeId: recipe.id,
+      cuisine: recipe.cuisine,
       rating,
       wouldCookAgain: again === null ? null : again === 'yes',
       notes,
-      servings: recipe?.servings ?? null,
+      servings: recipe.servings,
       cookedAt,
       clientEventId,
     });
     haptics.success();
-    if (share) router.replace(composeHref({ recipeId, rating, note: notes, photo }));
+    if (share) router.replace(composeHref({ recipeId: recipe.id, rating, note: notes, photo }));
     else close();
   };
+
+  if (missing) {
+    return (
+      <Screen safeTop scroll={false}>
+        <View style={styles.centered}>
+          <EmptyState
+            title="Recipe not found"
+            message="There's no dish here to log. It may have been removed from this version of Famara."
+            icon="questionmark.circle"
+            actionLabel="Close"
+            onAction={close}
+          />
+        </View>
+      </Screen>
+    );
+  }
+  if (query.isError) {
+    return (
+      <Screen safeTop scroll={false}>
+        <View style={styles.centered}>
+          <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen
@@ -67,7 +105,7 @@ export function CookDoneScreen({ recipeId }: CookDoneScreenProps) {
             size="lg"
             fullWidth
             loading={saving}
-            disabled={!recipeId}
+            disabled={!recipe}
             onPress={() => void submit(false)}
             testID="cook-done-save"
           />
@@ -76,7 +114,7 @@ export function CookDoneScreen({ recipeId }: CookDoneScreenProps) {
             icon="square.and.arrow.up"
             variant="ghost"
             fullWidth
-            disabled={!recipeId || saving}
+            disabled={!recipe || saving}
             onPress={() => void submit(true)}
             testID="cook-done-share"
           />
@@ -146,4 +184,5 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, gap: 4 },
   section: { gap: 10 },
   chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  centered: { flex: 1, justifyContent: 'center' },
 });
