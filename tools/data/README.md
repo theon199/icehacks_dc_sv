@@ -1,6 +1,6 @@
 # tools/data — Famara catalog builder
 
-Builds `assets/catalog/famara-catalog.db` (schema v1, see [`docs/DATA.md`](../../docs/DATA.md)) and
+Builds `assets/catalog/famara-catalog.db` (schema v2, see [`docs/DATA.md`](../../docs/DATA.md)) and
 `assets/catalog/manifest.json` from public sources only. Standalone Node 22 + TypeScript package that runs its `.ts` sources directly with Node's built-in
 type stripping (Node 22.18 or newer, no transpiler dependency);
 it does not share dependencies with the app.
