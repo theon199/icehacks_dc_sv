@@ -6,6 +6,11 @@ import { storageKey } from '@/lib/storage/kv';
 import { defaultPreferences, usePantryStore, usePreferencesStore, useSavedStore } from '@/stores';
 
 import { FakeSyncServer } from './__fixtures__/fakeServer';
+import { memoryAdapter } from './__fixtures__/memoryAdapter';
+import { createSyncEngine } from './engine';
+import type * as EngineModule from './engine';
+import { LEDGER_HEADER_KEY, ledgerBucketKey } from './ledger';
+import { registerSyncedStore } from './registry';
 import { accountDeletedCleanup, flushSync, signOutCleanup, startSync, stopSync } from './session';
 import { useSyncStatusStore } from './status';
 import { createSupabaseTransport } from './transport';
@@ -13,6 +18,11 @@ import { createSupabaseTransport } from './transport';
 jest.mock('expo-crypto', () => ({
   randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
 }));
+
+jest.mock('./engine', () => {
+  const actual = jest.requireActual<typeof EngineModule>('./engine');
+  return { ...actual, createSyncEngine: jest.fn(actual.createSyncEngine) };
+});
 
 let mockServer: FakeSyncServer;
 jest.mock('./transport', () => ({
@@ -88,7 +98,8 @@ describe('sync session', () => {
     expect(usePantryStore.getState().items).toEqual({});
     expect(usePreferencesStore.getState().prefs).toEqual(defaultPreferences);
     expect(Storage.getItemSync(storageKey('user.pantry'))).toBeNull();
-    expect(Storage.getItemSync(storageKey('sync.ledger'))).toBeNull();
+    expect(Storage.getItemSync(storageKey(LEDGER_HEADER_KEY))).toBeNull();
+    expect(Storage.getItemSync(storageKey(ledgerBucketKey('pantry')))).toBeNull();
     expect(Storage.getItemSync(storageKey('sync.owner'))).toBeNull();
     await waitFor(async () =>
       expect(await SecureStore.getItemAsync('famara.user.personal_details')).toBeNull(),
@@ -109,5 +120,36 @@ describe('sync session', () => {
     await accountDeletedCleanup();
     expect(mockServer.pushCalls.length).toBe(pushes);
     expect(usePantryStore.getState().items).toEqual({});
+  });
+
+  it('creates a single engine when the same sign-in is reported twice in one tick', async () => {
+    const probe = memoryAdapter('probe');
+    const unregister = registerSyncedStore({ adapter: probe, reset: () => probe.docs.clear() });
+    try {
+      await Promise.all([startSync('user-1'), startSync('user-1')]);
+      await waitFor(() => expect(useSyncStatusStore.getState().phase).toBe('idle'));
+      expect(createSyncEngine).toHaveBeenCalledTimes(1);
+      expect(probe.listenerCount).toBe(1);
+
+      await signOutCleanup();
+      expect(probe.listenerCount).toBe(0);
+    } finally {
+      unregister();
+    }
+  });
+
+  it('leaves nothing running when sign-out follows sign-in immediately', async () => {
+    seed('pantry', 'p1', { name: 'from the account' });
+    const started = startSync('user-1');
+    const signedOut = signOutCleanup();
+    await Promise.all([started, signedOut]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(mockServer.pullCalls).toHaveLength(0);
+    expect(mockServer.pushCalls).toHaveLength(0);
+    expect(Storage.getItemSync(storageKey('sync.owner'))).toBeNull();
+    expect(Storage.getItemSync(storageKey(LEDGER_HEADER_KEY))).toBeNull();
+    expect(usePantryStore.getState().items).toEqual({});
+    expect(useSyncStatusStore.getState().phase).not.toBe('idle');
   });
 });
