@@ -44,6 +44,8 @@ export const pushResultSchema = z.object({
   ),
 });
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 const INVALID_CODES = new Set([
   'invalid_input',
   'invalid_document',
@@ -103,12 +105,22 @@ export function createSupabaseTransport(
     return instance;
   }
 
-  async function call(run: () => PromiseLike<{ data: unknown; error: unknown; status: number }>) {
+  /** Runs one RPC with a timeout, so a stalled connection fails and is retried with backoff. */
+  async function call(
+    run: (signal: AbortSignal) => PromiseLike<{ data: unknown; error: unknown; status: number }>,
+  ) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let response: { data: unknown; error: unknown; status: number };
     try {
-      response = await run();
+      response = await run(controller.signal);
     } catch (cause) {
       throw new SyncError('network', 'The sync request failed.', { cause });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (controller.signal.aborted) {
+      throw new SyncError('network', 'The sync request timed out.');
     }
     if (response.error) throw toSyncError(response.error as RpcErrorLike, response.status);
     return response.data;
@@ -117,14 +129,18 @@ export function createSupabaseTransport(
   return {
     async push(docs: OutgoingDoc[]): Promise<PushResult> {
       const instance = await client();
-      const data = await call(() => instance.rpc('sync_push', { p_docs: docs as unknown as Json }));
+      const data = await call((signal) =>
+        instance.rpc('sync_push', { p_docs: docs as unknown as Json }).abortSignal(signal),
+      );
       return parse(pushResultSchema, data, 'sync_push');
     },
 
     async pull(since: number, limit: number, full: boolean): Promise<PullResult> {
       const instance = await client();
-      const data = await call(() =>
-        instance.rpc('sync_pull', { p_since: since, p_limit: limit, p_full: full }),
+      const data = await call((signal) =>
+        instance
+          .rpc('sync_pull', { p_since: since, p_limit: limit, p_full: full })
+          .abortSignal(signal),
       );
       return parse(pullResultSchema, data, 'sync_pull');
     },

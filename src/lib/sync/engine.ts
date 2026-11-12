@@ -49,6 +49,8 @@ export const MAX_DOC_BYTES = 200 * 1024;
 const BACKOFF_BASE_MS = 2000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 const SAVE_DEBOUNCE_MS = 300;
+/** How long `stop()` waits for a request in flight before giving up on it. */
+const STOP_WAIT_MS = 2000;
 /** Synced tombstones older than the server's compaction window are forgotten. */
 const TOMBSTONE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -349,6 +351,9 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
           restamped = true;
         }
       }
+      // Applying can change other documents too (a capped store drops its oldest), and change
+      // tracking was paused meanwhile, so compare the whole collection once more.
+      if (ledger.bootstrapped && scanCollection(adapter)) restamped = true;
     }
     if (restamped) schedulePush();
   }
@@ -553,6 +558,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   }
 
   function handleFailure(error: unknown): void {
+    if (!active) return;
     if (isSyncError(error) && error.kind === 'wrong_user') {
       logger.error('Sync stopped: the session belongs to another account');
       void stop();
@@ -705,7 +711,18 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     for (const timer of [pushTimer, retryTimer]) if (timer) clearTimeout(timer);
     pushTimer = null;
     retryTimer = null;
-    await running?.catch(() => undefined);
+    // Results that arrive after this point are ignored, so a hung request never holds up sign-out.
+    if (running) {
+      let timer: Timer | undefined;
+      await Promise.race([
+        running.catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, STOP_WAIT_MS);
+        }),
+      ]);
+      clearTimeout(timer);
+    }
+    if (saveTimer) clearTimeout(saveTimer);
     saveLedger();
     publish({ phase: 'stopped' });
   }

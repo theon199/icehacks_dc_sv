@@ -5,11 +5,21 @@ import type { FamaraSupabaseClient } from '../supabase/client';
 
 jest.mock('../supabase/client', () => ({ getSupabase: jest.fn() }));
 
+type Respond = (
+  name: string,
+  args: unknown,
+  signal: AbortSignal,
+) => Promise<{ data: unknown; error: unknown; status: number }>;
+
 function fakeClient(options: {
   userId?: string | null;
-  rpc?: jest.Mock;
+  respond?: Respond;
 }): FamaraSupabaseClient & { rpc: jest.Mock } {
-  const rpc = options.rpc ?? jest.fn();
+  const respond: Respond =
+    options.respond ?? (async () => ({ data: null, error: null, status: 200 }));
+  const rpc = jest.fn((name: string, args: unknown) => ({
+    abortSignal: (signal: AbortSignal) => respond(name, args, signal),
+  }));
   return {
     auth: {
       getSession: jest.fn(async () => ({
@@ -27,7 +37,7 @@ const pullBody = { documents: [], cursor: 7, has_more: false, resync: false };
 describe('createSupabaseTransport', () => {
   it('calls sync_pull with the cursor and validates the response', async () => {
     const client = fakeClient({
-      rpc: jest.fn(async () => ({ data: pullBody, error: null, status: 200 })),
+      respond: async () => ({ data: pullBody, error: null, status: 200 }),
     });
     const transport = createSupabaseTransport('u1', () => client);
     await expect(transport.pull(5, 500, true)).resolves.toEqual(pullBody);
@@ -41,7 +51,7 @@ describe('createSupabaseTransport', () => {
   it('calls sync_push with the documents', async () => {
     const body = { applied: [{ collection: 'saved', doc_id: 'r1', revision: 3 }], rejected: [] };
     const client = fakeClient({
-      rpc: jest.fn(async () => ({ data: body, error: null, status: 200 })),
+      respond: async () => ({ data: body, error: null, status: 200 }),
     });
     const transport = createSupabaseTransport('u1', () => client);
     const doc = {
@@ -76,7 +86,7 @@ describe('createSupabaseTransport', () => {
 
   it('rejects responses that break the contract', async () => {
     const client = fakeClient({
-      rpc: jest.fn(async () => ({ data: { documents: 'nope' }, error: null, status: 200 })),
+      respond: async () => ({ data: { documents: 'nope' }, error: null, status: 200 }),
     });
     await expect(
       createSupabaseTransport('u1', () => client).pull(0, 1, false),
@@ -87,9 +97,9 @@ describe('createSupabaseTransport', () => {
 
   it('maps thrown fetch errors to network errors', async () => {
     const client = fakeClient({
-      rpc: jest.fn(async () => {
+      respond: async () => {
         throw new TypeError('Network request failed');
-      }),
+      },
     });
     await expect(
       createSupabaseTransport('u1', () => client).pull(0, 1, false),
@@ -97,6 +107,25 @@ describe('createSupabaseTransport', () => {
       kind: 'network',
       retryable: true,
     });
+  });
+});
+
+describe('request timeout', () => {
+  it('aborts a stalled request and reports a network error', async () => {
+    jest.useFakeTimers();
+    const client = fakeClient({
+      respond: (_name, _args, signal) =>
+        new Promise((resolve) => {
+          signal.addEventListener('abort', () =>
+            resolve({ data: null, error: { message: 'AbortError', code: '' }, status: 0 }),
+          );
+        }),
+    });
+    const pending = createSupabaseTransport('u1', () => client).pull(0, 1, false);
+    const outcome = expect(pending).rejects.toMatchObject({ kind: 'network' });
+    await jest.advanceTimersByTimeAsync(30_000);
+    await outcome;
+    jest.useRealTimers();
   });
 });
 
