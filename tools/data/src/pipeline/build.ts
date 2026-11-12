@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { ingredientAllergens, ingredientAllergenStatus, ingredientDietFlags, gramsPerUnit } from '../derive/ingredients.ts';
+import { ingredientAllergens, ingredientAllergenStatus, ingredientDietFlags, gramsPerUnit, pluralName } from '../derive/ingredients.ts';
 import { nutrientProfile, type NutrientProfile } from '../derive/nutrition.ts';
 import { slugify } from '../derive/recipe.ts';
 import { INGREDIENTS } from '../knowledge/index.ts';
@@ -56,7 +56,7 @@ export async function buildCatalog(log: (message: string) => void): Promise<Buil
     return {
       id: def.id,
       name: def.name,
-      plural: def.plural,
+      plural: pluralName(def),
       category: def.category,
       aisle: def.aisle,
       fdc_id: def.fdc?.[0] ?? null,

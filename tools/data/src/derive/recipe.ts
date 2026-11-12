@@ -9,6 +9,7 @@ const DRINK = /\b(smoothies?|shakes?|milkshake|lassi|juice|lemonade|punch|iced t
 const SOUP = /\b(soups?|chowder|bisque|gazpacho|pho|ramen|minestrone|laksa|consomme|broth|borscht|caldo|sopa|potage|pozole|gumbo|harira|waterzooi)\b/i;
 const SALAD = /\b(salads?|slaw|coleslaw|tabbouleh|tabouli|fattoush)\b/i;
 const SAUCE = /\b(sauce|dip|salsa|dressing|oil|jam|chutney|relish|pickled?|spread|pesto|vinaigrette|marinade|seasoning|butter|syrup|gravy)\b/i;
+const NOT_A_DRINK = /\b(sauce|chicken|beef|pork|fish|cakes?|cookies?|fudge|brownies?|pies?|tarts?|pudding|ice cream|truffles?|bread|muffins?|glazed?|braised)\b/i;
 
 const MEALDB_COURSE: Record<string, Course> = {
   breakfast: 'breakfast',
@@ -33,7 +34,7 @@ const MEDLINEPLUS_COURSE: ReadonlyArray<readonly [string, Course]> = [
 ];
 
 export function mapCourse(source: 'mealdb' | 'medlineplus', categories: readonly string[], title: string): Course {
-  if (DRINK.test(title) && !/\b(sauce|chicken|beef|pork|fish|cake|cookies?)\b/i.test(title)) return 'drink';
+  if (DRINK.test(title) && !NOT_A_DRINK.test(title)) return 'drink';
   if (source === 'medlineplus') {
     for (const [category, course] of MEDLINEPLUS_COURSE) if (categories.includes(category)) return course;
     return SOUP.test(title) ? 'soup' : SALAD.test(title) ? 'salad' : 'main';
@@ -74,15 +75,16 @@ export interface TimeEstimate {
 /**
  * Estimate for sources without published times: preparation is 5 minutes plus 1.5 minutes per
  * ingredient line (capped at 40); cooking is the sum of the step timers (or a per-course default
- * when no step names a duration). Active time is preparation plus a fifth of the cooking time.
- * Both are rounded to 5 minutes.
+ * when no step names a duration). Active time is preparation plus 15% of the cooking time, at
+ * most 30 extra minutes (long waits such as proving or chilling are hands-off). Both are rounded
+ * to 5 minutes.
  */
 export function estimateTimes(lineCount: number, timerSeconds: readonly (number | null)[], course: Course): TimeEstimate {
   const prep = Math.min(40, 5 + 1.5 * lineCount);
   const timers = timerSeconds.filter((s): s is number => s !== null);
   const cook = timers.length > 0 ? timers.reduce((a, b) => a + b, 0) / 60 : DEFAULT_COOK_MINUTES[course];
   const total = round5(prep + cook);
-  const active = Math.min(total, round5(prep + cook * 0.2));
+  const active = Math.min(total, round5(prep + Math.min(30, cook * 0.15)));
   return { total, active };
 }
 
@@ -117,7 +119,7 @@ export const PORTION_GRAMS: Record<Course, number> = {
 
 /** Energy bounds per serving used to keep portion estimates realistic. */
 const KCAL_BOUNDS: Record<Course, readonly [number, number]> = {
-  main: [250, 1000],
+  main: [250, 900],
   soup: [120, 700],
   salad: [80, 700],
   side: [60, 600],
@@ -127,12 +129,15 @@ const KCAL_BOUNDS: Record<Course, readonly [number, number]> = {
   drink: [40, 450],
 };
 
+/** Protein per serving above which a portion estimate is treated as too large. */
+const MAX_PROTEIN_PER_SERVING = 55;
+
 /**
  * Servings when a source does not publish them: total food grams divided by a typical portion
- * for the course, then nudged so energy per serving stays within the course's bounds.
- * Clamped to 1..12; 4 when the weight of the recipe is unknown.
+ * for the course, then nudged so energy per serving stays within the course's bounds and protein
+ * stays at or below 55 g. Clamped to 1..12; 4 when the weight of the recipe is unknown.
  */
-export function estimateServings(course: Course, foodGrams: number | null, totalKcal: number | null): number {
+export function estimateServings(course: Course, foodGrams: number | null, totalKcal: number | null, totalProtein: number | null = null): number {
   if (foodGrams === null || foodGrams <= 0) return 4;
   let servings = Math.round(foodGrams / PORTION_GRAMS[course]);
   servings = Math.min(12, Math.max(1, servings));
@@ -141,6 +146,7 @@ export function estimateServings(course: Course, foodGrams: number | null, total
     while (servings < 12 && totalKcal / servings > high) servings++;
     while (servings > 1 && totalKcal / servings < low) servings--;
   }
+  if (totalProtein !== null) while (servings < 12 && totalProtein / servings > MAX_PROTEIN_PER_SERVING) servings++;
   return servings;
 }
 
@@ -311,7 +317,7 @@ export function buildSummary(input: SummaryInputs): string {
   let second: string;
   if (input.goals.includes('high_protein') && n.protein_g !== null) second = `Each serving has about ${Math.round(n.protein_g)} g of protein.`;
   else if (input.goals.includes('high_fiber') && n.fiber_g !== null) second = `Each serving has about ${Math.round(n.fiber_g)} g of fiber.`;
-  else if (input.goals.includes('lower_calorie')) second = `Light at about ${n.kcal} kcal per serving.`;
+  else if (input.goals.includes('lower_calorie') && n.kcal <= 350) second = `Light at about ${n.kcal} kcal per serving.`;
   else if (input.goals.includes('lower_sodium') && n.sodium_mg !== null) second = `Lower in sodium at about ${n.sodium_mg} mg per serving.`;
   else if (input.goals.includes('plant_forward')) second = `Plant-forward at about ${n.kcal} kcal per serving.`;
   else second = `About ${n.kcal} kcal per serving.`;

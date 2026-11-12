@@ -3,7 +3,7 @@ import { CUISINE_BY_ID, resolveCuisine } from '../knowledge/cuisines.ts';
 import { IngredientMatcher } from '../match/matcher.ts';
 import { measureToGrams, parseMeasure, type Measure } from '../parse/measure.ts';
 import { detectTimerSeconds, splitSteps } from '../parse/steps.ts';
-import { GENERIC_UNIT_GRAMS, ingredientAllergens } from '../derive/ingredients.ts';
+import { GENERIC_UNIT_GRAMS, ingredientAllergens, pluralName } from '../derive/ingredients.ts';
 import { addScaled, divide, EMPTY_NUTRITION, toNutrition, ZERO_PROFILE, type NutrientProfile } from '../derive/nutrition.ts';
 import { rollupAllergens, rollupDiet, type MatchedLine } from '../derive/rollup.ts';
 import {
@@ -132,14 +132,31 @@ function totals(lines: readonly ParsedLine[], ctx: RecipeContext): Totals {
   return { profile, foodGrams, plantGrams, vegetableGrams, coverage: quantified === 0 ? 0 : known / quantified };
 }
 
-function keyIngredients(lines: readonly ParsedLine[]): string[] {
-  const candidates = lines
-    .filter((l) => l.primary && ['produce', 'protein', 'legume', 'grain', 'dairy', 'nut_seed'].includes(l.primary.category) && !l.primary.water)
-    .filter((l) => !['garlic', 'onion', 'ginger', 'lemon_juice', 'lime_juice', 'parsley', 'cilantro'].includes(l.primary?.id ?? ''));
-  const ranked = [...candidates].sort((a, b) => (b.row.grams ?? 0) - (a.row.grams ?? 0) || a.row.position - b.row.position);
+/** Supporting ingredients that rarely define a dish unless its title names them. */
+const SUPPORTING = new Set([
+  'garlic', 'onion', 'ginger', 'lemon_juice', 'lime_juice', 'parsley', 'cilantro', 'butter', 'unsalted_butter', 'ghee', 'margarine',
+  'milk', 'low_fat_milk', 'skim_milk', 'egg', 'egg_white', 'egg_yolk', 'flour', 'bread_flour', 'self_raising_flour',
+  'whole_wheat_flour', 'cornstarch', 'potato_starch', 'tapioca', 'breadcrumbs', 'cornmeal', 'rice_flour', 'scallion', 'chili_pepper',
+]);
+
+/** Up to three ingredients for the summary: those the title names first, then the heaviest. */
+function keyIngredients(title: string, lines: readonly ParsedLine[], ctx: RecipeContext): string[] {
+  const named = new Set(ctx.matcher.findAll(title).map((m) => m.id));
+  const foods = lines.filter((l) => {
+    const def = l.primary;
+    return def !== null && !def.water && ['produce', 'protein', 'legume', 'grain', 'dairy', 'nut_seed', 'sweetener'].includes(def.category);
+  });
+  const featured = foods.filter((l) => l.primary && l.primary.category !== 'sweetener' && (named.has(l.primary.id) || !SUPPORTING.has(l.primary.id)));
+  const candidates = featured.length > 0 ? featured : foods;
+  const ranked = [...candidates].sort(
+    (a, b) =>
+      Number(named.has(b.primary?.id ?? '')) - Number(named.has(a.primary?.id ?? '')) ||
+      (b.row.grams ?? 0) - (a.row.grams ?? 0) ||
+      a.row.position - b.row.position,
+  );
   const names: string[] = [];
   for (const line of ranked) {
-    const name = (line.primary?.plural ?? line.primary?.name ?? '').toLowerCase();
+    const name = line.primary ? (pluralName(line.primary) ?? line.primary.name).toLowerCase() : '';
     if (name && !names.includes(name)) names.push(name);
     if (names.length === 3) break;
   }
@@ -207,7 +224,9 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
   const covered = sums.coverage >= NUTRITION_COVERAGE_MIN && sums.profile.kcal > 0;
 
   // Servings
-  let servings = source.servings ?? estimateServings(course, sums.foodGrams > 0 ? sums.foodGrams : null, covered ? sums.profile.kcal : null);
+  let servings =
+    source.servings ??
+    estimateServings(course, sums.foodGrams > 0 ? sums.foodGrams : null, covered ? sums.profile.kcal : null, covered ? sums.profile.protein_g : null);
   servings = Math.max(1, Math.round(servings));
 
   // Nutrition per serving
@@ -274,7 +293,7 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
   const summary = buildSummary({
     cuisineLabel: cuisine === 'international' ? null : (cuisineDef?.label ?? null),
     course,
-    keyIngredients: keyIngredients(lines),
+    keyIngredients: keyIngredients(source.title, lines, ctx),
     totalMinutes: total,
     nutrition: shownNutrition,
     goals,

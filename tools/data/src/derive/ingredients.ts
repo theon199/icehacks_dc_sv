@@ -159,3 +159,12 @@ export const GENERIC_UNIT_GRAMS: Readonly<Record<string, number>> = {
   head: 500,
   ear: 90,
 };
+
+/** Plural display name: the table's own, or a regular plural the table lists as a synonym. */
+export function pluralName(def: IngredientDef): string | null {
+  if (def.plural) return def.plural;
+  const name = def.name.toLowerCase();
+  const synonyms = new Set(def.syn.map((s) => s.toLowerCase()));
+  const candidates = [`${name}s`, `${name}es`, name.replace(/y$/, 'ies'), name.replace(/f$/, 'ves')];
+  return candidates.find((c) => c !== name && synonyms.has(c)) ?? null;
+}

@@ -71,7 +71,8 @@ export function splitSteps(blocks: readonly string[]): string[] {
   for (const line of lines) {
     const text = carry ? `${carry} ${line}` : line;
     carry = '';
-    if (/:$/.test(text) || text.replace(LEADING_LABEL, '').length < MIN_STEP_CHARS) {
+    const bare = text.replace(LEADING_LABEL, '');
+    if (/:$/.test(text) || (bare.length < MIN_STEP_CHARS && !/[.!?]$/.test(bare))) {
       carry = text;
       continue;
     }
@@ -150,6 +151,10 @@ function unitSeconds(unit: string): number | null {
 
 const MAX_TIMER_SECONDS = 24 * 3600;
 
+const TENS: Record<string, number> = { twenty: 20, thirty: 30, forty: 40, fifty: 50 };
+/** "twenty-four", "thirty five" -> 24, 35 (so they are not read as ranges). */
+const COMPOUND_NUMBER = /\b(twenty|thirty|forty|fifty)[- ](one|two|three|four|five|six|seven|eight|nine)\b/gi;
+
 /**
  * Detects how long a step asks you to wait ("simmer for 20 minutes", "bake 1 hour 15 minutes").
  * Ranges use the lower bound so the cook checks early; when a step names several durations the
@@ -157,7 +162,8 @@ const MAX_TIMER_SECONDS = 24 * 3600;
  */
 export function detectTimerSeconds(step: string): number | null {
   let best: number | null = null;
-  for (const match of step.matchAll(DURATION)) {
+  const text = step.replace(COMPOUND_NUMBER, (_, tens: string, ones: string) => String((TENS[tens.toLowerCase()] ?? 0) + (WORD_NUMBERS[ones.toLowerCase()] ?? 0)));
+  for (const match of text.matchAll(DURATION)) {
     const [, excluded, lowText, , unitText, extraMinutes] = match;
     if (excluded) continue;
     if (!lowText || !unitText) continue;
