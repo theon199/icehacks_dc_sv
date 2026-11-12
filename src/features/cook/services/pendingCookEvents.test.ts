@@ -1,6 +1,6 @@
 import { useSessionStore } from '@/features/auth';
 
-import { classifyCookEventError } from './cookEvents';
+import { classifyCookEventError, CookEventError } from './cookEvents';
 import { flushPendingCookEvents, keepOwnedBy, usePendingCookEvents } from './pendingCookEvents';
 import type { CookEventRequest } from '../logic/completion';
 
@@ -204,6 +204,65 @@ describe('flushPendingCookEvents account binding', () => {
     });
 
     expect(delivered).toBe(2);
+    expect(queuedIds()).toEqual([]);
+  });
+});
+
+describe('flushPendingCookEvents account mismatch', () => {
+  const ok = { eventId: 'x', newBadges: [] };
+
+  it('names the queued account on every send', async () => {
+    const queue = usePendingCookEvents.getState();
+    queue.add('user-1', request('first'));
+    queue.add('user-1', request('second'));
+    const rpc = jest.fn().mockResolvedValue(ok);
+
+    await flushPendingCookEvents('user-1', {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+      currentUserId: () => 'user-1',
+    });
+
+    expect(rpc.mock.calls.map(([, owner]) => owner)).toEqual(['user-1', 'user-1']);
+  });
+
+  it('drops a cook the server refused for another account and stops the run', async () => {
+    const queue = usePendingCookEvents.getState();
+    queue.add('user-1', request('first'));
+    queue.add('user-1', request('second'));
+    const rpc = jest
+      .fn()
+      .mockRejectedValueOnce(new CookEventError('account_mismatch', 'PT409'))
+      .mockResolvedValue(ok);
+
+    const delivered = await flushPendingCookEvents('user-1', {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+      // The session store still shows the queued account: only the server saw the switch.
+      currentUserId: () => 'user-1',
+    });
+
+    expect(delivered).toBe(0);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(queuedIds()).toEqual(['second']);
+  });
+
+  it('never retries a mismatched cook on the next run', async () => {
+    usePendingCookEvents.getState().add('user-1', request('only'));
+    const rpc = jest.fn().mockRejectedValue(new CookEventError('account_mismatch', 'PT409'));
+    const deps = {
+      recordCookEvent: rpc,
+      classifyFailure: classifyCookEventError,
+      now: () => NOW,
+      currentUserId: () => 'user-1',
+    };
+
+    await flushPendingCookEvents('user-1', deps);
+    await flushPendingCookEvents('user-1', deps);
+
+    expect(rpc).toHaveBeenCalledTimes(1);
     expect(queuedIds()).toEqual([]);
   });
 });
