@@ -67,6 +67,20 @@ describe('Plan my week', () => {
     await waitFor(() => expect(screen.getAllByText('Snack').length).toBe(6), LONG);
   });
 
+  it('offers a retry instead of loading forever when planned meals cannot be read', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: WEEK, day: 2, slot: 'dinner' }, 'm0');
+    // The catalog hook retries a failed read once, so fail twice.
+    jest
+      .mocked(getRecipeSummaries)
+      .mockRejectedValueOnce(new Error('catalog closed'))
+      .mockRejectedValueOnce(new Error('catalog closed'));
+    await renderCookbook(<PlanWeekScreen week={WEEK} />);
+
+    await user.press(await screen.findByText('Try again', {}, LONG));
+    expect(await screen.findByTestId('fill-preview', {}, LONG)).toBeOnTheScreen();
+  }, 30_000);
+
   it('asks for allergen answers before planning', async () => {
     usePreferencesStore.getState().update({ allergensAnswered: false });
     await renderCookbook(<PlanWeekScreen week={WEEK} />);
@@ -96,6 +110,22 @@ describe('Two-day nutrition plan', () => {
       '3-lunch',
     ]);
     expect(router.back).toHaveBeenCalled();
+  });
+
+  it('labels the result estimated when a chosen recipe has estimated nutrition', async () => {
+    jest
+      .mocked(getRecipeSummaries)
+      .mockImplementation(async (ids) =>
+        ids.flatMap((id) =>
+          pool
+            .filter((r) => r.id === id)
+            .map((r) => ({ ...r, nutritionConfidence: 'estimated' as const })),
+        ),
+      );
+    await renderCookbook(<TwoDayPlanScreen />);
+    expect(
+      await screen.findByText(/Some nutrition values are estimated/, {}, LONG),
+    ).toBeOnTheScreen();
   });
 
   it('shows progress while the plan is being worked out', async () => {

@@ -42,7 +42,7 @@ export const DEFAULT_SAVED_FILTERS: SavedFilters = {
 export function searchTokens(text: string): string[] {
   return text
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean);

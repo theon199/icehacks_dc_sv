@@ -98,6 +98,14 @@ export function useAutoFillPreview(options: FillOptions): {
   }, [preview, weekStart]);
 
   if (candidates.status !== 'ready') return { state: candidates, accept };
+  // The cuisines of meals already planned feed the variety rules, so without them there is no
+  // preview to show; surface the failure instead of loading forever.
+  if (plannedIds.length > 0 && planned.data === undefined && planned.isError) {
+    return {
+      state: { status: 'error', error: planned.error, retry: () => void planned.refetch() },
+      accept,
+    };
+  }
   if (!preview || preview.key !== key) return { state: { status: 'loading' }, accept };
   return { state: { status: 'ready', result: preview.result, recipes }, accept };
 }

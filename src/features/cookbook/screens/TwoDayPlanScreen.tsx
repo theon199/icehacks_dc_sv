@@ -137,7 +137,11 @@ function PlanResult({
     () => new Map<string, RecipeSummary>((summaries.data ?? []).map((r) => [r.id, r])),
     [summaries.data],
   );
-  const estimated = result.explanation.some((n) => n.kind === 'estimated');
+  // Confidence comes from the recipes actually chosen: a recipe can carry every nutrient and still
+  // be marked estimated, which the planner's notes do not see.
+  const estimated =
+    result.explanation.some((n) => n.kind === 'estimated') ||
+    (summaries.data ?? []).some((r) => r.nutritionConfidence === 'estimated');
   return (
     <View style={styles.result} testID="two-day-result">
       {result.days.map((day) => {
