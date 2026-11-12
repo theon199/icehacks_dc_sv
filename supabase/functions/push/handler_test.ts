@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { errorResponse, HttpError } from "../_shared/http.ts";
 import type { ExpoMessage, SendReport } from "./expo.ts";
 import { createPushHandler, type PushDeps, SECRET_HEADER, secretsMatch } from "./handler.ts";
-import { asRateLimit, type PushPlatform, type PushStore } from "./store.ts";
+import { asRateLimit, type PushCategories, type PushPlatform, type PushStore } from "./store.ts";
 
 const USER = "11111111-1111-4111-8111-111111111111";
 const TOKEN = "ExponentPushToken[abcdefghij]";
@@ -12,6 +12,7 @@ class MemoryStore implements PushStore {
   tokens = new Map<string, { userId: string; platform: PushPlatform }>();
   forgotten: string[][] = [];
   failForget = false;
+  choices = new Map<string, PushCategories>();
 
   register(userId: string, token: string, platform: PushPlatform) {
     this.tokens.set(token, { userId, platform });
@@ -28,6 +29,14 @@ class MemoryStore implements PushStore {
     let removed = 0;
     for (const token of tokens) if (this.tokens.delete(token)) removed += 1;
     return Promise.resolve(removed);
+  }
+  categories(userId: string) {
+    return Promise.resolve(this.choices.get(userId) ?? { social: false, follows: false });
+  }
+  async setCategories(userId: string, change: Partial<PushCategories>) {
+    const next = { ...(await this.categories(userId)), ...change };
+    this.choices.set(userId, next);
+    return next;
   }
 }
 
@@ -112,6 +121,34 @@ Deno.test("registers and unregisters the caller's device", async () => {
   const removed = await call(post("push", { action: "unregister", token: TOKEN }, auth));
   assertEquals(await removed.json(), { registered: false, removed: 1 });
   assertEquals(store.tokens.size, 0);
+});
+
+Deno.test("reads and changes the caller's push categories", async () => {
+  const { store, call } = setup();
+  const auth = { authorization: "Bearer good" };
+
+  const initial = await call(post("push", { action: "categories" }, auth));
+  assertEquals(initial.status, 200);
+  assertEquals(await initial.json(), { categories: { social: false, follows: false } });
+  assertEquals(store.choices.size, 0);
+
+  const changed = await call(post("push", { action: "categories", social: true }, auth));
+  assertEquals(await changed.json(), { categories: { social: true, follows: false } });
+
+  const both = await call(post("push", { action: "categories", follows: true }, auth));
+  assertEquals(await both.json(), { categories: { social: true, follows: true } });
+  assertEquals(store.choices.get(USER), { social: true, follows: true });
+});
+
+Deno.test("push categories require a session and boolean choices", async () => {
+  const { store, call } = setup();
+  const anonymous = await call(post("push", { action: "categories", social: true }));
+  assertEquals(anonymous.status, 401);
+  const malformed = await call(
+    post("push", { action: "categories", social: "yes" }, { authorization: "Bearer good" }),
+  );
+  assertEquals(malformed.status, 400);
+  assertEquals(store.choices.size, 0);
 });
 
 Deno.test("device registration requires a session and a well-formed token", async () => {
