@@ -129,6 +129,36 @@ export function searchResultUrls(content: readonly ContentBlock[]): string[] {
   return urls;
 }
 
+/**
+ * Error codes of failed searches in a reply. A failed search still arrives inside an HTTP 200:
+ * its result block carries one error object instead of a list of results.
+ */
+export function searchErrorCodes(content: readonly ContentBlock[]): string[] {
+  const codes: string[] = [];
+  for (const block of content) {
+    if (block.type !== "web_search_tool_result") continue;
+    const outcome = block["content"];
+    if (Array.isArray(outcome) || !outcome || typeof outcome !== "object") continue;
+    const code = (outcome as ContentBlock)["error_code"];
+    codes.push(typeof code === "string" ? code : "unknown");
+  }
+  return codes;
+}
+
+/** Running out of searches is the lookup's own limit, not an outage worth retrying. */
+const FINAL_SEARCH_ERRORS = new Set(["max_uses_exceeded"]);
+
+/**
+ * A search failed for a reason that may pass (rate limit, outage), so the absence of a price
+ * says nothing about the ingredient. The caller must not cache a not-found result for it.
+ */
+export class PriceSearchError extends Error {
+  constructor(readonly codes: readonly string[]) {
+    super(`web search failed: ${codes.join(", ")}`);
+    this.name = "PriceSearchError";
+  }
+}
+
 const MAX_PRICE_CENTS = 100_000;
 const MAX_PACKAGE_QTY = 10_000;
 /** A paused server-side search turn is resumed at most this many times. */
@@ -175,8 +205,9 @@ export function interpretReport(
 }
 
 /**
- * Looks up one ingredient. Throws AnthropicError for transport and API failures (the caller
- * decides whether to cache anything); a refusal is reported as "not found".
+ * Looks up one ingredient. Throws AnthropicError for transport and API failures and
+ * PriceSearchError when a search failed transiently and no price was found (the caller decides
+ * whether to cache anything); a refusal is reported as "not found".
  */
 export async function lookupPrice(
   client: AnthropicClient,
@@ -192,6 +223,14 @@ export async function lookupPrice(
     content: `Ingredient: ${JSON.stringify(ingredientName)}`,
   }];
   const cited: string[] = [];
+  const transientErrors: string[] = [];
+  // Without a price, a failed search makes the answer unreliable rather than "not found".
+  const settle = (result: PriceLookup): PriceLookup => {
+    if (result.status !== "priced" && transientErrors.length > 0) {
+      throw new PriceSearchError(transientErrors);
+    }
+    return result;
+  };
 
   for (let round = 0; round <= MAX_RESUMES; round++) {
     let message: Message;
@@ -213,13 +252,16 @@ export async function lookupPrice(
       throw error;
     }
     cited.push(...searchResultUrls(message.content));
+    for (const code of searchErrorCodes(message.content)) {
+      if (!FINAL_SEARCH_ERRORS.has(code)) transientErrors.push(code);
+    }
 
     const report = toolUses(message).find((use) => use.name === reportPriceTool.definition.name);
-    if (report) return interpretReport(report.input, cited, options.retailers);
+    if (report) return settle(interpretReport(report.input, cited, options.retailers));
 
     // The server pauses long search turns; sending the reply back lets it continue.
     if (message.stop_reason !== "pause_turn") break;
     messages.push({ role: "assistant", content: message.content });
   }
-  return { status: "not_found", reason: "no_report" };
+  return settle({ status: "not_found", reason: "no_report" });
 }

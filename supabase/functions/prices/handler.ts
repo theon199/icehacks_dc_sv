@@ -6,11 +6,17 @@
  *     rows 3 days, so missing listings are retried sooner);
  *   - `pending` while a fill is running (started by this request or a concurrent one) or queued
  *     for a later request; poll again after `retry_after_seconds`;
- *   - `unavailable` when no fill can run (see `notice`).
+ *   - `unavailable` when no fill can run (see `notice`), when the name has nothing to search
+ *     for, or for a few minutes after a lookup failed upstream.
+ *
+ * A cache entry belongs to an ingredient id *and* the name searched for (a digest of the tidied
+ * name is part of the key), so a request that pairs an id with some other name only ever reads
+ * and writes its own entry.
  *
  * Misses are filled after the response is sent: Claude looks each one up with web search (see
- * lookup.ts). Fills are bounded by a single-flight lease per ingredient, a per-request batch
- * size, a member's daily fill allowance and a global monthly allowance.
+ * lookup.ts). Fills are bounded by a single-flight lease per entry, a per-request batch size,
+ * the per-member request quota (charged only when a fill starts), a member's daily fill
+ * allowance and a global monthly allowance.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -36,26 +42,61 @@ import {
 export const REGION = "us";
 export const PRICED_TTL_MS = 14 * 86_400_000;
 export const NOT_FOUND_TTL_MS = 3 * 86_400_000;
-const LEASE_TTL_SECONDS = 180;
+/** How long a failed lookup blocks new attempts for its entry. */
+export const RETRY_LATER_TTL_MS = 10 * 60_000;
+/**
+ * Lease length. One lookup makes at most three model calls of up to 60 s each; the lease is
+ * renewed for this long right before each lookup starts.
+ */
+export const LEASE_TTL_SECONDS = 240;
 const FILL_CONCURRENCY = 4;
 const POLL_AFTER_SECONDS = 8;
 
 const INGREDIENT_ID = /^[a-z0-9][a-z0-9_-]{0,79}$/;
-// Letters, digits, spaces and the punctuation ingredient names use; nothing that reads as markup.
-const INGREDIENT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ,.'()&%/+-]*$/u;
+/** Everything except letters, digits, spaces and the punctuation ingredient names use. */
+const OUTSIDE_NAME_CHARS = /[^\p{L}\p{N} ,.'()&%/+-]+/gu;
 
 export const PricesInput = z.object({
   items: z.array(z.object({
     id: z.string().regex(INGREDIENT_ID, "Use a catalog ingredient id."),
-    name: z.string().trim().min(1).max(80).regex(INGREDIENT_NAME, "Use a plain ingredient name."),
+    // Any catalog spelling is accepted; searchableName decides item by item.
+    name: z.string().trim().min(1).max(80),
   })).min(1).max(40),
 });
 export type PricesInput = z.output<typeof PricesInput>;
 
+/**
+ * The plain form of an ingredient name that is searched for and keyed on: compatibility
+ * normalised (½ becomes 1/2), curly apostrophes straightened, symbols such as ® and any markup
+ * dropped, spaces collapsed. null when no letters are left.
+ */
+export function searchableName(raw: string): string | null {
+  const plain = raw
+    .normalize("NFKC")
+    .replace(/[‘’ʼ`´]/g, "'")
+    .replace(/⁄/g, "/")
+    .replace(OUTSIDE_NAME_CHARS, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .slice(0, 80)
+    .trim();
+  return /\p{L}/u.test(plain) ? plain : null;
+}
+
+/** Cache (and lease) key for an ingredient id searched under a given plain name. */
+export async function cacheKey(ingredientId: string, plainName: string): Promise<string> {
+  const bytes = new TextEncoder().encode(plainName.toLowerCase());
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const hex = Array.from(digest.subarray(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${REGION}:${ingredientId}:${hex}`;
+}
+
+export type CacheStatus = "priced" | "not_found" | "retry_later";
+
 export interface PriceCacheRow {
   cache_key: string;
   ingredient_id: string;
-  status: "priced" | "not_found";
+  status: CacheStatus;
   price_cents: number | null;
   package_qty: number | null;
   unit: string | null;
@@ -70,7 +111,7 @@ export interface PriceCacheRow {
 const cacheRowSchema = z.object({
   cache_key: z.string(),
   ingredient_id: z.string(),
-  status: z.enum(["priced", "not_found"]),
+  status: z.enum(["priced", "not_found", "retry_later"]),
   price_cents: z.number().int().nullable(),
   package_qty: z.coerce.number().nullable(),
   unit: z.string().nullable(),
@@ -110,13 +151,15 @@ export interface PricesCaller {
   userId: string;
   enforceQuota(policy: QuotaPolicy): Promise<void>;
   isAdult(): Promise<boolean>;
-  /** Fresh cache rows for the given keys. */
+  /** Unexpired cache rows for the given keys. */
   readCache(keys: readonly string[]): Promise<PriceCacheRow[]>;
 }
 
-/** Service-role capabilities: spending guards and cache writes. */
+/** Service-role capabilities: spending guards and cache reads and writes. */
 export interface PricesService {
   guards: UsageGuards;
+  /** Unexpired cache rows for the given keys (re-checked after a lease is taken). */
+  readCache(keys: readonly string[]): Promise<PriceCacheRow[]>;
   writeCache(row: PriceCacheRow): Promise<void>;
 }
 
@@ -151,9 +194,15 @@ export function pricesSettings(env: EnvReader): PricesSettings {
   };
 }
 
-export const cacheKey = (ingredientId: string) => `${REGION}:${ingredientId}`;
+/** A requested ingredient with a searchable name, resolved to the cache entry it uses. */
+export interface PriceItem {
+  id: string;
+  name: string;
+  key: string;
+}
 
 function entryFromRow(id: string, row: PriceCacheRow): PriceEntry {
+  if (row.status === "retry_later") return emptyEntry(id, "unavailable");
   return {
     ingredient_id: id,
     status: row.status,
@@ -183,22 +232,26 @@ function emptyEntry(id: string, status: "pending" | "unavailable"): PriceEntry {
   };
 }
 
-/** The cache row for a lookup result. */
-export function rowFromLookup(
-  ingredientId: string,
-  result: PriceLookup,
-  now: number,
-): PriceCacheRow {
-  const base = {
-    cache_key: cacheKey(ingredientId),
-    ingredient_id: ingredientId,
+function blankRow(item: PriceItem, now: number) {
+  return {
+    cache_key: item.key,
+    ingredient_id: item.id,
     currency: "USD",
     confidence: "listed" as const,
+    price_cents: null,
+    package_qty: null,
+    unit: null,
+    source_name: null,
+    source_url: null,
     fetched_at: new Date(now).toISOString(),
   };
+}
+
+/** The cache row for a lookup result. */
+export function rowFromLookup(item: PriceItem, result: PriceLookup, now: number): PriceCacheRow {
   if (result.status === "priced") {
     return {
-      ...base,
+      ...blankRow(item, now),
       status: "priced",
       price_cents: result.priceCents,
       package_qty: result.packageQty,
@@ -209,39 +262,63 @@ export function rowFromLookup(
     };
   }
   return {
-    ...base,
+    ...blankRow(item, now),
     status: "not_found",
-    price_cents: null,
-    package_qty: null,
-    unit: null,
-    source_name: null,
-    source_url: null,
     expires_at: new Date(now + NOT_FOUND_TTL_MS).toISOString(),
   };
 }
 
+/** A short-lived marker that keeps polls from retrying a lookup that just failed. */
+export function retryLaterRow(item: PriceItem, now: number): PriceCacheRow {
+  return {
+    ...blankRow(item, now),
+    status: "retry_later",
+    expires_at: new Date(now + RETRY_LATER_TTL_MS).toISOString(),
+  };
+}
+
+interface Allowances {
+  member: { bucket: string; period: "day"; limit: number };
+  global: { bucket: string; period: "month"; limit: number };
+}
+
+function allowancesFor(userId: string, settings: PricesSettings): Allowances {
+  return {
+    member: { bucket: `prices_fill:user:${userId}`, period: "day", limit: settings.userDailyFills },
+    global: { bucket: "prices_fill:global", period: "month", limit: settings.monthlyFills },
+  };
+}
+
+type FillStatus = "pending" | "unavailable";
+
 /** Builds the request handler. */
 export function createPricesHandler(deps: PricesDeps): Handler {
   const lookup = deps.lookup ?? lookupPrice;
+  const isFresh = (row: PriceCacheRow) => Date.parse(row.expires_at) > deps.now();
 
   return createHandler(async (req) => {
     const caller = await deps.caller(req);
     const input = await parseBody(req, PricesInput, { maxBytes: 16 * 1024 });
-    await caller.enforceQuota(AI_QUOTAS.prices);
 
     // One entry per ingredient, in request order; the first name given for an id wins.
-    const names = new Map<string, string>();
-    for (const item of input.items) if (!names.has(item.id)) names.set(item.id, item.name);
-    const ids = [...names.keys()];
-
-    const fresh = new Map<string, PriceCacheRow>();
-    const nowIso = new Date(deps.now()).toISOString();
-    for (const row of await caller.readCache(ids.map(cacheKey))) {
-      if (row.expires_at > nowIso) fresh.set(row.ingredient_id, row);
+    const order: string[] = [];
+    const items: PriceItem[] = [];
+    for (const raw of input.items) {
+      if (order.includes(raw.id)) continue;
+      order.push(raw.id);
+      const name = searchableName(raw.name);
+      if (name !== null) items.push({ id: raw.id, name, key: await cacheKey(raw.id, name) });
     }
-    const misses = ids.filter((id) => !fresh.has(id));
 
-    const statusOf = new Map<string, "pending" | "unavailable">();
+    const rows = new Map<string, PriceCacheRow>();
+    if (items.length > 0) {
+      for (const row of await caller.readCache(items.map((item) => item.key))) {
+        if (isFresh(row)) rows.set(row.cache_key, row);
+      }
+    }
+    const misses = items.filter((item) => !rows.has(item.key));
+
+    const statusOf = new Map<string, FillStatus>();
     let notice: PricesNotice = null;
 
     if (misses.length > 0) {
@@ -253,13 +330,16 @@ export function createPricesHandler(deps: PricesDeps): Handler {
       } else if (!(await caller.isAdult())) {
         notice = "not_eligible";
       } else {
-        notice = await startFills(misses, names, statusOf, settings, caller.userId);
+        notice = await startFills(misses, rows, statusOf, settings, caller);
       }
     }
 
-    const prices = ids.map((id) => {
-      const row = fresh.get(id);
-      return row ? entryFromRow(id, row) : emptyEntry(id, statusOf.get(id) ?? "unavailable");
+    const keyOf = new Map(items.map((item) => [item.id, item.key]));
+    const prices = order.map((id) => {
+      const key = keyOf.get(id);
+      const row = key === undefined ? undefined : rows.get(key);
+      if (row) return entryFromRow(id, row);
+      return emptyEntry(id, (key !== undefined && statusOf.get(key)) || "unavailable");
     });
     const pending = prices.filter((p) => p.status === "pending").length;
     const body: PricesResponse = {
@@ -272,84 +352,150 @@ export function createPricesHandler(deps: PricesDeps): Handler {
   });
 
   /**
-   * Claims leases for (a batch of) the misses, reserves allowance for them and starts the fills
-   * in the background. Records each miss's status and returns the notice to show, if any.
+   * Claims leases for a batch of the misses, re-checks the cache, charges the request quota and
+   * reserves allowance for what is left, then starts those fills in the background. Records the
+   * status of every miss (and any row that landed meanwhile) and returns the notice to show.
    */
   async function startFills(
-    misses: readonly string[],
-    names: ReadonlyMap<string, string>,
-    statusOf: Map<string, "pending" | "unavailable">,
+    misses: readonly PriceItem[],
+    rows: Map<string, PriceCacheRow>,
+    statusOf: Map<string, FillStatus>,
     settings: PricesSettings,
-    userId: string,
+    caller: PricesCaller,
   ): Promise<PricesNotice> {
     const service = deps.service();
     const holder = deps.newId();
     const batch = misses.slice(0, settings.fillsPerRequest);
-    // Ingredients past this request's batch are filled by a later poll.
-    for (const id of misses.slice(settings.fillsPerRequest)) statusOf.set(id, "pending");
+    const later = misses.slice(settings.fillsPerRequest);
+    const mark = (list: readonly PriceItem[], status: FillStatus) => {
+      for (const item of list) statusOf.set(item.key, status);
+    };
+    const release = async (list: readonly PriceItem[]) => {
+      if (list.length > 0) {
+        await service.guards.releaseLeases(list.map((item) => item.key), holder);
+      }
+    };
 
     const claimedKeys = new Set(
-      await service.guards.claimLeases(batch.map(cacheKey), holder, LEASE_TTL_SECONDS),
+      await service.guards.claimLeases(batch.map((item) => item.key), holder, LEASE_TTL_SECONDS),
     );
-    // Someone else is already filling these.
-    for (const id of batch) if (!claimedKeys.has(cacheKey(id))) statusOf.set(id, "pending");
-    const claimed = batch.filter((id) => claimedKeys.has(cacheKey(id)));
-    if (claimed.length === 0) return null;
+    // Another request is filling these.
+    mark(batch.filter((item) => !claimedKeys.has(item.key)), "pending");
+    let claimed = batch.filter((item) => claimedKeys.has(item.key));
 
+    // A concurrent fill may have finished between the first cache read and the claim.
+    if (claimed.length > 0) {
+      const landed = new Set<string>();
+      for (const row of await service.readCache(claimed.map((item) => item.key))) {
+        if (!isFresh(row)) continue;
+        rows.set(row.cache_key, row);
+        landed.add(row.cache_key);
+      }
+      await release(claimed.filter((item) => landed.has(item.key)));
+      claimed = claimed.filter((item) => !landed.has(item.key));
+    }
+    if (claimed.length === 0) {
+      // Nothing to start here; a later poll picks up the rest once this batch settles.
+      mark(later, "pending");
+      return null;
+    }
+
+    // Only a request that starts lookups spends the request quota; polls never do.
+    try {
+      await caller.enforceQuota(AI_QUOTAS.prices);
+    } catch (error) {
+      await release(claimed).catch(() => undefined);
+      if (error instanceof HttpError && error.code === "quota_exceeded") {
+        mark([...claimed, ...later], "unavailable");
+        return "daily_limit";
+      }
+      throw error;
+    }
+
+    const allowances = allowancesFor(caller.userId, settings);
     let granted = 0;
     let limitedBy: "member" | "global" | null = null;
     try {
       ({ granted, limitedBy } = await reserveFromBoth(
         service.guards,
-        { bucket: `prices_fill:user:${userId}`, period: "day", limit: settings.userDailyFills },
-        { bucket: "prices_fill:global", period: "month", limit: settings.monthlyFills },
+        allowances.member,
+        allowances.global,
         claimed.length,
       ));
     } catch (error) {
-      await service.guards.releaseLeases(claimed.map(cacheKey), holder).catch(() => undefined);
+      await release(claimed).catch(() => undefined);
       throw error;
     }
 
     const toFill = claimed.slice(0, granted);
     const refused = claimed.slice(granted);
-    for (const id of toFill) statusOf.set(id, "pending");
-    for (const id of refused) statusOf.set(id, "unavailable");
-    if (refused.length > 0) {
-      await service.guards.releaseLeases(refused.map(cacheKey), holder);
-    }
+    mark(toFill, "pending");
+    mark(refused, "unavailable");
+    // Once an allowance has run out nothing past this batch can be filled either; calling it
+    // pending would keep the app polling for prices that cannot come.
+    mark(later, limitedBy === null ? "pending" : "unavailable");
+    await release(refused);
     if (toFill.length > 0) {
-      deps.background(fillAll(toFill, names, service, holder, settings, userId));
+      deps.background(fillAll(toFill, service, holder, settings, caller.userId, allowances));
     }
-    if (refused.length === 0) return null;
+    if (limitedBy === null) return null;
     return limitedBy === "global" ? "budget" : "daily_limit";
   }
 
   async function fillAll(
-    ids: readonly string[],
-    names: ReadonlyMap<string, string>,
+    items: readonly PriceItem[],
     service: PricesService,
     holder: string,
     settings: PricesSettings,
     userId: string,
+    allowances: Allowances,
   ): Promise<void> {
     const client = deps.anthropic();
-    await mapWithConcurrency(ids, FILL_CONCURRENCY, async (id) => {
+    await mapWithConcurrency(items, FILL_CONCURRENCY, async (item) => {
+      let started = false;
       try {
-        const result = await lookup(client, names.get(id) ?? id, {
-          retailers: settings.retailers,
-          maxSearches: settings.maxSearches,
-          userId,
-        });
-        await service.writeCache(rowFromLookup(id, result, deps.now()));
+        // Renew the lease now that this lookup is about to run: earlier waves may have taken
+        // long enough for it to lapse. If someone else holds it by now, they do the work.
+        const [held] = await service.guards.claimLeases([item.key], holder, LEASE_TTL_SECONDS);
+        if (held === undefined) return;
+        const landed = (await service.readCache([item.key])).some(isFresh);
+        if (landed) return;
+
+        started = true;
+        let row: PriceCacheRow;
+        try {
+          const result = await lookup(client, item.name, {
+            retailers: settings.retailers,
+            maxSearches: settings.maxSearches,
+            userId,
+          });
+          row = rowFromLookup(item, result, deps.now());
+        } catch (error) {
+          console.error("price fill failed", { ingredient: item.id, error: describe(error) });
+          row = retryLaterRow(item, deps.now());
+        }
+        await service.writeCache(row);
       } catch (error) {
-        // Nothing is cached, so a later request can try again.
-        console.error("price fill failed", { ingredient: id, error: describe(error) });
+        console.error("price fill could not be recorded", {
+          ingredient: item.id,
+          error: describe(error),
+        });
       } finally {
-        await service.guards.releaseLeases([cacheKey(id)], holder).catch((error) =>
+        // A lookup that never ran gives its reserved units back.
+        if (!started) await refundOne(service.guards, allowances);
+        await service.guards.releaseLeases([item.key], holder).catch((error) =>
           console.error("lease release failed", describe(error))
         );
       }
     });
+  }
+}
+
+async function refundOne(guards: UsageGuards, allowances: Allowances): Promise<void> {
+  for (const allowance of [allowances.member, allowances.global]) {
+    await guards.release(allowance.bucket, allowance.period, 1).catch((error) =>
+      console.error("allowance refund failed", describe(error))
+    );
   }
 }
 
@@ -377,29 +523,39 @@ export function supabasePricesCaller(
     async isAdult() {
       return (await callRpc(client, "is_adult", {}, z.boolean().nullable())) === true;
     },
-    async readCache(keys) {
-      const { data, error } = await client
-        .from("ingredient_price_cache")
-        .select(PRICE_COLUMNS)
-        .in("cache_key", [...keys])
-        .gt("expires_at", new Date(now()).toISOString());
-      if (error) {
-        console.error("price cache read failed", error);
-        throw new HttpError("upstream_error", "Prices are unavailable right now.");
-      }
-      const parsed = z.array(cacheRowSchema).safeParse(data ?? []);
-      if (!parsed.success) {
-        console.error("price cache returned an unexpected shape");
-        throw new HttpError("upstream_error", "Prices are unavailable right now.");
-      }
-      return parsed.data;
-    },
+    readCache: (keys) => readPriceRows(client, keys, now),
   };
 }
 
-export function supabasePricesService(service: SupabaseClient): PricesService {
+async function readPriceRows(
+  client: SupabaseClient,
+  keys: readonly string[],
+  now: () => number,
+): Promise<PriceCacheRow[]> {
+  const { data, error } = await client
+    .from("ingredient_price_cache")
+    .select(PRICE_COLUMNS)
+    .in("cache_key", [...keys])
+    .gt("expires_at", new Date(now()).toISOString());
+  if (error) {
+    console.error("price cache read failed", error);
+    throw new HttpError("upstream_error", "Prices are unavailable right now.");
+  }
+  const parsed = z.array(cacheRowSchema).safeParse(data ?? []);
+  if (!parsed.success) {
+    console.error("price cache returned an unexpected shape");
+    throw new HttpError("upstream_error", "Prices are unavailable right now.");
+  }
+  return parsed.data;
+}
+
+export function supabasePricesService(
+  service: SupabaseClient,
+  now: () => number = Date.now,
+): PricesService {
   return {
     guards: supabaseUsageGuards(service),
+    readCache: (keys) => readPriceRows(service, keys, now),
     async writeCache(row) {
       const { error } = await service
         .from("ingredient_price_cache")

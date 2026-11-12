@@ -1,6 +1,12 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { AnthropicError } from "../_shared/anthropic.ts";
-import { interpretReport, lookupPrice, searchResultUrls } from "./lookup.ts";
+import {
+  interpretReport,
+  lookupPrice,
+  PriceSearchError,
+  searchErrorCodes,
+  searchResultUrls,
+} from "./lookup.ts";
 import { DEFAULT_RETAILERS, listingKey, retailerForUrl, retailersFromEnv } from "./retailers.ts";
 import { claudeReply, envOf, jsonResponse, scriptedFetch, testAnthropic } from "./testing.ts";
 
@@ -196,4 +202,69 @@ Deno.test("lookupPrice surfaces API failures to the caller", async () => {
     AnthropicError,
   );
   assertEquals(error.status, 529);
+});
+
+const NOTHING = {
+  found: false,
+  price_usd: null,
+  package_qty: null,
+  unit: null,
+  retailer: null,
+  url: null,
+};
+
+function searchFailure(code: string) {
+  return {
+    type: "web_search_tool_result",
+    tool_use_id: "srvtoolu_2",
+    content: { type: "web_search_tool_result_error", error_code: code },
+  };
+}
+
+Deno.test("searchErrorCodes reads the error object of failed searches", () => {
+  assertEquals(
+    searchErrorCodes([searchResult([LISTING]), searchFailure("too_many_requests")]),
+    ["too_many_requests"],
+  );
+});
+
+Deno.test("a search that failed transiently is an error, not a cacheable not-found", async () => {
+  const { fetch } = scriptedFetch([
+    () =>
+      jsonResponse(
+        claudeReply([searchFailure("too_many_requests"), report(NOTHING)], "tool_use"),
+      ),
+  ]);
+  const error = await assertRejects(
+    () => lookupPrice(testAnthropic(fetch), "leeks", { retailers: DEFAULT_RETAILERS }),
+    PriceSearchError,
+  );
+  assertEquals(error.codes, ["too_many_requests"]);
+});
+
+Deno.test("a price found despite a failed search is kept", async () => {
+  const { fetch } = scriptedFetch([
+    () =>
+      jsonResponse(
+        claudeReply(
+          [searchFailure("unavailable"), searchResult([LISTING]), report(FOUND)],
+          "tool_use",
+        ),
+      ),
+  ]);
+  const result = await lookupPrice(testAnthropic(fetch), "chickpeas", {
+    retailers: DEFAULT_RETAILERS,
+  });
+  assertEquals(result.status, "priced");
+});
+
+Deno.test("running out of searches still ends as not found", async () => {
+  const { fetch } = scriptedFetch([
+    () =>
+      jsonResponse(
+        claudeReply([searchFailure("max_uses_exceeded"), report(NOTHING)], "tool_use"),
+      ),
+  ]);
+  const result = await lookupPrice(testAnthropic(fetch), "x", { retailers: DEFAULT_RETAILERS });
+  assertEquals(result, { status: "not_found", reason: "no_listing" });
 });
