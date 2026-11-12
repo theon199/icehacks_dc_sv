@@ -18,9 +18,11 @@ import {
   type DayContext,
   type GlucosePair,
 } from '@/domain/health';
+import { useSessionStore } from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
 
 import {
+  findCookedMealIds as findCookedMealIdsFromApp,
   listCookedMeals as listCookedMealsFromApp,
   pushHealthDocs as pushHealthDocsToAccount,
   type HealthSyncDoc,
@@ -31,26 +33,41 @@ import { useHealthStore } from './healthStore';
 export const REFRESH_RULES = {
   /** Foreground refreshes closer together than this are skipped. */
   minIntervalMs: 15 * MINUTE_MS,
-  /** Meals this recent are (re-)paired on each refresh; older pairs are kept as they are. */
+  /**
+   * Meals this recent are (re-)paired on each refresh. Older pairs are only checked against the
+   * cook log, so a meal deleted later stops counting too.
+   */
   pairingLookbackMs: 7 * DAY_MS,
 } as const;
 
 export interface RefreshDeps {
   source: HealthSource;
   listCookedMeals: (range: TimeRange) => Promise<CookedMeal[]>;
+  findCookedMealIds: (ids: readonly string[]) => Promise<Set<string>>;
   pushHealthDocs: (docs: readonly HealthSyncDoc[]) => Promise<boolean>;
+  /** The signed-in account, which is where pushes land. */
+  currentUserId: () => string | null;
   now: () => number;
 }
 
 const defaultDeps: RefreshDeps = {
   source: healthKitSource,
   listCookedMeals: listCookedMealsFromApp,
+  findCookedMealIds: findCookedMealIdsFromApp,
   pushHealthDocs: pushHealthDocsToAccount,
+  currentUserId: () => useSessionStore.getState().userId,
   now: Date.now,
 };
 
 export type RefreshOutcome =
-  'disabled' | 'too_soon' | 'not_connected' | 'locked' | 'refreshed' | 'partial' | 'failed';
+  | 'disabled'
+  | 'account_changed'
+  | 'too_soon'
+  | 'not_connected'
+  | 'locked'
+  | 'refreshed'
+  | 'partial'
+  | 'failed';
 
 async function readDayContext(deps: RefreshDeps, now: number): Promise<DayContext> {
   const range = { from: now - DAY_CONTEXT_RULES.lookbackMs, to: now };
@@ -59,6 +76,25 @@ async function readDayContext(deps: RefreshDeps, now: number): Promise<DayContex
     deps.source.readSleep(range),
   ]);
   return computeDayContext({ workouts, sleep, now });
+}
+
+/**
+ * Older pairs whose meal is still in the cook log, or undefined when the log could not be checked
+ * (the older pairs are then kept as they are until the next refresh).
+ */
+async function confirmOlderMeals(
+  deps: RefreshDeps,
+  stored: readonly GlucosePair[],
+  from: number,
+): Promise<ReadonlySet<string> | undefined> {
+  const older = stored.filter((pair) => pair.startedAt < from).map((pair) => pair.mealId);
+  if (older.length === 0) return undefined;
+  try {
+    return await deps.findCookedMealIds(older);
+  } catch (error) {
+    logger.warn('Could not check older glucose pairs against the cook log', describeError(error));
+    return undefined;
+  }
 }
 
 async function readGlucosePairs(
@@ -73,8 +109,12 @@ async function readGlucosePairs(
     to: now,
   });
   const candidates = meals.filter((meal) => meal.startedAt >= from && meal.startedAt <= now);
-  if (candidates.length === 0)
-    return mergePairs({ stored, fresh: [], reevaluatedMealIds: new Set(), now });
+  const olderMealIds = await confirmOlderMeals(deps, stored, from);
+  // Every stored pair from `from` onwards is replaced by this run's result, so a meal deleted from
+  // the cook log loses its pair even when nothing is left to pair.
+  const merge = (fresh: GlucosePair[]) =>
+    mergePairs({ stored, fresh, reevaluatedFrom: from, olderMealIds, now });
+  if (candidates.length === 0) return merge([]);
 
   const earliest = Math.min(...candidates.map((meal) => meal.startedAt));
   const range = { from: earliest - GLUCOSE_PAIRING_RULES.baselineLeadMs, to: now };
@@ -88,17 +128,21 @@ async function readGlucosePairs(
     const outcome = pairMeal(meal, context);
     if (outcome.ok) fresh.push(outcome.pair);
   }
-  return mergePairs({
-    stored,
-    fresh,
-    reevaluatedMealIds: new Set(candidates.map((meal) => meal.id)),
-    now,
-  });
+  return merge(fresh);
 }
 
-async function syncSummaries(deps: RefreshDeps, now: number): Promise<void> {
+/** Whether the store still holds Health data for `owner`, with Health on. */
+function stillOwnedBy(owner: string | null): boolean {
+  const state = useHealthStore.getState();
+  return state.enabled && state.ownerId === owner;
+}
+
+async function syncSummaries(deps: RefreshDeps, owner: string | null, now: number): Promise<void> {
   const state = useHealthStore.getState();
   if (!state.syncEnabled) return;
+  // Pushes land in whichever account is signed in, so only push into the account that owns the
+  // data.
+  if (owner === null || deps.currentUserId() !== owner) return;
   const docs: HealthSyncDoc[] = [
     {
       docId: 'glucose_insights',
@@ -109,12 +153,16 @@ async function syncSummaries(deps: RefreshDeps, now: number): Promise<void> {
   if (state.dayContext) {
     docs.push({ docId: 'day_context', data: { ...state.dayContext }, updatedAt: now });
   }
-  if (await deps.pushHealthDocs(docs)) useHealthStore.getState().markSynced(now);
+  if ((await deps.pushHealthDocs(docs)) && stillOwnedBy(owner)) {
+    useHealthStore.getState().markSynced(now);
+  }
 }
 
 async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
   const state = useHealthStore.getState();
   if (!state.enabled) return 'disabled';
+  // Everything read below belongs to this account; an account switch mid-run discards it.
+  const owner = state.ownerId;
 
   const now = deps.now();
   const last = state.lastRefreshAt;
@@ -138,44 +186,109 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
   }
   if (day.status === 'rejected' && glucose.status === 'rejected') return 'failed';
 
-  // Health may have been turned off while reading; never write data back after that.
-  if (!useHealthStore.getState().enabled) return 'disabled';
-  useHealthStore.getState().applyRefresh({
+  // Health may have been turned off, or another account signed in, while reading; never write
+  // data back after that.
+  const current = useHealthStore.getState();
+  if (current.ownerId !== owner) return 'account_changed';
+  if (!current.enabled) return 'disabled';
+  current.applyRefresh({
     at: now,
     ...(day.status === 'fulfilled' ? { dayContext: day.value } : {}),
     ...(glucose.status === 'fulfilled' ? { glucosePairs: glucose.value } : {}),
   });
 
-  await syncSummaries(deps, now);
+  await syncSummaries(deps, owner, now);
   return day.status === 'fulfilled' && glucose.status === 'fulfilled' ? 'refreshed' : 'partial';
 }
 
 let inFlight: Promise<RefreshOutcome> | null = null;
+let forcedAfterInFlight: Promise<RefreshOutcome> | null = null;
 
-/**
- * Refreshes health data if Health is on and connected. Concurrent calls share one run; `force`
- * skips the minimum interval (used right after connecting and for pull-to-refresh).
- */
-export function refreshHealth(
-  options: { force?: boolean } = {},
-  deps: RefreshDeps = defaultDeps,
-): Promise<RefreshOutcome> {
-  inFlight ??= run(deps, options.force ?? false)
+function startRun(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
+  const started: Promise<RefreshOutcome> = run(deps, force)
     .catch((error: unknown) => {
       logger.warn('Health refresh failed', describeError(error));
       return 'failed' as const;
     })
     .finally(() => {
-      inFlight = null;
+      if (inFlight === started) inFlight = null;
     });
-  return inFlight;
+  inFlight = started;
+  return started;
 }
 
-/** Removes the synced health documents from the account (when sync is turned off). */
-export function removeSyncedHealth(deps: RefreshDeps = defaultDeps): Promise<boolean> {
-  const now = deps.now();
-  return deps.pushHealthDocs([
+/**
+ * Refreshes health data if Health is on and connected. Concurrent calls share one run; `force`
+ * skips the minimum interval (used right after connecting and for pull-to-refresh). A forced call
+ * that arrives while a run is already going waits for it and then runs again, because that run
+ * may have started before whatever prompted the forced one (permission just granted, sync just
+ * turned on). Forced calls arriving in the meantime share that one follow-up run.
+ */
+export function refreshHealth(
+  options: { force?: boolean } = {},
+  deps: RefreshDeps = defaultDeps,
+): Promise<RefreshOutcome> {
+  const force = options.force ?? false;
+  const current = inFlight;
+  if (!current) return startRun(deps, force);
+  if (!force) return current;
+  forcedAfterInFlight ??= current.then(() => {
+    forcedAfterInFlight = null;
+    return startRun(deps, true);
+  });
+  return forcedAfterInFlight;
+}
+
+function tombstones(now: number): HealthSyncDoc[] {
+  return [
     { docId: 'day_context', data: null, updatedAt: now },
     { docId: 'glucose_insights', data: null, updatedAt: now },
-  ]);
+  ];
+}
+
+let removalInFlight: Promise<boolean> | null = null;
+
+/**
+ * Pushes tombstones for the pending removal when it is for the signed-in account, and clears the
+ * pending mark once the server applied them.
+ */
+function attemptRemoval(deps: RefreshDeps): Promise<boolean> {
+  removalInFlight ??= (async () => {
+    const account = useHealthStore.getState().removalPendingFor;
+    if (account === null) return true;
+    if (deps.currentUserId() !== account) return false;
+    const removed = await deps.pushHealthDocs(tombstones(deps.now()));
+    if (removed && useHealthStore.getState().removalPendingFor === account) {
+      useHealthStore.getState().setRemovalPending(null);
+    }
+    return removed;
+  })()
+    .catch((error: unknown) => {
+      logger.warn('Removing synced health summaries failed', describeError(error));
+      return false;
+    })
+    .finally(() => {
+      removalInFlight = null;
+    });
+  return removalInFlight;
+}
+
+/**
+ * Removes the synced health documents from the signed-in account (when sync is turned off or
+ * Health is disconnected). The removal is recorded before it is sent, so when this attempt fails
+ * (offline, or the server rejected a tombstone) `retryPendingHealthRemoval` finishes it later.
+ */
+export async function removeSyncedHealth(deps: RefreshDeps = defaultDeps): Promise<boolean> {
+  const account = deps.currentUserId();
+  if (account === null) return false;
+  useHealthStore.getState().setRemovalPending(account);
+  // An attempt already under way may have read an older state; let it finish, then send our own.
+  if (removalInFlight) await removalInFlight;
+  return attemptRemoval(deps);
+}
+
+/** Finishes a removal that failed earlier, once its account is signed in. */
+export function retryPendingHealthRemoval(deps: RefreshDeps = defaultDeps): Promise<boolean> {
+  if (useHealthStore.getState().removalPendingFor === null) return Promise.resolve(true);
+  return attemptRemoval(deps);
 }

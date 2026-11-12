@@ -2,16 +2,24 @@ import {
   HOUR_MS,
   MINUTE_MS,
   type CookedMeal,
+  type GlucosePair,
   type GlucoseReading,
   type WorkoutSession,
 } from '@/domain/health';
 
 import type { HealthSource } from './healthKit';
 import { useHealthStore } from './healthStore';
-import { REFRESH_RULES, refreshHealth, removeSyncedHealth, type RefreshDeps } from './refresh';
+import {
+  REFRESH_RULES,
+  refreshHealth,
+  removeSyncedHealth,
+  retryPendingHealthRemoval,
+  type RefreshDeps,
+} from './refresh';
 
 jest.mock('./deps', () => ({
   listCookedMeals: jest.fn(),
+  findCookedMealIds: jest.fn(),
   pushHealthDocs: jest.fn(),
 }));
 jest.mock('./healthKit', () => ({ healthKitSource: {} }));
@@ -40,10 +48,28 @@ const morningRun: WorkoutSession = {
   end: NOW - 11 * HOUR_MS,
 };
 
+const USER = 'user-a';
+
+function storedPair(mealId: string, startedAt: number): GlucosePair {
+  return {
+    mealId,
+    recipeRef: 'mealdb:1',
+    localDate: new Date(startedAt).toISOString().slice(0, 10),
+    startedAt,
+    baselineMgdl: 100,
+    peakMgdl: 120,
+    riseMgdl: 20,
+    minutesToPeak: 30,
+    sampleCount: 20,
+  };
+}
+
 function makeDeps(overrides: Partial<HealthSource> = {}): RefreshDeps & {
   source: jest.Mocked<HealthSource>;
   pushHealthDocs: jest.Mock;
   listCookedMeals: jest.Mock;
+  findCookedMealIds: jest.Mock;
+  currentUserId: jest.Mock;
 } {
   const source = {
     platform: jest.fn(async () => 'available' as const),
@@ -58,13 +84,25 @@ function makeDeps(overrides: Partial<HealthSource> = {}): RefreshDeps & {
   return {
     source,
     listCookedMeals: jest.fn(async () => [meal]),
+    findCookedMealIds: jest.fn(async (ids: readonly string[]) => new Set(ids)),
     pushHealthDocs: jest.fn(async () => true),
+    currentUserId: jest.fn(() => USER),
     now: () => NOW,
   };
 }
 
+/** A promise with its resolve function, to hold a read open. */
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   useHealthStore.getState().reset();
+  useHealthStore.getState().claimFor(USER);
   useHealthStore.getState().setEnabled(true);
 });
 
@@ -143,24 +181,80 @@ describe('refreshHealth', () => {
     expect(deps.source.readGlucose).not.toHaveBeenCalled();
   });
 
-  it('keeps older pairs outside the re-pairing window', async () => {
-    const old = {
-      mealId: 'old',
-      recipeRef: 'mealdb:1',
-      localDate: '2026-10-30',
-      startedAt: NOW - 12 * 24 * HOUR_MS,
-      baselineMgdl: 100,
-      peakMgdl: 120,
-      riseMgdl: 20,
-      minutesToPeak: 30,
-      sampleCount: 20,
-    };
+  it('keeps older pairs outside the re-pairing window while their meal is still logged', async () => {
+    const old = storedPair('old', NOW - 12 * 24 * HOUR_MS);
     useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [old] });
-    await refreshHealth({}, makeDeps());
+    const deps = makeDeps();
+    await refreshHealth({}, deps);
+    expect(deps.findCookedMealIds).toHaveBeenCalledWith(['old']);
     expect(useHealthStore.getState().glucosePairs.map((pair) => pair.mealId)).toEqual([
       'old',
       'meal-1',
     ]);
+  });
+
+  it('drops the pair of a recent meal that was deleted from the cook log', async () => {
+    const deleted = storedPair('deleted', NOW - 2 * 24 * HOUR_MS);
+    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [deleted] });
+    await refreshHealth({}, makeDeps());
+    expect(useHealthStore.getState().glucosePairs.map((pair) => pair.mealId)).toEqual(['meal-1']);
+  });
+
+  it('drops recent pairs when every meal in the window was deleted', async () => {
+    const deleted = storedPair('deleted', NOW - 2 * 24 * HOUR_MS);
+    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [deleted] });
+    const deps = makeDeps();
+    deps.listCookedMeals.mockResolvedValue([]);
+    await refreshHealth({}, deps);
+    expect(useHealthStore.getState().glucosePairs).toEqual([]);
+  });
+
+  it('drops an older pair whose meal is no longer in the cook log', async () => {
+    const kept = storedPair('kept', NOW - 20 * 24 * HOUR_MS);
+    const gone = storedPair('gone', NOW - 12 * 24 * HOUR_MS);
+    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [kept, gone] });
+    const deps = makeDeps();
+    deps.findCookedMealIds.mockResolvedValue(new Set(['kept']));
+    await refreshHealth({}, deps);
+    expect(useHealthStore.getState().glucosePairs.map((pair) => pair.mealId)).toEqual([
+      'kept',
+      'meal-1',
+    ]);
+  });
+
+  it('keeps older pairs when the cook log cannot be checked', async () => {
+    const old = storedPair('old', NOW - 12 * 24 * HOUR_MS);
+    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [old] });
+    const deps = makeDeps();
+    deps.findCookedMealIds.mockRejectedValue(new Error('offline'));
+    await expect(refreshHealth({}, deps)).resolves.toBe('refreshed');
+    expect(useHealthStore.getState().glucosePairs.map((pair) => pair.mealId)).toEqual([
+      'old',
+      'meal-1',
+    ]);
+  });
+
+  it('discards a run that finishes after another account signed in', async () => {
+    useHealthStore.getState().setSyncEnabled(true);
+    const sleep = deferred<[]>();
+    const deps = makeDeps({ readSleep: jest.fn(() => sleep.promise) });
+    const pending = refreshHealth({}, deps);
+    await Promise.resolve();
+
+    useHealthStore.getState().claimFor('user-b');
+    useHealthStore.getState().setEnabled(true);
+    useHealthStore.getState().setSyncEnabled(true);
+    deps.currentUserId.mockReturnValue('user-b');
+    sleep.resolve([]);
+
+    await expect(pending).resolves.toBe('account_changed');
+    expect(useHealthStore.getState()).toMatchObject({
+      ownerId: 'user-b',
+      dayContext: null,
+      glucosePairs: [],
+      lastRefreshAt: null,
+    });
+    expect(deps.pushHealthDocs).not.toHaveBeenCalled();
   });
 
   it('does not write anything if Health was turned off during the read', async () => {
@@ -179,6 +273,19 @@ describe('refreshHealth', () => {
     const [a, b] = await Promise.all([refreshHealth({}, deps), refreshHealth({}, deps)]);
     expect([a, b]).toEqual(['refreshed', 'refreshed']);
     expect(deps.source.platform).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs a forced refresh again after the run it arrived during', async () => {
+    const deps = makeDeps();
+    deps.source.requestStatus.mockResolvedValueOnce('should_request');
+    const [first, forced, alsoForced] = await Promise.all([
+      refreshHealth({}, deps),
+      refreshHealth({ force: true }, deps),
+      refreshHealth({ force: true }, deps),
+    ]);
+    expect(first).toBe('not_connected');
+    expect([forced, alsoForced]).toEqual(['refreshed', 'refreshed']);
+    expect(deps.source.platform).toHaveBeenCalledTimes(2);
   });
 
   describe('sync', () => {
@@ -201,6 +308,14 @@ describe('refreshHealth', () => {
       expect(useHealthStore.getState().lastSyncedAt).toBe(NOW);
     });
 
+    it('does not push when a different account is signed in', async () => {
+      useHealthStore.getState().setSyncEnabled(true);
+      const deps = makeDeps();
+      deps.currentUserId.mockReturnValue('user-b');
+      await expect(refreshHealth({}, deps)).resolves.toBe('refreshed');
+      expect(deps.pushHealthDocs).not.toHaveBeenCalled();
+    });
+
     it('leaves lastSyncedAt alone when the push fails', async () => {
       useHealthStore.getState().setSyncEnabled(true);
       const deps = makeDeps();
@@ -211,11 +326,37 @@ describe('refreshHealth', () => {
 
     it('removes synced documents with tombstones', async () => {
       const deps = makeDeps();
-      await removeSyncedHealth(deps);
+      await expect(removeSyncedHealth(deps)).resolves.toBe(true);
       expect(deps.pushHealthDocs).toHaveBeenCalledWith([
         { docId: 'day_context', data: null, updatedAt: NOW },
         { docId: 'glucose_insights', data: null, updatedAt: NOW },
       ]);
+      expect(useHealthStore.getState().removalPendingFor).toBeNull();
+    });
+
+    it('keeps a failed removal pending and finishes it on a later retry', async () => {
+      const deps = makeDeps();
+      deps.pushHealthDocs.mockResolvedValueOnce(false);
+      await expect(removeSyncedHealth(deps)).resolves.toBe(false);
+      expect(useHealthStore.getState().removalPendingFor).toBe(USER);
+
+      await expect(retryPendingHealthRemoval(deps)).resolves.toBe(true);
+      expect(deps.pushHealthDocs).toHaveBeenCalledTimes(2);
+      expect(useHealthStore.getState().removalPendingFor).toBeNull();
+    });
+
+    it('retries a pending removal only for its own account', async () => {
+      useHealthStore.getState().setRemovalPending('user-b');
+      const deps = makeDeps();
+      await expect(retryPendingHealthRemoval(deps)).resolves.toBe(false);
+      expect(deps.pushHealthDocs).not.toHaveBeenCalled();
+      expect(useHealthStore.getState().removalPendingFor).toBe('user-b');
+    });
+
+    it('has nothing to retry when no removal is pending', async () => {
+      const deps = makeDeps();
+      await expect(retryPendingHealthRemoval(deps)).resolves.toBe(true);
+      expect(deps.pushHealthDocs).not.toHaveBeenCalled();
     });
   });
 });

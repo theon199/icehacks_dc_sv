@@ -78,6 +78,26 @@ describe('useHealthStore', () => {
     });
   });
 
+  it('keeps a pending removal across an account switch and drops it when sync is back on', () => {
+    useHealthStore.getState().claimFor('user-a');
+    useHealthStore.getState().setRemovalPending('user-a');
+    useHealthStore.getState().claimFor('user-b');
+    expect(useHealthStore.getState().removalPendingFor).toBe('user-a');
+
+    useHealthStore.getState().setSyncEnabled(true);
+    expect(useHealthStore.getState().removalPendingFor).toBeNull();
+  });
+
+  it('restores state saved before pending removals were tracked', async () => {
+    const { removalPendingFor: _omitted, ...older } = initialHealth;
+    Storage.setItemSync(
+      storageKey('health.state'),
+      JSON.stringify({ state: { ...older, enabled: true }, version: 1 }),
+    );
+    await useHealthStore.persist.rehydrate();
+    expect(useHealthStore.getState()).toMatchObject({ enabled: true, removalPendingFor: null });
+  });
+
   it('persists to device storage and restores from it', async () => {
     useHealthStore.getState().setEnabled(true);
     useHealthStore.getState().applyRefresh({ at: NOW, dayContext: context, glucosePairs: [pair] });

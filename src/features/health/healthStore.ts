@@ -19,9 +19,7 @@ const dayContextSchema = z.object({
   workoutMinutes: z.number().min(0),
   sleepMinutes: z.number().min(0).nullable(),
   shortSleep: z.boolean(),
-  suggestions: z.array(
-    z.enum(['more_protein', 'refuel_carbs', 'lighter_dinner', 'earlier_dinner']),
-  ),
+  suggestions: z.array(z.enum(['more_protein', 'lighter_dinner', 'earlier_dinner'])),
 }) satisfies z.ZodType<DayContext>;
 
 const glucosePairSchema = z.object({
@@ -44,6 +42,8 @@ const persistedSchema = z.object({
   glucosePairs: z.array(glucosePairSchema).max(5000),
   lastRefreshAt: z.number().nullable(),
   lastSyncedAt: z.number().nullable(),
+  /** Account whose synced summaries still have to be removed (the last attempt failed). */
+  removalPendingFor: z.string().nullable().default(null),
 });
 
 export type PersistedHealth = z.infer<typeof persistedSchema>;
@@ -58,6 +58,8 @@ export interface HealthState extends PersistedHealth {
     glucosePairs?: GlucosePair[];
   }) => void;
   markSynced: (at: number) => void;
+  /** Records that `userId`'s synced summaries must be removed, or (with null) that they were. */
+  setRemovalPending: (userId: string | null) => void;
   /** Makes sure the data belongs to `userId`; another account's data is cleared first. */
   claimFor: (userId: string) => void;
   reset: () => void;
@@ -71,6 +73,7 @@ export const initialHealth: PersistedHealth = {
   glucosePairs: [],
   lastRefreshAt: null,
   lastSyncedAt: null,
+  removalPendingFor: null,
 };
 
 const cleared = (): Partial<PersistedHealth> => ({
@@ -86,8 +89,13 @@ export const useHealthStore = create<HealthState>()(
       ...initialHealth,
       setEnabled: (enabled) =>
         set(enabled ? { enabled } : { enabled, syncEnabled: false, ...cleared() }),
+      // Turning sync back on supersedes a removal that has not gone through yet.
       setSyncEnabled: (syncEnabled) =>
-        set(syncEnabled ? { syncEnabled } : { syncEnabled, lastSyncedAt: null }),
+        set(
+          syncEnabled
+            ? { syncEnabled, removalPendingFor: null }
+            : { syncEnabled, lastSyncedAt: null },
+        ),
       applyRefresh: ({ at, dayContext, glucosePairs }) =>
         set({
           lastRefreshAt: at,
@@ -95,10 +103,16 @@ export const useHealthStore = create<HealthState>()(
           ...(glucosePairs ? { glucosePairs } : {}),
         }),
       markSynced: (at) => set({ lastSyncedAt: at }),
+      setRemovalPending: (removalPendingFor) => set({ removalPendingFor }),
       claimFor: (userId) => {
-        const { ownerId } = get();
+        const { ownerId, removalPendingFor } = get();
         if (ownerId === userId) return;
-        set(ownerId === null ? { ownerId: userId } : { ...initialHealth, ownerId: userId });
+        // A pending removal belongs to its own account and is retried when that account is back.
+        set(
+          ownerId === null
+            ? { ownerId: userId }
+            : { ...initialHealth, ownerId: userId, removalPendingFor },
+        );
       },
       reset: () => set(initialHealth),
     }),
@@ -114,6 +128,7 @@ export const useHealthStore = create<HealthState>()(
         glucosePairs: state.glucosePairs,
         lastRefreshAt: state.lastRefreshAt,
         lastSyncedAt: state.lastSyncedAt,
+        removalPendingFor: state.removalPendingFor,
       }),
       merge: (persisted, current) => {
         if (persisted === undefined || persisted === null) return current;
