@@ -172,7 +172,7 @@ export function useCookTimers({
     for (const timer of Object.values(live.current.timers)) {
       const seconds = secondsUntilEnd(timer, at);
       if (seconds === null || scheduled.current.has(timer.id)) continue;
-      const request = target
+      const request: Promise<string | null> = target
         .permission()
         .then((status) =>
           status === 'granted'
@@ -185,7 +185,12 @@ export function useCookTimers({
             : null,
         )
         .then((notificationId) => {
-          if (notificationId) notifiedIds.current.add(timer.id);
+          // Scheduling can finish after Famara is back in front, when this absence is already over
+          // and its requests were dropped. Counting it then would mark the timer as announced
+          // during a later absence that may never schedule anything.
+          if (notificationId && scheduled.current.get(timer.id) === request) {
+            notifiedIds.current.add(timer.id);
+          }
           return notificationId;
         })
         .catch(() => null);

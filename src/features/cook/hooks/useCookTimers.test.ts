@@ -199,6 +199,30 @@ describe('useCookTimers', () => {
     expect(notifier.cancel).toHaveBeenCalledWith('notification-1');
   });
 
+  it('does not count a late-scheduled notification towards a later absence', async () => {
+    const { result, notifier, appState, onFinish } = await setup({ permission: 'granted' });
+    await run(() => result.current.start(stepTimer(0, 30)));
+    // A quick trip away: scheduling only finishes once Famara is already back in front.
+    await run(() => {
+      appState.set('background');
+      appState.set('active');
+    });
+    await flush();
+    expect(notifier.schedule).toHaveBeenCalledTimes(1);
+
+    // Permission is withdrawn, so the next absence schedules nothing.
+    notifier.permission.mockResolvedValue('denied');
+    await run(() => appState.set('background'));
+    await flush();
+    await run(() => jest.advanceTimersByTime(60_000));
+    await run(() => appState.set('active'));
+    await flush();
+
+    expect(notifier.schedule).toHaveBeenCalledTimes(1);
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onFinish).toHaveBeenCalledWith(expect.objectContaining({ id: 'step-0' }), false);
+  });
+
   it('does not schedule anything when permission was denied', async () => {
     const { result, notifier, appState } = await setup({ permission: 'denied' });
     await run(() => result.current.start(stepTimer(0, 60)));
