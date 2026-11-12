@@ -696,3 +696,6 @@ grant execute on function public.moderation_queue(public.report_status, integer,
 grant execute on function public.moderate(public.report_target, text, public.moderation_action_kind, text, integer) to authenticated;
 grant execute on function public.appeal_queue(integer) to authenticated;
 grant execute on function public.decide_appeal(uuid, public.appeal_status, text) to authenticated;
+
+-- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
+revoke execute on all functions in schema public from public, anon;

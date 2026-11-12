@@ -129,8 +129,9 @@ select tests.login('bbbbbbbb-0000-4000-8000-000000000002');
 select is((select count(*)::integer from public.notifications), 0, 'ben cannot read ana''s notifications');
 select is(public.mark_notifications_read(null), 0, 'ben cannot mark ana''s notifications read');
 select tests.login('aaaaaaaa-0000-4000-8000-000000000001');
-select is(public.unread_notification_count(), 1, 'ana has one unread notification');
-select is(public.mark_notifications_read(null), 1, 'ana marks it read');
+select is(public.unread_notification_count(), 2, 'ana has two unread notifications (follow and badge)');
+select is(public.mark_notifications_read(null), 2, 'ana marks them read');
+select is(public.unread_notification_count(), 0, 'nothing left unread');
 
 -- Signed-out callers get nothing.
 select tests.logout();

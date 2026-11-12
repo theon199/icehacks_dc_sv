@@ -413,3 +413,6 @@ grant execute on function public.my_account_status() to authenticated;
 grant execute on function public.set_birth_year(integer) to authenticated;
 grant execute on function public.block_user(uuid) to authenticated;
 grant execute on function public.unblock_user(uuid) to authenticated;
+
+-- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
+revoke execute on all functions in schema public from public, anon;

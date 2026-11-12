@@ -261,3 +261,6 @@ comment on function public.sync_pull(bigint, integer) is
 revoke all on sequence private.user_document_revision_seq from public;
 grant execute on function public.sync_push(jsonb) to authenticated;
 grant execute on function public.sync_pull(bigint, integer) to authenticated;
+
+-- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
+revoke execute on all functions in schema public from public, anon;

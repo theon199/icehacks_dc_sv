@@ -184,3 +184,6 @@ revoke all on function private.profiles_after_avatar_change() from public;
 
 grant execute on function public.claim_storage_purge(integer) to service_role;
 grant execute on function public.complete_storage_purge(bigint[]) to service_role;
+
+-- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
+revoke execute on all functions in schema public from public, anon;

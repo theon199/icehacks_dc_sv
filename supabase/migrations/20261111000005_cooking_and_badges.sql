@@ -439,3 +439,6 @@ grant execute on function public.my_stats(date) to authenticated;
 grant execute on function public.record_cook_event(text, date, timestamptz, text, integer, uuid) to authenticated;
 grant execute on function public.weekly_top_dishes(integer, integer) to authenticated;
 grant execute on function public.get_profile_summary(uuid) to authenticated;
+
+-- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
+revoke execute on all functions in schema public from public, anon;

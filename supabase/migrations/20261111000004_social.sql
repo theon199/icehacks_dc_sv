@@ -1150,3 +1150,6 @@ grant execute on function public.create_friend_invite() to authenticated;
 grant execute on function public.redeem_friend_invite(text) to authenticated;
 grant execute on function public.mark_notifications_read(uuid[]) to authenticated;
 grant execute on function public.unread_notification_count() to authenticated;
+
+-- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
+revoke execute on all functions in schema public from public, anon;

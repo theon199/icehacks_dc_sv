@@ -234,3 +234,6 @@ grant execute on function public.consume_ai_quota(text, integer, integer) to aut
 grant execute on function public.my_ai_usage() to authenticated;
 grant execute on function public.confirm_dish(text, text, boolean) to authenticated;
 grant execute on function public.dish_confirmation_summary(text, text[]) to authenticated;
+
+-- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
+revoke execute on all functions in schema public from public, anon;

@@ -152,3 +152,6 @@ comment on function public.delete_my_account() is
 
 grant execute on function public.export_my_data() to authenticated;
 grant execute on function public.delete_my_account() to authenticated;
+
+-- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
+revoke execute on all functions in schema public from public, anon;
