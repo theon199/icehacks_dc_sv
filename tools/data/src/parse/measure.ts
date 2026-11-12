@@ -199,6 +199,7 @@ const UNIT_WORDS: Record<string, Unit> = {
   bunches: 'bunch',
   handful: 'handful',
   handfuls: 'handful',
+  handfull: 'handful',
   sprig: 'sprig',
   sprigs: 'sprig',
   stick: 'stick',

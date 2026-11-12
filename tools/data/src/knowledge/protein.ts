@@ -10,7 +10,7 @@ export const PROTEIN: IngredientDef[] = [
   ing('beef', 'protein', { syn: ['beef chunks', 'stewing beef', 'braising steak', 'mixed beef cuts', 'beef stew meat', 'diced beef', 'feather blade beef', 'chuck roast', 'beef chuck', 'beef shin', 'hind shank', 'beef shank', 'roast beef', 'beef cutlet'], meat: 'beef', fdc: [170809, 'Beef, chuck for stew, separable lean and fat, select, raw'] }),
   ing('ground_beef', 'protein', { syn: ['minced beef', 'beef mince', 'mince', 'ground beef chuck', 'hamburger meat'], meat: 'beef', fdc: [171796, 'Beef, ground, 85% lean meat / 15% fat, raw (Includes foods for USDA\'s Food Distribution Program)'] }),
   ing('lean_ground_beef', 'protein', { syn: ['lean ground beef', 'lean minced beef', 'lean minced steak', 'extra lean ground beef', 'lean beef mince', 'lean ground sirloin'], meat: 'beef', fdc: [174030, 'Beef, ground, 90% lean meat / 10% fat, raw'] }),
-  ing('beef_steak', 'protein', { name: 'beef steak', syn: ['steak', 'sirloin steak', 'sirloin steak tips', 'lean sirloin steak', 'fillet of steak', 'beef fillet', 'beef tenderloin', 'fillet steak', 'rump steak', 'ribeye steak', 'rib eye steak', 'top sirloin'], meat: 'beef', fdc: [171804, 'Beef, top sirloin, steak, separable lean only, trimmed to 1/8" fat, select, raw'] }),
+  ing('beef_steak', 'protein', { name: 'beef steak', units: { piece: 225 }, syn: ['steak', 'sirloin steak', 'sirloin steak tips', 'lean sirloin steak', 'fillet of steak', 'beef fillet', 'beef tenderloin', 'fillet steak', 'rump steak', 'ribeye steak', 'rib eye steak', 'top sirloin'], meat: 'beef', fdc: [171804, 'Beef, top sirloin, steak, separable lean only, trimmed to 1/8" fat, select, raw'] }),
   ing('flank_steak', 'protein', { syn: ['beef flank steak', 'skirt steak', 'skirty steak', 'hanger steak'], meat: 'beef', fdc: [168609, 'Beef, flank, steak, separable lean only, trimmed to 0" fat, choice, raw'] }),
   ing('beef_brisket', 'protein', { syn: ['brisket'], meat: 'beef', fdc: [168657, 'Beef, brisket, flat half, boneless, separable lean only, trimmed to 0" fat, choice, raw'] }),
   ing('oxtail', 'protein', { syn: ['ox tail', 'oxtails'], meat: 'beef', fdc: [169441, 'Beef, shank crosscuts, separable lean only, trimmed to 1/4" fat, choice, raw'] }),
@@ -18,7 +18,7 @@ export const PROTEIN: IngredientDef[] = [
   ing('veal', 'protein', { syn: ['veal escalopes', 'veal cutlets', 'ground veal'], meat: 'beef', fdc: [175290, 'Veal, ground, raw'] }),
   ing('suet', 'other', { syn: ['beef suet', 'shredded suet'], meat: 'beef', aisle: 'baking', fdc: [170193, 'Beef, variety meats and by-products, suet, raw'] }),
   // Pork
-  ing('pork', 'protein', { syn: ['lean pork', 'pork loin', 'pork chunks', 'diced pork', 'pork fillet', 'pork leg'], meat: 'pork', fdc: [168220, 'Pork, fresh, composite of trimmed retail cuts (leg, loin, shoulder), separable lean only, raw'] }),
+  ing('pork', 'protein', { syn: ['lean pork', 'pork loin', 'pork chunks', 'diced pork', 'pork fillet', 'pork leg'], meat: 'pork', units: { piece: 200 }, fdc: [168220, 'Pork, fresh, composite of trimmed retail cuts (leg, loin, shoulder), separable lean only, raw'] }),
   ing('ground_pork', 'protein', { syn: ['minced pork', 'pork mince'], meat: 'pork', fdc: [167902, 'Pork, fresh, ground, raw'] }),
   ing('pork_chop', 'protein', { syn: ['pork chops', 'pork loin chops', 'pork cutlets'], meat: 'pork', fdc: [168263, 'Pork, fresh, loin, center loin (chops), boneless, separable lean only, raw'], units: { piece: 170, medium: 170 } }),
   ing('pork_tenderloin', 'protein', { syn: ['pork tenderloins'], meat: 'pork', fdc: [168249, 'Pork, fresh, loin, tenderloin, separable lean only, raw'] }),
@@ -35,7 +35,7 @@ export const PROTEIN: IngredientDef[] = [
   ing('blood_sausage', 'protein', { syn: ['black pudding', 'morcilla', 'blood pudding'], meat: 'pork', variable: true, allergens: ['gluten'], fdc: [171618, 'Blood sausage'], units: { slice: 25, piece: 25 } }),
   ing('lard', 'oil', { syn: ['pork lard', 'pork fat'], meat: 'pork', fdc: [171401, 'Lard'] }),
   // Lamb, goat, game
-  ing('lamb', 'protein', { syn: ['lamb leg', 'leg of lamb', 'lamb shoulder', 'diced lamb', 'lamb neck', 'mutton', 'lamb chunks', 'lamb fat'], meat: 'lamb', fdc: [174313, 'Lamb, leg, whole (shank and sirloin), separable lean only, trimmed to 1/4" fat, choice, raw'] }),
+  ing('lamb', 'protein', { units: { piece: 1800 }, syn: ['lamb leg', 'leg of lamb', 'lamb shoulder', 'diced lamb', 'lamb neck', 'mutton', 'lamb chunks', 'lamb fat'], meat: 'lamb', fdc: [174313, 'Lamb, leg, whole (shank and sirloin), separable lean only, trimmed to 1/4" fat, choice, raw'] }),
   ing('ground_lamb', 'protein', { syn: ['lamb mince', 'minced lamb'], meat: 'lamb', fdc: [174370, 'Lamb, ground, raw'] }),
   ing('lamb_chop', 'protein', { syn: ['lamb loin chops', 'lamb chops', 'lamb cutlets', 'lamb loin'], meat: 'lamb', fdc: [173810, 'Lamb, New Zealand, imported, loin chop, separable lean only, raw'], units: { piece: 90 } }),
   ing('lamb_shank', 'protein', { syn: ['lamb shanks'], meat: 'lamb', fdc: [174454, 'Lamb, New Zealand, imported, hind-shank, separable lean only, raw'], units: { piece: 350 } }),
@@ -64,7 +64,9 @@ export const PROTEIN: IngredientDef[] = [
   // Fish
   ing('white_fish', 'protein', { name: 'white fish', syn: ['white fish fillets', 'fish fillet', 'fish fillets', 'fish filets', 'firm white fish', 'pollock', 'pollock fillets', 'hake', 'hake fillets', 'barramundi', 'catfish', 'basa'], allergens: ['fish'], fdc: [171955, 'Fish, cod, Atlantic, raw'], units: { piece: 150, fillet: 150 } }),
   ing('cod', 'protein', { syn: ['cod fillets', 'cod fillet', 'cod loins'], allergens: ['fish'], fdc: [171955, 'Fish, cod, Atlantic, raw'], units: { piece: 150, fillet: 150 } }),
-  ing('salt_cod', 'protein', { syn: ['codfish', 'codfish bulljaw', 'bacalao', 'bacalhau', 'saltfish', 'dried salted cod'], allergens: ['fish'], fdc: [174190, 'Fish, cod, Atlantic, dried and salted'] }),
+  // Recipes soak salt cod before cooking, so cooked cod stands in; the dry salted FDC entry would
+  // overstate sodium many times over.
+  ing('salt_cod', 'protein', { name: 'salt cod', syn: ['codfish', 'codfish bulljaw', 'bacalao', 'bacalhau', 'saltfish', 'dried salted cod'], allergens: ['fish'], fdc: [171956, 'Fish, cod, Atlantic, cooked, dry heat'] }),
   ing('haddock', 'protein', { syn: ['haddock fillets'], allergens: ['fish'], fdc: [171964, 'Fish, haddock, raw'], units: { fillet: 150, piece: 150 } }),
   ing('smoked_haddock', 'protein', { syn: ['finnan haddie', 'smoked white fish'], allergens: ['fish'], fdc: [174199, 'Fish, haddock, smoked'], units: { fillet: 150, piece: 150 } }),
   ing('monkfish', 'protein', { syn: ['monkfish tail'], allergens: ['fish'], fdc: [173676, 'Fish, monkfish, raw'] }),
@@ -97,7 +99,7 @@ export const PROTEIN: IngredientDef[] = [
   ing('egg', 'protein', { syn: ['eggs', 'large eggs', 'free range egg', 'free range eggs', 'free-range egg, beaten', 'free-range eggs, beaten', 'beaten egg', 'egg wash', 'whole egg'], allergens: ['egg'], aisle: 'dairy_eggs', fdc: [171287, 'Egg, whole, raw, fresh'], pantry: true, units: { piece: 50, medium: 44, large: 50, small: 38 } }),
   ing('egg_white', 'protein', { syn: ['egg whites'], allergens: ['egg'], aisle: 'dairy_eggs', fdc: [172183, 'Egg, white, raw, fresh'], units: { piece: 33, medium: 30, large: 33 } }),
   ing('egg_yolk', 'protein', { syn: ['egg yolks', 'yolks'], allergens: ['egg'], aisle: 'dairy_eggs', fdc: [172184, 'Egg, yolk, raw, fresh'], units: { piece: 17, medium: 16, large: 17 } }),
-  ing('egg_substitute', 'protein', { syn: ['liquid egg substitute', 'egg beaters'], allergens: ['egg'], aisle: 'dairy_eggs', variable: true, fdc: [173462, 'Egg substitute, liquid or frozen, fat free'] }),
+  ing('egg_substitute', 'protein', { syn: ['liquid egg substitute', 'egg beaters'], allergens: ['egg'], aisle: 'dairy_eggs', fdc: [173462, 'Egg substitute, liquid or frozen, fat free'] }),
   // Soy and plant proteins
   ing('tofu', 'protein', { syn: ['firm tofu', 'extra firm tofu', 'firm or extra firm tofu', 'cooked tofu', 'baked tofu', 'bean curd'], allergens: ['soy'], aisle: 'produce', fdc: [172475, 'Tofu, raw, firm, prepared with calcium sulfate'], units: { block: 400, packet: 400, piece: 400 } }),
   ing('silken_tofu', 'protein', { syn: ['soft tofu'], allergens: ['soy'], aisle: 'produce', fdc: [174292, 'MORI-NU, Tofu, silken, soft'], units: { block: 350, packet: 350 } }),

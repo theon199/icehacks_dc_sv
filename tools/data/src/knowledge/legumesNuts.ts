@@ -19,7 +19,7 @@ export const LEGUMES_NUTS: IngredientDef[] = [
   ing('red_lentil', 'legume', { syn: ['red lentils', 'masoor dal', 'split red lentils'], aisle: 'grains_pasta', fdc: [174284, 'Lentils, pink or red, raw'] }),
   ing('split_pea', 'legume', { syn: ['split peas', 'yellow split peas', 'green split peas', 'chana dal', 'toor dal', 'toor dal lentils', 'pigeon peas', 'arhar dal'], aisle: 'grains_pasta', fdc: [172428, 'Peas, green, split, mature seeds, raw'] }),
   ing('mung_bean', 'legume', { syn: ['mung beans', 'moong dal', 'precooked mung beans', 'mung bean paste'], aisle: 'grains_pasta', fdc: [174256, 'Mung beans, mature seeds, raw'] }),
-  ing('hummus', 'legume', { syn: ['houmous', 'hummus dip'], allergens: ['sesame'], variable: true, aisle: 'produce', fdc: [174289, 'Hummus, commercial'] }),
+  ing('hummus', 'legume', { syn: ['houmous', 'hummus dip'], allergens: ['sesame'], aisle: 'produce', fdc: [174289, 'Hummus, commercial'] }),
   // Peanuts
   ing('peanut', 'nut_seed', { syn: ['peanuts', 'roasted peanut', 'roasted peanuts', 'unsalted peanuts', 'groundnuts', 'dry roasted peanuts'], allergens: ['peanut'], fdc: [173806, 'Peanuts, all types, dry-roasted, without salt'] }),
   ing('peanut_butter', 'nut_seed', { syn: ['smooth peanut butter', 'crunchy peanut butter', 'natural peanut butter'], allergens: ['peanut'], aisle: 'pantry', fdc: [172470, 'Peanut butter, smooth style, without salt'] }),
