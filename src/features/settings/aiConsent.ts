@@ -284,7 +284,19 @@ export async function setAiConsent(granted: boolean, now: Date = new Date()): Pr
 
   if (granted) {
     const settlesBefore = lateSettles;
-    if (!(await sendRecord(userId, record))) throw new Error('The account changed before saving');
+    let sent: boolean;
+    try {
+      sent = await sendRecord(userId, record);
+    } catch (error) {
+      // The yes was not confirmed, so the device keeps following its previous answer. Mark that
+      // answer as current again: if the timed-out yes still lands on the server later, the late
+      // write is then followed by resending the previous answer, so account and device agree.
+      if (latest() && latestDecision?.userId === userId) {
+        latestDecision = { ...latestDecision, seq: decision };
+      }
+      throw error;
+    }
+    if (!sent) throw new Error('The account changed before saving');
     // A newer answer given meanwhile owns the device state, including its unsent withdrawal.
     if (!latest()) return;
     const confirmed: LatestDecision = { userId, record, seq: decision };

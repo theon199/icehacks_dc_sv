@@ -485,6 +485,36 @@ describe('an account write that never answers', () => {
     },
   );
 
+  it('keeps a confirmed no on both sides when a timed-out yes is applied later', async () => {
+    signIn('user-t13', true);
+    const server = modelledServer('user-t13');
+
+    // A withdrawal that the server applies and confirms.
+    const withdraw = setAiConsent(false, at('2026-11-06T11:00:00Z'));
+    await jest.advanceTimersByTimeAsync(0);
+    for (const write of server.take()) {
+      write.apply();
+      write.respond();
+    }
+    await withdraw;
+    expect(server.account()?.granted).toBe(false);
+
+    // A yes that is held, times out (the person is told it failed), then lands.
+    const agree = setAiConsent(true, at('2026-11-06T11:01:00Z'));
+    const outcome = expect(agree).rejects.toThrow('timed out');
+    await jest.advanceTimersByTimeAsync(AI_CONSENT_WRITE_TIMEOUT_MS);
+    await outcome;
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+    const [yes] = server.take();
+    expect(yes?.granted).toBe(true);
+    yes?.apply();
+    yes?.respond();
+    await server.settleRest();
+
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+    expect(server.account()?.granted).toBe(false);
+  });
+
   it('keeps the account and device in step when a stuck yes lands after a withdrawal', async () => {
     signIn('user-t4', false);
     const hung = oneHungWrite();
