@@ -183,7 +183,9 @@ describe('refreshHealth', () => {
 
   it('keeps older pairs outside the re-pairing window while their meal is still logged', async () => {
     const old = storedPair('old', NOW - 12 * 24 * HOUR_MS);
-    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [old] });
+    useHealthStore
+      .getState()
+      .applyRefresh({ at: NOW - HOUR_MS, glucoseBackfilled: true, glucosePairs: [old] });
     const deps = makeDeps();
     await refreshHealth({}, deps);
     expect(deps.findCookedMealIds).toHaveBeenCalledWith(['old']);
@@ -195,14 +197,18 @@ describe('refreshHealth', () => {
 
   it('drops the pair of a recent meal that was deleted from the cook log', async () => {
     const deleted = storedPair('deleted', NOW - 2 * 24 * HOUR_MS);
-    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [deleted] });
+    useHealthStore
+      .getState()
+      .applyRefresh({ at: NOW - HOUR_MS, glucoseBackfilled: true, glucosePairs: [deleted] });
     await refreshHealth({}, makeDeps());
     expect(useHealthStore.getState().glucosePairs.map((pair) => pair.mealId)).toEqual(['meal-1']);
   });
 
   it('drops recent pairs when every meal in the window was deleted', async () => {
     const deleted = storedPair('deleted', NOW - 2 * 24 * HOUR_MS);
-    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [deleted] });
+    useHealthStore
+      .getState()
+      .applyRefresh({ at: NOW - HOUR_MS, glucoseBackfilled: true, glucosePairs: [deleted] });
     const deps = makeDeps();
     deps.listCookedMeals.mockResolvedValue([]);
     await refreshHealth({}, deps);
@@ -212,7 +218,9 @@ describe('refreshHealth', () => {
   it('drops an older pair whose meal is no longer in the cook log', async () => {
     const kept = storedPair('kept', NOW - 20 * 24 * HOUR_MS);
     const gone = storedPair('gone', NOW - 12 * 24 * HOUR_MS);
-    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [kept, gone] });
+    useHealthStore
+      .getState()
+      .applyRefresh({ at: NOW - HOUR_MS, glucoseBackfilled: true, glucosePairs: [kept, gone] });
     const deps = makeDeps();
     deps.findCookedMealIds.mockResolvedValue(new Set(['kept']));
     await refreshHealth({}, deps);
@@ -224,7 +232,9 @@ describe('refreshHealth', () => {
 
   it('keeps older pairs when the cook log cannot be checked', async () => {
     const old = storedPair('old', NOW - 12 * 24 * HOUR_MS);
-    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [old] });
+    useHealthStore
+      .getState()
+      .applyRefresh({ at: NOW - HOUR_MS, glucoseBackfilled: true, glucosePairs: [old] });
     const deps = makeDeps();
     deps.findCookedMealIds.mockRejectedValue(new Error('offline'));
     await expect(refreshHealth({}, deps)).resolves.toBe('refreshed');
@@ -272,16 +282,18 @@ describe('refreshHealth', () => {
   it('keeps stored pairs when the person signs out during the read', async () => {
     const recent = storedPair('recent', NOW - 2 * 24 * HOUR_MS);
     const old = storedPair('old', NOW - 12 * 24 * HOUR_MS);
-    useHealthStore.getState().applyRefresh({ at: NOW - HOUR_MS, glucosePairs: [old, recent] });
+    useHealthStore
+      .getState()
+      .applyRefresh({ at: NOW - HOUR_MS, glucoseBackfilled: true, glucosePairs: [old, recent] });
     const sleep = deferred<[]>();
     const deps = makeDeps({ readSleep: jest.fn(() => sleep.promise) });
     const pending = refreshHealth({ force: true }, deps);
     await Promise.resolve();
 
-    // A signed-out session reads an empty cook log without any error.
+    // Signing out wipes the cook log; the run must not mistake that for deleted meals.
     deps.currentUserId.mockReturnValue(null);
-    deps.listCookedMeals.mockResolvedValue([]);
-    deps.findCookedMealIds.mockResolvedValue(new Set());
+    deps.listCookedMeals.mockRejectedValue(new Error('signed out'));
+    deps.findCookedMealIds.mockRejectedValue(new Error('signed out'));
     sleep.resolve([]);
 
     await expect(pending).resolves.toBe('account_changed');
@@ -307,6 +319,27 @@ describe('refreshHealth', () => {
     const laterFrom = (deps.listCookedMeals.mock.calls[0]?.[0] as { from: number }).from;
     expect(NOW - laterFrom).toBeLessThan(REFRESH_RULES.firstPairingLookbackMs);
     expect(NOW - laterFrom).toBeGreaterThan(REFRESH_RULES.pairingLookbackMs);
+  });
+
+  it('retries the longer first lookback until a glucose refresh succeeds', async () => {
+    const deps = makeDeps();
+    deps.listCookedMeals.mockRejectedValueOnce(new Error('cook log unavailable'));
+    await expect(refreshHealth({}, deps)).resolves.toBe('partial');
+    expect(useHealthStore.getState()).toMatchObject({
+      lastRefreshAt: NOW,
+      glucoseBackfilledAt: null,
+    });
+
+    deps.listCookedMeals.mockClear();
+    await expect(refreshHealth({ force: true }, deps)).resolves.toBe('refreshed');
+    const retryFrom = (deps.listCookedMeals.mock.calls[0]?.[0] as { from: number }).from;
+    expect(NOW - retryFrom).toBeGreaterThan(REFRESH_RULES.firstPairingLookbackMs);
+    expect(useHealthStore.getState().glucoseBackfilledAt).toBe(NOW);
+
+    deps.listCookedMeals.mockClear();
+    await refreshHealth({ force: true }, deps);
+    const laterFrom = (deps.listCookedMeals.mock.calls[0]?.[0] as { from: number }).from;
+    expect(NOW - laterFrom).toBeLessThan(REFRESH_RULES.firstPairingLookbackMs);
   });
 
   it('pairs an older meal on the first refresh', async () => {

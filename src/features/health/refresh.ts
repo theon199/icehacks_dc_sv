@@ -39,8 +39,9 @@ export const REFRESH_RULES = {
    */
   pairingLookbackMs: 7 * DAY_MS,
   /**
-   * The first refresh after connecting (or after the stored data was cleared) pairs this far back
-   * once, so someone who already has glucose and cook history sees progress straight away.
+   * Until one glucose read has succeeded after connecting (or after the stored data was cleared),
+   * refreshes pair this far back, so someone who already has glucose and cook history sees
+   * progress straight away even when the first attempt fails.
    */
   firstPairingLookbackMs: 30 * DAY_MS,
   /** Glucose is read in slices no longer than this, so a dense sensor never hits the read limit. */
@@ -151,9 +152,8 @@ async function readGlucosePairs(
 }
 
 /**
- * Whether the stored data belongs to the account that is signed in now. Cook log reads go through
- * that account's session, and a signed-out session reads an empty log without any error, so a run
- * may only read or write while both match.
+ * Whether the stored data belongs to the account that is signed in now. The cook log on this device
+ * is that account's, so a run may only read or write while both match.
  */
 function signedInAs(deps: RefreshDeps, owner: string | null): owner is string {
   return owner !== null && deps.currentUserId() === owner;
@@ -203,15 +203,14 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
   if ((await deps.source.requestStatus()) !== 'answered') return 'not_connected';
   if (!(await deps.source.canReadNow())) return 'locked';
 
+  const backfill = state.glucoseBackfilledAt === null;
   const [day, glucose] = await Promise.allSettled([
     readDayContext(deps, now),
     readGlucosePairs(
       deps,
       now,
       state.glucosePairs,
-      state.lastRefreshAt === null
-        ? REFRESH_RULES.firstPairingLookbackMs
-        : REFRESH_RULES.pairingLookbackMs,
+      backfill ? REFRESH_RULES.firstPairingLookbackMs : REFRESH_RULES.pairingLookbackMs,
     ),
   ]);
   if (day.status === 'rejected') {
@@ -230,7 +229,9 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
   current.applyRefresh({
     at: now,
     ...(day.status === 'fulfilled' ? { dayContext: day.value } : {}),
-    ...(glucose.status === 'fulfilled' ? { glucosePairs: glucose.value } : {}),
+    ...(glucose.status === 'fulfilled'
+      ? { glucosePairs: glucose.value, glucoseBackfilled: backfill }
+      : {}),
   });
 
   await syncSummaries(deps, owner, now);
