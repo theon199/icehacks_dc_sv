@@ -182,7 +182,7 @@ export async function listCandidates(filters: CandidateFilters): Promise<RecipeC
     CANDIDATES_SQL,
     [
       ...filterParams({
-        dietMask: filters.excludeDietMask,
+        dietMask: filters.dietMask ?? filters.excludeDietMask,
         cuisines: filters.cuisines,
         course: filters.course,
         maxMinutes: filters.maxMinutes,
@@ -194,14 +194,9 @@ export async function listCandidates(filters: CandidateFilters): Promise<RecipeC
     ],
     candidateRowSchema,
   );
-  return rows.map((row) => {
-    const candidate = toRecipeCandidate(row);
-    if (!summaryCache.has(candidate.id)) {
-      const { ingredientIds: _ingredientIds, ...summary } = candidate;
-      summaryCache.set(candidate.id, summary);
-    }
-    return candidate;
-  });
+  // Not added to the summary cache: a candidate list is up to 2,000 rows and would evict the
+  // summaries screens actually show.
+  return rows.map(toRecipeCandidate);
 }
 
 const INGREDIENT_LINES_SQL = `SELECT position, ingredient_id, text, quantity, unit, grams, section, optional
@@ -284,7 +279,8 @@ export async function searchRecipes(
         );
   } catch (error) {
     // The builder only emits quoted word tokens, so this is a safety net: a search box must never
-    // surface an error for what someone typed.
+    // surface an error for what someone typed. Only a failed MATCH statement is swallowed; rows
+    // that break the contract (`bad_rows`) are a real bug and still throw.
     if (!match || !isCatalogError(error) || error.kind !== 'query_failed') throw error;
     logger.warn('Full-text search failed; returning no results', { tokens: tokenize(query) });
     return { items: [], nextCursor: null };
