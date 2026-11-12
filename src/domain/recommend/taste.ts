@@ -125,15 +125,6 @@ export function buildTasteProfile(
   };
 }
 
-export const EMPTY_TASTE: TasteProfile = {
-  cuisines: new Map(),
-  ingredients: new Map(),
-  goalTags: new Float64Array(GOAL_TAGS.length),
-  shorter: 0,
-  lighter: 0,
-  empty: true,
-};
-
 /** Lowest ingredient affinity among the recipe's core ingredients (0 when none are known). */
 export function worstIngredientAffinity(
   recipe: Pick<RecipeSummary, 'coreIngredientIds'>,

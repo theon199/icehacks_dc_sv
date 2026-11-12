@@ -1,4 +1,6 @@
-import { createRandom, gumbel, hashSeed, keyedGumbel, keyedRandom, keyedSource } from './random';
+import { createRandom, hashSeed, keyedSource, uniformToGumbel } from './random';
+
+const keyedRandom = (seed: string, key: string) => keyedSource(seed).uniform(key);
 
 describe('seeded randomness', () => {
   it('hashes seeds deterministically to 32-bit values', () => {
@@ -31,8 +33,9 @@ describe('seeded randomness', () => {
   });
 
   it('keeps Gumbel noise finite even at the extremes', () => {
-    expect(Number.isFinite(gumbel(() => 0))).toBe(true);
-    expect(Number.isFinite(gumbel(() => 1 - 2 ** -32))).toBe(true);
+    expect(Number.isFinite(uniformToGumbel(0))).toBe(true);
+    expect(Number.isFinite(uniformToGumbel(1 - 2 ** -32))).toBe(true);
+    expect(uniformToGumbel(0.9)).toBeGreaterThan(uniformToGumbel(0.1));
   });
 
   it('keys values by seed and key, independent of call order', () => {
@@ -40,7 +43,7 @@ describe('seeded randomness', () => {
     keyedRandom('s', 'recipe-b');
     expect(keyedRandom('s', 'recipe-a')).toBe(first);
     expect(keyedRandom('t', 'recipe-a')).not.toBe(first);
-    expect(keyedGumbel('s', 'recipe-a')).toBe(keyedGumbel('s', 'recipe-a'));
+    expect(keyedSource('s').gumbel('recipe-a')).toBe(keyedSource('s').gumbel('recipe-a'));
     expect(keyedSource('s').uniform('recipe-a')).toBe(first);
   });
 

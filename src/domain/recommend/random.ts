@@ -1,12 +1,18 @@
 /**
  * Small seeded random source so feeds vary per session yet replay exactly in tests. Not suitable
  * for anything security related.
+ *
+ * Both generators are counter based: a 32-bit counter (or a per-key hash) is pushed through an
+ * avalanche finaliser, so any change of input bit flips about half of the output bits.
  */
 
 export type Seed = string | number;
 
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
+/** 2^32 · (golden ratio − 1): a counter step that visits every 32-bit value. */
+const WEYL_STEP = 0x9e3779b9;
+const TWO_POW_32 = 4294967296;
 
 function fnv(hash: number, text: string): number {
   let h = hash;
@@ -22,35 +28,32 @@ export function hashSeed(seed: Seed): number {
   return fnv(FNV_OFFSET, String(seed));
 }
 
-/** One mulberry32 output step for a 32-bit state, as a float in [0, 1). */
-function mix(state: number): number {
-  let t = state;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+/** Avalanche finaliser: scrambles a 32-bit value into a float in [0, 1). */
+function toUnit(value: number): number {
+  let h = value >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / TWO_POW_32;
 }
 
-/** Returns a generator of floats in [0, 1) driven by a 32-bit state (mulberry32 mixing). */
+/** Returns a generator of floats in [0, 1): a Weyl-sequence counter fed through `toUnit`. */
 export function createRandom(seed: Seed): () => number {
-  let state = hashSeed(seed);
+  let counter = hashSeed(seed);
   return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    return mix(state);
+    counter = (counter + WEYL_STEP) >>> 0;
+    return toUnit(counter);
   };
 }
 
-function uniformToGumbel(value: number): number {
-  // Keep u strictly inside (0, 1) so both logarithms stay finite.
-  const u = (value * 4294967294 + 1) / 4294967296;
-  return -Math.log(-Math.log(u));
-}
-
 /**
- * Standard Gumbel noise. Adding it to `score / temperature` and sorting yields a sample without
- * replacement from the softmax over scores.
+ * Maps a uniform draw to standard Gumbel noise. Adding it to `score / temperature` and sorting
+ * yields a sample without replacement from the softmax over scores.
  */
-export function gumbel(random: () => number): number {
-  return uniformToGumbel(random());
+export function uniformToGumbel(value: number): number {
+  // Keep u strictly inside (0, 1) so both logarithms stay finite.
+  const u = (value * (TWO_POW_32 - 2) + 1) / TWO_POW_32;
+  return -Math.log(-Math.log(u));
 }
 
 /**
@@ -61,18 +64,9 @@ export function gumbel(random: () => number): number {
 export function keyedSource(seed: Seed) {
   // A separator byte keeps ("ab", "c") and ("a", "bc") apart.
   const base = fnv(hashSeed(seed), '\u0000');
-  const uniform = (key: string) => mix((fnv(base, key) + 0x6d2b79f5) >>> 0);
+  const uniform = (key: string) => toUnit(fnv(base, key) + WEYL_STEP);
   return {
     uniform,
     gumbel: (key: string) => uniformToGumbel(uniform(key)),
   };
-}
-
-/** Convenience for one-off draws; prefer `keyedSource` in loops. */
-export function keyedRandom(seed: Seed, key: string): number {
-  return keyedSource(seed).uniform(key);
-}
-
-export function keyedGumbel(seed: Seed, key: string): number {
-  return keyedSource(seed).gumbel(key);
 }

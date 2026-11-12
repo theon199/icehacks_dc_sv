@@ -4,7 +4,6 @@ import {
   buildTasteProfile,
   DAY_MS,
   decayWeight,
-  EMPTY_TASTE,
   tasteValue,
   worstIngredientAffinity,
 } from './taste';
@@ -34,7 +33,6 @@ describe('buildTasteProfile', () => {
     const empty = profile([]);
     expect(empty.empty).toBe(true);
     expect(tasteValue(tacos, empty, config)).toBe(0.5);
-    expect(tasteValue(tacos, EMPTY_TASTE, config)).toBe(0.5);
   });
 
   it('weights each kind of feedback', () => {
