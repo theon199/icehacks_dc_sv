@@ -5,10 +5,7 @@
   },
   "build": {
     "base": {
-      "node": "22.23.2",
-      "ios": {
-        "resourceClass": "m-medium"
-      }
+      "node": "22.23.2"
     },
     "development": {
       "extends": "base",
