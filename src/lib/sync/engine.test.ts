@@ -9,7 +9,8 @@ import {
   type SyncEngine,
   type SyncStatus,
 } from './engine';
-import { LEDGER_HEADER_KEY, ledgerBucketKey, memoryLedgerStorage } from './ledger';
+import { memoryLedgerStorage } from './__fixtures__/memoryLedgerStorage';
+import { LEDGER_HEADER_KEY, ledgerBucketKey } from './ledger';
 import { SyncError, type LifecycleState, type SyncTransport } from './types';
 
 const T0 = Date.parse('2026-11-11T10:00:00.000Z');
