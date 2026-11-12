@@ -3,6 +3,8 @@ import 'react-native-gesture-handler/jestSetup';
 
 import { setUpTests } from 'react-native-reanimated';
 
+import type * as MemoryStoreModule from './test/memoryStore';
+
 setUpTests();
 
 jest.mock('expo-haptics', () => ({
@@ -19,46 +21,38 @@ jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
 }));
 
+// Both key-value modules share one in-memory implementation; each mock gets its own instance.
 jest.mock('expo-secure-store', () => {
-  const store = new Map<string, string>();
+  const { createMemoryStore } = jest.requireActual<typeof MemoryStoreModule>('./test/memoryStore');
+  const keychain = createMemoryStore();
   return {
-    getItemAsync: jest.fn((key: string) => Promise.resolve(store.get(key) ?? null)),
-    setItemAsync: jest.fn((key: string, value: string) => {
-      store.set(key, value);
-      return Promise.resolve();
-    }),
-    deleteItemAsync: jest.fn((key: string) => {
-      store.delete(key);
-      return Promise.resolve();
-    }),
+    getItemAsync: keychain.readAsync,
+    setItemAsync: keychain.writeAsync,
+    deleteItemAsync: keychain.removeAsync,
     AFTER_FIRST_UNLOCK: 'AFTER_FIRST_UNLOCK',
-    __store: store,
   };
 });
 
 jest.mock('expo-sqlite/kv-store', () => {
-  const store = new Map<string, string>();
-  const api = {
-    getItem: jest.fn((key: string) => Promise.resolve(store.get(key) ?? null)),
-    setItem: jest.fn((key: string, value: string) => {
-      store.set(key, value);
-      return Promise.resolve();
+  const { createMemoryStore } = jest.requireActual<typeof MemoryStoreModule>('./test/memoryStore');
+  const kv = createMemoryStore();
+  const facade = {
+    getItem: kv.readAsync,
+    setItem: kv.writeAsync,
+    removeItem: kv.removeAsync,
+    getItemSync: kv.read,
+    setItemSync: kv.write,
+    removeItemSync: jest.fn((key: string) => {
+      const existed = kv.read(key) !== null;
+      kv.remove(key);
+      return existed;
     }),
-    removeItem: jest.fn((key: string) => {
-      store.delete(key);
-      return Promise.resolve();
-    }),
-    getItemSync: jest.fn((key: string) => store.get(key) ?? null),
-    setItemSync: jest.fn((key: string, value: string) => {
-      store.set(key, value);
-    }),
-    removeItemSync: jest.fn((key: string) => store.delete(key)),
     clearSync: jest.fn(() => {
-      store.clear();
+      kv.wipe();
       return true;
     }),
   };
-  return { __esModule: true, default: api, Storage: api, __store: store };
+  return { __esModule: true, default: facade, Storage: facade };
 });
 
 jest.mock('expo-symbols', () => {
