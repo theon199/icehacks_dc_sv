@@ -57,16 +57,14 @@ export function checkSchemaVersion(raw: string | null | undefined): void {
   }
 }
 
-async function openCatalog(): Promise<SQLiteDatabase> {
-  const assetId = resolveCatalogAssetId();
-  if (assetId == null) {
-    throw new CatalogError('missing', 'This build does not include the recipe catalog.');
-  }
-
-  const fileName = catalogFileName(Asset.fromModule(assetId).hash);
+/**
+ * Copies the bundled file into place (unless a copy already exists), opens it and checks its
+ * schema version. `fresh` forces a new copy over whatever is on disk.
+ */
+async function copyAndOpen(fileName: string, assetId: number, fresh: boolean) {
   let db: SQLiteDatabase;
   try {
-    await importDatabaseFromAssetAsync(fileName, { assetId });
+    await importDatabaseFromAssetAsync(fileName, { assetId, forceOverwrite: fresh });
     db = await openDatabaseAsync(fileName);
     await db.execAsync('PRAGMA query_only = ON;');
   } catch (cause) {
@@ -82,6 +80,27 @@ async function openCatalog(): Promise<SQLiteDatabase> {
     await db.closeAsync().catch(() => undefined);
     if (isCatalogError(error)) throw error;
     throw new CatalogError('open_failed', 'The recipe catalog is unreadable.', { cause: error });
+  }
+  return db;
+}
+
+async function openCatalog(): Promise<SQLiteDatabase> {
+  const assetId = resolveCatalogAssetId();
+  if (assetId == null) {
+    throw new CatalogError('missing', 'This build does not include the recipe catalog.');
+  }
+
+  const fileName = catalogFileName(Asset.fromModule(assetId).hash);
+  let db: SQLiteDatabase;
+  try {
+    db = await copyAndOpen(fileName, assetId, false);
+  } catch (error) {
+    // The file name only changes with the bundled asset, so a copy that was cut short (the app was
+    // killed mid-import) would otherwise be reused forever. Replace it once from the bundle.
+    if (!isCatalogError(error) || error.kind !== 'open_failed') throw error;
+    logger.warn('Recopying the recipe catalog after a failed open', { error: String(error.cause) });
+    await deleteDatabaseAsync(fileName).catch(() => undefined);
+    db = await copyAndOpen(fileName, assetId, true);
   }
 
   void removeStaleCopy(fileName);

@@ -68,7 +68,7 @@ describe('getCatalogDb', () => {
     expect(first).toBe(second);
     expect(SQLite.importDatabaseFromAssetAsync).toHaveBeenCalledWith(
       'famara-catalog-abcdef012345.db',
-      { assetId: 7 },
+      { assetId: 7, forceOverwrite: false },
     );
     expect(mockDb.execAsync).toHaveBeenCalledWith('PRAGMA query_only = ON;');
     expect(SQLite.openDatabaseAsync).toHaveBeenCalledTimes(1);
@@ -88,10 +88,35 @@ describe('getCatalogDb', () => {
     await expect(getCatalogDb()).resolves.toBe(mockDb);
   });
 
-  it('wraps open failures', async () => {
-    jest.mocked(SQLite.openDatabaseAsync).mockRejectedValueOnce(new Error('disk full'));
+  it('replaces a damaged copy from the bundle once, then succeeds', async () => {
+    jest
+      .mocked(SQLite.openDatabaseAsync)
+      .mockRejectedValueOnce(new Error('file is not a database'));
+    await expect(getCatalogDb()).resolves.toBe(mockDb);
+    const imports = jest.mocked(SQLite.importDatabaseFromAssetAsync).mock.calls;
+    expect(imports.map(([, source]) => source)).toEqual([
+      { assetId: 7, forceOverwrite: false },
+      { assetId: 7, forceOverwrite: true },
+    ]);
+    expect(jest.mocked(SQLite.deleteDatabaseAsync).mock.calls[0]?.[0]).toBe(
+      'famara-catalog-abcdef012345.db',
+    );
+  });
+
+  it('recopies when the copy opens but its meta table cannot be read', async () => {
+    mockDb.getFirstAsync.mockRejectedValueOnce(new Error('no such table: meta'));
+    await expect(getCatalogDb()).resolves.toBe(mockDb);
+    expect(jest.mocked(SQLite.importDatabaseFromAssetAsync).mock.calls.length).toBe(2);
+  });
+
+  it('reports open_failed when the fresh copy fails too', async () => {
+    jest
+      .mocked(SQLite.openDatabaseAsync)
+      .mockRejectedValueOnce(new Error('disk full'))
+      .mockRejectedValueOnce(new Error('disk full'));
     const error = await catalogFailure();
     expect(isCatalogError(error) && error.kind).toBe('open_failed');
+    expect(jest.mocked(SQLite.importDatabaseFromAssetAsync).mock.calls.length).toBe(2);
   });
 });
 
