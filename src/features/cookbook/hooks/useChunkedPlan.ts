@@ -23,11 +23,20 @@ export function progressOf(p: { depth: number; totalDepth: number }): number {
 
 /**
  * Starts a run whenever `input` changes (pass a memoised object) and cancels the previous one.
+ * `options` must be stable too.
  * `null` input leaves the planner idle.
  */
+export interface ChunkedPlanOptions {
+  scheduler: ChunkScheduler;
+  /** Milliseconds of planning per frame. */
+  budgetMs: number;
+}
+
+const DEFAULT_OPTIONS: ChunkedPlanOptions = { scheduler: frameScheduler, budgetMs: 8 };
+
 export function useChunkedPlan(
   input: PlanDaysInput | null,
-  scheduler: ChunkScheduler = frameScheduler,
+  options: ChunkedPlanOptions = DEFAULT_OPTIONS,
 ): ChunkedPlanState {
   const [state, setState] = useState<{ input: PlanDaysInput | null; value: ChunkedPlanState }>({
     input: null,
@@ -37,7 +46,8 @@ export function useChunkedPlan(
   useEffect(() => {
     if (!input) return;
     const run = runChunked(planDaysSteps(input), {
-      scheduler,
+      scheduler: options.scheduler,
+      budgetMs: options.budgetMs,
       onProgress: (p) => setState({ input, value: { phase: 'running', progress: progressOf(p) } }),
     });
     run.done.then(
@@ -50,7 +60,7 @@ export function useChunkedPlan(
       },
     );
     return () => run.cancel();
-  }, [input, scheduler]);
+  }, [input, options]);
 
   if (!input) return { phase: 'idle' };
   // A new input that has not started yet reads as just started, never as the old result.
