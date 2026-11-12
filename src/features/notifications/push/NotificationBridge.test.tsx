@@ -24,12 +24,16 @@ type Listener = (response: unknown) => void;
 
 let mockLaunch: unknown = null;
 let mockTapListener: Listener | null = null;
+let mockReceivedListener: Listener | null = null;
 const mockMarkRead = jest.fn((_ids: string[]) => Promise.resolve());
 
 jest.mock('expo-notifications', () => ({
   DEFAULT_ACTION_IDENTIFIER: 'expo.modules.notifications.actions.DEFAULT',
   setNotificationHandler: jest.fn(),
-  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationReceivedListener: jest.fn((listener: Listener) => {
+    mockReceivedListener = listener;
+    return { remove: jest.fn() };
+  }),
   getLastNotificationResponse: jest.fn(() => mockLaunch),
   clearLastNotificationResponse: jest.fn(),
   addNotificationResponseReceivedListener: jest.fn((listener: Listener) => {
@@ -45,8 +49,9 @@ jest.mock('@/lib/supabase/client', () => {
 });
 jest.mock('../api', () => ({ markNotificationsRead: (ids: string[]) => mockMarkRead(ids) }));
 jest.mock('../deps', () => ({ usePushEnabled: () => true }));
+const mockInvalidateInbox = jest.fn(() => Promise.resolve());
 jest.mock('../queries', () => ({
-  invalidateInbox: jest.fn(() => Promise.resolve()),
+  invalidateInbox: () => mockInvalidateInbox(),
   useUnreadCount: () => 0,
 }));
 jest.mock('./pushDevice', () => ({ syncPushRegistration: jest.fn(() => Promise.resolve()) }));
@@ -129,6 +134,22 @@ function stackNames(): string[] {
   return [];
 }
 
+/** The innermost focused stack as `name id` entries, so tests can tell sessions apart. */
+function stackEntries(): string[] {
+  let state = rootNavigation?.getRootState() as NavStateLike | undefined;
+  while (state) {
+    const focused = state.routes[state.index ?? state.routes.length - 1];
+    if (!focused?.state) {
+      return state.routes.map((route) => {
+        const id = (route.params as { id?: unknown } | undefined)?.id;
+        return typeof id === 'string' ? `${route.name} ${decodeURIComponent(id)}` : route.name;
+      });
+    }
+    state = focused.state;
+  }
+  return [];
+}
+
 async function tap(response: unknown) {
   await act(async () => mockTapListener?.(response));
 }
@@ -144,7 +165,9 @@ beforeEach(() => {
   });
   mockLaunch = null;
   mockTapListener = null;
+  mockReceivedListener = null;
   mockMarkRead.mockClear();
+  mockInvalidateInbox.mockClear();
 });
 
 describe('NotificationBridge tap routing', () => {
@@ -190,6 +213,30 @@ describe('NotificationBridge tap routing', () => {
     expect(stackNames()).toEqual(['index', 'cook/[id]/index']);
   });
 
+  it("keeps another recipe's session open when it sits above the tapped one", async () => {
+    await renderAt('/', COOK_URL, '/cook/mealdb:2', '/recipe/mealdb:9');
+    await tap(cookTimerTap());
+    expect(await screen.findByText('cooking mealdb:1')).toBeOnTheScreen();
+    expect(stackEntries()).toEqual([
+      'index',
+      'cook/[id]/index mealdb:1',
+      'cook/[id]/index mealdb:2',
+      'recipe/[id] mealdb:9',
+      'cook/[id]/index mealdb:1',
+    ]);
+  });
+
+  it("goes back to the nearest session when another recipe's session is below it", async () => {
+    await renderAt('/', '/cook/mealdb:2', COOK_URL, '/recipe/mealdb:9');
+    await tap(cookTimerTap());
+    expect(await screen.findByText('cooking mealdb:1')).toBeOnTheScreen();
+    expect(stackEntries()).toEqual([
+      'index',
+      'cook/[id]/index mealdb:2',
+      'cook/[id]/index mealdb:1',
+    ]);
+  });
+
   it('opens a cook session for another recipe from a cook screen', async () => {
     await renderAt('/', '/cook/mealdb:2');
     await tap(cookTimerTap());
@@ -210,6 +257,19 @@ describe('NotificationBridge tap routing', () => {
     );
     expect(await screen.findByText('profile')).toBeOnTheScreen();
     expect(mockMarkRead).toHaveBeenCalledWith(['note-1']);
+  });
+
+  it('refreshes the inbox for an arriving push but not for a cook timer alert', async () => {
+    await renderAt('/');
+    const arrival = (data: Record<string, unknown>) => ({
+      request: { identifier: 'arrival', content: { data } },
+    });
+    await act(async () => mockReceivedListener?.(arrival({ kind: 'cook_timer', url: COOK_URL })));
+    expect(mockInvalidateInbox).not.toHaveBeenCalled();
+    await act(async () =>
+      mockReceivedListener?.(arrival({ notification_id: 'note-2', recipient_id: USER })),
+    );
+    expect(mockInvalidateInbox).toHaveBeenCalledTimes(1);
   });
 
   it('routes the same tap only once', async () => {

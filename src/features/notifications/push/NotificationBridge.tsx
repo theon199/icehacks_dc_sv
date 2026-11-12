@@ -54,7 +54,9 @@ export function NotificationBridge() {
         shouldSetBadge: true,
       }),
     });
-    const received = Notifications.addNotificationReceivedListener(() => {
+    const received = Notifications.addNotificationReceivedListener((notification) => {
+      // A cook timer's local alert has no inbox row behind it, so there is nothing to refetch.
+      if (cookTimerTapUrl(notification.request.content.data)) return;
       void invalidateInbox(client);
     });
     return () => {
@@ -74,7 +76,9 @@ export function NotificationBridge() {
       const data = response.notification.request.content.data;
       // A cook timer's local alert is not an inbox item: go back to the cook session. Opening it
       // again when it is already open would stack a second copy, so stay put when it (or its
-      // finish screen) is showing, and return to it when it is further down the stack.
+      // finish screen) is showing, and return to it when it is the nearest session down the
+      // stack. Going back lands on the nearest cook screen by name, so when another recipe's
+      // session sits in between, a new screen is opened rather than closing that session.
       const cookUrl = cookTimerTapUrl(data);
       if (cookUrl) {
         const id = cookSessionIdFromUrl(cookUrl);

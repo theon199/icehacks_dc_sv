@@ -102,6 +102,27 @@ describe('findCookSession', () => {
     expect(findCookSession(state, 'mealdb:1')).toBe('absent');
   });
 
+  it("reports a session hidden behind another recipe's session", () => {
+    const state = appStack(
+      route('(tabs)'),
+      route('cook/[id]/index', 'mealdb:1'),
+      route('cook/[id]/index', 'mealdb:2'),
+      route('recipe/[id]', 'mealdb:9'),
+    );
+    expect(findCookSession(state, 'mealdb:1')).toBe('behindAnotherSession');
+    expect(findCookSession(state, 'mealdb:2')).toBe('underneath');
+  });
+
+  it("ignores another recipe's session further down than the nearest one", () => {
+    const state = appStack(
+      route('cook/[id]/index', 'mealdb:2'),
+      route('cook/[id]/done', 'mealdb:2'),
+      route('cook/[id]/index', 'mealdb:1'),
+      route('compose'),
+    );
+    expect(findCookSession(state, 'mealdb:1')).toBe('underneath');
+  });
+
   it('tells sessions for other recipes apart', () => {
     const state = appStack(route('(tabs)'), route('cook/[id]/index', 'mealdb:2'));
     expect(findCookSession(state, 'mealdb:1')).toBe('absent');
