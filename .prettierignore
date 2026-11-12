@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+ios
+android
+.expo
+expo-env.d.ts
+package-lock.json
+supabase
+tools/data
+assets
+*.db
+# Docs are prose edited by many contributors and are not machine-formatted.
+docs
