@@ -13,6 +13,7 @@ import { useSessionStore } from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
 import { persistStorage } from '@/lib/storage/kv';
 
+import { isAccountMismatch } from './cookEvents';
 import {
   COOK_EVENT_TIMEOUT_MS,
   withTimeout,
@@ -106,7 +107,8 @@ const isQueued = (clientEventId: string) =>
     .events.some((event) => event.request.clientEventId === clientEventId);
 
 export interface FlushDeps {
-  recordCookEvent(request: CookEventRequest): Promise<CookEventResponse>;
+  /** Sends one cook; `expectedUserId` is the account it was queued for. */
+  recordCookEvent(request: CookEventRequest, expectedUserId: string): Promise<CookEventResponse>;
   classifyFailure(error: unknown): CookEventFailure;
   now?: () => number;
   /** How long one send may take before the run gives up until next time. */
@@ -128,7 +130,9 @@ const inFlight = new Map<string, Promise<number>>();
  *
  * The run is bound to `ownerId`: the server records a cook for whoever is signed in when it is
  * sent, so before every send the run checks that `ownerId` is still the signed-in account, and
- * stops for good as soon as it is not (or never was).
+ * stops for good as soon as it is not (or never was). Each send also names `ownerId`, so a switch
+ * the session store has not caught up with yet is refused by the server; that cook is dropped for
+ * this account and the run stops.
  */
 export function flushPendingCookEvents(ownerId: string, deps: FlushDeps): Promise<number> {
   const running = inFlight.get(ownerId);
@@ -158,7 +162,7 @@ async function runFlush(ownerId: string, deps: FlushDeps): Promise<number> {
     // Signing out during the run forgets the rest of the queue; never send what was forgotten.
     if (!isQueued(id)) continue;
     try {
-      const send = deps.recordCookEvent(event.request);
+      const send = deps.recordCookEvent(event.request, ownerId);
       // A send can still succeed after this run stopped waiting for it; the queued copy is then
       // done with, so it is not sent again on the next flush.
       send.then(() => usePendingCookEvents.getState().remove(id)).catch(() => undefined);
@@ -166,6 +170,13 @@ async function runFlush(ownerId: string, deps: FlushDeps): Promise<number> {
       usePendingCookEvents.getState().remove(id);
       delivered += 1;
     } catch (error) {
+      if (isAccountMismatch(error)) {
+        // Another account is signed in on the server side: nothing was recorded, and the rest of
+        // the queue would be refused the same way.
+        logger.info('Dropped a queued cook sent under another account');
+        usePendingCookEvents.getState().remove(id);
+        break;
+      }
       if (deps.classifyFailure(error) === 'drop') {
         logger.warn('Dropping a queued cook the server refused', describeError(error));
         usePendingCookEvents.getState().remove(id);
