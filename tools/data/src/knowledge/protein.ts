@@ -1,0 +1,113 @@
+import { ing, type IngredientDef } from './define.ts';
+
+/**
+ * Meat, poultry, fish, shellfish, eggs and soy proteins.
+ * Molluscs (clams, mussels, oysters, squid, conch) are tagged `shellfish` on purpose: the U.S.
+ * major-allergen rule covers crustaceans only, but many shellfish-allergic people avoid both.
+ */
+export const PROTEIN: IngredientDef[] = [
+  // Beef
+  ing('beef', 'protein', { syn: ['beef chunks', 'stewing beef', 'braising steak', 'mixed beef cuts', 'beef stew meat', 'diced beef', 'feather blade beef', 'chuck roast', 'beef chuck', 'beef shin', 'hind shank', 'beef shank', 'roast beef', 'beef cutlet'], meat: 'beef', fdc: [170809, 'Beef, chuck for stew, separable lean and fat, select, raw'] }),
+  ing('ground_beef', 'protein', { syn: ['minced beef', 'beef mince', 'mince', 'ground beef chuck', 'hamburger meat'], meat: 'beef', fdc: [171796, 'Beef, ground, 85% lean meat / 15% fat, raw (Includes foods for USDA\'s Food Distribution Program)'] }),
+  ing('lean_ground_beef', 'protein', { syn: ['lean ground beef', 'lean minced beef', 'lean minced steak', 'extra lean ground beef', 'lean beef mince', 'lean ground sirloin'], meat: 'beef', fdc: [174030, 'Beef, ground, 90% lean meat / 10% fat, raw'] }),
+  ing('beef_steak', 'protein', { name: 'beef steak', units: { piece: 225 }, syn: ['steak', 'sirloin steak', 'sirloin steak tips', 'lean sirloin steak', 'fillet of steak', 'beef fillet', 'beef tenderloin', 'fillet steak', 'rump steak', 'ribeye steak', 'rib eye steak', 'top sirloin'], meat: 'beef', fdc: [171804, 'Beef, top sirloin, steak, separable lean only, trimmed to 1/8" fat, select, raw'] }),
+  ing('flank_steak', 'protein', { syn: ['beef flank steak', 'skirt steak', 'skirty steak', 'hanger steak'], meat: 'beef', fdc: [168609, 'Beef, flank, steak, separable lean only, trimmed to 0" fat, choice, raw'] }),
+  ing('beef_brisket', 'protein', { syn: ['brisket'], meat: 'beef', fdc: [168657, 'Beef, brisket, flat half, boneless, separable lean only, trimmed to 0" fat, choice, raw'] }),
+  ing('oxtail', 'protein', { syn: ['ox tail', 'oxtails'], meat: 'beef', fdc: [169441, 'Beef, shank crosscuts, separable lean only, trimmed to 1/4" fat, choice, raw'] }),
+  ing('corned_beef', 'protein', { syn: ['salt beef'], meat: 'beef', aisle: 'canned_jarred', fdc: [170602, 'Beef, cured, corned beef, canned'] }),
+  ing('veal', 'protein', { syn: ['veal escalopes', 'veal cutlets', 'ground veal'], meat: 'beef', fdc: [175290, 'Veal, ground, raw'] }),
+  ing('suet', 'other', { syn: ['beef suet', 'shredded suet'], meat: 'beef', aisle: 'baking', fdc: [170193, 'Beef, variety meats and by-products, suet, raw'] }),
+  // Pork
+  ing('pork', 'protein', { syn: ['lean pork', 'pork loin', 'pork chunks', 'diced pork', 'pork fillet', 'pork leg'], meat: 'pork', units: { piece: 200 }, fdc: [168220, 'Pork, fresh, composite of trimmed retail cuts (leg, loin, shoulder), separable lean only, raw'] }),
+  ing('ground_pork', 'protein', { syn: ['minced pork', 'pork mince'], meat: 'pork', fdc: [167902, 'Pork, fresh, ground, raw'] }),
+  ing('pork_chop', 'protein', { syn: ['pork chops', 'pork loin chops', 'pork cutlets'], meat: 'pork', fdc: [168263, 'Pork, fresh, loin, center loin (chops), boneless, separable lean only, raw'], units: { piece: 170, medium: 170 } }),
+  ing('pork_tenderloin', 'protein', { syn: ['pork tenderloins'], meat: 'pork', fdc: [168249, 'Pork, fresh, loin, tenderloin, separable lean only, raw'] }),
+  ing('pork_shoulder', 'protein', { syn: ['pork shoulder steaks', 'pork butt', 'boston butt', 'pork knuckle', 'pork hock', 'ham hock'], meat: 'pork', fdc: [167843, 'Pork, fresh, shoulder, whole, separable lean and fat, raw'] }),
+  ing('pork_belly', 'protein', { syn: ['pork belly slices', 'belly pork'], meat: 'pork', fdc: [167812, 'Pork, fresh, belly, raw'] }),
+  ing('pork_ribs', 'protein', { syn: ['pork back ribs', 'spare ribs', 'spareribs', 'baby back ribs', 'pork spare ribs'], meat: 'pork', fdc: [167853, 'Pork, fresh, spareribs, separable lean and fat, raw'] }),
+  ing('pig_trotter', 'protein', { syn: ['pigs trotters', 'pig trotters', 'pork feet'], meat: 'pork', fdc: [167859, 'Pork, fresh, variety meats and by-products, feet, raw'], units: { piece: 250 } }),
+  ing('bacon', 'protein', { syn: ['streaky bacon', 'back bacon', 'bacon lardons', 'bacon lardon', 'lardons', 'pancetta', 'bacon rashers', 'bacon bits', 'smoked bacon'], meat: 'pork', fdc: [168277, 'Pork, cured, bacon, unprepared'], units: { slice: 25, rasher: 25, strip: 25, piece: 25 } }),
+  ing('ham', 'protein', { syn: ['deli ham', 'smoked ham', 'cooked ham', 'chopped lean ham', 'lean ham', 'ham slices', 'gammon'], meat: 'pork', fdc: [173864, 'Ham, sliced, regular (approximately 11% fat)'], units: { slice: 28, piece: 28 } }),
+  ing('cured_ham', 'protein', { name: 'cured ham', syn: ['parma ham', 'prosciutto', 'serrano ham', 'jamon iberico', 'jamon serrano', 'speck'], meat: 'pork', fdc: [173864, 'Ham, sliced, regular (approximately 11% fat)'], units: { slice: 15, piece: 15 } }),
+  ing('chorizo', 'protein', { syn: ['chorizo sausage', 'spanish chorizo'], meat: 'pork', variable: true, fdc: [173859, 'Sausage, pork, chorizo, link or ground, raw'], units: { piece: 100, link: 100 } }),
+  ing('pork_sausage', 'protein', { name: 'pork sausage', syn: ['pork sausages', 'pork sausage', 'sour pork sausage', 'pork breakfast sausage', 'pork chipolatas'], meat: 'pork', variable: true, fdc: [171631, 'Sausage, Italian, pork, mild, raw'], units: { piece: 75, link: 75, medium: 75 } }),
+  // Sausages that do not name their meat may be pork, beef, chicken or a blend: 'mixed' claims no diet.
+  ing('sausage', 'protein', { syn: ['sausages', 'german sausages', 'bratwurst', 'italian sausage', 'italian fennel sausages', 'breakfast sausage', 'cumberland sausages', 'toulouse sausages', 'chipolatas'], meat: 'mixed', variable: true, fdc: [171631, 'Sausage, Italian, pork, mild, raw'], units: { piece: 75, link: 75, medium: 75 } }),
+  ing('smoked_sausage', 'protein', { syn: ['kielbasa', 'kabanos sausages', 'kabanos', 'polish kabanos', 'polish sausage', 'low fat polish kielbasa sausage', 'smoked sausage', 'frankfurters', 'hot dogs'], meat: 'mixed', variable: true, fdc: [173879, 'Kielbasa, fully cooked, unheated'], units: { piece: 75, link: 75 } }),
+  ing('blood_sausage', 'protein', { syn: ['black pudding', 'morcilla', 'blood pudding'], meat: 'pork', variable: true, allergens: ['gluten'], fdc: [171618, 'Blood sausage'], units: { slice: 25, piece: 25 } }),
+  ing('lard', 'oil', { syn: ['pork lard', 'pork fat'], meat: 'pork', fdc: [171401, 'Lard'] }),
+  // Lamb, goat, game
+  ing('lamb', 'protein', { units: { piece: 1800 }, syn: ['lamb leg', 'leg of lamb', 'lamb shoulder', 'diced lamb', 'lamb neck', 'mutton', 'lamb chunks', 'lamb fat'], meat: 'lamb', fdc: [174313, 'Lamb, leg, whole (shank and sirloin), separable lean only, trimmed to 1/4" fat, choice, raw'] }),
+  ing('ground_lamb', 'protein', { syn: ['lamb mince', 'minced lamb'], meat: 'lamb', fdc: [174370, 'Lamb, ground, raw'] }),
+  ing('lamb_chop', 'protein', { syn: ['lamb loin chops', 'lamb chops', 'lamb cutlets', 'lamb loin'], meat: 'lamb', fdc: [173810, 'Lamb, New Zealand, imported, loin chop, separable lean only, raw'], units: { piece: 90 } }),
+  ing('lamb_shank', 'protein', { syn: ['lamb shanks'], meat: 'lamb', fdc: [174454, 'Lamb, New Zealand, imported, hind-shank, separable lean only, raw'], units: { piece: 350 } }),
+  ing('lamb_kidney', 'protein', { syn: ['lamb kidneys'], meat: 'lamb', fdc: [174354, 'Lamb, variety meats and by-products, kidneys, raw'], units: { piece: 60 } }),
+  ing('kidney', 'protein', { name: 'kidneys', syn: ['kidneys', 'ox kidney', 'pig kidneys', 'veal kidneys'], meat: 'mixed', fdc: [174354, 'Lamb, variety meats and by-products, kidneys, raw'], units: { piece: 60 } }),
+  ing('goat', 'protein', { syn: ['goat meat', 'mutton goat'], meat: 'lamb', fdc: [175303, 'Game meat, goat, raw'] }),
+  ing('rabbit', 'protein', { meat: 'game', fdc: [172521, 'Game meat, rabbit, domesticated, composite of cuts, raw'] }),
+  ing('frog_legs', 'protein', { syn: ['frogs legs', 'frog legs'], meat: 'game', fdc: [168148, 'Frog legs, raw'] }),
+  ing('doner_meat', 'protein', { syn: ['doner kebab meat', 'gyro meat', 'shawarma meat'], meat: 'mixed', variable: true }),
+  ing('cooked_meat', 'protein', { name: 'cooked meat', syn: ['shredded meat', 'leftover meat', 'diced cooked protein', 'cooked protein', 'meat'], meat: 'mixed', variable: true, fdc: [171054, 'Chicken, broilers or fryers, meat only, cooked, roasted'] }),
+  ing('ground_meat', 'protein', { name: 'ground meat', syn: ['lean ground meat', 'minced meat'], meat: 'mixed', fdc: [174030, 'Beef, ground, 90% lean meat / 10% fat, raw'] }),
+  // Poultry
+  // A whole bird yields roughly 1.1 kg of raw meat, which is what the FDC entry describes.
+  ing('chicken', 'protein', { syn: ['whole chicken', 'chicken meat'], meat: 'poultry', fdc: [171052, 'Chicken, broilers or fryers, meat only, raw'], units: { piece: 1100, medium: 1100, small: 900, large: 1400 } }),
+  ing('chicken_pieces', 'protein', { name: 'chicken pieces', syn: ['chicken parts', 'chicken quarters', 'chicken portions', 'bone in chicken pieces'], meat: 'poultry', fdc: [172378, 'Chicken, broilers or fryers, leg, meat and skin, raw'], units: { piece: 200, medium: 200 } }),
+  ing('chicken_breast', 'protein', { syn: ['chicken breasts', 'chicken breast halves', 'boneless chicken breast', 'skinless chicken breast', 'chicken fillets', 'chicken tenders', 'chicken breast fillets'], meat: 'poultry', fdc: [171077, 'Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw'], units: { piece: 175, medium: 175, large: 230, small: 120, half: 175 } }),
+  ing('chicken_thigh', 'protein', { syn: ['chicken thighs', 'boneless chicken thighs', 'chicken thigh fillets'], meat: 'poultry', fdc: [172385, 'Chicken, broilers or fryers, thigh, meat and skin, raw'], units: { piece: 115, medium: 115 } }),
+  ing('chicken_drumstick', 'protein', { syn: ['chicken drumsticks', 'drumsticks'], meat: 'poultry', fdc: [172373, 'Chicken, broilers or fryers, drumstick, meat and skin, raw'], units: { piece: 110, medium: 110 } }),
+  ing('chicken_leg', 'protein', { syn: ['chicken legs', 'chicken leg quarters'], meat: 'poultry', fdc: [172378, 'Chicken, broilers or fryers, leg, meat and skin, raw'], units: { piece: 260, medium: 260 } }),
+  ing('chicken_wing', 'protein', { syn: ['chicken wings', 'wings'], meat: 'poultry', fdc: [172390, 'Chicken, broilers or fryers, wing, meat and skin, raw'], units: { piece: 90, medium: 90 } }),
+  ing('chicken_liver', 'protein', { syn: ['chicken livers'], meat: 'poultry', fdc: [171060, 'Chicken, liver, all classes, raw'], units: { piece: 44 } }),
+  ing('ground_chicken', 'protein', { syn: ['minced chicken', 'chicken mince', 'ground chicken breast', 'cooked ground chicken'], meat: 'poultry', fdc: [171116, 'Chicken, ground, raw'] }),
+  ing('cooked_chicken', 'protein', { syn: ['chopped cooked chicken', 'cooked skinless chicken breast', 'shredded chicken', 'rotisserie chicken', 'leftover chicken', 'diced cooked chicken'], meat: 'poultry', fdc: [171054, 'Chicken, broilers or fryers, meat only, cooked, roasted'] }),
+  ing('turkey', 'protein', { syn: ['turkey breast', 'cooked turkey', 'smoked turkey', 'turkey meat'], meat: 'poultry', fdc: [171098, 'Turkey, whole, breast, meat only, raw'] }),
+  ing('ground_turkey', 'protein', { syn: ['turkey mince', 'lean ground turkey', 'minced turkey', 'cooked ground turkey'], meat: 'poultry', fdc: [171505, 'Turkey, Ground, raw'] }),
+  ing('turkey_ham', 'protein', { meat: 'poultry', variable: true, fdc: [168092, 'Ham, turkey, sliced, extra lean, prepackaged or deli'], units: { slice: 28 } }),
+  ing('duck', 'protein', { syn: ['duck legs', 'duck breast', 'duck breasts', 'duck leg'], meat: 'poultry', fdc: [172408, 'Duck, domesticated, meat and skin, raw'], units: { piece: 250 } }),
+  ing('goose_fat', 'oil', { syn: ['duck fat'], meat: 'poultry', fdc: [173572, 'Fat, goose'] }),
+  // Fish
+  ing('white_fish', 'protein', { name: 'white fish', syn: ['white fish fillets', 'fish fillet', 'fish fillets', 'fish filets', 'firm white fish', 'pollock', 'pollock fillets', 'hake', 'hake fillets', 'barramundi', 'catfish', 'basa'], allergens: ['fish'], fdc: [171955, 'Fish, cod, Atlantic, raw'], units: { piece: 150, fillet: 150 } }),
+  ing('cod', 'protein', { syn: ['cod fillets', 'cod fillet', 'cod loins'], allergens: ['fish'], fdc: [171955, 'Fish, cod, Atlantic, raw'], units: { piece: 150, fillet: 150 } }),
+  // Recipes soak salt cod before cooking, so cooked cod stands in; the dry salted FDC entry would
+  // overstate sodium many times over.
+  ing('salt_cod', 'protein', { name: 'salt cod', syn: ['codfish', 'codfish bulljaw', 'bacalao', 'bacalhau', 'saltfish', 'dried salted cod'], allergens: ['fish'], fdc: [171956, 'Fish, cod, Atlantic, cooked, dry heat'] }),
+  ing('haddock', 'protein', { syn: ['haddock fillets'], allergens: ['fish'], fdc: [171964, 'Fish, haddock, raw'], units: { fillet: 150, piece: 150 } }),
+  ing('smoked_haddock', 'protein', { syn: ['finnan haddie', 'smoked white fish'], allergens: ['fish'], fdc: [174199, 'Fish, haddock, smoked'], units: { fillet: 150, piece: 150 } }),
+  ing('monkfish', 'protein', { syn: ['monkfish tail'], allergens: ['fish'], fdc: [173676, 'Fish, monkfish, raw'] }),
+  ing('tilapia', 'protein', { syn: ['tilapia fillets'], allergens: ['fish'], fdc: [175176, 'Fish, tilapia, raw'], units: { fillet: 115, piece: 115 } }),
+  ing('sea_bass', 'protein', { syn: ['sea bass fillets', 'seabass', 'red snapper', 'snapper', 'sea bream', 'grouper'], allergens: ['fish'], fdc: [175142, 'Fish, sea bass, mixed species, raw'], units: { fillet: 120, piece: 400 } }),
+  ing('salmon', 'protein', { syn: ['salmon fillets', 'salmon fillet', 'fresh or thawed salmon', 'salmon steaks'], allergens: ['fish'], fdc: [175167, 'Fish, salmon, Atlantic, farmed, raw'], units: { fillet: 150, piece: 150 } }),
+  ing('canned_salmon', 'protein', { syn: ['pink salmon', 'salmon with bones', 'tinned salmon'], allergens: ['fish'], aisle: 'canned_jarred', fdc: [175175, 'Fish, salmon, pink, canned, drained solids'] }),
+  ing('smoked_salmon', 'protein', { syn: ['hot smoked salmon', 'hot smoked flaked salmon', 'lox'], allergens: ['fish'], fdc: [173687, 'Fish, salmon, chinook, smoked'] }),
+  ing('trout', 'protein', { syn: ['rainbow trout', 'trout fillets'], allergens: ['fish'], fdc: [173717, 'Fish, trout, rainbow, farmed, raw'], units: { fillet: 120, piece: 300 } }),
+  ing('mackerel', 'protein', { syn: ['mackerel fillets', 'smoked mackerel'], allergens: ['fish'], fdc: [175119, 'Fish, mackerel, Atlantic, raw'], units: { fillet: 110, piece: 110 } }),
+  ing('herring', 'protein', { syn: ['herrings', 'kippers', 'pickled herring'], allergens: ['fish'], fdc: [175116, 'Fish, herring, Atlantic, raw'], units: { fillet: 90, piece: 90 } }),
+  ing('sardine', 'protein', { syn: ['sardines', 'pilchards', 'canned sardines'], allergens: ['fish'], fdc: [175139, 'Fish, sardine, Atlantic, canned in oil, drained solids with bone'], units: { piece: 12, can: 92 } }),
+  ing('anchovy', 'protein', { syn: ['anchovies', 'anchovy fillet', 'anchovy fillets'], allergens: ['fish'], fdc: [174183, 'Fish, anchovy, european, canned in oil, drained solids'], units: { piece: 4, fillet: 4 } }),
+  ing('tuna', 'protein', { syn: ['canned tuna', 'tuna in water', 'tinned tuna', 'tuna chunks'], allergens: ['fish'], aisle: 'canned_jarred', fdc: [171986, 'Fish, tuna, light, canned in water, without salt, drained solids'], units: { can: 142 } }),
+  ing('tuna_steak', 'protein', { syn: ['tuna steaks', 'fresh tuna', 'ahi tuna'], allergens: ['fish'], fdc: [175159, 'Fish, tuna, fresh, yellowfin, raw'], units: { piece: 170 } }),
+  ing('fish_paste', 'condiment', { syn: ['prahok', 'fermented fish paste'], allergens: ['fish'], fdc: [174531, 'Sauce, fish, ready-to-serve'] }),
+  // Shellfish
+  ing('shrimp', 'protein', { syn: ['prawns', 'king prawns', 'raw king prawns', 'tiger prawns', 'raw tiger prawns', 'jumbo shrimp', 'large shrimp', 'raw frozen prawns', 'cooked prawns', 'raw prawns', 'peeled prawns'], allergens: ['shellfish'], fdc: [175179, 'Crustaceans, shrimp, raw'], units: { piece: 15, medium: 12, large: 20 } }),
+  ing('dried_shrimp', 'protein', { syn: ['dried prawns'], allergens: ['shellfish'], fdc: [175179, 'Crustaceans, shrimp, raw'] }),
+  ing('crab', 'protein', { syn: ['crab meat', 'crabmeat', 'crab meay', 'white crab meat'], allergens: ['shellfish'], fdc: [171966, 'Crustaceans, crab, blue, canned'] }),
+  ing('lobster', 'protein', { syn: ['lobster tails', 'lobster meat'], allergens: ['shellfish'], fdc: [174208, 'Crustaceans, lobster, northern, raw'], units: { piece: 200, medium: 200 } }),
+  ing('clam', 'protein', { syn: ['clams', 'baby clams'], allergens: ['shellfish'], fdc: [174214, 'Mollusks, clam, mixed species, raw'], units: { piece: 15 } }),
+  ing('mussel', 'protein', { syn: ['mussels'], allergens: ['shellfish'], fdc: [174216, 'Mollusks, mussel, blue, raw'], units: { piece: 10 } }),
+  ing('oyster', 'protein', { syn: ['oysters'], allergens: ['shellfish'], fdc: [174219, 'Mollusks, oyster, Pacific, raw'], units: { piece: 50, medium: 50 } }),
+  ing('squid', 'protein', { syn: ['baby squid', 'calamari', 'squid rings'], allergens: ['shellfish'], fdc: [174223, 'Mollusks, squid, mixed species, raw'], units: { piece: 100 } }),
+  ing('conch', 'protein', { syn: ['conchs', 'whelks'], allergens: ['shellfish'], fdc: [173720, 'Mollusks, conch, baked or broiled'] }),
+  ing('seafood_mix', 'protein', { syn: ['frozen seafood mix', 'seafood mix', 'mixed seafood', 'fruits de mer'], allergens: ['shellfish', 'fish'], fdc: [175179, 'Crustaceans, shrimp, raw'] }),
+  ing('shrimp_paste', 'condiment', { syn: ['belacan', 'kapi', 'terasi'], allergens: ['shellfish'], aisle: 'international', fdc: [175179, 'Crustaceans, shrimp, raw'] }),
+  // Eggs
+  ing('egg', 'protein', { syn: ['eggs', 'large eggs', 'free range egg', 'free range eggs', 'free-range egg, beaten', 'free-range eggs, beaten', 'beaten egg', 'egg wash', 'whole egg'], allergens: ['egg'], aisle: 'dairy_eggs', fdc: [171287, 'Egg, whole, raw, fresh'], pantry: true, units: { piece: 50, medium: 44, large: 50, small: 38 } }),
+  ing('egg_white', 'protein', { syn: ['egg whites'], allergens: ['egg'], aisle: 'dairy_eggs', fdc: [172183, 'Egg, white, raw, fresh'], units: { piece: 33, medium: 30, large: 33 } }),
+  ing('egg_yolk', 'protein', { syn: ['egg yolks', 'yolks'], allergens: ['egg'], aisle: 'dairy_eggs', fdc: [172184, 'Egg, yolk, raw, fresh'], units: { piece: 17, medium: 16, large: 17 } }),
+  ing('egg_substitute', 'protein', { syn: ['liquid egg substitute', 'egg beaters'], allergens: ['egg'], aisle: 'dairy_eggs', fdc: [173462, 'Egg substitute, liquid or frozen, fat free'] }),
+  // Soy and plant proteins
+  ing('tofu', 'protein', { syn: ['firm tofu', 'extra firm tofu', 'firm or extra firm tofu', 'cooked tofu', 'baked tofu', 'bean curd'], allergens: ['soy'], aisle: 'produce', fdc: [172475, 'Tofu, raw, firm, prepared with calcium sulfate'], units: { block: 400, packet: 400, piece: 400 } }),
+  ing('silken_tofu', 'protein', { syn: ['soft tofu'], allergens: ['soy'], aisle: 'produce', fdc: [174292, 'MORI-NU, Tofu, silken, soft'], units: { block: 350, packet: 350 } }),
+  ing('marinated_tofu', 'protein', { syn: ['smoked tofu'], allergens: ['soy', 'wheat', 'gluten'], variable: true, aisle: 'produce', fdc: [172475, 'Tofu, raw, firm, prepared with calcium sulfate'] }),
+  ing('tempeh', 'protein', { allergens: ['soy'], aisle: 'produce', fdc: [174272, 'Tempeh'] }),
+];
