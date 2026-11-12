@@ -23,7 +23,7 @@ export const PANTRY: IngredientDef[] = [
   ing('cumin', 'spice', { syn: ['ground cumin', 'cumin seeds', 'cumin seed', 'cumin powder', 'jeera'], fdc: [170923, 'Spices, cumin seed'], pantry: true }),
   ing('ground_coriander', 'spice', { name: 'ground coriander', syn: ['ground coriander', 'coriander seeds', 'coriander seed', 'coriander powder'], fdc: [170922, 'Spices, coriander seed'] }),
   ing('turmeric', 'spice', { syn: ['ground turmeric', 'turmeric powder', 'haldi'], fdc: [172231, 'Spices, turmeric, ground'] }),
-  ing('cinnamon', 'spice', { syn: ['ground cinnamon', 'cinnamon powder', 'cinnamon to taste', 'cinnamon or other spice', 'cinnamon or other flavorings'], fdc: [171320, 'Spices, cinnamon, ground'], pantry: true }),
+  ing('cinnamon', 'spice', { syn: ['ground cinnamon', 'cinnamon powder', 'cinnamon to taste'], fdc: [171320, 'Spices, cinnamon, ground'], pantry: true }),
   ing('cinnamon_stick', 'spice', { syn: ['cinnamon sticks', 'cinnamon bark', 'cassia bark'], fdc: [171320, 'Spices, cinnamon, ground'], units: { piece: 2.6, stick: 2.6, medium: 2.6 } }),
   ing('cloves', 'spice', { syn: ['ground cloves', 'ground clove', 'whole cloves', 'clove'], fdc: [171321, 'Spices, cloves, ground'], units: { piece: 0.1, clove: 0.1, medium: 0.1 } }),
   ing('nutmeg', 'spice', { syn: ['ground nutmeg', 'grated nutmeg', 'whole nutmeg', 'mace'], fdc: [171326, 'Spices, nutmeg, ground'] }),
