@@ -1,7 +1,7 @@
 /**
  * Test helpers for building recipes. Only imported by tests; never re-exported from a barrel.
  */
-import { ALLERGEN_IDS, type AllergenId, type AllergenStatus } from '../../types/allergens';
+import { allergenMapFrom, type AllergenId, type AllergenStatus } from '../../types/allergens';
 import { cuisineRegion } from '../../types/cuisines';
 import { type RecipeSummary } from '../../types/recipe';
 
@@ -18,9 +18,7 @@ export function makeRecipe(overrides: RecipeOverrides = {}): RecipeSummary {
   const { allergens = {}, allergensDefault = 'free', ...rest } = overrides;
   const id = rest.id ?? `test:${counter}`;
   const cuisine = rest.cuisine ?? 'american';
-  const fullAllergens = {} as Record<AllergenId, AllergenStatus>;
-  for (const allergen of ALLERGEN_IDS)
-    fullAllergens[allergen] = allergens[allergen] ?? allergensDefault;
+  const fullAllergens = allergenMapFrom((allergen) => allergens[allergen] ?? allergensDefault);
 
   return {
     slug: id.replace(/[^a-z0-9]+/gi, '-'),

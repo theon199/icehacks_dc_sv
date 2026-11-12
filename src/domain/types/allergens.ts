@@ -50,11 +50,25 @@ export function isAllergenId(value: unknown): value is AllergenId {
   return typeof value === 'string' && (ALLERGEN_IDS as readonly string[]).includes(value);
 }
 
+/** Builds a complete map from a per-allergen status; the literal keeps it exhaustive at compile time. */
+export function allergenMapFrom(statusOf: (id: AllergenId) => AllergenStatus): AllergenMap {
+  return {
+    milk: statusOf('milk'),
+    egg: statusOf('egg'),
+    fish: statusOf('fish'),
+    shellfish: statusOf('shellfish'),
+    tree_nut: statusOf('tree_nut'),
+    peanut: statusOf('peanut'),
+    wheat: statusOf('wheat'),
+    soy: statusOf('soy'),
+    sesame: statusOf('sesame'),
+    gluten: statusOf('gluten'),
+  };
+}
+
 /** A map where every allergen is `unknown`: the safe default when nothing is known. */
 export function unknownAllergenMap(): AllergenMap {
-  const out = {} as Record<AllergenId, AllergenStatus>;
-  for (const id of ALLERGEN_IDS) out[id] = 'unknown';
-  return out;
+  return allergenMapFrom(() => 'unknown');
 }
 
 const allergenStatusSchema = z.enum(ALLERGEN_STATUSES);
@@ -65,11 +79,7 @@ const allergenStatusSchema = z.enum(ALLERGEN_STATUSES);
  */
 export const allergenMapSchema = z
   .record(z.string(), allergenStatusSchema)
-  .transform((raw): AllergenMap => {
-    const out = {} as Record<AllergenId, AllergenStatus>;
-    for (const id of ALLERGEN_IDS) out[id] = raw[id] ?? 'unknown';
-    return out;
-  });
+  .transform((raw): AllergenMap => allergenMapFrom((id) => raw[id] ?? 'unknown'));
 
 /** Same as `allergenMapSchema` but for the JSON text stored in the catalog's `allergens` column. */
 export const allergenMapJsonSchema = jsonText(allergenMapSchema);

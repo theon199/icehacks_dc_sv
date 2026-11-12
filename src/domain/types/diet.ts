@@ -4,6 +4,24 @@
  */
 import { z } from 'zod';
 
+/** Validates diet names in preferences. The schema defines the vocabulary; the rest derives from it. */
+export const dietFlagNameSchema = z.enum([
+  'vegetarian',
+  'vegan',
+  'pescatarian',
+  'no_pork',
+  'no_alcohol',
+  'no_beef',
+  'gluten_free',
+  'dairy_free',
+  'halal_friendly',
+]);
+
+export type DietFlagName = z.infer<typeof dietFlagNameSchema>;
+
+export const DIET_FLAG_NAMES: readonly DietFlagName[] = dietFlagNameSchema.options;
+
+/** Bit per diet, as stored in the catalog's `diet_flags` columns. */
 export const DietFlag = {
   vegetarian: 1,
   vegan: 2,
@@ -14,13 +32,7 @@ export const DietFlag = {
   gluten_free: 64,
   dairy_free: 128,
   halal_friendly: 256,
-} as const;
-
-export type DietFlagName = keyof typeof DietFlag;
-
-export const DIET_FLAG_NAMES = Object.keys(DietFlag) as DietFlagName[];
-
-export const dietFlagNameSchema = z.enum(DIET_FLAG_NAMES as [DietFlagName, ...DietFlagName[]]);
+} as const satisfies Record<DietFlagName, number>;
 
 /** Every defined bit. */
 export const ALL_DIET_BITS = DIET_FLAG_NAMES.reduce((mask, name) => mask | DietFlag[name], 0);

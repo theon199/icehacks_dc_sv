@@ -1,10 +1,20 @@
 import {
   ALLERGEN_IDS,
+  allergenMapFrom,
   allergenMapJsonSchema,
   allergenMapSchema,
   isAllergenId,
   unknownAllergenMap,
 } from './allergens';
+
+describe('allergenMapFrom', () => {
+  it('fills exactly the allergen vocabulary', () => {
+    const map = allergenMapFrom((id) => (id === 'soy' ? 'contains' : 'free'));
+    expect(Object.keys(map).sort()).toEqual([...ALLERGEN_IDS].sort());
+    expect(map.soy).toBe('contains');
+    expect(map.milk).toBe('free');
+  });
+});
 
 describe('allergen map parsing', () => {
   it('keeps reported statuses', () => {

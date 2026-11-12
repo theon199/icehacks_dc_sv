@@ -1,6 +1,8 @@
 import {
   ALL_DIET_BITS,
+  DIET_FLAG_NAMES,
   DietFlag,
+  dietFlagNameSchema,
   dietMask,
   dietNames,
   hasDiet,
@@ -10,6 +12,13 @@ import {
 } from './diet';
 
 describe('diet flags', () => {
+  it('gives every named diet its own bit', () => {
+    expect(Object.keys(DietFlag).sort()).toEqual([...DIET_FLAG_NAMES].sort());
+    const bits = DIET_FLAG_NAMES.map((name) => DietFlag[name]);
+    expect(new Set(bits).size).toBe(bits.length);
+    expect(dietFlagNameSchema.safeParse('keto').success).toBe(false);
+  });
+
   it('uses the bit values from the catalog contract', () => {
     expect(DietFlag).toEqual({
       vegetarian: 1,
