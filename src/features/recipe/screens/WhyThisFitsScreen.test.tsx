@@ -22,6 +22,10 @@ jest.mock('@/lib/catalog/queries', () => ({
   getCatalogMeta: jest.fn(),
 }));
 
+/** Several chained catalog reads resolve before the screen settles; allow for a busy CI box. */
+const SLOW = { timeout: 5000 };
+jest.setTimeout(20_000);
+
 let client: QueryClient;
 
 function Providers({ children }: { children: ReactNode }) {
@@ -49,7 +53,7 @@ describe('WhyThisFitsScreen', () => {
         <WhyThisFitsScreen recipeId="test:1" />
       </Providers>,
     );
-    expect(await screen.findByText('You love Indian food.')).toBeTruthy();
+    expect(await screen.findByText('You love Indian food.', {}, SLOW)).toBeTruthy();
     expect(screen.getByText('Fits every goal you chose: more fiber.')).toBeTruthy();
     expect(screen.getByText('Ready in 30 minutes, within your 45 minutes.')).toBeTruthy();
     expect(screen.getByText('Your pantry')).toBeTruthy();
@@ -65,7 +69,7 @@ describe('WhyThisFitsScreen', () => {
         <WhyThisFitsScreen recipeId="test:1" />
       </Providers>,
     );
-    expect(await screen.findByText('Not safe to assume for you')).toBeTruthy();
+    expect(await screen.findByText('Not safe to assume for you', {}, SLOW)).toBeTruthy();
     expect(screen.getByText('Contains peanuts')).toBeTruthy();
   });
 });

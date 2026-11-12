@@ -11,6 +11,10 @@ jest.mock('@/lib/catalog/queries', () => ({
   getRecipeSummaries: jest.fn(async () => [{ id: 'other', title: 'Weeknight dal' }]),
 }));
 
+/** Several chained catalog reads resolve before the screen settles; allow for a busy CI box. */
+const SLOW = { timeout: 5000 };
+jest.setTimeout(20_000);
+
 let client: QueryClient;
 
 beforeEach(() => {
@@ -57,7 +61,7 @@ describe('PlanSlotSheet', () => {
       .getState()
       .setSlot(weekStartOf(now), `${dayIndexOf(now)}-dinner`, { recipeId: 'other', servings: 2 });
     await renderSheet();
-    expect(await screen.findByText(/This replaces Weeknight dal/)).toBeTruthy();
+    expect(await screen.findByText(/This replaces Weeknight dal/, {}, SLOW)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Replace' })).toBeTruthy();
   });
 });

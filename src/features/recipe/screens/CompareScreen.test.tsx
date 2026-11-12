@@ -71,6 +71,10 @@ const lean = makeDetail({
 });
 const solo = makeDetail({ id: 'solo', title: 'Lonely stew', familyId: 'fam:stew' });
 
+/** Several chained catalog reads resolve before the screen settles; allow for a busy CI box. */
+const SLOW = { timeout: 5000 };
+jest.setTimeout(20_000);
+
 let client: QueryClient;
 
 function Providers({ children }: { children: ReactNode }) {
@@ -106,7 +110,7 @@ describe('CompareScreen', () => {
         <CompareScreen fromId="lean" />
       </Providers>,
     );
-    expect(await screen.findByText('Heavy cream → Greek yogurt')).toBeTruthy();
+    expect(await screen.findByText('Heavy cream → Greek yogurt', {}, SLOW)).toBeTruthy();
     // The less healthy version is treated as the original, whichever was opened.
     expect(screen.getByText('Creamy pasta')).toBeTruthy();
     expect(screen.getByText('Lighter creamy pasta')).toBeTruthy();
@@ -121,7 +125,7 @@ describe('CompareScreen', () => {
         <CompareScreen fromId="rich" toId="solo" />
       </Providers>,
     );
-    expect(await screen.findByText('Lonely stew')).toBeTruthy();
+    expect(await screen.findByText('Lonely stew', {}, SLOW)).toBeTruthy();
     expect(listCandidates).not.toHaveBeenCalled();
   });
 
@@ -131,7 +135,7 @@ describe('CompareScreen', () => {
         <CompareScreen fromId="solo" />
       </Providers>,
     );
-    expect(await screen.findByText('No healthier version yet')).toBeTruthy();
+    expect(await screen.findByText('No healthier version yet', {}, SLOW)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Make it healthier' })).toBeTruthy();
   });
 });

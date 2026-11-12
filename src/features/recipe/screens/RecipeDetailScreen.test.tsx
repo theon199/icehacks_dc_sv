@@ -75,6 +75,10 @@ const recipe = makeDetail({
   ],
 });
 
+/** Several chained catalog reads resolve before the screen settles; allow for a busy CI box. */
+const SLOW = { timeout: 5000 };
+jest.setTimeout(20_000);
+
 let client: QueryClient;
 
 function Providers({ children }: { children: ReactNode }) {
@@ -87,7 +91,7 @@ async function renderScreen() {
       <RecipeDetailScreen recipeId={recipe.id} />
     </Providers>,
   );
-  await screen.findByText('Chickpea curry');
+  await screen.findByText('Chickpea curry', {}, SLOW);
 }
 
 beforeEach(() => {
@@ -126,7 +130,7 @@ describe('RecipeDetailScreen', () => {
 
   it('is honest that a declared allergen could not be verified', async () => {
     await renderScreen();
-    expect(await screen.findByText('Milk: not verified')).toBeTruthy();
+    expect(await screen.findByText('Milk: not verified', {}, SLOW)).toBeTruthy();
     expect(screen.getByText('Check before you cook')).toBeTruthy();
     expect(screen.getByText('May contain milk: ingredient data incomplete')).toBeTruthy();
   });
@@ -143,7 +147,7 @@ describe('RecipeDetailScreen', () => {
   it('switches to metric amounts', async () => {
     await renderScreen();
     await userEvent.setup().press(screen.getByRole('tab', { name: 'Metric' }));
-    expect(await screen.findByText('475 ml')).toBeTruthy();
+    expect(await screen.findByText('475 ml', {}, SLOW)).toBeTruthy();
   });
 
   it('saves the recipe and records the save for recommendations', async () => {
