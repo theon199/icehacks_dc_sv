@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import { MakeoverScreen } from '@/features/chef/screens/MakeoverScreen';
+import { MakeoverScreen } from '@/features/makeover';
 import { stringParam } from '@/lib/params';
 
 export default function AppMakeoverRoute() {
