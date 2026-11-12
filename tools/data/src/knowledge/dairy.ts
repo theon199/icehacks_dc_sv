@@ -24,7 +24,7 @@ export const DAIRY: IngredientDef[] = [
   ing('butter', 'dairy', { syn: ['salted butter', 'melted butter', 'softened butter', 'chilled butter', 'cold butter', 'butter softened'], allergens: [...MILK], fdc: [173410, 'Butter, salted'], pantry: true, units: { stick: 113, knob: 15, piece: 15 } }),
   ing('unsalted_butter', 'dairy', { syn: ['unsalted butter', 'sweet butter'], allergens: [...MILK], fdc: [173430, 'Butter, without salt'], units: { stick: 113, knob: 15 } }),
   ing('ghee', 'dairy', { syn: ['clarified butter', 'desi ghee'], allergens: [...MILK], fdc: [173412, 'Butter oil, anhydrous'] }),
-  ing('margarine', 'oil', { syn: ['soft margarine', 'butter or margarine', 'margarine or butter', 'vegetable spread', 'buttery spread'], allergens: ['milk', 'soy'], aisle: 'dairy_eggs', fdc: [172346, 'Margarine, regular, 80% fat, composite, stick, with salt'], units: { stick: 113 } }),
+  ing('margarine', 'oil', { syn: ['soft margarine', 'butter or margarine', 'margarine or butter', 'vegetable spread', 'buttery spread', 'margarine spread'], allergens: ['milk', 'soy'], aisle: 'dairy_eggs', fdc: [172346, 'Margarine, regular, 80% fat, composite, stick, with salt'], units: { stick: 113 } }),
   ing('vegan_butter', 'oil', { syn: ['vegan butter', 'plant butter', 'dairy free spread'], allergens: ['soy'], variable: true, labelledVegan: true, aisle: 'dairy_eggs', fdc: [172346, 'Margarine, regular, 80% fat, composite, stick, with salt'] }),
   ing('shortening', 'oil', { syn: ['vegetable shortening', 'white vegetable fat', 'trex', 'crisco'], aisle: 'baking', fdc: [171011, 'Shortening, household, soybean (partially hydrogenated)-cottonseed (partially hydrogenated)'] }),
   // Cheese

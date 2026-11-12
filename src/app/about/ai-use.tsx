@@ -1,5 +1,5 @@
-import { AboutScreen } from '@/features/about/screens/AboutScreen';
+import { AboutPageScreen } from '@/features/settings/screens/AboutPageScreen';
 
 export default function AiUseAboutRoute() {
-  return <AboutScreen page="ai-use" />;
+  return <AboutPageScreen page="ai-use" />;
 }
