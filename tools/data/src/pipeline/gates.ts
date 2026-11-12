@@ -1,3 +1,4 @@
+import { unbackedDietFlags } from '../derive/rollup.ts';
 import { ingredientDefSchema, type IngredientDef } from '../knowledge/define.ts';
 import { CUISINE_BY_ID, REGIONS } from '../knowledge/cuisines.ts';
 import { SEARCH_ALIASES } from '../knowledge/searchAliases.ts';
@@ -124,6 +125,8 @@ export function checkRecipes(gates: GateReport, recipes: readonly RecipeRow[], i
     gates.check(!unmatched || r.diet_flags === 0, () => `${at}: unmatched line but diet flags set`);
     gates.check(r.partial_lines === 0 || ALLERGEN_IDS.every((a) => r.allergens[a] !== 'free'), () => `${at}: unidentified choice but an allergen is "free"`);
     gates.check(r.partial_lines === 0 || r.diet_flags === 0, () => `${at}: unidentified choice but diet flags set`);
+    const unbacked = unbackedDietFlags(r.diet_flags, r.allergens);
+    gates.check(unbacked.length === 0, () => `${at}: diet ${unbacked.join(', ')} contradicts allergens ${JSON.stringify(r.allergens)}`);
     for (const line of r.ingredients) {
       gates.check(line.ingredient_id === null || ingredientIds.has(line.ingredient_id), () => `${at}: unknown ingredient ${line.ingredient_id}`);
       gates.check(line.text.trim().length > 0, () => `${at}: empty ingredient text`);

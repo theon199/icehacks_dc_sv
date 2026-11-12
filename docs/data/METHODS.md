@@ -226,12 +226,17 @@ otherwise `free`. When every choice is known, the recipe contains the union of t
 (*butter or margarine spread* contains milk and soy).
 
 Diet flags are the intersection of every named ingredient's flags; an unmatched line, or one with an
-unidentified choice, clears all of them. Flags read the ingredient list only: a serving suggestion
+unidentified choice, clears all of them. A diet that an allergen can disprove is then kept only
+while that allergen is `free` in the recipe roll-up: vegan needs milk, egg, fish and shellfish,
+vegetarian needs fish and shellfish, dairy-free needs milk and gluten-free needs gluten and wheat.
+A store-bought product of unknown composition (a stock cube, curry paste, ice cream or bread) makes
+those allergens unknown, so it clears vegan and vegetarian even when its own entry names no
+animal, because a brand may add fish sauce, shrimp paste or other ingredients the line does not
+show. Flags read the ingredient list only: a serving suggestion
 in the method (*top with prawns or salmon*) is optional and does not change them, so a recipe can be
 vegetarian as written while a step mentions a non-vegetarian variation. Vegan is never claimed for
 variable products; *no pork* / *no beef* / *halal-friendly* are never claimed with gelatin or
-unspecified meat; gluten-free and dairy-free also require the recipe's gluten / milk status to be
-`free`. Halal-friendly means no pork, no alcohol and no gelatin or unspecified meat — informational
+unspecified meat. Halal-friendly means no pork, no alcohol and no gelatin or unspecified meat — informational
 only, not a certification.
 
 **Title cross-check.** Some source lists omit the main ingredient (*… Pork Belly* with no pork
@@ -334,6 +339,13 @@ Matching synonyms are not indexed wholesale: many are varieties (*rigatoni* unde
 compound phrases (*chicken or vegetable broth*) or name other foods, and would make a search
 return recipes that do not contain what was asked for.
 
+## 8b. Ingredient lists
+
+Each recipe stores two JSON arrays of ingredient ids, in line order with each id once:
+`ingredient_ids` (every matched line) and `core_ingredient_ids` (matched lines that are not
+optional and whose ingredient is not a pantry staple). The app reads them for ranking, pantry
+matching and similarity without aggregating `recipe_ingredients` per recipe.
+
 ## 9. Quality gates
 
 `npm run build` fails unless all of these hold: knowledge tables validate; every FDC id exists and
@@ -346,8 +358,11 @@ ingredient and ≥ 1 step; enums are valid (course, cuisine, region, confidence,
 states, diet bits, effort 1–3); servings 1–48; active ≤ total minutes; health score 0–1; nutrient
 values non-negative, saturated fat ≤ fat, sodium ≤ 8,000 mg, protein energy ≤ total energy, energy
 within the ranges above; no `free` allergen or diet flag on a recipe with an unmatched line or an
-unidentified choice; every `ingredient_id` exists; ≥ 98 % of ingredient lines matched; SQLite
-`integrity_check` and `foreign_key_check` pass; one FTS row per recipe; database < 15 MB.
+unidentified choice; no diet bit that the recipe's allergen statuses contradict (vegan with milk,
+egg, fish or shellfish not `free`, vegetarian with fish or shellfish not `free`, dairy-free with
+milk not `free`, gluten-free with gluten or wheat not `free`); every `ingredient_id` exists; ≥ 98 % of ingredient lines matched; SQLite
+`integrity_check` and `foreign_key_check` pass; one FTS row per recipe; every recipe's stored
+`ingredient_ids` and `core_ingredient_ids` equal what SQL recomputes from its lines; database < 15 MB.
 
 The database and manifest are written to `*.staging` files next to the assets and moved into place
 only after every gate, including the post-write SQLite checks and the size limit, has passed, so a

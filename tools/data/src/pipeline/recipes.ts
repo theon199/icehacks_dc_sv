@@ -4,6 +4,7 @@ import { IngredientMatcher } from '../match/matcher.ts';
 import { MASS_UNITS, measureToGrams, parseMeasure, VOLUME_ML, type Measure, type Unit } from '../parse/measure.ts';
 import { detectTimerSeconds, splitSteps } from '../parse/steps.ts';
 import { GENERIC_UNIT_GRAMS, ingredientAllergens, pluralName } from '../derive/ingredients.ts';
+import { recipeIngredientLists } from '../derive/ingredientLists.ts';
 import { addScaled, divide, EMPTY_NUTRITION, toNutrition, ZERO_PROFILE, type NutrientProfile } from '../derive/nutrition.ts';
 import { rollupAllergens, rollupDiet, type MatchedLine } from '../derive/rollup.ts';
 import {
@@ -435,6 +436,10 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     health_score: score,
     family_id: `fam:${familyKey(source.title)}`,
     ingredients: lines.map((l) => l.row),
+    ...recipeIngredientLists(
+      lines.map((l) => l.row),
+      (id) => ctx.defs.get(id)?.pantry === true,
+    ),
     steps: stepRows,
     tutorials: tutorials(source, ctx, issues),
     search_ingredients: searchNames,
