@@ -4,36 +4,17 @@
  *
  * Two vocabularies differ: the domain calls the time budget `timeBudgetMinutes` and the steadier
  * energy goal `steady_energy`, while the stored document uses `maxMinutes` and `steadier_energy`.
+ * Goal ids are translated by the app-wide bridge (`@/stores/domainBridge`).
  * Allergens are not part of the patch: they go through `setAllergens`, which also records that the
  * question was answered.
  */
-import { cuisineIdSchema, type Goal } from '@/domain/types';
-import type { HealthGoal, Preferences } from '@/stores';
+import { cuisineIdSchema } from '@/domain/types';
+import type { Preferences } from '@/stores';
+import { toDomainGoal, toStoredGoal } from '@/stores/domainBridge';
 
 import type { OnboardingAnswers } from './onboardingModel';
 
-const storedGoal: Readonly<Record<Goal, HealthGoal>> = {
-  more_protein: 'more_protein',
-  more_fiber: 'more_fiber',
-  lower_sodium: 'lower_sodium',
-  heart_friendly: 'heart_friendly',
-  lighter_meals: 'lighter_meals',
-  plant_forward: 'plant_forward',
-  steady_energy: 'steadier_energy',
-};
-
-const domainGoal: Readonly<Record<HealthGoal, Goal>> = {
-  more_protein: 'more_protein',
-  more_fiber: 'more_fiber',
-  lower_sodium: 'lower_sodium',
-  heart_friendly: 'heart_friendly',
-  lighter_meals: 'lighter_meals',
-  plant_forward: 'plant_forward',
-  steadier_energy: 'steady_energy',
-};
-
-export const toStoredGoal = (goal: Goal): HealthGoal => storedGoal[goal];
-export const toDomainGoal = (goal: HealthGoal): Goal => domainGoal[goal];
+export { toDomainGoal, toStoredGoal } from '@/stores/domainBridge';
 
 /** Fields the onboarding answers set, apart from allergens and completion. */
 export type OnboardingPreferencesPatch = Pick<

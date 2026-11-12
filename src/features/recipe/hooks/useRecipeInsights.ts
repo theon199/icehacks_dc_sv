@@ -17,6 +17,7 @@ import {
   type TasteFeatures,
 } from '@/domain';
 import {
+  coreIngredientIdsOf,
   useIngredients,
   useRecipes,
   useSubstitutions,
@@ -26,7 +27,7 @@ import {
 import { selectFeedbackEvents, useFeedbackStore } from '@/stores';
 
 import { useDomainPreferences, usePantryIds } from './usePersonalContext';
-import { coreIngredientIds, toDomainFeedback, toDomainRecipe } from '../model/adapters';
+import { toDomainFeedback, toDomainRecipe } from '../model/adapters';
 import { fitBreakdown, type FitFactor } from '../model/fit';
 import { suggestSubstitutions, type SubstitutionSuggestion } from '../model/substitutions';
 
@@ -120,7 +121,7 @@ export function useRecipeFit(
   const [openedAt] = useState(() => Date.now());
   return useMemo(() => {
     if (!recipe) return null;
-    const domain = toDomainRecipe(recipe, coreIngredientIds(recipe.ingredients, ingredients));
+    const domain = toDomainRecipe(recipe, coreIngredientIdsOf(recipe.ingredients, ingredients));
     const ctx = createRankContext({ prefs, now: openedAt, feedback, pantry, history }, [domain]);
     const score = scoreRecipe(domain, ctx);
     return {

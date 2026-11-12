@@ -4,9 +4,10 @@
  */
 import { useMemo } from 'react';
 
-import { compileSafetyRules, type SafetyPrefs, type SafetyRules } from '@/domain/safety';
+import { compileSafetyRules, type SafetyRules } from '@/domain/safety';
 import { selectCanUseAi, selectIsAdult, useSessionStore } from '@/features/auth';
-import { usePreferencesStore, type Preferences } from '@/stores/preferences';
+import { toSafetyPrefs } from '@/stores/domainBridge';
+import { usePreferencesStore } from '@/stores/preferences';
 
 /**
  * The Chef chat, shown under the Chef segment. It carries its own AI gate (18+ with AI features
@@ -44,12 +45,7 @@ export function useAiAccess(): AiAccess {
  * answered (an explicit "none" counts) both answers are reported as missing, so no recipe is
  * treated as safe.
  */
-export function toSafetyPrefs(
-  prefs: Pick<Preferences, 'allergens' | 'diets' | 'allergensAnswered'>,
-): SafetyPrefs {
-  if (!prefs.allergensAnswered) return { allergens: null, diets: null };
-  return { allergens: prefs.allergens, diets: prefs.diets };
-}
+export { toSafetyPrefs } from '@/stores/domainBridge';
 
 /** Cuisines the person said they love, most loved first. */
 export function useLovedCuisines(): readonly string[] {

@@ -1,4 +1,10 @@
-import { ALLERGEN_IDS, type AllergenMap, type RecipeCandidate } from '@/lib/catalog';
+import {
+  ALLERGEN_IDS,
+  toDomainRecipe,
+  type AllergenMap,
+  type RecipeCandidate,
+} from '@/lib/catalog';
+import { toUserPreferences } from '@/stores/domainBridge';
 import { defaultPreferences, type Preferences } from '@/stores/preferences';
 
 import { toRankPreferences, toRankRecipe } from './deps';
@@ -6,6 +12,9 @@ import { rankPantryMeals } from './pantryMeals';
 import { missingStaples, QUICK_STAPLE_IDS } from './staples';
 
 const allFree = Object.fromEntries(ALLERGEN_IDS.map((id) => [id, 'free'])) as AllergenMap;
+
+/** Salt and oil play the catalog's pantry staples: matched, but never core. */
+const STAPLES = new Set(['salt', 'vegetable_oil']);
 
 function candidate(id: string, ingredientIds: string[], extra: Partial<RecipeCandidate> = {}) {
   const recipe: RecipeCandidate = {
@@ -34,6 +43,7 @@ function candidate(id: string, ingredientIds: string[], extra: Partial<RecipeCan
     healthScore: 0.5,
     familyId: id,
     ingredientIds,
+    coreIngredientIds: [...new Set(ingredientIds)].filter((ingredient) => !STAPLES.has(ingredient)),
     ...extra,
   };
   return recipe;
@@ -45,10 +55,13 @@ const answered: Preferences = {
   allergensAnswered: true,
   onboardedAt: '2026-11-01T00:00:00.000Z',
 };
-const staples = new Set(['salt', 'vegetable_oil']);
 const now = Date.UTC(2026, 10, 11);
 
 describe('preference adapter', () => {
+  it('is the shared bridge', () => {
+    expect(toRankPreferences).toBe(toUserPreferences);
+  });
+
   it('treats unanswered safety questions as unanswered, never as "none"', () => {
     const prefs = toRankPreferences(defaultPreferences, 'us');
     expect(prefs.allergens).toBeNull();
@@ -76,14 +89,18 @@ describe('preference adapter', () => {
 });
 
 describe('recipe adapter', () => {
-  it('leaves staples out of the core ingredients and fills missing nutrition', () => {
-    const recipe = toRankRecipe(candidate('a', ['rice', 'salt', 'rice', 'egg']), staples);
+  it('is the shared catalog mapping', () => {
+    expect(toRankRecipe).toBe(toDomainRecipe);
+  });
+
+  it('takes core ingredients from the catalog and fills missing nutrition', () => {
+    const recipe = toRankRecipe(candidate('a', ['rice', 'salt', 'rice', 'egg']));
     expect(recipe.coreIngredientIds).toEqual(['rice', 'egg']);
     expect(recipe.nutrition.kcal).toBeNull();
   });
 
   it('maps an unknown region to the global one', () => {
-    expect(toRankRecipe(candidate('a', [], { region: 'atlantis' }), staples).region).toBe('global');
+    expect(toRankRecipe(candidate('a', [], { region: 'atlantis' })).region).toBe('global');
   });
 });
 
@@ -101,7 +118,6 @@ describe('meals you can make', () => {
   const rank = (prefs: Preferences, onHand = pantry) =>
     rankPantryMeals({
       candidates,
-      staples,
       pantry: onHand,
       prefs: toRankPreferences(prefs, 'us'),
       now,
@@ -127,6 +143,11 @@ describe('meals you can make', () => {
 
   it('suggests nothing until allergies are answered', () => {
     expect(rank(defaultPreferences)).toEqual([]);
+  });
+
+  it('counts diets as answered with allergens, before onboarding finishes', () => {
+    const meals = rank({ ...answered, onboardedAt: null });
+    expect(meals.map((m) => m.recipe.id).sort()).toEqual(['all-in', 'mostly']);
   });
 
   it('suggests nothing for an empty pantry', () => {

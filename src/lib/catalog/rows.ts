@@ -78,7 +78,10 @@ export const recipeRowSchema = z.object({
 });
 export type RecipeRow = z.infer<typeof recipeRowSchema>;
 
-export const candidateRowSchema = recipeRowSchema.extend({ ingredient_ids: z.string() });
+export const candidateRowSchema = recipeRowSchema.extend({
+  ingredient_ids: z.string(),
+  core_ingredient_ids: z.string(),
+});
 
 function parseJson(raw: string, what: string): unknown {
   try {
@@ -162,12 +165,20 @@ export function toRecipeSummary(row: RecipeRow): RecipeSummary {
   };
 }
 
-export function toRecipeCandidate(row: z.infer<typeof candidateRowSchema>): RecipeCandidate {
-  const ids = parseJson(row.ingredient_ids, 'candidate.ingredient_ids');
-  const ingredientIds = Array.isArray(ids)
+/** A JSON array of ids as distinct strings, first occurrence first; anything unreadable is empty. */
+function parseIdList(raw: string, what: string): string[] {
+  const ids = parseJson(raw, what);
+  return Array.isArray(ids)
     ? [...new Set(ids.filter((id): id is string => typeof id === 'string'))]
     : [];
-  return { ...toRecipeSummary(row), ingredientIds };
+}
+
+export function toRecipeCandidate(row: z.infer<typeof candidateRowSchema>): RecipeCandidate {
+  return {
+    ...toRecipeSummary(row),
+    ingredientIds: parseIdList(row.ingredient_ids, 'candidate.ingredient_ids'),
+    coreIngredientIds: parseIdList(row.core_ingredient_ids, 'candidate.core_ingredient_ids'),
+  };
 }
 
 export const ingredientLineRowSchema = z.object({
@@ -296,7 +307,7 @@ export function toCatalogMeta(rows: readonly z.infer<typeof metaRowSchema>[]): C
   const values = new Map(rows.map((row) => [row.key, row.value]));
   const int = (key: string) => {
     const parsed = Number.parseInt(values.get(key) ?? '', 10);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isNaN(parsed) ? 0 : parsed;
   };
   return {
     schemaVersion: int('schema_version'),

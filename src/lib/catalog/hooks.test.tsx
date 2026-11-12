@@ -6,16 +6,27 @@ import {
   catalogKeys,
   sameSafetyFilters,
   useCandidates,
+  usePantryStaples,
   useRecipe,
+  useRecipeFamily,
   useRecipes,
   useRecipeSearch,
 } from './hooks';
-import { getRecipeDetail, getRecipeSummaries, listCandidates, searchRecipes } from './queries';
+import {
+  getPantryStaples,
+  getRecipeDetail,
+  getRecipesByFamily,
+  getRecipeSummaries,
+  listCandidates,
+  searchRecipes,
+} from './queries';
 import type { RecipeSummary, SearchFilters } from './types';
 import { CatalogError } from '../db/catalog';
 
 jest.mock('./queries', () => ({
+  getPantryStaples: jest.fn(),
   getRecipeDetail: jest.fn(),
+  getRecipesByFamily: jest.fn(),
   getRecipeSummaries: jest.fn(),
   listCandidates: jest.fn(),
   searchRecipes: jest.fn(),
@@ -173,6 +184,38 @@ describe('catalog hooks', () => {
     ).toBe(true);
     expect(sameSafetyFilters({ avoidAllergens: ['milk'] }, {})).toBe(false);
     expect(sameSafetyFilters({ dietMask: 2 }, { dietMask: 4 })).toBe(false);
+  });
+
+  it('reads a dish family only once its id is known, with its safety filters', async () => {
+    jest.mocked(getRecipesByFamily).mockResolvedValue([summary('a'), summary('b')]);
+    const { Wrapper } = wrapper();
+    const idle = await renderHook(() => useRecipeFamily(null), { wrapper: Wrapper });
+    expect(idle.result.current.fetchStatus).toBe('idle');
+    expect(getRecipesByFamily).not.toHaveBeenCalled();
+
+    const filters = { avoidAllergens: ['peanut' as const] };
+    const { result } = await renderHook(() => useRecipeFamily('fam:x', filters), {
+      wrapper: Wrapper,
+    });
+    await waitFor(() => expect(result.current.data).toHaveLength(2));
+    expect(getRecipesByFamily).toHaveBeenCalledWith('fam:x', filters);
+  });
+
+  it('keys families by normalised safety filters', () => {
+    expect(
+      catalogKeys.family('fam:x', { avoidAllergens: ['milk', 'egg', 'milk'], dietMask: 0 }),
+    ).toEqual(catalogKeys.family('fam:x', { avoidAllergens: ['egg', 'milk'] }));
+    expect(catalogKeys.family('fam:x', { avoidAllergens: ['milk'] })).not.toEqual(
+      catalogKeys.family('fam:x', {}),
+    );
+  });
+
+  it('loads pantry staples', async () => {
+    jest.mocked(getPantryStaples).mockResolvedValue([]);
+    const { Wrapper } = wrapper();
+    const { result } = await renderHook(() => usePantryStaples(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getPantryStaples).toHaveBeenCalledTimes(1);
   });
 
   it('normalises search keys', () => {
