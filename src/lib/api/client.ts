@@ -88,6 +88,7 @@ export function createApiClient(deps: ApiClientDeps) {
     try {
       // A failed token lookup is treated as signed out; the function then answers 401.
       const token = await deps.getAccessToken().catch(() => null);
+      if (signal?.aborted) throw new ApiError({ kind: 'cancelled', functionName: name });
       let response: Response;
       try {
         response = await deps.fetch(`${deps.baseUrl}/functions/v1/${name}`, {

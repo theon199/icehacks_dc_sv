@@ -12,6 +12,8 @@ import { getSupabase } from '@/lib/supabase/client';
 import { readCachedSetup, writeCachedSetup } from './profileCache';
 import { useSessionStore } from './sessionStore';
 
+const RESTORE_TIMEOUT_MS = 8000;
+
 function applySession(session: Session | null): void {
   const store = useSessionStore.getState();
   if (!session) {
@@ -39,6 +41,14 @@ export function useSessionBootstrap(): void {
         if (active) applySession(null);
       });
 
+    // Restoring can wait on a token refresh; never hold the splash screen forever offline.
+    const fallback = setTimeout(() => {
+      if (active && useSessionStore.getState().status === 'loading') {
+        logger.warn('Session restore timed out');
+        applySession(null);
+      }
+    }, RESTORE_TIMEOUT_MS);
+
     const { data } = client.auth.onAuthStateChange((_event, session) => {
       if (active) applySession(session);
     });
@@ -58,6 +68,7 @@ export function useSessionBootstrap(): void {
 
     return () => {
       active = false;
+      clearTimeout(fallback);
       data.subscription.unsubscribe();
       unsubscribeStore();
     };

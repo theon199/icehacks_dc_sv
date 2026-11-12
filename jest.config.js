@@ -1,7 +1,9 @@
 /** @type {import('jest').Config} */
 module.exports = {
-  preset: 'jest-expo/ios',
+  preset: 'jest-expo',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  // Resolve react-native-worklets to its JS (non-native) implementation under Jest.
+  resolver: '<rootDir>/node_modules/react-native-worklets/jest/resolver.js',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '\.db$': '<rootDir>/test/assetStub.js',
