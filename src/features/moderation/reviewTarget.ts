@@ -301,15 +301,65 @@ export const TargetReportSchema = z.object({
 });
 export type TargetReport = z.infer<typeof TargetReportSchema>;
 
-/** Every report about one target, open or closed, newest first (moderators only, by RLS). */
-export async function fetchTargetReports(target: TargetRef, limit = 50): Promise<TargetReport[]> {
-  const { data, error } = await supabase
+export const REPORTS_PAGE_SIZE = 50;
+
+export interface ReportCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface TargetReportPage {
+  items: TargetReport[];
+  next: ReportCursor | null;
+  /**
+   * Open reports about the target across all pages. Counted by the server with the first page
+   * only (null on later pages), so the heading is not capped at the size of one page.
+   */
+  openCount: number | null;
+}
+
+async function countOpenReports(target: TargetRef): Promise<number> {
+  const { count, error } = await supabase
+    .from('reports')
+    .select('id', { count: 'exact', head: true })
+    .eq('target_kind', target.kind)
+    .eq('target_id', target.id)
+    .eq('status', 'open');
+  if (error) throw toApiError('reports', error);
+  return count ?? 0;
+}
+
+/**
+ * Reports about one target, open or closed, newest first, a page at a time (moderators only, by
+ * RLS). Pass the previous page's `next` to read older ones.
+ */
+export async function fetchTargetReports(
+  target: TargetRef,
+  cursor: ReportCursor | null = null,
+  limit = REPORTS_PAGE_SIZE,
+): Promise<TargetReportPage> {
+  let query = supabase
     .from('reports')
     .select('id, reason, details, automated, status, created_at')
     .eq('target_kind', target.kind)
     .eq('target_id', target.id)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit);
+  if (cursor) {
+    const at = `"${cursor.createdAt}"`;
+    query = query.or(`created_at.lt.${at},and(created_at.eq.${at},id.lt.${cursor.id})`);
+  }
+  const [{ data, error }, openCount] = await Promise.all([
+    query,
+    cursor ? Promise.resolve(null) : countOpenReports(target),
+  ]);
   if (error) throw toApiError('reports', error);
-  return parseResult('reports', z.array(TargetReportSchema), data);
+  const items = parseResult('reports', z.array(TargetReportSchema), data);
+  const last = items[items.length - 1];
+  return {
+    items,
+    next: items.length === limit && last ? { createdAt: last.created_at, id: last.id } : null,
+    openCount,
+  };
 }

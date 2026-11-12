@@ -125,6 +125,19 @@ export interface AuditPage {
   next: { createdAt: string; id: string } | null;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * PostgREST filter for a member's whole history: everything done to them or to anything they
+ * wrote. Actions on their posts and comments carry them as `target_owner_id`; actions on the
+ * account itself also match by id, so they still show if the owner link was cleared. Null when the
+ * id is not a well-formed uuid, which is the only thing ever placed inside the expression.
+ */
+export function memberHistoryFilter(userId: string): string | null {
+  if (!UUID_PATTERN.test(userId)) return null;
+  return `target_owner_id.eq.${userId},and(target_kind.eq.user,target_id.eq.${userId})`;
+}
+
 /** Audit log, newest first, optionally for one target. Moderators only (RLS). */
 export async function fetchAuditPage(
   cursor: AuditPage['next'],
@@ -137,7 +150,9 @@ export async function fetchAuditPage(
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(limit);
-  if (target) query = query.eq('target_kind', target.kind).eq('target_id', target.id);
+  const memberFilter = target?.kind === 'user' ? memberHistoryFilter(target.id) : null;
+  if (memberFilter) query = query.or(memberFilter);
+  else if (target) query = query.eq('target_kind', target.kind).eq('target_id', target.id);
   if (cursor) {
     const at = `"${cursor.createdAt}"`;
     query = query.or(`created_at.lt.${at},and(created_at.eq.${at},id.lt.${cursor.id})`);
