@@ -23,8 +23,8 @@ import {
   useSessionStore,
 } from '../deps';
 import { describeAiProblem, remainingNote, type AiProblem } from '../logic/problems';
-import { buildChefRequest, type CatalogAccess } from '../logic/request';
 import { settleReply } from '../logic/replySafety';
+import { buildChefRequest, type CatalogAccess } from '../logic/request';
 import { finderFor } from '../logic/screening';
 
 const catalog: CatalogAccess = { listCandidates, searchRecipes };
