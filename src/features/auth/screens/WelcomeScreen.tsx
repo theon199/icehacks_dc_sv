@@ -111,23 +111,29 @@ export function WelcomeScreen() {
       </ScrollView>
 
       <View style={styles.dots}>
-        {slides.map((slide, i) => (
-          <PressableScale
-            key={slide.art}
-            accessibilityRole="button"
-            accessibilityLabel={`Show slide ${i + 1} of ${slides.length}`}
-            accessibilityState={{ selected: i === index }}
-            hitSlop={12}
-            onPress={() => goTo(i)}
-            style={[
-              styles.dot,
-              {
-                width: i === index ? 22 : 8,
-                backgroundColor: i === index ? theme.colors.primary : theme.colors.borderStrong,
-              },
-            ]}
-          />
-        ))}
+        {slides.map((slide, i) => {
+          const current = i === index;
+          return (
+            <PressableScale
+              key={slide.art}
+              accessibilityRole="button"
+              accessibilityLabel={`Show slide ${i + 1} of ${slides.length}`}
+              accessibilityState={{ selected: current }}
+              onPress={() => goTo(i)}
+              style={styles.dotTarget}
+            >
+              <View
+                style={[
+                  styles.dot,
+                  {
+                    width: current ? 22 : 8,
+                    backgroundColor: current ? theme.colors.primary : theme.colors.borderStrong,
+                  },
+                ]}
+              />
+            </PressableScale>
+          );
+        })}
       </View>
 
       <View style={styles.actions}>
@@ -143,7 +149,7 @@ export function WelcomeScreen() {
           label="I already have an account"
           variant="ghost"
           fullWidth
-          onPress={() => router.push('/sign-in')}
+          onPress={() => router.push('/continue')}
         />
       </View>
     </View>
@@ -165,9 +171,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 16,
+    paddingVertical: 4,
   },
+  // The visible dot is small; the pressable area around it meets the 44pt minimum.
+  dotTarget: { minWidth: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   dot: { height: 8, borderRadius: 4 },
   actions: { paddingHorizontal: gutter, gap: 4 },
 });

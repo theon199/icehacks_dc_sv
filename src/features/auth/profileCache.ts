@@ -1,8 +1,8 @@
 /**
- * Remembers each signed-in person's birth year and AI consent on this device so the right route
- * group shows immediately on launch, before any network call. The server stays the source of
- * truth and replaces these hints once it answers. Onboarding completion is not cached here: it
- * comes from the preferences store, which travels with the person's synced data.
+ * Remembers each signed-in person's birth year on this device so the right route group shows on
+ * launch, before any network call. The server stays the source of truth and replaces this hint as
+ * soon as it answers. Onboarding completion and AI consent are not kept here: both come through
+ * `deps.ts`.
  */
 import { z } from 'zod';
 
@@ -10,13 +10,9 @@ import { defineKvKey, type KvKey } from '@/lib/storage/kv';
 
 const cachedSetupSchema = z.object({
   birthYear: z.number().int().min(1900).max(2100).nullable(),
-  // Older cache entries predate this field; they read as "not yet agreed".
-  aiConsent: z.boolean().default(false),
 });
 
 export type CachedSetup = z.infer<typeof cachedSetupSchema>;
-
-const emptySetup: CachedSetup = { birthYear: null, aiConsent: false };
 
 function keyFor(userId: string): KvKey<CachedSetup> {
   return defineKvKey(`session.setup.${userId}`, cachedSetupSchema);
@@ -24,9 +20,9 @@ function keyFor(userId: string): KvKey<CachedSetup> {
 
 export function readCachedSetup(userId: string): CachedSetup {
   try {
-    return keyFor(userId).getSync() ?? { ...emptySetup };
+    return keyFor(userId).getSync() ?? { birthYear: null };
   } catch {
-    return { ...emptySetup };
+    return { birthYear: null };
   }
 }
 
@@ -35,5 +31,14 @@ export function writeCachedSetup(userId: string, setup: CachedSetup): void {
     keyFor(userId).setSync(setup);
   } catch {
     // Losing this cache only means the setup screens may show again; the server stays the source of truth.
+  }
+}
+
+/** Removes the hint for an account that has been deleted. */
+export function forgetCachedSetup(userId: string): void {
+  try {
+    void keyFor(userId).remove();
+  } catch {
+    // Nothing useful to do: a leftover hint is replaced by the server's answer on any next sign-in.
   }
 }

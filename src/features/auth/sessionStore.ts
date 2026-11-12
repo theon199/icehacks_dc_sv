@@ -71,6 +71,10 @@ export function resolveStatus(
 /**
  * Age in whole years from a birth year. Without a birth date the age is ambiguous for part of the
  * year, so this returns the lower bound (the person may not have had their birthday yet).
+ *
+ * This uses the device's local calendar year while the server counts in UTC, so for a few hours
+ * around 1 January the two can differ by one year. That only affects which setup screen shows in
+ * that window: deleting an account is always decided by the server's own record.
  */
 export function ageFromBirthYear(birthYear: number, now: Date = new Date()): number {
   return now.getFullYear() - birthYear - 1;

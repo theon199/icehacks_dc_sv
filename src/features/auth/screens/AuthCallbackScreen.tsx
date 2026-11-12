@@ -1,15 +1,21 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
 import { Button, EmptyState, Screen, Text, useTheme } from '@/ui';
 
 import { completeCallback, hasSession } from '../authActions';
-import { readCallback } from '../callback';
+import { callbackLinkId, readCallback } from '../callback';
 
 export interface AuthCallbackScreenProps {
   params: Record<string, string>;
+}
+
+/** The outcome shown for one particular link; a different link starts over. */
+interface LinkFailure {
+  linkId: string;
+  message: string;
 }
 
 /**
@@ -20,16 +26,20 @@ export interface AuthCallbackScreenProps {
 export function AuthCallbackScreen({ params }: AuthCallbackScreenProps) {
   const router = useRouter();
   const theme = useTheme();
-  const [failure, setFailure] = useState<string | null>(null);
-  const started = useRef(false);
+  const linkId = useMemo(() => callbackLinkId(params), [params]);
+  const [linkFailure, setLinkFailure] = useState<LinkFailure | null>(null);
+  // Links are single use. Re-renders and development remounts deliver the same link again, but a
+  // fresh link can arrive while this screen stays mounted, so remember which link was handled.
+  const handledLink = useRef<string | null>(null);
 
   useEffect(() => {
-    // Links are single use; never process the same one twice (re-renders, development remounts).
-    if (started.current) return;
-    started.current = true;
+    if (handledLink.current === linkId) return;
+    handledLink.current = linkId;
     const action = readCallback(params);
+    const stillCurrent = () => handledLink.current === linkId;
     void (async () => {
       const outcome = await completeCallback(action);
+      if (!stillCurrent()) return;
       if (outcome.ok) {
         haptics.success();
         router.replace(outcome.value.recovery ? '/auth/reset-password' : '/');
@@ -37,14 +47,18 @@ export function AuthCallbackScreen({ params }: AuthCallbackScreenProps) {
       }
       // The link may already have been used by the sign-in flow that opened it; if a session
       // exists there is nothing left to do.
-      if (action.kind !== 'error' && (await hasSession())) {
+      const signedInAnyway = action.kind !== 'error' && (await hasSession());
+      if (!stillCurrent()) return;
+      if (signedInAnyway) {
         router.replace('/');
         return;
       }
       haptics.error();
-      setFailure(outcome.failure.message);
+      setLinkFailure({ linkId, message: outcome.failure.message });
     })();
-  }, [params, router]);
+  }, [linkId, params, router]);
+
+  const failure = linkFailure?.linkId === linkId ? linkFailure.message : null;
 
   if (failure) {
     return (

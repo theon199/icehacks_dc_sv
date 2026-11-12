@@ -6,14 +6,19 @@
  * system auth session shows Google's page and returns to `famara://auth/callback`, and the code in
  * that URL is exchanged for a session.
  */
-import * as AppleAuthentication from 'expo-apple-authentication';
-import * as Crypto from 'expo-crypto';
+import {
+  AppleAuthenticationScope,
+  signInAsync as openAppleSheet,
+  type AppleAuthenticationCredential,
+  type AppleAuthenticationFullName,
+} from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
-import { Platform } from 'react-native';
+import { z } from 'zod';
 
 import { logger } from '@/lib/logger';
 import { getSupabase } from '@/lib/supabase/client';
 
+import { createNoncePair } from './apple';
 import { completeCallback, hasSession } from './authActions';
 import { authFailure, describeAuthError, type AuthFailure } from './authErrors';
 import { AUTH_CALLBACK_URL, paramsFromUrl, readCallback } from './callback';
@@ -21,24 +26,23 @@ import { AUTH_CALLBACK_URL, paramsFromUrl, readCallback } from './callback';
 export type ProviderResult =
   { status: 'signedIn' } | { status: 'cancelled' } | { status: 'failed'; failure: AuthFailure };
 
-const APPLE_CANCELLED = 'ERR_REQUEST_CANCELED';
+const providerFailed = (): ProviderResult => ({
+  status: 'failed',
+  failure: authFailure('provider_failed'),
+});
 
-export async function isAppleSignInAvailable(): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
-  try {
-    return await AppleAuthentication.isAvailableAsync();
-  } catch {
-    return false;
-  }
-}
+/** Native module errors carry a string `code`; closing Apple's sheet reports this one. */
+const nativeError = z.object({ code: z.string() });
+const APPLE_SHEET_CLOSED = 'ERR_REQUEST_CANCELED';
 
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+function closedByPerson(error: unknown): boolean {
+  const parsed = nativeError.safeParse(error);
+  return parsed.success && parsed.data.code === APPLE_SHEET_CLOSED;
 }
 
 /** Joins the parts of the name Apple shares (only on the very first sign-in). */
 export function appleDisplayName(
-  name: AppleAuthentication.AppleAuthenticationFullName | null | undefined,
+  name: AppleAuthenticationFullName | null | undefined,
 ): string | null {
   if (!name) return null;
   const joined = [name.givenName, name.middleName, name.familyName]
@@ -62,43 +66,50 @@ async function rememberAppleName(name: string): Promise<void> {
   }
 }
 
-export async function signInWithApple(): Promise<ProviderResult> {
-  let credential: AppleAuthentication.AppleAuthenticationCredential;
-  const rawNonce = toHex(Crypto.getRandomBytes(32));
+type AppleSheetOutcome =
+  | { kind: 'credential'; credential: AppleAuthenticationCredential }
+  | { kind: 'closed' }
+  | { kind: 'broken' };
+
+async function askApple(hashedNonce: string): Promise<AppleSheetOutcome> {
   try {
-    const hashedNonce = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      rawNonce,
-    );
-    credential = await AppleAuthentication.signInAsync({
-      requestedScopes: [
-        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-        AppleAuthentication.AppleAuthenticationScope.EMAIL,
-      ],
+    const credential = await openAppleSheet({
+      requestedScopes: [AppleAuthenticationScope.FULL_NAME, AppleAuthenticationScope.EMAIL],
       nonce: hashedNonce,
     });
+    return { kind: 'credential', credential };
   } catch (error) {
-    if (Reflect.get(Object(error), 'code') === APPLE_CANCELLED) return { status: 'cancelled' };
+    if (closedByPerson(error)) return { kind: 'closed' };
     logger.warn('Apple sign-in sheet failed', { error: String(error) });
-    return { status: 'failed', failure: authFailure('provider_failed') };
+    return { kind: 'broken' };
+  }
+}
+
+export async function signInWithApple(): Promise<ProviderResult> {
+  let nonce;
+  try {
+    nonce = await createNoncePair();
+  } catch (error) {
+    logger.warn('Could not prepare Apple sign-in', { error: String(error) });
+    return providerFailed();
   }
 
-  if (!credential.identityToken) {
-    return { status: 'failed', failure: authFailure('provider_failed') };
-  }
+  const sheet = await askApple(nonce.hashed);
+  if (sheet.kind === 'closed') return { status: 'cancelled' };
+  if (sheet.kind === 'broken' || !sheet.credential.identityToken) return providerFailed();
 
   try {
     const { error } = await getSupabase().auth.signInWithIdToken({
       provider: 'apple',
-      token: credential.identityToken,
-      nonce: rawNonce,
+      token: sheet.credential.identityToken,
+      nonce: nonce.raw,
     });
     if (error) throw error;
   } catch (error) {
     return { status: 'failed', failure: describeAuthError(error) };
   }
 
-  const name = appleDisplayName(credential.fullName);
+  const name = appleDisplayName(sheet.credential.fullName);
   if (name) void rememberAppleName(name);
   return { status: 'signedIn' };
 }
@@ -115,7 +126,7 @@ export async function signInWithGoogle(): Promise<ProviderResult> {
       },
     });
     if (error) throw error;
-    if (!data.url) return { status: 'failed', failure: authFailure('provider_failed') };
+    if (!data.url) return providerFailed();
     url = data.url;
   } catch (error) {
     return { status: 'failed', failure: describeAuthError(error) };
@@ -128,7 +139,7 @@ export async function signInWithGoogle(): Promise<ProviderResult> {
     });
   } catch (error) {
     logger.warn('Google auth session failed to open', { error: String(error) });
-    return { status: 'failed', failure: authFailure('provider_failed') };
+    return providerFailed();
   }
   if (result.type !== 'success') return { status: 'cancelled' };
 

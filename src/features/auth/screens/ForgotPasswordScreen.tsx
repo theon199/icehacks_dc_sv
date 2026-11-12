@@ -3,12 +3,14 @@ import { useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Button, EmptyState, Screen, Text, TextField } from '@/ui';
+import { Button, EmptyState, Screen, Text } from '@/ui';
 
 import { requestPasswordReset } from '../authActions';
+import { EmailField } from '../components/EmailField';
 import { FormMessage } from '../components/FormMessage';
 import { useCooldown } from '../useCooldown';
 import { useField } from '../useField';
+import { useSubmission } from '../useSubmission';
 import { normalizeEmail, validateEmail } from '../validation';
 
 /** Asks for a password-reset link. The reply never says whether an account exists. */
@@ -16,36 +18,35 @@ export function ForgotPasswordScreen() {
   const router = useRouter();
   const email = useField(validateEmail);
   const cooldown = useCooldown();
-  const [sending, setSending] = useState(false);
-  const [sentTo, setSentTo] = useState<string | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const request = useSubmission();
+  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
+  const waiting = cooldown.remaining > 0;
+  const againLabel = waiting ? `Send again in ${cooldown.remaining}s` : 'Send the link again';
 
-  const send = async () => {
-    if (sending || cooldown.remaining > 0) return;
+  const sendLink = () => {
+    if (waiting) return;
     if (!email.validate()) {
       haptics.warning();
       return;
     }
     Keyboard.dismiss();
-    setSending(true);
-    setFailure(null);
-    const result = await requestPasswordReset(email.value);
-    setSending(false);
-    if (result.ok) {
+    void request.submit(async () => {
+      const result = await requestPasswordReset(email.value);
+      if (!result.ok) {
+        haptics.error();
+        if (result.failure.kind === 'rate_limited') cooldown.start();
+        return result.failure.message;
+      }
       haptics.success();
-      setSentTo(normalizeEmail(email.value));
+      setLinkSentTo(normalizeEmail(email.value));
       cooldown.start();
-      return;
-    }
-    haptics.error();
-    setFailure(result.failure.message);
-    if (result.failure.kind === 'rate_limited') cooldown.start();
+      return null;
+    });
   };
 
-  const resendLabel =
-    cooldown.remaining > 0 ? `Send again in ${cooldown.remaining}s` : 'Send the link again';
+  const failureNote = request.failure ? <FormMessage message={request.failure} /> : null;
 
-  if (sentTo) {
+  if (linkSentTo) {
     return (
       <Screen
         footer={
@@ -60,19 +61,23 @@ export function ForgotPasswordScreen() {
         <EmptyState
           icon="envelope.badge"
           title="Check your email"
-          message={`If there’s a Famara account for ${sentTo}, a link to choose a new password is on its way. Open it on this phone.`}
+          message={`If there’s a Famara account for ${linkSentTo}, a link to choose a new password is on its way. Open it on this phone.`}
         />
-        {failure ? <FormMessage message={failure} /> : null}
+        {failureNote}
         <View style={styles.row}>
           <Button
-            label={resendLabel}
+            label={againLabel}
             variant="secondary"
             icon="arrow.clockwise"
-            loading={sending}
-            disabled={cooldown.remaining > 0}
-            onPress={() => void send()}
+            loading={request.busy}
+            disabled={waiting}
+            onPress={sendLink}
           />
-          <Button label="Use a different email" variant="ghost" onPress={() => setSentTo(null)} />
+          <Button
+            label="Use a different email"
+            variant="ghost"
+            onPress={() => setLinkSentTo(null)}
+          />
         </View>
       </Screen>
     );
@@ -83,12 +88,12 @@ export function ForgotPasswordScreen() {
       footer={
         <Button
           testID="reset-submit"
-          label={cooldown.remaining > 0 ? resendLabel : 'Send reset link'}
+          label={waiting ? againLabel : 'Send reset link'}
           size="lg"
           fullWidth
-          loading={sending}
-          disabled={cooldown.remaining > 0}
-          onPress={() => void send()}
+          loading={request.busy}
+          disabled={waiting}
+          onPress={sendLink}
         />
       }
     >
@@ -98,24 +103,8 @@ export function ForgotPasswordScreen() {
           Enter your email and we’ll send you a link to choose a new one.
         </Text>
       </View>
-      {failure ? <FormMessage message={failure} /> : null}
-      <TextField
-        testID="reset-email"
-        label="Email"
-        value={email.value}
-        onChangeText={email.setValue}
-        onBlur={email.onBlur}
-        error={email.error}
-        icon="envelope.fill"
-        placeholder="you@example.com"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-        textContentType="username"
-        returnKeyType="send"
-        onSubmitEditing={() => void send()}
-      />
+      {failureNote}
+      <EmailField field={email} testID="reset-email" returnKeyType="send" onReturn={sendLink} />
     </Screen>
   );
 }

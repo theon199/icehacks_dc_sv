@@ -3,14 +3,16 @@ import { useRef, useState } from 'react';
 import { Keyboard, StyleSheet, View, type TextInput } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Button, Screen, Text, TextField } from '@/ui';
+import { Button, Screen, Text } from '@/ui';
 
 import { signUpWithEmail } from '../authActions';
+import { EmailField } from '../components/EmailField';
 import { FormMessage } from '../components/FormMessage';
 import { PasswordField } from '../components/PasswordField';
 import { TermsCheckbox } from '../components/TermsConsent';
 import { usePendingEmail } from '../pendingEmail';
 import { useField } from '../useField';
+import { useSubmission } from '../useSubmission';
 import {
   MIN_PASSWORD_LENGTH,
   normalizeEmail,
@@ -25,37 +27,38 @@ export function SignUpScreen() {
   const router = useRouter();
   const email = useField(validateEmail);
   const password = useField(validateNewPassword);
-  const passwordRef = useRef<TextInput>(null);
+  const passwordInput = useRef<TextInput>(null);
+  const creation = useSubmission();
   const [agreed, setAgreed] = useState(false);
-  const [termsError, setTermsError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [showTermsError, setShowTermsError] = useState(false);
 
-  const submit = async () => {
-    if (submitting) return;
-    const emailOk = email.validate();
-    const passwordOk = password.validate();
-    setTermsError(agreed ? null : TERMS_REQUIRED);
-    if (!emailOk || !passwordOk || !agreed) {
+  const createAccount = () => {
+    const fieldsOk = [email.validate(), password.validate()].every(Boolean);
+    setShowTermsError(!agreed);
+    if (!fieldsOk || !agreed) {
       haptics.warning();
       return;
     }
     Keyboard.dismiss();
-    setSubmitting(true);
-    setFailure(null);
-    const result = await signUpWithEmail(email.value, password.value);
-    setSubmitting(false);
-    if (!result.ok) {
-      haptics.error();
-      setFailure(result.failure.message);
-      return;
-    }
-    haptics.success();
-    if (result.value.needsConfirmation) {
-      usePendingEmail.getState().setPending(normalizeEmail(email.value));
-      router.replace('/check-email');
-    }
-    // Otherwise a session already exists and the guard moves on to setup.
+    void creation.submit(async () => {
+      const result = await signUpWithEmail(email.value, password.value);
+      if (!result.ok) {
+        haptics.error();
+        return result.failure.message;
+      }
+      haptics.success();
+      if (result.value.needsConfirmation) {
+        usePendingEmail.getState().setPending(normalizeEmail(email.value));
+        router.replace('/check-email');
+      }
+      // Otherwise a session already exists and the guard moves on to setup.
+      return null;
+    });
+  };
+
+  const toggleTerms = (next: boolean) => {
+    setAgreed(next);
+    if (next) setShowTermsError(false);
   };
 
   return (
@@ -66,8 +69,8 @@ export function SignUpScreen() {
           label="Create account"
           size="lg"
           fullWidth
-          loading={submitting}
-          onPress={() => void submit()}
+          loading={creation.busy}
+          onPress={createAccount}
         />
       }
     >
@@ -78,28 +81,16 @@ export function SignUpScreen() {
         </Text>
       </View>
 
-      {failure ? <FormMessage message={failure} testID="sign-up-error" /> : null}
+      {creation.failure ? <FormMessage message={creation.failure} testID="sign-up-error" /> : null}
 
-      <TextField
+      <EmailField
+        field={email}
         testID="sign-up-email"
-        label="Email"
-        value={email.value}
-        onChangeText={email.setValue}
-        onBlur={email.onBlur}
-        error={email.error}
-        icon="envelope.fill"
-        placeholder="you@example.com"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-        textContentType="username"
         returnKeyType="next"
-        submitBehavior="submit"
-        onSubmitEditing={() => passwordRef.current?.focus()}
+        onReturn={() => passwordInput.current?.focus()}
       />
       <PasswordField
-        ref={passwordRef}
+        ref={passwordInput}
         testID="sign-up-password"
         label="Password"
         purpose="new"
@@ -109,15 +100,12 @@ export function SignUpScreen() {
         error={password.error}
         hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
         returnKeyType="done"
-        onSubmitEditing={() => Keyboard.dismiss()}
+        onSubmitEditing={Keyboard.dismiss}
       />
       <TermsCheckbox
         checked={agreed}
-        onChange={(next) => {
-          setAgreed(next);
-          if (next) setTermsError(null);
-        }}
-        error={termsError}
+        onChange={toggleTerms}
+        error={showTermsError ? TERMS_REQUIRED : null}
       />
 
       <Button

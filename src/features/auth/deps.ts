@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { create } from 'zustand';
 
 import { logger } from '@/lib/logger';
-import { defineKvKey } from '@/lib/storage/kv';
+import { defineKvKey, type KvKey } from '@/lib/storage/kv';
 
 export const ALLERGEN_IDS = [
   'milk',
@@ -75,6 +75,11 @@ const answersSchema = z.object({
 export type OnboardingAnswers = z.infer<typeof answersSchema>;
 
 const storedPreferencesSchema = z.object({
+  /**
+   * The account these answers belong to. Entries saved before ownership was recorded read as
+   * unowned, and unowned answers are never handed to anyone.
+   */
+  ownerId: z.string().min(1).nullable().default(null),
   onboardingComplete: z.boolean(),
   answers: answersSchema.nullable(),
   updatedAt: z.string(),
@@ -84,21 +89,24 @@ type StoredPreferences = z.infer<typeof storedPreferencesSchema>;
 
 const preferencesKey = defineKvKey('user.preferences', storedPreferencesSchema);
 
-const emptyPreferences: StoredPreferences = {
-  onboardingComplete: false,
-  answers: null,
-  updatedAt: new Date(0).toISOString(),
-};
+function blankPreferences(ownerId: string | null = null): StoredPreferences {
+  return {
+    ownerId,
+    onboardingComplete: false,
+    answers: null,
+    updatedAt: new Date(0).toISOString(),
+  };
+}
 
-function readStored(): StoredPreferences {
+function loadPersisted(): StoredPreferences {
   try {
-    return preferencesKey.getSync() ?? emptyPreferences;
+    return preferencesKey.getSync() ?? blankPreferences();
   } catch {
-    return emptyPreferences;
+    return blankPreferences();
   }
 }
 
-const usePreferenceSlice = create<StoredPreferences>()(() => readStored());
+const usePreferenceSlice = create<StoredPreferences>()(() => loadPersisted());
 
 usePreferenceSlice.subscribe((state) => {
   try {
@@ -108,29 +116,48 @@ usePreferenceSlice.subscribe((state) => {
   }
 });
 
-/** Onboarding answers and completion, as kept by the preferences store. */
+function ownedBy(userId: string | null | undefined): StoredPreferences | null {
+  const state = usePreferenceSlice.getState();
+  return userId && state.ownerId === userId ? state : null;
+}
+
+/**
+ * Onboarding answers and completion, as kept by the preferences store. Every read names the
+ * account asking, so answers saved by one person (allergens included) never reach another.
+ */
 export const preferences = {
-  isOnboardingComplete(): boolean {
-    return usePreferenceSlice.getState().onboardingComplete;
+  /**
+   * Claims the stored preferences for `userId`. Anything saved for a different account, or saved
+   * without an owner, is wiped first. Call before reading completion for a newly signed-in person.
+   */
+  adoptOwner(userId: string): void {
+    const state = usePreferenceSlice.getState();
+    if (state.ownerId === userId) return;
+    usePreferenceSlice.setState(blankPreferences(userId), true);
   },
 
-  subscribeOnboardingComplete(listener: (complete: boolean) => void): () => void {
+  isOnboardingComplete(userId: string | null): boolean {
+    return ownedBy(userId)?.onboardingComplete ?? false;
+  },
+
+  subscribeOnboardingComplete(listener: (complete: boolean, ownerId: string | null) => void) {
     return usePreferenceSlice.subscribe((state, previous) => {
       if (state.onboardingComplete !== previous.onboardingComplete) {
-        listener(state.onboardingComplete);
+        listener(state.onboardingComplete, state.ownerId);
       }
     });
   },
 
-  /** Answers saved earlier (from this device or synced), used to prefill onboarding. */
-  readAnswers(): OnboardingAnswers | null {
-    return usePreferenceSlice.getState().answers;
+  /** Answers this account saved earlier (on this device or synced), used to prefill onboarding. */
+  readAnswers(userId: string | null): OnboardingAnswers | null {
+    return ownedBy(userId)?.answers ?? null;
   },
 
-  /** Saves every answer and marks onboarding finished. Throws on answers that fail validation. */
-  completeOnboarding(answers: OnboardingAnswers, now: Date = new Date()): void {
+  /** Saves every answer for `userId` and marks onboarding finished. Throws on invalid answers. */
+  completeOnboarding(userId: string, answers: OnboardingAnswers, now: Date = new Date()): void {
     const parsed = answersSchema.parse(answers);
     usePreferenceSlice.setState({
+      ownerId: userId,
       onboardingComplete: true,
       answers: parsed,
       updatedAt: now.toISOString(),
@@ -148,9 +175,61 @@ export const sync = {
   },
 };
 
+const consentRecordSchema = z.object({
+  granted: z.boolean(),
+  decidedAt: z.string(),
+});
+
+function consentRecord(userId: string): KvKey<z.infer<typeof consentRecordSchema>> {
+  return defineKvKey(`user.aiConsent.${userId}`, consentRecordSchema);
+}
+
+type ConsentListener = (userId: string, granted: boolean) => void;
+const consentListeners = new Set<ConsentListener>();
+
+/**
+ * Whether a person has agreed to the AI terms (PRODUCT.md §8). The settings store, and later the
+ * server profile, owns this answer; until then it is kept per account on this device. Anything
+ * missing or unreadable counts as "not agreed", so AI features stay closed.
+ */
+export const aiConsent = {
+  read(userId: string): boolean {
+    try {
+      return consentRecord(userId).getSync()?.granted ?? false;
+    } catch {
+      return false;
+    }
+  },
+
+  write(userId: string, granted: boolean, now: Date = new Date()): void {
+    try {
+      consentRecord(userId).setSync({ granted, decidedAt: now.toISOString() });
+    } catch (error) {
+      logger.warn('Could not save the AI consent answer', { error: String(error) });
+    }
+    for (const listener of consentListeners) listener(userId, granted);
+  },
+
+  subscribe(listener: ConsentListener): () => void {
+    consentListeners.add(listener);
+    return () => {
+      consentListeners.delete(listener);
+    };
+  },
+
+  /** Drops the answer for an account that no longer exists. */
+  forget(userId: string): void {
+    try {
+      void consentRecord(userId).remove();
+    } catch (error) {
+      logger.warn('Could not remove the AI consent answer', { error: String(error) });
+    }
+  },
+};
+
 /** Removes the signed-in person's local data so the next person on this device starts clean. */
 export function clearUserData(): void {
-  usePreferenceSlice.setState(emptyPreferences, true);
+  usePreferenceSlice.setState(blankPreferences(), true);
   try {
     void preferencesKey.remove();
   } catch (error) {

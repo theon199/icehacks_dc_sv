@@ -1,8 +1,11 @@
 import { act, renderHook } from '@testing-library/react-native';
+import Storage from 'expo-sqlite/kv-store';
 
 import { queryClient } from '@/lib/query/client';
+import { storageKey } from '@/lib/storage/kv';
 
-import { preferences, sync } from './deps';
+import { aiConsent, clearUserData, preferences, sync, type OnboardingAnswers } from './deps';
+import { usePendingEmail } from './pendingEmail';
 import { readCachedSetup } from './profileCache';
 import { useSessionStore } from './sessionStore';
 import { useSessionBootstrap } from './useSessionBootstrap';
@@ -12,6 +15,7 @@ type AuthListener = (event: string, session: { user: { id: string } } | null) =>
 const mockAuth = {
   listener: null as AuthListener | null,
   getSession: jest.fn(),
+  getUser: jest.fn(),
   signOut: jest.fn(async () => ({ error: null })),
   unsubscribe: jest.fn(),
   rpc: jest.fn(),
@@ -23,6 +27,7 @@ jest.mock('@/lib/supabase/client', () => ({
     rpc: mockAuth.rpc,
     auth: {
       getSession: mockAuth.getSession,
+      getUser: mockAuth.getUser,
       signOut: mockAuth.signOut,
       onAuthStateChange: (listener: AuthListener) => {
         mockAuth.listener = listener;
@@ -35,10 +40,10 @@ jest.mock('@/lib/supabase/client', () => ({
 const thisYear = new Date().getFullYear();
 const initial = useSessionStore.getState();
 
-function serverAge(ageYears: number | null) {
+function serverAge(ageYears: number | null, userId = 'user-1') {
   return {
     data: {
-      user_id: 'user-1',
+      user_id: userId,
       handle: 'cook_1',
       has_birth_year: ageYears != null,
       age_years: ageYears,
@@ -59,10 +64,29 @@ async function flush() {
   });
 }
 
+const answers = (overrides: Partial<OnboardingAnswers> = {}): OnboardingAnswers => ({
+  displayName: null,
+  cuisines: [],
+  diets: [],
+  allergens: [],
+  goals: [],
+  maxMinutes: null,
+  effort: null,
+  householdSize: 1,
+  pantryStaples: [],
+  smallAppetite: false,
+  ...overrides,
+});
+
+const sessionRefused = { data: null, error: { code: 'PGRST301', message: 'JWT expired' } };
+
 beforeEach(() => {
+  clearUserData();
+  usePendingEmail.getState().clear();
   useSessionStore.setState(initial, true);
   mockAuth.listener = null;
   mockAuth.rpc.mockResolvedValue(serverAge(null));
+  mockAuth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
 });
 
 describe('useSessionBootstrap', () => {
@@ -117,18 +141,7 @@ describe('useSessionBootstrap', () => {
     expect(start).toHaveBeenCalledWith('user-1');
 
     await act(async () => {
-      preferences.completeOnboarding({
-        displayName: null,
-        cuisines: [],
-        diets: [],
-        allergens: [],
-        goals: [],
-        maxMinutes: null,
-        effort: null,
-        householdSize: 1,
-        pantryStaples: [],
-        smallAppetite: false,
-      });
+      preferences.completeOnboarding('user-1', answers());
     });
     expect(useSessionStore.getState().status).toBe('ready');
   });
@@ -141,34 +154,133 @@ describe('useSessionBootstrap', () => {
     await renderHook(() => useSessionBootstrap());
     await flush();
     await act(async () => {
-      preferences.completeOnboarding({
-        displayName: 'Sam',
-        cuisines: ['italian'],
-        diets: [],
-        allergens: ['peanut'],
-        goals: [],
-        maxMinutes: 30,
-        effort: 'easy',
-        householdSize: 2,
-        pantryStaples: [],
-        smallAppetite: false,
-      });
+      preferences.completeOnboarding(
+        'user-1',
+        answers({ displayName: 'Sam', allergens: ['peanut'], householdSize: 2 }),
+      );
     });
 
     await act(async () => mockAuth.listener?.('SIGNED_OUT', null));
     expect(useSessionStore.getState().status).toBe('signedOut');
     expect(stop).toHaveBeenCalled();
     expect(clearQueries).toHaveBeenCalled();
-    expect(preferences.isOnboardingComplete()).toBe(false);
-    expect(preferences.readAnswers()).toBeNull();
+    expect(preferences.isOnboardingComplete('user-1')).toBe(false);
+    expect(preferences.readAnswers('user-1')).toBeNull();
   });
 
-  it('signs out when the server no longer accepts the session', async () => {
+  it('never hands one account’s answers to the next person on the device', async () => {
+    // Person A finished onboarding, then their session ended while the app was closed.
+    preferences.adoptOwner('person-a');
+    preferences.completeOnboarding('person-a', answers({ allergens: [] }));
+
+    mockAuth.getSession.mockResolvedValue(signedIn('person-b'));
+    mockAuth.rpc.mockResolvedValue(serverAge(30, 'person-b'));
+    await renderHook(() => useSessionBootstrap());
+    await flush();
+
+    expect(useSessionStore.getState()).toMatchObject({
+      userId: 'person-b',
+      status: 'needsSetup',
+      onboardingComplete: false,
+    });
+    expect(preferences.readAnswers('person-b')).toBeNull();
+    expect(preferences.readAnswers('person-a')).toBeNull();
+  });
+
+  it('keeps the answers of the account that saved them', async () => {
+    preferences.adoptOwner('user-1');
+    preferences.completeOnboarding('user-1', answers({ allergens: ['sesame'] }));
+
     mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
-    mockAuth.rpc.mockResolvedValue({ data: null, error: { code: 'PGRST301', message: 'JWT' } });
+    mockAuth.rpc.mockResolvedValue(serverAge(30));
+    await renderHook(() => useSessionBootstrap());
+    await flush();
+
+    expect(useSessionStore.getState().status).toBe('ready');
+    expect(preferences.readAnswers('user-1')?.allergens).toEqual(['sesame']);
+  });
+
+  it('discards saved answers that do not say whose they are', () => {
+    Storage.setItemSync(
+      storageKey('user.preferences'),
+      JSON.stringify({
+        onboardingComplete: true,
+        answers: answers(),
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    jest.isolateModules(() => {
+      const fresh = jest.requireActual<{ preferences: typeof preferences }>('./deps');
+      expect(fresh.preferences.isOnboardingComplete('user-1')).toBe(false);
+      fresh.preferences.adoptOwner('user-1');
+      expect(fresh.preferences.readAnswers('user-1')).toBeNull();
+    });
+  });
+
+  it('takes AI consent from the consent adapter, for the signed-in account only', async () => {
+    aiConsent.write('user-1', true);
+    mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
+    mockAuth.rpc.mockResolvedValue(serverAge(30));
+    await renderHook(() => useSessionBootstrap());
+    await flush();
+    expect(useSessionStore.getState().aiConsent).toBe(true);
+
+    await act(async () => aiConsent.write('someone-else', false));
+    expect(useSessionStore.getState().aiConsent).toBe(true);
+    await act(async () => aiConsent.write('user-1', false));
+    expect(useSessionStore.getState().aiConsent).toBe(false);
+  });
+
+  it('forgets a pending confirmation address once someone is signed in', async () => {
+    usePendingEmail.getState().setPending('sam@example.com');
+    mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
+    await renderHook(() => useSessionBootstrap());
+    await flush();
+    expect(usePendingEmail.getState().email).toBeNull();
+  });
+
+  it('signs out once the auth server confirms the session is gone', async () => {
+    mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
+    mockAuth.rpc.mockResolvedValue(sessionRefused);
+    mockAuth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: { status: 401, message: 'invalid JWT' },
+    });
     await renderHook(() => useSessionBootstrap());
     await flush();
     expect(mockAuth.signOut).toHaveBeenCalled();
+  });
+
+  it('stays signed in when a single refusal is not confirmed', async () => {
+    mockAuth.getSession.mockResolvedValue(signedIn('user-1'));
+    mockAuth.rpc.mockResolvedValue(sessionRefused);
+    await renderHook(() => useSessionBootstrap());
+    await flush();
+    expect(mockAuth.getUser).toHaveBeenCalled();
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().userId).toBe('user-1');
+  });
+
+  it('ignores a refusal that belongs to an account already replaced', async () => {
+    let answerFirstCheck: (value: typeof sessionRefused) => void = () => undefined;
+    mockAuth.getSession.mockResolvedValue(signedIn('person-a'));
+    mockAuth.rpc.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerFirstCheck = resolve;
+        }),
+    );
+    mockAuth.getUser.mockResolvedValue({ data: { user: null }, error: { status: 401 } });
+    await renderHook(() => useSessionBootstrap());
+    await flush();
+
+    mockAuth.rpc.mockResolvedValue(serverAge(30, 'person-b'));
+    await act(async () => mockAuth.listener?.('SIGNED_IN', { user: { id: 'person-b' } }));
+    await act(async () => answerFirstCheck(sessionRefused));
+    await flush();
+
+    expect(useSessionStore.getState().userId).toBe('person-b');
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
   });
 
   it('falls back to signedOut when restoring fails', async () => {

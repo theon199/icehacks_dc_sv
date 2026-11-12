@@ -7,84 +7,105 @@ import {
   ageBandFor,
   deleteMyAccount,
   fetchAccountStatus,
+  identityFor,
   signOut,
   useSessionStore,
+  useSubmission,
+  type AccountIdentity,
 } from '@/features/auth';
 import { haptics } from '@/lib/haptics';
 import { logger } from '@/lib/logger';
 import { Button, EmptyState, Screen, Text, toast, useTheme } from '@/ui';
 
-type RemovalState = 'working' | 'failed';
+/**
+ * Account rows go at once, but uploaded files are only queued for removal until the storage
+ * purge job ships (docs/BACKEND.md, storage), so the message does not claim they are gone.
+ */
+const DELETED_MESSAGE =
+  'Your account has been deleted. Any photos you uploaded are scheduled for removal.';
 
-async function removeAccount(): Promise<void> {
-  await deleteMyAccount();
-  await signOut();
-  toast.show({ message: 'Your account and everything in it have been removed.' });
+/** Deletes exactly `account` (never whoever signed in since), then signs that account out. */
+async function deleteAccount(account: AccountIdentity): Promise<void> {
+  await deleteMyAccount(account);
+  if (useSessionStore.getState().userId === account.userId) await signOut();
+  toast.show({ message: DELETED_MESSAGE });
 }
 
 /**
  * Certainly under 13: the account is removed. Deletion is decided by the server's record, never by
- * this device's copy alone, so a stale or mistaken local value cannot delete anyone.
+ * this device's copy alone, so a stale or mistaken local value cannot delete anyone. The check and
+ * the deletion both run as the account that was checked, and stop if that account is no longer
+ * the one signed in here.
  */
 function UnderMinimum() {
   const theme = useTheme();
-  const [state, setState] = useState<RemovalState>('working');
-  const [failure, setFailure] = useState<string | null>(null);
+  const removal = useSubmission();
+  const { submit } = removal;
   const started = useRef(false);
+  const onScreen = useRef(true);
 
-  const run = useCallback(async () => {
-    setState('working');
-    setFailure(null);
-    try {
-      const status = await fetchAccountStatus();
-      const certain =
-        status.hasBirthYear && status.ageYears != null && status.ageYears + 1 < MIN_AGE;
-      if (!certain) {
-        // The server knows better (or knows nothing yet); follow it instead of deleting.
-        useSessionStore.getState().applyServerAge({
-          userId: status.userId,
-          hasBirthYear: status.hasBirthYear,
-          ageYears: status.ageYears,
-        });
-        return;
+  const removeIfConfirmed = useCallback(() => {
+    const userId = useSessionStore.getState().userId;
+    if (!userId) return;
+    const stillRelevant = () => onScreen.current && useSessionStore.getState().userId === userId;
+    void submit(async () => {
+      try {
+        const account = await identityFor(userId);
+        const status = await fetchAccountStatus(account);
+        if (!stillRelevant()) return null;
+        const certain =
+          status.hasBirthYear && status.ageYears != null && status.ageYears + 1 < MIN_AGE;
+        if (!certain) {
+          // The server knows better (or knows nothing yet); follow it instead of deleting.
+          useSessionStore.getState().applyServerAge({
+            userId,
+            hasBirthYear: status.hasBirthYear,
+            ageYears: status.ageYears,
+          });
+          return null;
+        }
+        await deleteAccount(account);
+        return null;
+      } catch (error) {
+        if (!stillRelevant()) return null;
+        logger.warn('Could not remove an under-age account', { error: String(error) });
+        haptics.error();
+        return accountErrorMessage(error);
       }
-      await removeAccount();
-    } catch (error) {
-      logger.warn('Could not remove an under-age account', { error: String(error) });
-      haptics.error();
-      setFailure(accountErrorMessage(error));
-      setState('failed');
-    }
-  }, []);
+    });
+  }, [submit]);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    void run();
-  }, [run]);
+    onScreen.current = true;
+    if (!started.current) {
+      started.current = true;
+      removeIfConfirmed();
+    }
+    return () => {
+      onScreen.current = false;
+    };
+  }, [removeIfConfirmed]);
 
   return (
     <Screen safeTop>
       <EmptyState
         icon="hand.raised.fill"
         title={`Famara is for ages ${MIN_AGE} and up`}
-        message="Thanks for wanting to cook with us. We can’t keep an account for anyone under 13, so we’re removing yours along with everything you entered."
+        message="Thanks for wanting to cook with us. We can’t keep an account for anyone under 13, so we’re deleting yours along with the details you entered."
       />
-      {state === 'working' ? (
+      {removal.failure == null ? (
         <View style={styles.status} accessible accessibilityLiveRegion="polite">
           <ActivityIndicator color={theme.colors.primary} />
           <Text variant="subhead" tone="muted">
-            Removing your account…
+            Deleting your account…
           </Text>
         </View>
       ) : (
         <View style={styles.actions}>
-          {failure ? (
-            <Text variant="callout" tone="danger" align="center" accessibilityLiveRegion="polite">
-              {failure}
-            </Text>
-          ) : null}
-          <Button testID="retry-removal" label="Try again" fullWidth onPress={() => void run()} />
+          <Text variant="callout" tone="danger" align="center" accessibilityLiveRegion="polite">
+            {removal.failure}
+          </Text>
+          <Button testID="retry-removal" label="Try again" fullWidth onPress={removeIfConfirmed} />
           <Button label="Sign out" variant="ghost" fullWidth onPress={() => void signOut()} />
         </View>
       )}
@@ -107,12 +128,16 @@ function NotYet({ birthYear }: { birthYear: number }) {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
+            const userId = useSessionStore.getState().userId;
+            if (!userId) return;
             setDeleting(true);
-            removeAccount().catch((error: unknown) => {
-              setDeleting(false);
-              haptics.error();
-              toast.error(accountErrorMessage(error));
-            });
+            identityFor(userId)
+              .then(deleteAccount)
+              .catch((error: unknown) => {
+                setDeleting(false);
+                haptics.error();
+                toast.error(accountErrorMessage(error));
+              });
           },
         },
       ],

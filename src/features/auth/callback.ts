@@ -5,10 +5,13 @@
  */
 import { authFailure, describeAuthError, type AuthFailure } from './authErrors';
 
-/** Where every auth email and OAuth flow returns to. Must be in Supabase's redirect allow list. */
+/**
+ * Where every auth email and OAuth flow returns to, recovery included. It must match an entry in
+ * the Supabase redirect allow list exactly (a query string would not), so recovery links are told
+ * apart by what comes back instead: `type=recovery` on a token-hash link, or the recovery tag the
+ * auth library stored with the code verifier when the reset was requested.
+ */
 export const AUTH_CALLBACK_URL = 'famara://auth/callback';
-/** Recovery links carry this marker so the callback knows to ask for a new password. */
-export const RECOVERY_CALLBACK_URL = `${AUTH_CALLBACK_URL}?flow=recovery`;
 
 const OTP_TYPES = ['signup', 'invite', 'magiclink', 'recovery', 'email_change', 'email'] as const;
 export type CallbackOtpType = (typeof OTP_TYPES)[number];
@@ -79,4 +82,13 @@ export function readCallback(params: Record<string, string | undefined>): Callba
   }
 
   return { kind: 'none' };
+}
+
+/**
+ * A stable identity for one incoming link, built from the parts that make it single use. Two
+ * deliveries of the same link share it; a fresh link (a new code, token or error) does not.
+ */
+export function callbackLinkId(params: Record<string, string | undefined>): string {
+  const parts = ['code', 'token_hash', 'type', 'error_code', 'error', 'error_description'];
+  return parts.map((name) => `${name}=${params[name] ?? ''}`).join('&');
 }

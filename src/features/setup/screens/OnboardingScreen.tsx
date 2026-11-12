@@ -44,7 +44,9 @@ export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const userId = useSessionStore((s) => s.userId);
   const isTeen = useSessionStore((s) => ageBandFor(s.birthYear) === 'teen');
-  const [draft, setDraft] = useState<Draft>(() => draftFrom(preferences.readAnswers(), null));
+  const [draft, setDraft] = useState<Draft>(() =>
+    draftFrom(preferences.readAnswers(useSessionStore.getState().userId), null),
+  );
   const [index, setIndex] = useState(0);
   const [finishing, setFinishing] = useState(false);
   const step = STEP_IDS[index] ?? 'name';
@@ -63,10 +65,10 @@ export function OnboardingScreen() {
   }, []);
 
   const finish = (answers: Draft) => {
-    if (finishing) return;
+    if (finishing || !userId) return;
     setFinishing(true);
     try {
-      preferences.completeOnboarding(toAnswers(answers));
+      preferences.completeOnboarding(userId, toAnswers(answers));
     } catch (error) {
       logger.error('Could not save onboarding answers', { error: String(error) });
       setFinishing(false);
@@ -75,7 +77,7 @@ export function OnboardingScreen() {
       return;
     }
     const name = answers.displayName.trim();
-    if (userId && name) {
+    if (name) {
       updateDisplayName(userId, name).catch((error: unknown) => {
         logger.info('Profile name not saved yet', { error: String(error) });
       });

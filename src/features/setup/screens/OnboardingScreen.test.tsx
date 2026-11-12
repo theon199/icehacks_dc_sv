@@ -125,7 +125,7 @@ describe('OnboardingScreen', () => {
     expect(screen.getByText('Finish')).toBeOnTheScreen();
     await user.press(continueButton());
 
-    expect(preferences.readAnswers()).toEqual({
+    expect(preferences.readAnswers('person-1')).toEqual({
       displayName: 'Ama',
       cuisines: ['thai'],
       diets: ['vegetarian'],
@@ -137,7 +137,7 @@ describe('OnboardingScreen', () => {
       pantryStaples: ['olive_oil'],
       smallAppetite: true,
     });
-    expect(preferences.isOnboardingComplete()).toBe(true);
+    expect(preferences.isOnboardingComplete('person-1')).toBe(true);
     expect(useSessionStore.getState().status).toBe('ready');
     expect(mockProfileUpdate).toHaveBeenCalledWith({ display_name: 'Ama' }, 'person-1');
   });

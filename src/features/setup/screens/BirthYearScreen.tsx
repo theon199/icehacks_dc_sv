@@ -8,6 +8,7 @@ import {
   saveBirthYear,
   signOut,
   useSessionStore,
+  useSubmission,
 } from '@/features/auth';
 import { haptics } from '@/lib/haptics';
 import { Button, Card, Screen, Text } from '@/ui';
@@ -18,86 +19,92 @@ import { YearPicker } from '../components/YearPicker';
 /** Oldest birth year the server accepts. */
 const MAX_AGE_YEARS = 120;
 
+/** The picker opens on the decade of a typical adult rather than at either end of the range. */
+function openingDecade(latest: number): number {
+  return Math.floor((latest - 30) / 10) * 10;
+}
+
+/** A year is already on record for this account: show the screen that record calls for. */
+function adoptRecordedYear(userId: string): void {
+  fetchAccountStatus()
+    .then((status) =>
+      useSessionStore.getState().applyServerAge({
+        userId,
+        hasBirthYear: status.hasBirthYear,
+        ageYears: status.ageYears,
+      }),
+    )
+    .catch(() => undefined);
+}
+
 /**
  * The age gate. Only the year is asked for and stored. Saving goes to the server first, which is
  * the source of truth; the session store follows, and the setup guard moves on from there.
  */
 export function BirthYearScreen() {
   const latest = new Date().getFullYear();
-  const earliest = latest - MAX_AGE_YEARS;
   const userId = useSessionStore((s) => s.userId);
-  const [decade, setDecade] = useState(() => Math.floor((latest - 30) / 10) * 10);
+  const [decade, setDecade] = useState(() => openingDecade(latest));
   const [year, setYear] = useState<number | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  // Picking, then a second look before saving: the year can only ever move later.
+  const [reviewing, setReviewing] = useState(false);
+  const saving = useSubmission();
+  const chosen = reviewing ? year : null;
 
-  const save = async () => {
-    if (year == null || saving) return;
-    setSaving(true);
-    setFailure(null);
-    try {
-      await saveBirthYear(year);
-      haptics.success();
-      useSessionStore.getState().setBirthYear(year);
-    } catch (error) {
-      haptics.error();
-      setSaving(false);
-      setConfirming(false);
-      setFailure(accountErrorMessage(error));
-      if (isAccountError(error) && error.kind === 'birth_year_locked' && userId) {
-        // A year is already on record: adopt it so the right next screen appears.
-        void fetchAccountStatus()
-          .then((status) =>
-            useSessionStore.getState().applyServerAge({
-              userId,
-              hasBirthYear: status.hasBirthYear,
-              ageYears: status.ageYears,
-            }),
-          )
-          .catch(() => undefined);
+  const confirmYear = (picked: number) => {
+    void saving.submit(async () => {
+      try {
+        await saveBirthYear(picked);
+      } catch (error) {
+        haptics.error();
+        setReviewing(false);
+        if (isAccountError(error) && error.kind === 'birth_year_locked' && userId) {
+          adoptRecordedYear(userId);
+        }
+        if (isAccountError(error) && error.kind === 'signed_out') void signOut();
+        return accountErrorMessage(error);
       }
-      if (isAccountError(error) && error.kind === 'signed_out') void signOut();
-    }
+      haptics.success();
+      useSessionStore.getState().setBirthYear(picked);
+      return null;
+    });
   };
 
+  const footer =
+    chosen != null ? (
+      <>
+        <Button
+          testID="birth-year-confirm"
+          label={`Yes, I was born in ${chosen}`}
+          size="lg"
+          fullWidth
+          loading={saving.busy}
+          onPress={() => confirmYear(chosen)}
+        />
+        <Button
+          label="Change year"
+          variant="ghost"
+          fullWidth
+          disabled={saving.busy}
+          onPress={() => setReviewing(false)}
+        />
+      </>
+    ) : (
+      <>
+        <Button
+          testID="birth-year-continue"
+          label="Continue"
+          size="lg"
+          fullWidth
+          disabled={year == null}
+          onPress={() => setReviewing(true)}
+        />
+        <Button label="Sign out" variant="ghost" fullWidth onPress={() => void signOut()} />
+      </>
+    );
+
   return (
-    <Screen
-      safeTop
-      footer={
-        confirming && year != null ? (
-          <>
-            <Button
-              testID="birth-year-confirm"
-              label={`Yes, I was born in ${year}`}
-              size="lg"
-              fullWidth
-              loading={saving}
-              onPress={() => void save()}
-            />
-            <Button
-              label="Change year"
-              variant="ghost"
-              fullWidth
-              disabled={saving}
-              onPress={() => setConfirming(false)}
-            />
-          </>
-        ) : (
-          <>
-            <Button
-              testID="birth-year-continue"
-              label="Continue"
-              size="lg"
-              fullWidth
-              disabled={year == null}
-              onPress={() => setConfirming(true)}
-            />
-            <Button label="Sign out" variant="ghost" fullWidth onPress={() => void signOut()} />
-          </>
-        )
-      }
-    >
+    <Screen safeTop footer={footer}>
       <View style={styles.heading}>
         <Text variant="title1">When were you born?</Text>
         <Text variant="callout" tone="muted">
@@ -105,13 +112,15 @@ export function BirthYearScreen() {
         </Text>
       </View>
 
-      {failure ? <FormNote icon="exclamationmark.triangle" message={failure} /> : null}
+      {saving.failure ? (
+        <FormNote icon="exclamationmark.triangle" message={saving.failure} />
+      ) : null}
 
-      {confirming && year != null ? (
+      {chosen != null ? (
         <Card variant="sunken">
-          <View style={styles.confirm} accessible accessibilityLiveRegion="polite">
+          <View style={styles.review} accessible accessibilityLiveRegion="polite">
             <Text variant="display" align="center">
-              {year}
+              {chosen}
             </Text>
             <Text variant="callout" tone="muted" align="center">
               Please check this is right. Once saved, it can’t be changed to an earlier year.
@@ -121,7 +130,7 @@ export function BirthYearScreen() {
       ) : (
         <YearPicker
           latest={latest}
-          earliest={earliest}
+          earliest={latest - MAX_AGE_YEARS}
           value={year}
           decade={decade}
           onDecadeChange={setDecade}
@@ -134,5 +143,5 @@ export function BirthYearScreen() {
 
 const styles = StyleSheet.create({
   heading: { gap: 6 },
-  confirm: { gap: 8, paddingVertical: 8 },
+  review: { gap: 8, paddingVertical: 8 },
 });

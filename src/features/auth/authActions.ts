@@ -3,11 +3,13 @@
  * having to interpret library errors. Session changes reach the app through `onAuthStateChange`
  * (see `useSessionBootstrap`), so none of these touch the session store directly.
  */
+import { z } from 'zod';
+
 import { logger } from '@/lib/logger';
 import { getSupabase } from '@/lib/supabase/client';
 
 import { authFailure, describeAuthError, type AuthFailure } from './authErrors';
-import { AUTH_CALLBACK_URL, RECOVERY_CALLBACK_URL, type CallbackAction } from './callback';
+import { AUTH_CALLBACK_URL, type CallbackAction } from './callback';
 import { normalizeEmail } from './validation';
 
 /** Version of the Terms and Privacy Policy someone agrees to when creating an account. */
@@ -86,7 +88,7 @@ export async function resendConfirmation(email: string): Promise<ActionResult> {
 export async function requestPasswordReset(email: string): Promise<ActionResult> {
   return attempt('password reset request', async () => {
     const { error } = await getSupabase().auth.resetPasswordForEmail(normalizeEmail(email), {
-      redirectTo: RECOVERY_CALLBACK_URL,
+      redirectTo: AUTH_CALLBACK_URL,
     });
     if (error) throw error;
     return undefined;
@@ -110,6 +112,26 @@ export async function hasSession(): Promise<boolean> {
   }
 }
 
+/**
+ * Asks the auth server whether the stored session is still valid. Only a definite refusal counts:
+ * offline or a server hiccup answers false, so local data is never wiped on a guess.
+ */
+export async function sessionRejectedByServer(): Promise<boolean> {
+  try {
+    const { data, error } = await getSupabase().auth.getUser();
+    if (!error) return data.user == null;
+    return error.status === 401 || error.status === 403;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The auth library adds the kind of flow the stored code verifier belonged to (`recovery` for a
+ * password link), which its published types leave out.
+ */
+const exchangeExtras = z.object({ redirectType: z.string().nullish() });
+
 export interface CallbackOutcome {
   /** The link was a password recovery: ask for a new password next. */
   recovery: boolean;
@@ -129,9 +151,9 @@ export async function completeCallback(
         action.flowId ? { flowId: action.flowId } : undefined,
       );
       if (error) throw error;
-      // The library reports which kind of flow the stored verifier belonged to.
-      const redirectType: unknown = Reflect.get(data, 'redirectType');
-      return { recovery: action.recovery || redirectType === 'recovery' };
+      const extras = exchangeExtras.safeParse(data);
+      const viaRecovery = extras.success && extras.data.redirectType === 'recovery';
+      return { recovery: action.recovery || viaRecovery };
     }
     const { error } = await auth.verifyOtp({ token_hash: action.tokenHash, type: action.type });
     if (error) throw error;

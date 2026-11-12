@@ -3,13 +3,15 @@ import { useRef, useState } from 'react';
 import { Keyboard, StyleSheet, View, type TextInput } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Button, Screen, Text, TextField } from '@/ui';
+import { Button, Screen, Text } from '@/ui';
 
 import { signInWithEmail } from '../authActions';
+import { EmailField } from '../components/EmailField';
 import { FormMessage } from '../components/FormMessage';
 import { PasswordField } from '../components/PasswordField';
 import { usePendingEmail } from '../pendingEmail';
 import { useField } from '../useField';
+import { useSubmission } from '../useSubmission';
 import { normalizeEmail, validateEmail, validateSignInPassword } from '../validation';
 
 /** Email and password sign-in. Success needs no navigation: the session guard moves on. */
@@ -17,35 +19,31 @@ export function SignInScreen() {
   const router = useRouter();
   const email = useField(validateEmail);
   const password = useField(validateSignInPassword);
-  const passwordRef = useRef<TextInput>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [unconfirmed, setUnconfirmed] = useState(false);
+  const passwordInput = useRef<TextInput>(null);
+  const attempt = useSubmission();
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
-  const submit = async () => {
-    if (submitting) return;
-    const emailOk = email.validate();
-    const passwordOk = password.validate();
-    if (!emailOk || !passwordOk) {
+  const signIn = () => {
+    const fieldsOk = [email.validate(), password.validate()].every(Boolean);
+    if (!fieldsOk) {
       haptics.warning();
       return;
     }
     Keyboard.dismiss();
-    setSubmitting(true);
-    setFailure(null);
-    setUnconfirmed(false);
-    const result = await signInWithEmail(email.value, password.value);
-    setSubmitting(false);
-    if (result.ok) {
-      haptics.success();
-      return;
-    }
-    haptics.error();
-    setFailure(result.failure.message);
-    setUnconfirmed(result.failure.kind === 'email_not_confirmed');
+    void attempt.submit(async () => {
+      setAwaitingConfirmation(false);
+      const result = await signInWithEmail(email.value, password.value);
+      if (result.ok) {
+        haptics.success();
+        return null;
+      }
+      haptics.error();
+      setAwaitingConfirmation(result.failure.kind === 'email_not_confirmed');
+      return result.failure.message;
+    });
   };
 
-  const openConfirmation = () => {
+  const resendConfirmation = () => {
     usePendingEmail.getState().setPending(normalizeEmail(email.value), null);
     router.push('/check-email');
   };
@@ -58,8 +56,8 @@ export function SignInScreen() {
           label="Sign in"
           size="lg"
           fullWidth
-          loading={submitting}
-          onPress={() => void submit()}
+          loading={attempt.busy}
+          onPress={signIn}
         />
       }
     >
@@ -70,36 +68,24 @@ export function SignInScreen() {
         </Text>
       </View>
 
-      {failure ? <FormMessage message={failure} testID="sign-in-error" /> : null}
-      {unconfirmed ? (
+      {attempt.failure ? <FormMessage message={attempt.failure} testID="sign-in-error" /> : null}
+      {awaitingConfirmation ? (
         <Button
           label="Send the confirmation link again"
           variant="secondary"
           icon="envelope.badge"
-          onPress={openConfirmation}
+          onPress={resendConfirmation}
         />
       ) : null}
 
-      <TextField
+      <EmailField
+        field={email}
         testID="sign-in-email"
-        label="Email"
-        value={email.value}
-        onChangeText={email.setValue}
-        onBlur={email.onBlur}
-        error={email.error}
-        icon="envelope.fill"
-        placeholder="you@example.com"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-        textContentType="username"
         returnKeyType="next"
-        submitBehavior="submit"
-        onSubmitEditing={() => passwordRef.current?.focus()}
+        onReturn={() => passwordInput.current?.focus()}
       />
       <PasswordField
-        ref={passwordRef}
+        ref={passwordInput}
         testID="sign-in-password"
         label="Password"
         purpose="current"
@@ -107,7 +93,7 @@ export function SignInScreen() {
         onChangeText={password.setValue}
         onBlur={password.onBlur}
         error={password.error}
-        onSubmitEditing={() => void submit()}
+        onSubmitEditing={signIn}
       />
 
       <View style={styles.links}>

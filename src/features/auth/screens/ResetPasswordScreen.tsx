@@ -9,52 +9,55 @@ import { hasSession, updatePassword } from '../authActions';
 import { FormMessage } from '../components/FormMessage';
 import { PasswordField } from '../components/PasswordField';
 import { useField } from '../useField';
+import { useSubmission } from '../useSubmission';
 import { MIN_PASSWORD_LENGTH, validateNewPassword } from '../validation';
 
-type Readiness = 'checking' | 'ready' | 'expired';
+/** Whether the recovery link left a session to change the password with. */
+type LinkState = 'checking' | 'usable' | 'expired';
+
+function useRecoveryLink(): [LinkState, (next: LinkState) => void] {
+  const [linkState, setLinkState] = useState<LinkState>('checking');
+  useEffect(() => {
+    let current = true;
+    void hasSession().then((present) => {
+      if (current) setLinkState(present ? 'usable' : 'expired');
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+  return [linkState, setLinkState];
+}
 
 /** Choose a new password after opening a recovery link (which signed the person in). */
 export function ResetPasswordScreen() {
   const router = useRouter();
   const theme = useTheme();
   const password = useField(validateNewPassword);
-  const [readiness, setReadiness] = useState<Readiness>('checking');
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [linkState, setLinkState] = useRecoveryLink();
+  const change = useSubmission();
 
-  useEffect(() => {
-    let mounted = true;
-    void hasSession().then((present) => {
-      if (mounted) setReadiness(present ? 'ready' : 'expired');
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const save = async () => {
-    if (saving) return;
+  const saveNewPassword = () => {
     if (!password.validate()) {
       haptics.warning();
       return;
     }
     Keyboard.dismiss();
-    setSaving(true);
-    setFailure(null);
-    const result = await updatePassword(password.value);
-    setSaving(false);
-    if (result.ok) {
+    void change.submit(async () => {
+      const result = await updatePassword(password.value);
+      if (!result.ok) {
+        haptics.error();
+        if (result.failure.kind === 'session_missing') setLinkState('expired');
+        return result.failure.message;
+      }
       haptics.success();
       toast.success('Your password has been updated.');
       router.replace('/');
-      return;
-    }
-    haptics.error();
-    if (result.failure.kind === 'session_missing') setReadiness('expired');
-    setFailure(result.failure.message);
+      return null;
+    });
   };
 
-  if (readiness === 'checking') {
+  if (linkState === 'checking') {
     return (
       <Screen scroll={false} contentContainerStyle={styles.centre}>
         <ActivityIndicator color={theme.colors.primary} accessibilityLabel="Loading" />
@@ -62,7 +65,7 @@ export function ResetPasswordScreen() {
     );
   }
 
-  if (readiness === 'expired') {
+  if (linkState === 'expired') {
     return (
       <Screen>
         <EmptyState
@@ -84,8 +87,8 @@ export function ResetPasswordScreen() {
           label="Save new password"
           size="lg"
           fullWidth
-          loading={saving}
-          onPress={() => void save()}
+          loading={change.busy}
+          onPress={saveNewPassword}
         />
       }
     >
@@ -95,7 +98,7 @@ export function ResetPasswordScreen() {
           You’ll use it the next time you sign in with your email.
         </Text>
       </View>
-      {failure ? <FormMessage message={failure} /> : null}
+      {change.failure ? <FormMessage message={change.failure} /> : null}
       <PasswordField
         testID="new-password"
         label="New password"
@@ -105,7 +108,7 @@ export function ResetPasswordScreen() {
         onBlur={password.onBlur}
         error={password.error}
         hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
-        onSubmitEditing={() => void save()}
+        onSubmitEditing={saveNewPassword}
       />
     </Screen>
   );

@@ -6,8 +6,17 @@ import { z } from 'zod';
 
 import { getSupabase } from '@/lib/supabase/client';
 
+import { aiConsent } from './deps';
+import { forgetCachedSetup } from './profileCache';
+
 export type AccountErrorKind =
-  'offline' | 'signed_out' | 'birth_year_locked' | 'invalid_birth_year' | 'rate_limited' | 'server';
+  | 'offline'
+  | 'signed_out'
+  | 'account_changed'
+  | 'birth_year_locked'
+  | 'invalid_birth_year'
+  | 'rate_limited'
+  | 'server';
 
 export class AccountError extends Error {
   readonly kind: AccountErrorKind;
@@ -26,6 +35,7 @@ export function isAccountError(error: unknown): error is AccountError {
 const accountMessages: Record<AccountErrorKind, string> = {
   offline: 'You’re offline. Check your connection and try again.',
   signed_out: 'Your session has ended. Please sign in again.',
+  account_changed: 'A different account is signed in now, so nothing was changed.',
   birth_year_locked:
     'Your birth year is already on record and can only be changed by contacting support.',
   invalid_birth_year: 'Please choose a real birth year.',
@@ -75,14 +85,47 @@ function toAccountError(failure: RpcFailure, cause: unknown): AccountError {
   return new AccountError(kind, accountMessages[kind], { cause });
 }
 
-async function callRpc<S extends z.ZodType>(
-  name: string,
-  args: Record<string, unknown> | undefined,
-  schema: S,
-): Promise<z.infer<S>> {
+/**
+ * A signed-in account together with the access token it had when it was looked up. Calls made
+ * "as" an identity carry that token, so they act on that account even if someone else signs in on
+ * this device while the call is pending.
+ */
+export interface AccountIdentity {
+  userId: string;
+  accessToken: string;
+}
+
+/** The current session's identity, provided it still belongs to `userId`. */
+export async function identityFor(userId: string): Promise<AccountIdentity> {
+  let session;
+  try {
+    ({
+      data: { session },
+    } = await getSupabase().auth.getSession());
+  } catch (cause) {
+    throw toAccountError({ message: String(cause) }, cause);
+  }
+  if (!session) throw new AccountError('signed_out', accountMessages.signed_out);
+  if (session.user.id !== userId) {
+    throw new AccountError('account_changed', accountMessages.account_changed);
+  }
+  return { userId, accessToken: session.access_token };
+}
+
+interface RpcCall {
+  name: string;
+  args?: Record<string, unknown>;
+  /** Run with this identity's token instead of whichever session is current. */
+  as?: AccountIdentity | undefined;
+}
+
+async function callRpc<S extends z.ZodType>(call: RpcCall, schema: S): Promise<z.infer<S>> {
   let response: { data: unknown; error: RpcFailure | null; status?: number };
   try {
-    response = await getSupabase().rpc(name, args);
+    const request = getSupabase().rpc(call.name, call.args);
+    response = await (call.as
+      ? request.setHeader('Authorization', `Bearer ${call.as.accessToken}`)
+      : request);
   } catch (cause) {
     throw toAccountError({ message: String(cause) }, cause);
   }
@@ -110,21 +153,26 @@ function toStatus(raw: z.infer<typeof accountStatusSchema>): AccountStatus {
   };
 }
 
-/** Reads the gate data for the signed-in person. */
-export async function fetchAccountStatus(): Promise<AccountStatus> {
-  return toStatus(await callRpc('my_account_status', undefined, accountStatusSchema));
+/** Reads the gate data for the signed-in person, or for `as` when given. */
+export async function fetchAccountStatus(as?: AccountIdentity): Promise<AccountStatus> {
+  return toStatus(await callRpc({ name: 'my_account_status', as }, accountStatusSchema));
 }
 
 /** Records the birth year. It can later move only to a more recent year. */
 export async function saveBirthYear(birthYear: number): Promise<AccountStatus> {
-  return toStatus(
-    await callRpc('set_birth_year', { p_birth_year: birthYear }, accountStatusSchema),
-  );
+  const call = { name: 'set_birth_year', args: { p_birth_year: birthYear } };
+  return toStatus(await callRpc(call, accountStatusSchema));
 }
 
-/** Deletes the account and everything it owns on the server. The caller signs out afterwards. */
-export async function deleteMyAccount(): Promise<void> {
-  await callRpc('delete_my_account', undefined, deletionSchema);
+/**
+ * Deletes the given account and everything it owns on the server, then forgets this device's
+ * launch hints for it. Uploaded files are only queued for removal (docs/BACKEND.md, storage), so
+ * callers must not describe them as gone. The caller signs out afterwards.
+ */
+export async function deleteMyAccount(as: AccountIdentity): Promise<void> {
+  await callRpc({ name: 'delete_my_account', as }, deletionSchema);
+  forgetCachedSetup(as.userId);
+  aiConsent.forget(as.userId);
 }
 
 /** Sets the public display name on the person's profile (1–50 characters). */

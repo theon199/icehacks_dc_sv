@@ -2,138 +2,168 @@ import { act, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
+import {
+  AccountError,
+  deleteMyAccount,
+  fetchAccountStatus,
+  identityFor,
+  saveBirthYear,
+  type AccountStatus,
+} from '@/features/auth/accountApi';
+import { signOut } from '@/features/auth/authActions';
 import { renderWithTheme } from '@/test/render';
 
 import { BirthYearScreen } from './BirthYearScreen';
 import { NotEligibleScreen } from './NotEligibleScreen';
 
-const mockSupabase = {
-  rpc: jest.fn(),
-  signOut: jest.fn(async (_options?: unknown) => ({ error: null })),
-};
-
-jest.mock('@/lib/supabase/client', () => ({
-  getSupabase: () => ({
-    rpc: mockSupabase.rpc,
-    auth: { signOut: mockSupabase.signOut },
-  }),
+// The screens are tested against a fake of the account API, not the network client below it.
+jest.mock('@/features/auth/accountApi', () => ({
+  ...jest.requireActual<object>('@/features/auth/accountApi'),
+  fetchAccountStatus: jest.fn(),
+  saveBirthYear: jest.fn(),
+  deleteMyAccount: jest.fn(),
+  identityFor: jest.fn(),
+}));
+jest.mock('@/features/auth/authActions', () => ({
+  ...jest.requireActual<object>('@/features/auth/authActions'),
+  signOut: jest.fn(async () => undefined),
 }));
 
-const thisYear = new Date().getFullYear();
-const initial = useSessionStore.getState();
+const KID = 'kid-1';
+const currentYear = new Date().getFullYear();
+const startingState = useSessionStore.getState();
 
-function accountStatus(birthYear: number | null) {
-  const age = birthYear == null ? null : Math.max(0, thisYear - birthYear - 1);
+/** What the server has on record for the test account. */
+const record = { birthYear: null as number | null };
+
+function statusOnRecord(): AccountStatus {
+  const age = record.birthYear == null ? null : Math.max(0, currentYear - record.birthYear - 1);
   return {
-    data: {
-      user_id: 'kid-1',
-      handle: 'cook_1',
-      has_birth_year: age != null,
-      age_years: age,
-      is_adult: age != null && age >= 18,
-      is_underage: age != null && age < 13,
-      suspended_until: null,
-      roles: [],
-    },
-    error: null,
+    userId: KID,
+    hasBirthYear: age != null,
+    ageYears: age,
+    isAdult: age != null && age >= 18,
+    isUnderage: age != null && age < 13,
   };
 }
 
-/** Server double: remembers the year and deletes on request. */
-function serveAccount(initialYear: number | null) {
-  let year = initialYear;
-  mockSupabase.rpc.mockImplementation(async (name: string, args?: { p_birth_year: number }) => {
-    if (name === 'set_birth_year' && args) year = args.p_birth_year;
-    if (name === 'delete_my_account') return { data: { deleted: true }, error: null };
-    return accountStatus(year);
-  });
+const status = jest.mocked(fetchAccountStatus);
+const save = jest.mocked(saveBirthYear);
+const remove = jest.mocked(deleteMyAccount);
+const identity = jest.mocked(identityFor);
+const leave = jest.mocked(signOut);
+
+async function pickYear(year: number) {
+  const user = userEvent.setup();
+  await user.press(screen.getByTestId(`decade-${Math.floor(year / 10) * 10}`));
+  await user.press(screen.getByTestId(`year-${year}`));
+  await user.press(screen.getByTestId('birth-year-continue'));
+  await user.press(screen.getByTestId('birth-year-confirm'));
 }
 
 beforeEach(() => {
-  useSessionStore.setState(initial, true);
-  useSessionStore
-    .getState()
-    .signedIn({ userId: 'kid-1', birthYear: null, onboardingComplete: false });
+  record.birthYear = null;
+  status.mockImplementation(async () => statusOnRecord());
+  save.mockImplementation(async (year) => {
+    record.birthYear = year;
+    return statusOnRecord();
+  });
+  remove.mockResolvedValue(undefined);
+  identity.mockImplementation(async (userId) => ({ userId, accessToken: `token-for-${userId}` }));
+  useSessionStore.setState(startingState, true);
+  useSessionStore.getState().signedIn({ userId: KID, birthYear: null, onboardingComplete: false });
 });
 
 describe('BirthYearScreen', () => {
-  it('saves the confirmed year on the server, then in the session', async () => {
-    serveAccount(null);
+  it('keeps Continue disabled until a year is picked', async () => {
     await renderWithTheme(<BirthYearScreen />);
-    const user = userEvent.setup();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-    await user.press(screen.getByRole('radio', { name: '1990s' }));
-    await user.press(screen.getByRole('radio', { name: '1994' }));
-    await user.press(screen.getByRole('button', { name: 'Continue' }));
-    await user.press(screen.getByRole('button', { name: 'Yes, I was born in 1994' }));
-    expect(mockSupabase.rpc).toHaveBeenCalledWith('set_birth_year', { p_birth_year: 1994 });
+    expect(screen.getByTestId('birth-year-continue')).toBeDisabled();
+  });
+
+  it('stores the confirmed year on the server before the session', async () => {
+    await renderWithTheme(<BirthYearScreen />);
+    await pickYear(1994);
+    expect(save).toHaveBeenCalledWith(1994);
+    expect(record.birthYear).toBe(1994);
     expect(useSessionStore.getState().birthYear).toBe(1994);
   });
 
-  it('explains when the year cannot be saved offline', async () => {
-    mockSupabase.rpc.mockResolvedValue({
-      data: null,
-      error: { message: 'Network request failed' },
-    });
+  it('explains an offline failure and keeps the session unchanged', async () => {
+    save.mockRejectedValue(new AccountError('offline', 'offline'));
     await renderWithTheme(<BirthYearScreen />);
-    const user = userEvent.setup();
-    await user.press(screen.getByRole('radio', { name: '1990s' }));
-    await user.press(screen.getByRole('radio', { name: '1991' }));
-    await user.press(screen.getByRole('button', { name: 'Continue' }));
-    await user.press(screen.getByRole('button', { name: 'Yes, I was born in 1991' }));
+    await pickYear(1991);
     expect(await screen.findByText(/You’re offline/)).toBeOnTheScreen();
     expect(useSessionStore.getState().birthYear).toBeNull();
   });
 });
 
-describe('under-13 path', () => {
-  it('records the year, deletes the account and signs out', async () => {
-    const kidYear = thisYear - 10;
-    serveAccount(null);
+describe('NotEligibleScreen', () => {
+  it('deletes the checked account of someone under 13, then signs them out', async () => {
+    const tenYearsAgo = currentYear - 10;
     await renderWithTheme(<BirthYearScreen />);
-    const user = userEvent.setup();
-    const decade = Math.floor(kidYear / 10) * 10;
-    await user.press(screen.getByRole('radio', { name: `${decade}s` }));
-    await user.press(screen.getByRole('radio', { name: String(kidYear) }));
-    await user.press(screen.getByRole('button', { name: 'Continue' }));
-    await user.press(screen.getByRole('button', { name: `Yes, I was born in ${kidYear}` }));
+    await pickYear(tenYearsAgo);
     expect(useSessionStore.getState()).toMatchObject({
-      birthYear: kidYear,
+      birthYear: tenYearsAgo,
       status: 'needsSetup',
     });
 
     await renderWithTheme(<NotEligibleScreen />);
     expect(screen.getByText('Famara is for ages 13 and up')).toBeOnTheScreen();
     await waitFor(() =>
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('delete_my_account', undefined),
+      expect(remove).toHaveBeenCalledWith({ userId: KID, accessToken: `token-for-${KID}` }),
     );
-    await waitFor(() => expect(mockSupabase.signOut).toHaveBeenCalled());
+    await waitFor(() => expect(leave).toHaveBeenCalled());
   });
 
-  it('never deletes on the device’s word alone', async () => {
-    // This device thinks the person is 10, but the server has an adult on record.
-    serveAccount(thisYear - 31);
-    useSessionStore.getState().setBirthYear(thisYear - 10);
+  it('follows the server when this device alone thinks the person is under 13', async () => {
+    record.birthYear = currentYear - 31;
+    useSessionStore.getState().setBirthYear(currentYear - 10);
     await renderWithTheme(<NotEligibleScreen />);
-    await waitFor(() => expect(useSessionStore.getState().birthYear).toBe(thisYear - 31));
-    expect(mockSupabase.rpc).not.toHaveBeenCalledWith('delete_my_account', undefined);
-    expect(mockSupabase.signOut).not.toHaveBeenCalled();
+    await waitFor(() => expect(useSessionStore.getState().birthYear).toBe(currentYear - 31));
+    expect(remove).not.toHaveBeenCalled();
+    expect(leave).not.toHaveBeenCalled();
   });
 
-  it('asks someone who may still be 12 to come back next year, without deleting', async () => {
-    serveAccount(thisYear - 13);
-    useSessionStore.getState().setBirthYear(thisYear - 13);
-    const alert = jest.spyOn(Alert, 'alert');
+  it('deletes nothing when another account signs in during the check', async () => {
+    record.birthYear = currentYear - 10;
+    useSessionStore.getState().setBirthYear(currentYear - 10);
+    let reply: (value: AccountStatus) => void = () => undefined;
+    status.mockImplementationOnce(
+      () =>
+        new Promise<AccountStatus>((resolve) => {
+          reply = resolve;
+        }),
+    );
     await renderWithTheme(<NotEligibleScreen />);
-    expect(screen.getByText(new RegExp(`January 1, ${thisYear + 1}`))).toBeOnTheScreen();
-    expect(mockSupabase.rpc).not.toHaveBeenCalledWith('delete_my_account', undefined);
+    await waitFor(() => expect(status).toHaveBeenCalled());
 
-    await userEvent.setup().press(screen.getByRole('button', { name: 'Delete my account' }));
-    expect(alert).toHaveBeenCalled();
-    const buttons = alert.mock.calls[0]?.[2] ?? [];
-    await act(async () => buttons.find((button) => button.style === 'destructive')?.onPress?.());
+    await act(async () => {
+      useSessionStore
+        .getState()
+        .signedIn({ userId: 'grown-up', birthYear: 1980, onboardingComplete: true });
+    });
+    await act(async () => reply(statusOnRecord()));
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it('asks someone who may still be 12 to wait, and deletes only when they confirm', async () => {
+    record.birthYear = currentYear - 13;
+    useSessionStore.getState().setBirthYear(currentYear - 13);
+    await renderWithTheme(<NotEligibleScreen />);
+    expect(screen.getByText(new RegExp(`January 1, ${currentYear + 1}`))).toBeOnTheScreen();
+    expect(remove).not.toHaveBeenCalled();
+
+    const confirmDialog = jest
+      .spyOn(Alert, 'alert')
+      .mockImplementation((_title, _body, choices) => {
+        choices?.find((choice) => choice.style === 'destructive')?.onPress?.();
+      });
+    await userEvent.setup().press(screen.getByTestId('not-yet-delete'));
+    expect(confirmDialog).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('delete_my_account', undefined),
+      expect(remove).toHaveBeenCalledWith(expect.objectContaining({ userId: KID })),
     );
   });
 });

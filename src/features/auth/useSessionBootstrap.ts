@@ -2,9 +2,9 @@
  * Keeps the session store in step with Supabase Auth, the server's age record and the preferences
  * store, and runs the side effects of signing in and out. Mounted once by the root layout.
  *
- * Launch: the stored session and this device's hints (birth year, AI consent) decide the first
- * screen without waiting for the network; the server's age record then replaces the hint.
- * Onboarding completion always comes from the preferences store.
+ * Launch: the stored session and this device's birth-year hint decide the first screen without
+ * waiting for the network; the server's age record then replaces the hint. Onboarding completion
+ * and AI consent come through `deps.ts`, and only for the account that owns them.
  */
 import type { Session } from '@supabase/supabase-js';
 import { useEffect } from 'react';
@@ -16,12 +16,18 @@ import { queryClient } from '@/lib/query/client';
 import { getSupabase } from '@/lib/supabase/client';
 
 import { fetchAccountStatus, isAccountError } from './accountApi';
-import { signOut } from './authActions';
-import { clearUserData, preferences, sync } from './deps';
+import { sessionRejectedByServer, signOut } from './authActions';
+import { aiConsent, clearUserData, preferences, sync } from './deps';
+import { usePendingEmail } from './pendingEmail';
 import { readCachedSetup, writeCachedSetup } from './profileCache';
 import { ageBandFor, useSessionStore, type SessionState } from './sessionStore';
 
-const RESTORE_TIMEOUT_MS = 8000;
+/**
+ * Longest the splash waits for the stored session. Offline, restoring can stall on a token refresh;
+ * if this fires first the welcome screen shows until the restore finishes, then the app corrects
+ * itself, so the wait is generous rather than tight.
+ */
+const RESTORE_TIMEOUT_MS = 15000;
 
 /** Person whose server age record still needs to be fetched (a launch offline, a failed call). */
 let ageCheckPending: string | null = null;
@@ -39,8 +45,11 @@ function clearDeviceData(): void {
   stopSyncing();
   clearUserData();
   queryClient.clear();
+  usePendingEmail.getState().clear();
   ageCheckPending = null;
 }
+
+const isCurrentUser = (userId: string) => useSessionStore.getState().userId === userId;
 
 async function refreshServerAge(userId: string): Promise<void> {
   const before = useSessionStore.getState().birthYear;
@@ -53,10 +62,15 @@ async function refreshServerAge(userId: string): Promise<void> {
     if (state.userId !== userId || state.birthYear !== before) return;
     state.applyServerAge({ userId, hasBirthYear: status.hasBirthYear, ageYears: status.ageYears });
   } catch (error) {
+    // A reply about someone who has since signed out or switched accounts says nothing about now.
+    if (!isCurrentUser(userId)) return;
     if (isAccountError(error) && error.kind === 'signed_out') {
-      ageCheckPending = null;
-      logger.info('Server no longer accepts this session; signing out');
-      await signOut();
+      // One refused call can be a blip; only sign out (and wipe local data) once auth confirms it.
+      if ((await sessionRejectedByServer()) && isCurrentUser(userId)) {
+        ageCheckPending = null;
+        logger.info('Server no longer accepts this session; signing out');
+        await signOut();
+      }
       return;
     }
     logger.info('Could not read the account age record yet', describeError(error));
@@ -73,35 +87,37 @@ function applySession(session: Session | null): void {
   const userId = session.user.id;
   if (store.userId === userId && store.status !== 'loading') return;
   if (store.userId && store.userId !== userId) clearDeviceData();
+  usePendingEmail.getState().clear();
 
-  const hint = readCachedSetup(userId);
+  // The previous person may have left without signing out (an expired or revoked session), so
+  // the in-memory user id cannot be trusted to spot a switch: claim the stored answers explicitly.
+  preferences.adoptOwner(userId);
   store.signedIn({
     userId,
-    birthYear: hint.birthYear,
-    onboardingComplete: preferences.isOnboardingComplete(),
-    aiConsent: hint.aiConsent,
+    birthYear: readCachedSetup(userId).birthYear,
+    onboardingComplete: preferences.isOnboardingComplete(userId),
+    aiConsent: aiConsent.read(userId),
   });
   void refreshServerAge(userId);
 }
 
 /** Starts sync once a signed-in person has cleared the age gate, so their synced data arrives. */
 function followSync(state: SessionState): void {
+  const { userId } = state;
   const band = ageBandFor(state.birthYear);
-  const eligible = state.userId != null && (band === 'teen' || band === 'adult');
-  if (!eligible) {
+  if (userId == null || (band !== 'teen' && band !== 'adult')) {
     stopSyncing();
     return;
   }
-  if (syncingFor === state.userId) return;
+  if (syncingFor === userId) return;
   stopSyncing();
-  syncingFor = state.userId;
-  sync.start(state.userId as string);
+  syncingFor = userId;
+  sync.start(userId);
 }
 
-function rememberHints(state: SessionState, previous: SessionState): void {
-  if (!state.userId) return;
-  if (state.birthYear !== previous.birthYear || state.aiConsent !== previous.aiConsent) {
-    writeCachedSetup(state.userId, { birthYear: state.birthYear, aiConsent: state.aiConsent });
+function rememberBirthYear(state: SessionState, previous: SessionState): void {
+  if (state.userId && state.birthYear !== previous.birthYear) {
+    writeCachedSetup(state.userId, { birthYear: state.birthYear });
   }
 }
 
@@ -139,12 +155,18 @@ export function useSessionBootstrap(): void {
     });
 
     const unsubscribeStore = useSessionStore.subscribe((state, previous) => {
-      rememberHints(state, previous);
+      rememberBirthYear(state, previous);
       followSync(state);
     });
 
-    const unsubscribePreferences = preferences.subscribeOnboardingComplete((complete) => {
-      if (complete) useSessionStore.getState().completeOnboarding();
+    const unsubscribePreferences = preferences.subscribeOnboardingComplete((complete, ownerId) => {
+      if (complete && ownerId != null && isCurrentUser(ownerId)) {
+        useSessionStore.getState().completeOnboarding();
+      }
+    });
+
+    const unsubscribeConsent = aiConsent.subscribe((userId, granted) => {
+      if (isCurrentUser(userId)) useSessionStore.getState().setAiConsent(granted);
     });
 
     const appState = AppState.addEventListener('change', (next) => {
@@ -160,6 +182,7 @@ export function useSessionBootstrap(): void {
       data.subscription.unsubscribe();
       unsubscribeStore();
       unsubscribePreferences();
+      unsubscribeConsent();
       appState.remove();
     };
   }, []);
