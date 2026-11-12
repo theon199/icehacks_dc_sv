@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
@@ -20,10 +20,16 @@ import { selectDishResult, useSnapSession, type DishSnapResult } from '../snapSe
 
 const openRecipe = (id: string) => router.push({ pathname: '/recipe/[id]', params: { id } });
 
+// The result is dropped when this screen unmounts, not before leaving it, so the screen never
+// flashes its empty state during the pop animation.
 function retake() {
-  useSnapSession.getState().clear();
   if (router.canGoBack()) router.back();
   else router.replace('/snap');
+}
+
+function clearIfStill(id: string) {
+  const session = useSnapSession.getState();
+  if (session.result?.id === id) session.clear();
 }
 
 /** What a dish photo shows: the dish, its estimated nutrition, and catalog recipes like it. */
@@ -38,6 +44,7 @@ function DishResult({ result }: { result: DishSnapResult }) {
   const matches = useDishMatches(result.id, dish);
   const [loggedId, setLoggedId] = useState<string | null>(null);
   const name = capitalize(dish.name);
+  useEffect(() => () => clearIfStill(result.id), [result.id]);
 
   const logIt = () => {
     const id = logEstimatedMeal({ dishName: name, note: estimateNote({ ...dish, name }) });

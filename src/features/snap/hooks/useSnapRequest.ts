@@ -54,6 +54,10 @@ export interface UseSnapRequestOptions {
 
 export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestOptions) {
   const [phase, setPhase] = useState<SnapPhase>({ status: 'idle' });
+  // After the daily limit is hit, snapping stays off until the server says it resets, even once
+  // the message is dismissed: any snap before then is certain to fail.
+  const [pause, setPause] = useState<{ until: number; note: string } | null>(null);
+  const pauseRef = useRef(pause);
   const controllerRef = useRef<AbortController | null>(null);
   const onResultRef = useRef(onResult);
   const setResult = useSnapSession((state) => state.setResult);
@@ -62,9 +66,17 @@ export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestO
     onResultRef.current = onResult;
   }, [onResult]);
   useEffect(() => () => controllerRef.current?.abort(), []);
+  useEffect(() => {
+    pauseRef.current = pause;
+    if (!pause) return undefined;
+    const lift = setTimeout(() => setPause(null), Math.max(0, pause.until - deps.now()));
+    return () => clearTimeout(lift);
+  }, [pause, deps]);
 
   const start = useCallback(
     async (mode: SnapMode, source: PhotoSource) => {
+      const paused = pauseRef.current;
+      if (paused && paused.until > deps.now()) return;
       controllerRef.current?.abort();
       const controller = new AbortController();
       controllerRef.current = controller;
@@ -103,7 +115,12 @@ export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestO
         onResultRef.current(response.mode);
       } catch (error) {
         if (signal.aborted) return;
-        const problem = describeSnapError(error);
+        const problem = describeSnapError(error, new Date(now()));
+        if (problem?.pause) {
+          const next = { until: now() + problem.pause.seconds * 1000, note: problem.pause.note };
+          pauseRef.current = next;
+          setPause(next);
+        }
         setPhase(
           problem
             ? { status: 'failed', mode, photoUri: source.uri, source, problem }
@@ -127,5 +144,8 @@ export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestO
     if (phase.status === 'failed') void start(phase.mode, phase.source);
   }, [phase, start]);
 
-  return { phase, start, reset, retry };
+  /** Why snapping is off for now (the daily limit), or null. */
+  const pausedNote = pause?.note ?? null;
+
+  return { phase, start, reset, retry, pausedNote };
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import type { SnapMode } from '@/lib/api/ai';
-import { Button, Icon, Text, useTheme } from '@/ui';
+import { Button, Icon, radii, space, Text, useTheme } from '@/ui';
 
 import type { SnapStage } from '../hooks/useSnapRequest';
 
@@ -79,6 +79,6 @@ export function SnapProgress({ photoUri, stage, mode, onCancel }: SnapProgressPr
 
 const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' },
-  panel: { margin: 16, padding: 20, borderRadius: 20, gap: 14 },
-  step: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  panel: { margin: space.lg, padding: space.xl, borderRadius: radii.lg, gap: space.md },
+  step: { flexDirection: 'row', alignItems: 'center', gap: space.md },
 });

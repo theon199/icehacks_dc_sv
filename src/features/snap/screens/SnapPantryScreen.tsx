@@ -3,7 +3,7 @@ import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { usePantryStore } from '@/stores';
+import { MAX_PANTRY_ITEMS, usePantryStore } from '@/stores';
 import { Button, EmptyState, Screen, space, Text, toast } from '@/ui';
 
 import { AddItemField } from '../components/AddItemField';
@@ -15,6 +15,7 @@ import { useIngredientMatches } from '../hooks/useIngredientMatches';
 import {
   draftFromDetections,
   draftReducer,
+  isInPantry,
   selectedItems,
   toNewPantryItems,
   type DraftItem,
@@ -50,8 +51,7 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
     ({ item }: { item: DraftItem }) => {
       const key = nameKey(item.name);
       const match = !key ? null : matches.has(key) ? (matches.get(key)?.name ?? null) : undefined;
-      // Keyed by item so a recycled row never keeps another item's half-typed amount.
-      return <DraftItemRow key={item.key} item={item} matchName={match} dispatch={dispatch} />;
+      return <DraftItemRow item={item} matchName={match} dispatch={dispatch} />;
     },
     [matches],
   );
@@ -62,9 +62,33 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
   }, []);
 
   const addToPantry = () => {
+    const kept = selectedItems(items);
     const entries = toNewPantryItems(items, matches);
     if (entries.length === 0) return;
     addMany(entries);
+    // The pantry turns items away once it is full; only report what it really stored.
+    const stored = usePantryStore.getState().items;
+    const refusedKeys = new Set<string>();
+    entries.forEach((entry, index) => {
+      const key = kept[index]?.key;
+      if (key && !isInPantry(stored, entry)) refusedKeys.add(key);
+    });
+    if (refusedKeys.size > 0) {
+      const landed = entries.length - refusedKeys.size;
+      haptics.warning();
+      // Keep the review open with only what did not fit, so nothing is silently lost.
+      for (const item of kept) {
+        if (!refusedKeys.has(item.key)) dispatch({ type: 'remove', key: item.key });
+      }
+      toast.show({
+        message:
+          landed === 0
+            ? `Your pantry is full (${MAX_PANTRY_ITEMS} items). Remove a few items to make room.`
+            : `Added ${landed}. ${refusedKeys.size} didn't fit: your pantry holds ${MAX_PANTRY_ITEMS} items.`,
+        tone: 'danger',
+      });
+      return;
+    }
     haptics.success();
     toast.show({
       message: entries.length === 1 ? 'Added to your pantry' : `${entries.length} items added`,

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, EmptyState, useTheme } from '@/ui';
+import { Button, EmptyState, radii, space, useTheme } from '@/ui';
 
 export interface SnapIssueProps {
   photoUri: string;
@@ -69,7 +69,7 @@ export function SnapIssue({
 
 const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' },
-  panel: { margin: 16, borderRadius: 20 },
-  state: { paddingVertical: 24 },
-  actions: { flexDirection: 'row', gap: 12, flexWrap: 'wrap', justifyContent: 'center' },
+  panel: { margin: space.lg, borderRadius: radii.lg },
+  state: { paddingVertical: space.xxl },
+  actions: { flexDirection: 'row', gap: space.md, flexWrap: 'wrap', justifyContent: 'center' },
 });

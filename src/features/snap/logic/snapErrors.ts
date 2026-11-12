@@ -19,6 +19,18 @@ export interface SnapProblem {
   canRetry: boolean;
   /** Whether a different photo could work. */
   canRetake: boolean;
+  /**
+   * Set when no snap can work for a while (the daily limit): how many seconds to keep the shutter
+   * off, and what to say meanwhile.
+   */
+  pause?: { seconds: number; note: string };
+}
+
+/** Seconds from `now` until the next local midnight, when an unknown daily limit is assumed to reset. */
+export function secondsUntilMidnight(now: Date): number {
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  return Math.max(60, Math.ceil((midnight.getTime() - now.getTime()) / 1000));
 }
 
 function waitPhrase(seconds: number | undefined): string {
@@ -32,7 +44,7 @@ function waitPhrase(seconds: number | undefined): string {
 }
 
 /** Null for a cancellation the person asked for, which needs no message. */
-export function describeSnapError(error: unknown): SnapProblem | null {
+export function describeSnapError(error: unknown, now: Date = new Date()): SnapProblem | null {
   if (error instanceof PhotoPrepError) {
     return {
       title: "Couldn't use that photo",
@@ -53,11 +65,17 @@ export function describeSnapError(error: unknown): SnapProblem | null {
   // The AI helpers are type guards; checking through `unknown` keeps `error` an ApiError below.
   const raw: unknown = error;
   if (isAiQuotaExceeded(raw)) {
+    const wait = waitPhrase(error.retryAfterSeconds);
+    const seconds =
+      error.retryAfterSeconds != null && error.retryAfterSeconds > 0
+        ? error.retryAfterSeconds
+        : secondsUntilMidnight(now);
     return {
       title: "You've used today's snaps",
-      message: `Snap has a daily limit. You can snap again ${waitPhrase(error.retryAfterSeconds)}.`,
+      message: `Snap has a daily limit. You can snap again ${wait}.`,
       canRetry: false,
       canRetake: false,
+      pause: { seconds, note: `Daily limit reached. You can snap again ${wait}.` },
     };
   }
   if (isAiAgeRestricted(raw)) {

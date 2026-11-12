@@ -4,7 +4,7 @@
  */
 import type { SnapPantryItem } from '@/lib/api/ai';
 import type { IngredientCategory } from '@/lib/catalog/types';
-import type { NewPantryItem } from '@/stores/pantry';
+import type { NewPantryItem, PantryItem } from '@/stores/pantry';
 
 import { capitalize, nameKey } from './words';
 
@@ -130,5 +130,25 @@ export function toNewPantryItems(
       unit: item.qty == null ? null : item.unit,
       category: match?.category ?? 'other',
     };
+  });
+}
+
+const sameName = (a: string, b: string) =>
+  a.trim().toLowerCase().replace(/\s+/g, ' ') === b.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Whether the pantry now holds this entry: the same catalog ingredient (or, without one, the same
+ * name) in the same unit. Used after adding to find entries the pantry turned away because it was
+ * full, so the screen never claims more than it stored.
+ */
+export function isInPantry(
+  items: Readonly<Record<string, PantryItem>>,
+  entry: NewPantryItem,
+): boolean {
+  const unit = entry.unit?.trim() || null;
+  return Object.values(items).some((item) => {
+    if ((item.unit ?? null) !== unit) return false;
+    if (entry.ingredientId && item.ingredientId) return entry.ingredientId === item.ingredientId;
+    return sameName(item.name, entry.name);
   });
 }

@@ -1,8 +1,9 @@
-import { memo, useState, type Dispatch } from 'react';
+import { useRecyclingState } from '@shopify/flash-list';
+import { memo, type Dispatch } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { formatNumber } from '@/lib/format';
-import { IconButton, space, Text, useTheme } from '@/ui';
+import { haptics } from '@/lib/haptics';
+import { Icon, IconButton, minTouchTarget, PressableScale, space, Text, useTheme } from '@/ui';
 
 import { InlineInput } from './InlineInput';
 import { CONFIDENCE_LABELS, confidenceBand } from '../logic/estimate';
@@ -15,7 +16,11 @@ export interface DraftItemRowProps {
   dispatch: Dispatch<DraftAction>;
 }
 
-const qtyText = (qty: number | null) => (qty == null ? '' : formatNumber(qty, 2));
+/**
+ * The amount as editable text. Plain digits with a dot and no thousands separators, so the text
+ * always reads back as the same amount ("1,000" would read as 1).
+ */
+const qtyText = (qty: number | null) => (qty == null ? '' : String(Math.round(qty * 100) / 100));
 
 function matchLine(item: DraftItem, matchName: string | null | undefined): string {
   const source =
@@ -34,7 +39,8 @@ export const DraftItemRow = memo(function DraftItemRow({
   const theme = useTheme();
   // Amounts are edited as text: every valid amount is applied as it is typed, so "1/" can be typed
   // on the way to "1/2", and leaving the field tidies the text or restores the last valid amount.
-  const [qtyDraft, setQtyDraft] = useState(() => qtyText(item.qty));
+  // Recycling state: when the list reuses this row for another item, the draft starts over.
+  const [qtyDraft, setQtyDraft] = useRecyclingState(() => qtyText(item.qty), [item.key]);
 
   const changeQty = (text: string) => {
     setQtyDraft(text);
@@ -57,14 +63,24 @@ export const DraftItemRow = memo(function DraftItemRow({
       style={[styles.row, { borderBottomColor: theme.colors.border }]}
       testID={`draft-item-${item.key}`}
     >
-      <IconButton
-        icon={item.selected ? 'checkmark.circle.fill' : 'circle'}
-        color={item.selected ? 'primary' : 'textSubtle'}
+      <PressableScale
+        accessibilityRole="checkbox"
         accessibilityLabel={`Add ${item.name || 'this item'} to pantry`}
-        selected={item.selected}
-        onPress={() => dispatch({ type: 'toggle', key: item.key })}
+        accessibilityState={{ checked: item.selected }}
+        onPress={() => {
+          haptics.selection();
+          dispatch({ type: 'toggle', key: item.key });
+        }}
+        style={styles.tick}
         testID={`draft-toggle-${item.key}`}
-      />
+      >
+        <Icon
+          name={item.selected ? 'checkmark.circle.fill' : 'circle'}
+          color={item.selected ? 'primary' : 'textSubtle'}
+          size={22}
+          weight="semibold"
+        />
+      </PressableScale>
       <View style={styles.body}>
         <View style={styles.fields}>
           <InlineInput
@@ -122,6 +138,12 @@ const styles = StyleSheet.create({
     gap: space.xs,
     paddingVertical: space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  tick: {
+    width: minTouchTarget,
+    height: minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: { flex: 1, gap: space.xs },
   fields: { flexDirection: 'row', gap: space.xs },

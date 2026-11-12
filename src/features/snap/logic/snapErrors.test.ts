@@ -23,6 +23,21 @@ describe('snap error copy', () => {
     expect(problem?.message).toContain('in about 2 hours');
   });
 
+  it('pauses snapping until the daily limit resets', () => {
+    const limit = (retryAfterSeconds?: number) =>
+      apiError({
+        kind: 'rate_limited',
+        status: 429,
+        code: 'quota_exceeded',
+        ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+      });
+    expect(describeSnapError(limit(5400))?.pause?.seconds).toBe(5400);
+    // Unknown reset time: wait until local midnight.
+    const evening = new Date(2026, 10, 11, 22, 0, 0);
+    expect(describeSnapError(limit(), evening)?.pause?.seconds).toBe(2 * 3600);
+    expect(describeSnapError(apiError({ kind: 'network' }))?.pause).toBeUndefined();
+  });
+
   it('explains the age limit', () => {
     const problem = describeSnapError(
       apiError({ kind: 'forbidden', status: 403, code: 'age_restricted' }),

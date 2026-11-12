@@ -1,7 +1,8 @@
 import type { FlashMode } from 'expo-camera';
 import { StyleSheet, View } from 'react-native';
 
-import { IconButton, PressableScale, useTheme, type IconName } from '@/ui';
+import { haptics } from '@/lib/haptics';
+import { Icon, IconButton, PressableScale, space, useTheme, type IconName } from '@/ui';
 
 export type SnapFlash = Extract<FlashMode, 'off' | 'auto' | 'on'>;
 
@@ -14,7 +15,7 @@ const FLASH: Readonly<Record<SnapFlash, { icon: IconName; label: string }>> = {
 };
 
 export function nextFlash(flash: SnapFlash): SnapFlash {
-  return FLASH_ORDER[(FLASH_ORDER.indexOf(flash) + 1) % FLASH_ORDER.length] as SnapFlash;
+  return FLASH_ORDER[(FLASH_ORDER.indexOf(flash) + 1) % FLASH_ORDER.length] ?? 'off';
 }
 
 export interface CaptureControlsProps {
@@ -30,6 +31,8 @@ export interface CaptureControlsProps {
 }
 
 const SHUTTER = 76;
+/** Size of the round buttons either side of the shutter. */
+const SIDE = 52;
 
 export function CaptureControls({
   flash,
@@ -49,7 +52,7 @@ export function CaptureControls({
         accessibilityLabel="Choose a photo from your library"
         onPress={onPickPhoto}
         variant="tinted"
-        size={52}
+        size={SIDE}
         disabled={busy}
         testID="snap-library"
       />
@@ -71,16 +74,24 @@ export function CaptureControls({
         <View style={[styles.shutterCore, { backgroundColor: theme.colors.primary }]} />
       </PressableScale>
       {showFlash ? (
-        <IconButton
-          icon={flashInfo.icon}
-          accessibilityLabel={`${flashInfo.label}. Double-tap to change.`}
-          onPress={() => onFlashChange(nextFlash(flash))}
-          variant="tinted"
-          size={52}
+        <PressableScale
+          onPress={() => {
+            haptics.selection();
+            onFlashChange(nextFlash(flash));
+          }}
           disabled={busy}
-          selected={flash !== 'off'}
+          accessibilityRole="button"
+          accessibilityLabel={flashInfo.label}
+          accessibilityHint="Switches between flash off, auto and on."
+          accessibilityState={{ disabled: busy, selected: flash !== 'off' }}
           testID="snap-flash"
-        />
+          style={[
+            styles.side,
+            { backgroundColor: theme.colors.surfaceSunken, opacity: busy ? 0.4 : 1 },
+          ]}
+        >
+          <Icon name={flashInfo.icon} size={SIDE / 2} color="text" weight="semibold" />
+        </PressableScale>
       ) : (
         <View style={styles.placeholder} />
       )}
@@ -93,7 +104,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
+    paddingHorizontal: space.xxl,
   },
   shutter: {
     width: SHUTTER,
@@ -104,9 +115,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   shutterCore: {
-    width: SHUTTER - 16,
-    height: SHUTTER - 16,
-    borderRadius: (SHUTTER - 16) / 2,
+    width: SHUTTER - space.lg,
+    height: SHUTTER - space.lg,
+    borderRadius: (SHUTTER - space.lg) / 2,
   },
-  placeholder: { width: 52, height: 52 },
+  side: {
+    width: SIDE,
+    height: SIDE,
+    borderRadius: SIDE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholder: { width: SIDE, height: SIDE },
 });

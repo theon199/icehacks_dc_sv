@@ -40,12 +40,20 @@ export function SnapCameraScreen() {
   const theme = useTheme();
   const focused = useIsFocused();
   const appActive = useAppActive();
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission, refreshPermission] = useCameraPermissions();
   const [mode, setMode] = useState<SnapMode>('pantry');
   const [flash, setFlash] = useState<SnapFlash>('off');
   const [ready, setReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+
+  // Camera access may have been turned on in Settings while the app was away: read it again
+  // whenever the app comes back to the foreground.
+  const wasActive = useRef(appActive);
+  useEffect(() => {
+    if (appActive && !wasActive.current) void refreshPermission();
+    wasActive.current = appActive;
+  }, [appActive, refreshPermission]);
 
   // A snap that finishes while another tab is showing opens its result when Snap is back.
   const focusedRef = useRef(focused);
@@ -67,7 +75,7 @@ export function SnapCameraScreen() {
     else pendingRef.current = resultMode;
   }, []);
 
-  const { phase, start, reset, retry } = useSnapRequest({ onResult });
+  const { phase, start, reset, retry, pausedNote } = useSnapRequest({ onResult });
   const idle = phase.status === 'idle';
   const access: CameraAccess | 'granted' =
     permission == null
@@ -78,7 +86,7 @@ export function SnapCameraScreen() {
           ? 'ask'
           : 'blocked';
   const cameraOn = focused && appActive && idle && access === 'granted';
-  const canShoot = cameraOn && ready && !capturing;
+  const canShoot = cameraOn && ready && !capturing && pausedNote == null;
 
   const send = useCallback(
     (source: PhotoSource) => {
@@ -188,8 +196,8 @@ export function SnapCameraScreen() {
           accessibilityLabel="What are you photographing?"
           testID="snap-mode"
         />
-        <Text variant="footnote" tone="muted">
-          {HINTS[mode]}
+        <Text variant="footnote" tone="muted" testID="snap-hint">
+          {pausedNote ?? HINTS[mode]}
         </Text>
       </View>
       <View style={[styles.frame, { backgroundColor: theme.colors.surfaceSunken }]}>{body}</View>
@@ -200,7 +208,7 @@ export function SnapCameraScreen() {
         onPickPhoto={() => void pickPhoto()}
         canShoot={canShoot}
         showFlash={access === 'granted'}
-        busy={!idle}
+        busy={!idle || pausedNote != null}
       />
     </SafeAreaView>
   );

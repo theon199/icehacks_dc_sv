@@ -134,12 +134,16 @@ describe('SnapDishScreen', () => {
     expect(searchRecipes).not.toHaveBeenCalled();
   });
 
-  it('retakes by clearing the result and going back to the camera', async () => {
-    await renderScreen(<SnapDishScreen />);
+  it('retakes by going back, and drops the result only once the screen is gone', async () => {
+    const view = await renderScreen(<SnapDishScreen />);
     await screen.findByText('Closest recipes');
     await userEvent.setup().press(screen.getByRole('button', { name: 'Retake' }));
-    expect(useSnapSession.getState().result).toBeNull();
     expect(mockRouter.back).toHaveBeenCalled();
+    // Still showing the dish while the pop animation runs.
+    expect(screen.queryByText('No dish photo yet')).toBeNull();
+    expect(useSnapSession.getState().result).not.toBeNull();
+    await view.unmount();
+    expect(useSnapSession.getState().result).toBeNull();
   });
 
   it('explains when there is no snap to show', async () => {

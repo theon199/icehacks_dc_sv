@@ -26,7 +26,8 @@ export function NutritionEstimateCard({ dish }: { dish: SnapDish }) {
           </Text>
           <View
             style={[styles.pill, { backgroundColor: theme.colors.warningSoft }]}
-            accessibilityLabel={CERTAINTY_LABELS[certainty]}
+            accessible
+            accessibilityLabel={`Certainty: ${CERTAINTY_LABELS[certainty]}`}
           >
             <Text variant="caption" color="onWarningSoft">
               {CERTAINTY_LABELS[certainty]}

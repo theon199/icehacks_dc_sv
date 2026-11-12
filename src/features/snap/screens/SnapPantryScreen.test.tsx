@@ -1,8 +1,16 @@
-import { fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
+import type * as FlashListModule from '@shopify/flash-list';
+import { act, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
 
 import type { Ingredient } from '@/lib/catalog';
 import { getIngredients, listCandidates, searchIngredients } from '@/lib/catalog/queries';
-import { defaultPreferences, usePantryStore, usePreferencesStore } from '@/stores';
+import {
+  defaultPreferences,
+  MAX_PANTRY_ITEMS,
+  usePantryStore,
+  usePreferencesStore,
+  type PantryItem,
+} from '@/stores';
+import { useToastStore } from '@/ui';
 
 import type * as TestingModule from '../testing';
 import { SnapPantryScreen } from './SnapPantryScreen';
@@ -11,6 +19,8 @@ import { catalogRecipe, mockRouter, renderScreen } from '../testing';
 
 jest.mock('@shopify/flash-list', () => ({
   FlashList: jest.requireActual<typeof TestingModule>('../testing').MockFlashList,
+  useRecyclingState:
+    jest.requireActual<typeof FlashListModule>('@shopify/flash-list').useRecyclingState,
 }));
 jest.mock('expo-router', () => ({
   router: jest.requireActual<typeof TestingModule>('../testing').mockRouter,
@@ -136,5 +146,74 @@ describe('SnapPantryScreen', () => {
     expect(screen.getByText('No pantry photo yet')).toBeOnTheScreen();
     await userEvent.setup().press(screen.getByRole('button', { name: 'Open Snap' }));
     expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it('keeps an amount of a thousand or more as typed when the field is left', async () => {
+    await renderScreen(<SnapPantryScreen />);
+    const qty = screen.getByTestId('draft-qty-found-0');
+    await fireEvent.changeText(qty, '1500');
+    await fireEvent(qty, 'endEditing');
+    expect(screen.getByDisplayValue('1500')).toBeOnTheScreen();
+  });
+
+  it('marks the tick as a checkbox with its checked state', async () => {
+    await renderScreen(<SnapPantryScreen />);
+    const tick = screen.getByTestId('draft-toggle-found-2');
+    expect(tick).toHaveProp('accessibilityRole', 'checkbox');
+    expect(tick).not.toBeChecked();
+    await userEvent.setup().press(tick);
+    expect(screen.getByTestId('draft-toggle-found-2')).toBeChecked();
+  });
+
+  it('says so when the pantry is full and keeps what did not fit in the review', async () => {
+    const items: Record<string, PantryItem> = {};
+    for (let i = 0; i < MAX_PANTRY_ITEMS - 1; i++) {
+      items[`p${i}`] = {
+        id: `p${i}`,
+        ingredientId: null,
+        name: `thing ${i}`,
+        qty: null,
+        unit: null,
+        category: 'other',
+        addedAt: '2026-11-01T00:00:00.000Z',
+        expiresAt: null,
+      };
+    }
+    usePantryStore.setState({ items });
+    useToastStore.getState().clear();
+    await renderScreen(<SnapPantryScreen />);
+    await screen.findByText(/matches spinach/);
+    const add = screen.getByRole('button', { name: 'Add 2 items to pantry' });
+    await waitFor(() => expect(add).toBeEnabled());
+    await userEvent.setup().press(add);
+
+    expect(Object.keys(usePantryStore.getState().items)).toHaveLength(MAX_PANTRY_ITEMS);
+    expect(screen.queryByText(/Added 2 items to your pantry/)).toBeNull();
+    expect(useToastStore.getState().queue.at(-1)?.message).toMatch(/Added 1\. 1 didn't fit/);
+    expect(screen.queryByTestId('draft-item-found-0')).toBeNull();
+    expect(screen.getByTestId('draft-item-found-1')).toBeOnTheScreen();
+  });
+
+  it('never shows meals picked for older allergy answers while new ones load', async () => {
+    await renderScreen(<SnapPantryScreen />);
+    await screen.findByText(/matches spinach/);
+    const add = screen.getByRole('button', { name: 'Add 2 items to pantry' });
+    await waitFor(() => expect(add).toBeEnabled());
+    await userEvent.setup().press(add);
+    expect(await screen.findByText('Spinach omelette')).toBeOnTheScreen();
+
+    let finish: (value: never[]) => void = () => undefined;
+    jest.mocked(listCandidates).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await act(() =>
+      usePreferencesStore.setState({
+        prefs: { ...defaultPreferences, allergensAnswered: true, allergens: ['egg'] },
+      }),
+    );
+    expect(screen.queryByText('Spinach omelette')).toBeNull();
+    await act(async () => finish([]));
   });
 });

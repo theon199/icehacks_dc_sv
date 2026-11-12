@@ -2,7 +2,7 @@ import { act, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { useCameraPermissions } from 'expo-camera';
 import { launchImageLibraryAsync } from 'expo-image-picker';
 import type * as ReactModule from 'react';
-import { Linking, type View as ViewType } from 'react-native';
+import { AppState, Linking, type AppStateStatus, type View as ViewType } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import type * as AiModule from '@/lib/api/ai';
@@ -17,11 +17,25 @@ import { mockRouter, renderScreen } from '../testing';
 
 const mockTakePicture = jest.fn();
 
+/** Whether the Snap tab is focused, changeable from a test. */
+const mockFocus = {
+  focused: true,
+  listeners: new Set<() => void>(),
+  set(focused: boolean) {
+    this.focused = focused;
+    for (const listener of this.listeners) listener();
+  },
+};
+
 jest.mock('expo-router', () => {
-  const { useEffect } = jest.requireActual<typeof ReactModule>('react');
+  const { useEffect, useSyncExternalStore } = jest.requireActual<typeof ReactModule>('react');
+  const subscribe = (listener: () => void) => {
+    mockFocus.listeners.add(listener);
+    return () => mockFocus.listeners.delete(listener);
+  };
   return {
     router: jest.requireActual<typeof TestingModule>('../testing').mockRouter,
-    useIsFocused: () => true,
+    useIsFocused: () => useSyncExternalStore(subscribe, () => mockFocus.focused),
     useFocusEffect: (effect: () => void) => useEffect(effect, [effect]),
   };
 });
@@ -50,6 +64,7 @@ jest.mock('@/lib/api/ai', () => ({
 }));
 
 const requestPermission = jest.fn();
+const refreshPermission = jest.fn();
 const thisYear = new Date().getFullYear();
 
 function signIn({ age, consent }: { age: number; consent: boolean }) {
@@ -70,13 +85,14 @@ function permission(state: 'granted' | 'ask' | 'blocked') {
       expires: 'never',
     } as never,
     requestPermission,
-    jest.fn(),
+    refreshPermission,
   ]);
 }
 
 const quota = { remaining: 4, reset_at: '2026-11-12T00:00:00Z' };
 
 beforeEach(() => {
+  mockFocus.focused = true;
   useSnapSession.getState().clear();
   signIn({ age: 30, consent: true });
   permission('granted');
@@ -220,6 +236,46 @@ describe('Snap camera', () => {
     expect(screen.queryByRole('button', { name: 'Retake' })).toBeNull();
     await userEvent.setup().press(screen.getByRole('button', { name: 'OK' }));
     expect(await screen.findByTestId('mock-camera')).toBeOnTheScreen();
+
+    // Dismissing the message does not bring snapping back before the limit resets.
+    expect(screen.getByRole('button', { name: 'Take photo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Choose a photo from your library' })).toBeDisabled();
+    expect(screen.getByTestId('snap-hint')).toHaveTextContent(/Daily limit reached/);
+    expect(aiApi.readSnap).toHaveBeenCalledTimes(1);
+  });
+
+  it('turns the camera off when the tab loses focus and back on when it returns', async () => {
+    await renderScreen(<SnapScreen />);
+    expect(screen.getByTestId('mock-camera')).toBeOnTheScreen();
+    await act(() => mockFocus.set(false));
+    expect(screen.queryByTestId('mock-camera')).toBeNull();
+    await act(() => mockFocus.set(true));
+    expect(screen.getByTestId('mock-camera')).toBeOnTheScreen();
+  });
+
+  it('turns the camera off in the background and reads permission again on return', async () => {
+    let onAppState: ((state: AppStateStatus) => void) | undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+      onAppState = listener;
+      return { remove: jest.fn() } as never;
+    });
+    const moveTo = (state: AppStateStatus) => {
+      Object.defineProperty(AppState, 'currentState', { value: state, configurable: true });
+      onAppState?.(state);
+    };
+    try {
+      moveTo('active');
+      await renderScreen(<SnapScreen />);
+      expect(screen.getByTestId('mock-camera')).toBeOnTheScreen();
+      await act(() => moveTo('background'));
+      expect(screen.queryByTestId('mock-camera')).toBeNull();
+      expect(refreshPermission).not.toHaveBeenCalled();
+      await act(() => moveTo('active'));
+      expect(screen.getByTestId('mock-camera')).toBeOnTheScreen();
+      expect(refreshPermission).toHaveBeenCalledTimes(1);
+    } finally {
+      moveTo('active');
+    }
   });
 
   it('retries the same photo after a network failure', async () => {

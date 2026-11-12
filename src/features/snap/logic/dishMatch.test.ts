@@ -191,9 +191,7 @@ describe('healthier version', () => {
   });
 
   it('flags nutrients the goals care about that get clearly worse', () => {
-    expect(setbacksFor(lighterButSaltier, dish.nutrition, ['lower_sodium'])).toEqual([
-      'sodium_mg',
-    ]);
+    expect(setbacksFor(lighterButSaltier, dish.nutrition, ['lower_sodium'])).toEqual(['sodium_mg']);
     expect(setbacksFor(lighterButSaltier, dish.nutrition, ['more_protein'])).toEqual([]);
     expect(setbacksFor(lighterButSaltier, dish.nutrition, [])).toEqual(['sodium_mg']);
     expect(setbacksFor(lighter, dish.nutrition, ['heart_friendly', 'steady_energy'])).toEqual([]);
