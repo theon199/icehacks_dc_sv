@@ -111,10 +111,13 @@ export function locationReducer(state: LocationState, event: LocationEvent): Loc
         : { step: 'manual', origin: previous, reason: state.reason };
     }
     case 'citySelected':
+      // Only an open city search takes a city: a lookup that finishes after the person cancelled,
+      // switched back to the device location or already picked a place is dropped.
+      if (state.step !== 'manual' || state.origin) return state;
       return {
         step: 'manual',
         origin: { point: event.point, source: 'city', label: event.label },
-        reason: reasonFor(state),
+        reason: state.reason,
       };
     case 'useDevice':
       // Re-check rather than assume: access may have been turned on in Settings meanwhile.

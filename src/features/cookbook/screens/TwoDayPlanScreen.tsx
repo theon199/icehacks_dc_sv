@@ -20,10 +20,11 @@ import {
 
 import { PlannedDayCard } from '../components/PlannedDayCard';
 import { PlanStatus } from '../components/PlanStatus';
-import { plannerActions } from '../hooks/usePlanner';
+import { isWeekArchived, plannerActions } from '../hooks/usePlanner';
 import { useToday } from '../hooks/useToday';
 import { useTwoDayPlan } from '../hooks/useTwoDayPlan';
 import { dayPlanWrites } from '../model/dayPlan';
+import { addedToPlanToast } from '../model/planToast';
 import { weekDays, locateDate } from '../model/week';
 
 /**
@@ -31,27 +32,45 @@ import { weekDays, locateDate } from '../model/week';
  * a slice per frame with visible progress; the result can be copied into the weekly planner.
  */
 export function TwoDayPlanScreen() {
+  const prefersSmall = usePreferencesStore((s) => s.prefs.smallAppetite);
+  const [smallAppetite, setSmallAppetite] = useState(prefersSmall);
+  // A failed search is retried by starting it afresh: the planner hook runs once per mount.
+  const [attempt, setAttempt] = useState(0);
+  return (
+    <TwoDayPlan
+      key={attempt}
+      smallAppetite={smallAppetite}
+      onSmallAppetiteChange={setSmallAppetite}
+      onRetry={() => setAttempt((n) => n + 1)}
+    />
+  );
+}
+
+function TwoDayPlan({
+  smallAppetite,
+  onSmallAppetiteChange,
+  onRetry,
+}: {
+  smallAppetite: boolean;
+  onSmallAppetiteChange: (value: boolean) => void;
+  onRetry: () => void;
+}) {
   const today = useToday();
-  const prefs = usePreferencesStore((s) => s.prefs);
-  const [smallAppetite, setSmallAppetite] = useState(prefs.smallAppetite);
+  const householdSize = usePreferencesStore((s) => s.prefs.householdSize);
   const state = useTwoDayPlan(smallAppetite);
   const result =
     state.status === 'planning' && state.plan.phase === 'done' ? state.plan.result : null;
 
   const onAdd = (plan: PlanDaysResult) => {
-    const placed = dayPlanWrites(plan, today, prefs.householdSize).reduce(
-      (sum, { week, writes }) => sum + plannerActions.applyWrites(week, writes),
-      0,
-    );
-    toast.show({
-      message:
-        placed === 0
-          ? 'Those meals are already planned'
-          : placed === 1
-            ? 'Added 1 meal to your plan'
-            : `Added ${placed} meals to your plan`,
-      tone: placed > 0 ? 'success' : 'neutral',
-    });
+    let offered = 0;
+    let placed = 0;
+    let archived = false;
+    for (const { week, writes } of dayPlanWrites(plan, today, householdSize)) {
+      offered += writes.length;
+      if (writes.length > 0 && isWeekArchived(week)) archived = true;
+      placed += plannerActions.applyWrites(week, writes);
+    }
+    toast.show(addedToPlanToast({ offered, placed, archived }));
     router.back();
   };
 
@@ -78,9 +97,9 @@ export function TwoDayPlanScreen() {
       </View>
       <Toggle
         label="Plan small meals"
-        description="Half portions with two snacks a day"
+        description="Balances each day around lighter meals and two snacks"
         value={smallAppetite}
-        onValueChange={setSmallAppetite}
+        onValueChange={onSmallAppetiteChange}
         testID="two-day-small"
       />
       {state.status !== 'planning' ? (
@@ -88,7 +107,7 @@ export function TwoDayPlanScreen() {
       ) : state.plan.phase === 'running' || state.plan.phase === 'idle' ? (
         <Progress value={state.plan.phase === 'running' ? state.plan.progress : 0} />
       ) : state.plan.phase === 'error' ? (
-        <ErrorState title="Could not build a plan" error={state.plan.error} />
+        <ErrorState title="Could not build a plan" error={state.plan.error} onRetry={onRetry} />
       ) : (
         <PlanResult result={state.plan.result} targets={state.targets} today={today} />
       )}

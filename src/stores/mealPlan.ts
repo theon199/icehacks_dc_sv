@@ -241,5 +241,7 @@ export const mealPlanSync = createCollectionAdapter({
   store: useMealPlanStore,
   select: (state) => state.weeks,
   schema: planWeekSchema,
-  apply: (state, changes) => ({ weeks: applyToRecord(state.weeks, changes) }),
+  // Another device can archive weeks this one has not, so the merged archive is capped as well;
+  // the engine deletes what the cap drops on the server too.
+  apply: (state, changes) => ({ weeks: trimArchive(applyToRecord(state.weeks, changes)) }),
 });

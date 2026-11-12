@@ -8,6 +8,7 @@ import {
   priceAccessibilityLabel,
   priceLabel,
   ratingLabel,
+  ratingValue,
   reviewCountLabel,
   type OpenState,
 } from './placeFormat';
@@ -39,7 +40,10 @@ export interface PlaceView {
   point: LatLng;
   distanceM: number;
   distance: string;
+  /** The rating as shown ("4.6"); display only. */
   rating: string | null;
+  /** The same rating as a number, for anything that computes with or sends it. */
+  ratingValue: number | null;
   reviews: string | null;
   price: string | null;
   priceA11y: string | null;
@@ -76,6 +80,7 @@ export function toPlaceView(
     distanceM,
     distance: formatDistance(distanceM, unit),
     rating: ratingLabel(place.rating),
+    ratingValue: ratingValue(place.rating),
     reviews: reviewCountLabel(place.ratingCount),
     price: priceLabel(place.priceLevel),
     priceA11y: priceAccessibilityLabel(place.priceLevel),

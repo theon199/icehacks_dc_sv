@@ -9,6 +9,7 @@ import {
   pantryInputsForExtras,
   pantryInputsForItems,
 } from './markBought';
+import { linkPantryItems } from './pantryLink';
 
 const at = '2026-11-11T10:00:00.000Z';
 const meals = [
@@ -69,6 +70,57 @@ describe('mark bought → pantry', () => {
     // The free-text line is matched to its pantry entry by name.
     expect(after.items).toEqual([]);
     expect(after.inPantry.map((i) => i.key).sort()).toEqual(before.items.map((i) => i.key).sort());
+  });
+
+  it('clears a catalog line the pantry first held as a free-text item', () => {
+    // "egg" typed by hand: no ingredient id, but the list reads it as the catalog egg.
+    let items = addPantryItem({}, { name: 'egg', qty: 1 }, { id: 'typed', at });
+    const before = listFor(Object.values(items));
+    const egg = before.items.find((i) => i.key === 'i:egg') as ShoppingItem;
+    expect(egg.amounts.map((a) => a.quantity)).toEqual([3]);
+
+    const pantry = linkPantryItems(Object.values(items), before.catalogNames);
+    const { fits } = fitIntoPantry(
+      items,
+      [{ key: egg.key, inputs: pantryInputsForItems([egg], before.ingredientsById, pantry) }],
+      at,
+    );
+    expect(fits.map((l) => l.key)).toEqual(['i:egg']);
+    for (const input of fits.flatMap((l) => l.inputs)) {
+      items = addPantryItem(items, input, { id: 'bought', at });
+    }
+    // The purchase topped up the typed entry, and the rebuilt list no longer asks for eggs.
+    expect(Object.values(items)).toEqual([expect.objectContaining({ id: 'typed', qty: 4 })]);
+    const after = listFor(Object.values(items));
+    expect(after.items.map((i) => i.key)).not.toContain('i:egg');
+    expect(after.inPantry.map((i) => i.key)).toContain('i:egg');
+  });
+
+  it('tops up a used-up free-text entry for an amount-less catalog line', () => {
+    const input = {
+      meals: [{ date: '2026-11-12', meal: 'dinner', recipeId: 'test:glaze', servings: 1 }],
+      recipes: new Map([
+        [
+          'test:glaze',
+          {
+            id: 'test:glaze',
+            servings: 1,
+            ingredients: [line(1, 'egg', 2, null), line(2, 'egg', null, null, 'egg to glaze')],
+          },
+        ],
+      ]),
+      ingredients: INGREDIENTS,
+      portion: 1,
+    } as const;
+    let items = addPantryItem({}, { name: 'Eggs', qty: 2 }, { id: 'typed', at });
+    const before = buildPlannedList({ ...input, pantry: Object.values(items) });
+    const egg = before.items.find((i) => i.key === 'i:egg') as ShoppingItem;
+    expect(egg).toMatchObject({ amounts: [], asNeeded: true });
+    const pantry = linkPantryItems(Object.values(items), before.catalogNames);
+    for (const bought of pantryInputsForItems([egg], before.ingredientsById, pantry)) {
+      items = addPantryItem(items, bought, { id: 'bought', at });
+    }
+    expect(buildPlannedList({ ...input, pantry: Object.values(items) }).items).toEqual([]);
   });
 
   it('clears a "to taste" line when the pantry had exactly the measured count', () => {

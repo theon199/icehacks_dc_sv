@@ -47,6 +47,14 @@ describe('buildTipsRequest', () => {
     });
   });
 
+  it('sends the numeric rating, never a parse of the display label', () => {
+    // A label written for a comma-decimal locale must not turn into NaN on the way out.
+    const localised = { ...place(0), rating: '4,2' };
+    expect(
+      buildTipsRequest(dish, [localised], { goals: [], diets: [], allergens: [] }).places,
+    ).toEqual([{ name: 'Place 0', cuisine: 'Vietnamese restaurant', rating: 4.2 }]);
+  });
+
   it('drops values the function would reject', () => {
     const request = buildTipsRequest({ ...dish, cuisine: null }, [], {
       goals: ['Lower Sodium', 'more_fiber'],

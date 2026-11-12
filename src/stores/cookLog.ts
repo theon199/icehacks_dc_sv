@@ -9,7 +9,7 @@ import { persist } from 'zustand/middleware';
 import { newId } from '@/lib/id';
 
 import { createSelector } from './memo';
-import { versionedPersist } from './persistence';
+import { BURST_WRITE_WINDOW_MS, versionedPersist } from './persistence';
 import { applyToRecord, createCollectionAdapter } from './syncAdapter';
 
 export const MAX_COOK_ENTRIES = 5000;
@@ -123,6 +123,7 @@ export const useCookLogStore = create<CookLogState>()(
     versionedPersist({
       name: 'user.cook_log',
       version: 1,
+      throttleMs: BURST_WRITE_WINDOW_MS,
       schema: z.object({ entries: z.record(z.string(), cookEntrySchema) }),
       partialize: (state) => ({ entries: state.entries }),
     }),
@@ -152,6 +153,8 @@ export const selectLastCookedAt = createSelector(
 
 export const cookLogSync = createCollectionAdapter({
   collection: 'cook_log',
+  // Ids come from newId() and are never reused.
+  uniqueIds: true,
   store: useCookLogStore,
   select: (state) => state.entries,
   schema: cookEntrySchema,

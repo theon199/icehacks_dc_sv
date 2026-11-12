@@ -30,6 +30,11 @@ export const ledgerEntrySchema = z.object({
   x: z.literal(true).optional(),
   /** Highest server revision seen for the document. */
   r: z.number().optional(),
+  /**
+   * The server's copy at revision `r` is a tombstone, while this device holds a newer, unsent
+   * version. Only set on entries waiting in the outbox; a synced entry says it with `x`.
+   */
+  t: z.literal(true).optional(),
   /** Epoch of the last full pull that returned the document. */
   e: z.number().optional(),
   /** The server copy could not be read by this build; keep it and do not treat it as deleted. */
@@ -201,39 +206,6 @@ export const kvLedgerStorage: LedgerStorage = ledgerStorageOn({
     Storage.removeItemSync(storageKey(key));
   },
 });
-
-export interface MemoryLedgerStorage extends LedgerStorage {
-  /** The stored ledger, whoever it belongs to. */
-  readonly current: Ledger | null;
-  /** Every key written, in order. */
-  readonly writes: string[];
-}
-
-/** In-memory ledger storage for tests and tools, with the same layout as the real one. */
-export function memoryLedgerStorage(): MemoryLedgerStorage {
-  const values = new Map<string, string>();
-  const writes: string[] = [];
-  const storage = ledgerStorageOn({
-    read: (key) => values.get(key) ?? null,
-    write: (key, text) => {
-      values.set(key, text);
-      writes.push(key);
-    },
-    erase: (key) => {
-      values.delete(key);
-    },
-  });
-  return {
-    load: storage.load,
-    save: storage.save,
-    remove: storage.remove,
-    writes,
-    get current() {
-      const header = parseJson(values.get(LEDGER_HEADER_KEY) ?? null, headerSchema);
-      return header ? storage.load(header.userId) : null;
-    },
-  };
-}
 
 /**
  * Milliseconds since the epoch for a server or client timestamp. Postgres may send microseconds,

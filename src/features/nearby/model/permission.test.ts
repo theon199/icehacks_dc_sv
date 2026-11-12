@@ -115,6 +115,34 @@ describe('locationReducer', () => {
     });
   });
 
+  it('takes a city only while the city search is open', () => {
+    const city = { type: 'citySelected', point, label: 'Austin' } as const;
+    const located = run([
+      { type: 'checked', permission: granted },
+      { type: 'located', point },
+    ]);
+    // A lookup finishing after "Cancel" or "Use my location" must not replace those results.
+    for (const state of [
+      initialLocationState,
+      { step: 'explain' },
+      { step: 'locating' },
+      { step: 'blocked' },
+      located,
+    ] as const) {
+      expect(locationReducer(state, city)).toBe(state);
+    }
+    // Nor does a second, slower lookup replace a city already picked.
+    const picked = run([{ type: 'chooseCity' }, city]);
+    expect(locationReducer(picked, { ...city, label: 'Boston' })).toBe(picked);
+    // From the open search it is taken, keeping why the search was opened.
+    const blocked = run([{ type: 'chooseCity' }, city], { step: 'blocked' });
+    expect(blocked).toEqual({
+      step: 'manual',
+      origin: { point, source: 'city', label: 'Austin' },
+      reason: 'blocked',
+    });
+  });
+
   it('has no origin until located or a city is chosen', () => {
     expect(originOf({ step: 'explain' })).toBeNull();
     expect(originOf({ step: 'manual', origin: null, reason: 'chosen' })).toBeNull();

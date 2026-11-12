@@ -41,7 +41,7 @@ export function buildTipsRequest(
     places: places.slice(0, MAX_PLACES).map((place) => ({
       name: place.name.slice(0, 100),
       cuisine: place.kind ? place.kind.slice(0, 60) : null,
-      rating: place.rating === null ? null : Number(place.rating),
+      rating: place.ratingValue,
     })),
     goals: profile.goals.filter((g) => SLUG.test(g)).slice(0, 10),
     diet: profile.diets.filter((d) => SLUG.test(d)).slice(0, 10),

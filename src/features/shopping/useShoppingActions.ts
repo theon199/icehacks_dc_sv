@@ -21,6 +21,7 @@ import {
   pantryInputsForItems,
   type BoughtLine,
 } from './markBought';
+import { linkPantryItems } from './pantryLink';
 import { shoppingShareText } from './shareText';
 import { staleTickKeys } from './ticks';
 
@@ -84,7 +85,8 @@ export function useShoppingActions({
   const markBought = useCallback(() => {
     const ingredientsById = list?.ingredientsById ?? new Map();
     const pantryItems = usePantryStore.getState().items;
-    const pantry = Object.values(pantryItems);
+    // Read the pantry the way the list did, so a free-text "eggs" counts as the catalog egg.
+    const pantry = linkPantryItems(Object.values(pantryItems), list?.catalogNames ?? new Map());
     const extraIdByKey = new Map<string, string>();
     const lines: BoughtLine[] = [];
     for (const item of list?.items ?? []) {

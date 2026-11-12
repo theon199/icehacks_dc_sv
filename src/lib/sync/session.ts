@@ -8,21 +8,18 @@
  * keeps exactly one engine alive and makes sure a wipe is never followed by a stale start.
  */
 import { onlineManager } from '@tanstack/react-query';
-import Storage from 'expo-sqlite/kv-store';
 import { AppState, Platform, type AppStateStatus } from 'react-native';
 
 import { describeError, logger } from '../logger';
 import { getDeviceId } from './deviceId';
 import { createSyncEngine, type SyncEngine } from './engine';
 import { kvLedgerStorage } from './ledger';
-import { syncedStores } from './registry';
+import { clearDataOwner, readDataOwner, writeDataOwner } from './owner';
+import { setSyncRunning, syncedStores } from './registry';
 import { useSyncStatusStore } from './status';
 import { createSupabaseTransport } from './transport';
 import type { Connectivity, Lifecycle } from './types';
-import { storageKey } from '../storage/kv';
-
-/** Which account the local user data belongs to (a plain string under this key). */
-const OWNER_KEY = storageKey('sync.owner');
+import { flushPendingWrites } from '../storage/kv';
 
 const connectivity: Connectivity = {
   isOnline: () => onlineManager.isOnline(),
@@ -69,7 +66,7 @@ function wipeLocalData(): void {
     }
   }
   kvLedgerStorage.remove();
-  Storage.removeItemSync(OWNER_KEY);
+  clearDataOwner();
   useSyncStatusStore.getState().reset();
 }
 
@@ -77,6 +74,7 @@ async function stopEngine(): Promise<void> {
   const current = engine;
   engine = null;
   engineUser = null;
+  setSyncRunning(() => false);
   await current?.stop();
 }
 
@@ -97,7 +95,9 @@ async function flushEngine(timeoutMs: number): Promise<boolean> {
 }
 
 async function startEngine(userId: string): Promise<void> {
-  if (engine && engineUser === userId) return;
+  // An engine can stop on its own (the session turned out to belong to another account); a later
+  // start for the same account must then replace it rather than keep the dead one.
+  if (engine && engineUser === userId && !engine.isStopped()) return;
   await stopEngine();
 
   const stores = syncedStores();
@@ -105,12 +105,12 @@ async function startEngine(userId: string): Promise<void> {
     throw new Error('No synced stores are registered; import "@/stores" before starting sync.');
   }
 
-  const owner = Storage.getItemSync(OWNER_KEY);
+  const owner = readDataOwner();
   if (owner && owner !== userId) {
     logger.warn('Local user data belonged to another account; clearing it');
     wipeLocalData();
   }
-  Storage.setItemSync(OWNER_KEY, userId);
+  writeDataOwner(userId);
 
   const instance = createSyncEngine({
     userId,
@@ -118,12 +118,14 @@ async function startEngine(userId: string): Promise<void> {
     transport: createSupabaseTransport(userId),
     adapters: stores.map((store) => store.adapter),
     storage: kvLedgerStorage,
+    persistLocal: flushPendingWrites,
     connectivity,
     lifecycle,
     onStatus: (status) => useSyncStatusStore.getState().set(status),
   });
   engine = instance;
   engineUser = userId;
+  setSyncRunning(() => engine === instance && !instance.isStopped());
   // Begin on the next macrotask: an auth change queued in the same tick (a sign-out right after
   // the sign-in) then replaces this engine before it sends anything. Starting also waits for every
   // store to load, which can take a moment for Keychain-backed ones, so it is not awaited here.
