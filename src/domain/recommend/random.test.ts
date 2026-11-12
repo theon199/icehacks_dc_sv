@@ -1,4 +1,4 @@
-import { createRandom, gumbel, hashSeed, keyedGumbel, keyedRandom } from './random';
+import { createRandom, gumbel, hashSeed, keyedGumbel, keyedRandom, keyedSource } from './random';
 
 describe('seeded randomness', () => {
   it('hashes seeds deterministically to 32-bit values', () => {
@@ -41,5 +41,22 @@ describe('seeded randomness', () => {
     expect(keyedRandom('s', 'recipe-a')).toBe(first);
     expect(keyedRandom('t', 'recipe-a')).not.toBe(first);
     expect(keyedGumbel('s', 'recipe-a')).toBe(keyedGumbel('s', 'recipe-a'));
+    expect(keyedSource('s').uniform('recipe-a')).toBe(first);
+  });
+
+  it('keeps keyed values in [0, 1) and spreads them evenly', () => {
+    const source = keyedSource('session');
+    const buckets = new Array<number>(10).fill(0);
+    for (let i = 0; i < 10_000; i++) {
+      const value = source.uniform(`recipe:${i}`);
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
+      buckets[Math.floor(value * 10)]! += 1;
+    }
+    for (const count of buckets) expect(Math.abs(count - 1000)).toBeLessThan(150);
+  });
+
+  it('separates seed and key boundaries', () => {
+    expect(keyedRandom('ab', 'c')).not.toBe(keyedRandom('a', 'bc'));
   });
 });

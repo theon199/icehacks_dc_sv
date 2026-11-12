@@ -42,7 +42,10 @@ export function isGoalTag(value: unknown): value is GoalTag {
 /** One bit per goal tag, in `GOAL_TAGS` order; used by the ranking hot loop. */
 export function goalTagMask(tags: readonly GoalTag[]): number {
   let mask = 0;
-  for (const tag of tags) mask |= 1 << GOAL_TAGS.indexOf(tag);
+  for (let i = 0; i < tags.length; i++) {
+    const bit = GOAL_TAGS.indexOf(tags[i]!);
+    if (bit >= 0) mask |= 1 << bit;
+  }
   return mask;
 }
 

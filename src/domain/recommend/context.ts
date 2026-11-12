@@ -88,7 +88,7 @@ export function createRankContext(
     RecipeId,
     Pick<RecipeSummary, 'id' | 'cuisine' | 'coreIngredientIds' | 'goalTags'>
   >(input.history);
-  for (const recipe of candidates) lookup.set(recipe.id, recipe);
+  for (let i = 0; i < candidates.length; i++) lookup.set(candidates[i]!.id, candidates[i]!);
 
   const feedback = input.feedback ?? [];
   const taste = buildTasteProfile(feedback, lookup, now, config);

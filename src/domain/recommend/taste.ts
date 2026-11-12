@@ -63,7 +63,10 @@ export function buildTasteProfile(
   let lighter = 0;
   let empty = true;
 
-  for (const event of feedback) {
+  // Indexed loops throughout: this runs on every deck build and for…of is transpiled to slower
+  // iterator code by the app's Babel preset.
+  for (let e = 0; e < feedback.length; e++) {
+    const event = feedback[e]!;
     const decay = decayWeight(now - event.at, t.halfLifeDays);
     if (!(decay > 0)) continue;
     const signal = t.signal[event.kind] * decay;
@@ -72,16 +75,18 @@ export function buildTasteProfile(
 
     if (recipe) {
       add(cuisines, recipe.cuisine, signal);
-      for (const id of recipe.coreIngredientIds) add(ingredients, id, signal * t.ingredientShare);
-      for (const tag of recipe.goalTags) {
-        const index = GOAL_INDEX.get(tag);
+      const core = recipe.coreIngredientIds;
+      for (let i = 0; i < core.length; i++) add(ingredients, core[i]!, signal * t.ingredientShare);
+      const tags = recipe.goalTags;
+      for (let i = 0; i < tags.length; i++) {
+        const index = GOAL_INDEX.get(tags[i]!);
         if (index !== undefined) goalTags[index]! += signal * t.goalTagShare;
       }
     }
 
     if (event.kind !== 'not_for_me') continue;
-    for (const reason of event.reasons) {
-      switch (reason) {
+    for (let r = 0; r < event.reasons.length; r++) {
+      switch (event.reasons[r]) {
         case 'not_my_cuisine':
           if (recipe) add(cuisines, recipe.cuisine, -t.reasonPenalty.not_my_cuisine * decay);
           break;
@@ -90,7 +95,8 @@ export function buildTasteProfile(
             add(ingredients, event.ingredientId, -t.reasonPenalty.dislike_ingredient * decay);
           } else if (recipe) {
             const penalty = t.reasonPenalty.dislike_unnamed_ingredient * decay;
-            for (const id of recipe.coreIngredientIds) add(ingredients, id, -penalty);
+            const core = recipe.coreIngredientIds;
+            for (let i = 0; i < core.length; i++) add(ingredients, core[i]!, -penalty);
           }
           break;
         case 'too_long':
@@ -134,8 +140,9 @@ export function worstIngredientAffinity(
   profile: TasteProfile,
 ): number {
   let worst = 0;
-  for (const id of recipe.coreIngredientIds) {
-    const value = profile.ingredients.get(id);
+  const ids = recipe.coreIngredientIds;
+  for (let i = 0; i < ids.length; i++) {
+    const value = profile.ingredients.get(ids[i]!);
     if (value !== undefined && value < worst) worst = value;
   }
   return worst;
@@ -155,8 +162,8 @@ export function tasteValue(
   let ingredientSum = 0;
   let worst = 0;
   const ids = recipe.coreIngredientIds;
-  for (const id of ids) {
-    const value = profile.ingredients.get(id);
+  for (let i = 0; i < ids.length; i++) {
+    const value = profile.ingredients.get(ids[i]!);
     if (value === undefined) continue;
     ingredientSum += value;
     if (value < worst) worst = value;
@@ -166,8 +173,9 @@ export function tasteValue(
 
   let goalSum = 0;
   let goalCount = 0;
-  for (const tag of recipe.goalTags) {
-    const index = GOAL_INDEX.get(tag);
+  const tags = recipe.goalTags;
+  for (let i = 0; i < tags.length; i++) {
+    const index = GOAL_INDEX.get(tags[i]!);
     if (index === undefined) continue;
     goalSum += profile.goalTags[index]!;
     goalCount++;

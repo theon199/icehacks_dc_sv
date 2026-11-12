@@ -54,7 +54,9 @@ function isRules(value: SafetyPrefs | SafetyRules): value is SafetyRules {
 /** Allocation-free eligibility check for hot loops. */
 export function isRecipeSafe(recipe: SafetyFields, rules: SafetyRules): boolean {
   const statuses = recipe.allergens as Partial<RecipeSummary['allergens']> | undefined;
-  for (const allergen of rules.allergens) {
+  const declared = rules.allergens;
+  for (let i = 0; i < declared.length; i++) {
+    const allergen = declared[i]!;
     // Anything but a verified `free` (including a missing entry) excludes the recipe.
     if (statuses?.[allergen] !== 'free') return false;
   }

@@ -12,7 +12,7 @@ import { FEATURE_COUNT, type RankingConfig } from './config';
 import { createRankContext, type RankContext, type RankInput } from './context';
 import { diversify } from './diversify';
 import { explainRecipe, type ExplainMode, type FitReason } from './explain';
-import { keyedGumbel, type Seed } from './random';
+import { keyedSource, type Seed } from './random';
 import { scoreCandidates, sortIndices } from './rank';
 import { pantryCoverage, readFeatures, toFitScore, type FeatureVector } from './score';
 import { DAY_MS } from './taste';
@@ -116,7 +116,9 @@ export function buildDeck(input: BuildDeckInput): Deck {
   let recentlyPassed = 0;
   let excluded = 0;
   let outsideMode = 0;
-  for (const recipe of input.candidates) {
+  const candidates = input.candidates;
+  for (let i = 0; i < candidates.length; i++) {
+    const recipe = candidates[i]!;
     if (seen.has(recipe.id)) continue;
     seen.add(recipe.id);
     if (!isRecipeSafe(recipe, ctx.safety)) unsafe++;
@@ -130,11 +132,10 @@ export function buildDeck(input: BuildDeckInput): Deck {
   const ids = pool.map((recipe) => recipe.id);
   const temperature = config.feed.temperature;
   const keys = new Float64Array(pool.length);
+  const noise = keyedSource(input.seed);
   for (let i = 0; i < pool.length; i++) {
     keys[i] =
-      temperature > 0
-        ? scored.score[i]! / temperature + keyedGumbel(input.seed, ids[i]!)
-        : scored.score[i]!;
+      temperature > 0 ? scored.score[i]! / temperature + noise.gumbel(ids[i]!) : scored.score[i]!;
   }
   const order = sortIndices(keys, ids);
   const picks = diversify(order, pool, Math.max(0, Math.floor(input.size)), config.diversity);

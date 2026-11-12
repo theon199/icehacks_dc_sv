@@ -3,7 +3,7 @@
  * adjustments. Written for the ranking hot loop: no allocation per candidate, features go straight
  * into a packed `Float64Array`.
  */
-import { F, FEATURE_COUNT, FEATURES, type FeatureName } from './config';
+import { F, FEATURE_COUNT, type FeatureName } from './config';
 import { type RankContext } from './context';
 import { decayWeight, DAY_MS, tasteValue, worstIngredientAffinity } from './taste';
 import { goalTagMask } from '../types/goals';
@@ -55,9 +55,10 @@ export function effortFit(recipe: Pick<RecipeSummary, 'effort'>, ctx: RankContex
 
 /** Core ingredients the person has on hand. */
 export function pantryOwned(recipe: Pick<RecipeSummary, 'coreIngredientIds'>, ctx: RankContext) {
-  let owned = 0;
   if (ctx.pantry.size === 0) return 0;
-  for (const id of recipe.coreIngredientIds) if (ctx.pantry.has(id)) owned++;
+  let owned = 0;
+  const ids = recipe.coreIngredientIds;
+  for (let i = 0; i < ids.length; i++) if (ctx.pantry.has(ids[i]!)) owned++;
   return owned;
 }
 
@@ -140,9 +141,16 @@ export function toFitScore(base: number): number {
 
 /** Reads a packed feature row back into a named object (for explanations and debugging). */
 export function readFeatures(packed: Float64Array, offset = 0): FeatureVector {
-  const out = {} as Record<FeatureName, number>;
-  for (const name of FEATURES) out[name] = packed[offset + F[name]] ?? 0;
-  return out;
+  const at = (index: number) => packed[offset + index] ?? 0;
+  return {
+    cuisineMatch: at(F.cuisineMatch),
+    goalMatch: at(F.goalMatch),
+    timeFit: at(F.timeFit),
+    effortFit: at(F.effortFit),
+    pantryCoverage: at(F.pantryCoverage),
+    tasteHistory: at(F.tasteHistory),
+    dataQuality: at(F.dataQuality),
+  };
 }
 
 export interface RecipeScore {

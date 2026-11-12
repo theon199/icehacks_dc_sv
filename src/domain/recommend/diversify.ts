@@ -15,7 +15,7 @@ export type DiversityRules = RankingConfig['diversity'];
 export function jaccard(a: readonly string[], b: ReadonlySet<string>): number {
   if (a.length === 0 || b.size === 0) return 0;
   let shared = 0;
-  for (const id of a) if (b.has(id)) shared++;
+  for (let i = 0; i < a.length; i++) if (b.has(a[i]!)) shared++;
   return shared / (a.length + b.size - shared);
 }
 
