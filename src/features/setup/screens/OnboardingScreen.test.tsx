@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as ReactQuery from '@tanstack/react-query';
 import { fireEvent, screen, userEvent } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
@@ -52,7 +53,11 @@ jest.mock('../deps', () => ({
     { id: 'italian', region: 'southern_europe', recipeCount: 30 },
     { id: 'west_african', region: 'sub_saharan_africa', recipeCount: 4 },
   ],
-  loadPantryStaples: async () => mockStaples,
+  // The real hook's shape, over the fake staples rather than the catalog file.
+  usePantryStaples: () =>
+    jest
+      .requireActual<typeof ReactQuery>('@tanstack/react-query')
+      .useQuery({ queryKey: ['test', 'pantry-staples'], queryFn: async () => mockStaples }),
   loadPantryStarters: async (ids: readonly string[]) =>
     mockStaples.filter((staple) => ids.includes(staple.id)),
 }));
