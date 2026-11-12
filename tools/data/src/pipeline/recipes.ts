@@ -139,16 +139,16 @@ const PREPARED_MIN_ML = 60;
 /** Share of a frying medium that ends up in the food, and the ceiling relative to the food fried. */
 export const FRYING_OIL_ABSORBED_SHARE = 0.15;
 export const FRYING_OIL_MAX_SHARE_OF_FOOD = 0.15;
-/** Oil lines at least this heavy count as a frying medium when the method fries anything. */
+/** Oil lines at least this heavy count as a frying medium when the title or method fries. */
 const FRYING_OIL_MIN_GRAMS = 120;
 const FRYING_LINE = /(?<!stir[- ]?)\b(?:deep[- ]?)?fr(?:y|ying)\b/i;
-/** Any frying verb in the method; "stir-fry" and the noun "frying pan" do not count. */
-const FRYING_METHOD = /(?<!stir[- ]?)\b(?:deep[- ]?|shallow[- ]?)?(?:fry|fries|fried|frying)\b(?!\s+pan)|\bdeep[- ]fat\b/i;
+/** Any frying verb in the title or method ("stir-fry" and the noun "frying pan" do not count). */
+const FRYING_METHOD = /(?<!stir[- ]?)\b(?:deep[- ]?|shallow[- ]?)?(?:fry|fries|fried|frying)\b(?!\s+pan)|\b(?:deep[- ]fat|hot oil)\b/i;
 
 /**
  * Oil used as a frying medium is mostly left in the pan. A line counts as frying oil when it says
  * so ("oil for frying", "2 quarts frying oil") or when it weighs at least 120 g in a recipe whose
- * method fries something. Such lines contribute 15% of their weight, capped at 15% of the
+ * title or method fries something. Such lines contribute 15% of their weight, capped at 15% of the
  * weight of the other food, to nutrition and portion estimates. The ingredient row keeps the
  * measured weight.
  */
@@ -293,7 +293,7 @@ function tutorials(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[
 export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[]): Omit<RecipeRow, 'slug'> | null {
   const lines = source.lines.map((_, i) => parseLine(source, i, ctx, issues));
   const steps = splitSteps(source.instructions);
-  applyFryingAbsorption(lines, steps);
+  applyFryingAbsorption(lines, [source.title, ...steps]);
   if (lines.length === 0 || steps.length === 0) {
     issues.push({ recipe_id: source.id, kind: 'excluded', detail: lines.length === 0 ? 'no ingredient lines' : 'no instructions' });
     return null;
