@@ -12,8 +12,22 @@ import { resultItemCache, toResultItems, type SearchResultItem } from './resultI
 import { useSearchStore } from './searchStore';
 import { useDebouncedValue } from './useDebouncedValue';
 
+/** Typed text with outer spaces trimmed and inner runs of spaces collapsed, for display. */
+export function tidyQuery(text: string): string {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * What the catalog actually searches for: its word tokens. Text that differs only in case, spacing
+ * or punctuation ("Pho ", "pho!") finds the same recipes, so it shares one query and one
+ * `searchKey`, and the grid neither refetches nor jumps back to the top.
+ */
+export function searchTextOf(text: string): string {
+  return tokenize(text).join(' ');
+}
+
 export interface SearchResults {
-  /** The text the current results are for (the debounced query). */
+  /** The text the current results are for (the debounced query, tidied). */
   settledQuery: string;
   /** True when the box has searchable words or a filter is on; false shows the idle panel. */
   active: boolean;
@@ -40,20 +54,21 @@ export interface SearchResults {
 export function useSearchResults(): SearchResults {
   const query = useSearchStore((state) => state.query);
   const filters = useSearchStore((state) => state.filters);
-  const settledQuery = useDebouncedValue(query);
+  const settledQuery = tidyQuery(useDebouncedValue(query));
+  const searchText = searchTextOf(settledQuery);
   const args = useMemo(() => toSearchFilters(filters), [filters]);
-  const search = useRecipeSearch(settledQuery, args);
+  const search = useRecipeSearch(searchText, args);
   const rules = useSafetyRules();
   const pages = search.data?.pages;
   const itemFor = useMemo(() => resultItemCache(rules), [rules]);
   const items = useMemo(() => toResultItems(pages, itemFor), [pages, itemFor]);
-  const searchKey = useMemo(() => JSON.stringify([settledQuery, args]), [settledQuery, args]);
+  const searchKey = useMemo(() => JSON.stringify([searchText, args]), [searchText, args]);
 
   const hasFilters = hasActiveFilters(filters);
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage, refetch } = search;
   return {
     settledQuery,
-    active: tokenize(settledQuery).length > 0 || hasFilters,
+    active: searchText.length > 0 || hasFilters,
     hasFilters,
     items,
     safetyAnswered: rules.answered,

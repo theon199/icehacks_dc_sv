@@ -11,12 +11,19 @@ import {
   type ShoppingIngredient,
   type ShoppingItem,
   type ShoppingRecipe,
+  unmatchedKey,
 } from '@/domain/shopping';
 import type { Ingredient, RecipeIngredientLine } from '@/lib/catalog';
 import type { PantryItem } from '@/stores/pantry';
 
 import { arrangeAisles } from './aisles';
-import { subtractFreeTextPantry } from './freeText';
+import { normaliseName, subtractFreeTextPantry } from './freeText';
+import {
+  catalogNameIndex,
+  linkPantryItems,
+  linkedIngredientId,
+  type CatalogNameIndex,
+} from './pantryLink';
 import type { PlannedMealRef } from './planRange';
 
 /** The parts of a catalog recipe the list needs. */
@@ -50,6 +57,8 @@ export interface PlannedList {
   readonly missingRecipeIds: readonly string[];
   /** Catalog details of every ingredient on the list, for shelving bought items. */
   readonly ingredientsById: ReadonlyMap<string, Ingredient>;
+  /** How free-text pantry items were linked to those ingredients, for marking items bought. */
+  readonly catalogNames: CatalogNameIndex;
 }
 
 function toShoppingIngredient(ingredient: Ingredient): ShoppingIngredient {
@@ -64,41 +73,30 @@ function toShoppingIngredient(ingredient: Ingredient): ShoppingIngredient {
 }
 
 /**
- * Pantry items matched to a catalog ingredient, for the domain. Free-text items are subtracted
- * from unmatched lines by name afterwards (`subtractFreeTextPantry`).
+ * Pantry items matched to a catalog ingredient, for the domain: by id, or for a free-text item by
+ * a name that reads exactly like one catalog ingredient. The remaining free-text items are
+ * subtracted from unmatched lines by name afterwards (`subtractFreeTextPantry`).
  */
-export function pantryEntries(items: readonly PantryItem[]): PantryEntry[] {
+export function pantryEntries(
+  items: readonly PantryItem[],
+  catalogNames: CatalogNameIndex = new Map(),
+): PantryEntry[] {
   const out: PantryEntry[] = [];
   for (const item of items) {
-    if (item.ingredientId == null) continue;
-    out.push({ ingredient_id: item.ingredientId, quantity: item.qty, unit: item.unit });
+    const ingredientId = linkedIngredientId(item, catalogNames);
+    if (ingredientId == null) continue;
+    out.push({ ingredient_id: ingredientId, quantity: item.qty, unit: item.unit });
   }
   return out;
 }
 
 export function buildPlannedList(input: PlannedListInput): PlannedList {
-  const recipes: ShoppingRecipe[] = [];
+  const planned: { recipe: ListRecipe; meal: PlannedMealRef }[] = [];
   const missing = new Set<string>();
   for (const meal of input.meals) {
     const recipe = input.recipes.get(meal.recipeId);
-    if (!recipe) {
-      missing.add(meal.recipeId);
-      continue;
-    }
-    recipes.push({
-      recipeId: recipe.id,
-      servings: recipe.servings,
-      plannedServings: meal.servings,
-      portion: meal.meal === 'snack' ? 1 : input.portion,
-      ingredients: recipe.ingredients.map((line) => ({
-        ingredient_id: line.ingredientId,
-        text: line.text,
-        quantity: line.quantity,
-        unit: line.unit,
-        grams: line.grams,
-        optional: line.optional,
-      })),
-    });
+    if (recipe) planned.push({ recipe, meal });
+    else missing.add(meal.recipeId);
   }
 
   const ingredients: Record<string, ShoppingIngredient> = {};
@@ -108,9 +106,31 @@ export function buildPlannedList(input: PlannedListInput): PlannedList {
     ingredientsById.set(ingredient.id, ingredient);
   }
 
+  // Free-text items link only to ingredients the plan uses; one naming anything else keeps
+  // covering an unmatched line by name. A linked item is no longer loose, so it never counts
+  // against an unmatched line as well.
+  const used = new Set(ingredientIdsOf(planned.map(({ recipe }) => recipe)));
+  const catalogNames = catalogNameIndex(input.ingredients.filter(({ id }) => used.has(id)));
+
+  const recipes: ShoppingRecipe[] = planned.map(({ recipe, meal }) => ({
+    recipeId: recipe.id,
+    servings: recipe.servings,
+    plannedServings: meal.servings,
+    portion: meal.meal === 'snack' ? 1 : input.portion,
+    ingredients: recipe.ingredients.map((line) => ({
+      ingredient_id: line.ingredientId ?? resolveUnmatchedLine(line.text, catalogNames),
+      text: line.text,
+      quantity: line.quantity,
+      unit: line.unit,
+      grams: line.grams,
+      optional: line.optional,
+    })),
+  }));
+
+  const pantry = linkPantryItems(input.pantry, catalogNames);
   const list = subtractFreeTextPantry(
-    buildShoppingList({ recipes, ingredients, pantry: pantryEntries(input.pantry) }),
-    input.pantry,
+    buildShoppingList({ recipes, ingredients, pantry: pantryEntries(pantry) }),
+    pantry,
   );
   return {
     groups: arrangeAisles(groupByAisle(list.items)),
@@ -119,7 +139,18 @@ export function buildPlannedList(input: PlannedListInput): PlannedList {
     mealCount: recipes.length,
     missingRecipeIds: [...missing],
     ingredientsById,
+    catalogNames,
   };
+}
+
+/**
+ * The planned catalog ingredient an unmatched recipe line names exactly ("1 onion" in a plan that
+ * also has catalog onions), so the two merge into one item. Otherwise a free-text pantry entry,
+ * once linked to that ingredient, would cover the catalog item but never the unmatched one, and
+ * the unmatched line would stay on the list however much is at home.
+ */
+function resolveUnmatchedLine(text: string, catalogNames: CatalogNameIndex): string | null {
+  return catalogNames.get(normaliseName(unmatchedKey(text).name)) ?? null;
 }
 
 /** Ingredient ids used by the given recipes, for loading their catalog details in one query. */

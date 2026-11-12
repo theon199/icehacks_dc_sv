@@ -84,6 +84,61 @@ describe('useNearbyLocation', () => {
     expect(result.current.citySearch).toBe('failed');
   });
 
+  it('drops a city lookup that finishes after the search was left', async () => {
+    let finish: (match: { point: typeof here; label: string }) => void = () => undefined;
+    const service = fakeService({
+      getPermission: jest.fn(async () => ({ status: 'granted', canAskAgain: true }) as const),
+      findCity: jest.fn(
+        () =>
+          new Promise<{ point: typeof here; label: string } | null>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    });
+    const { result } = await renderHook(() => useNearbyLocation(service));
+    await waitFor(() => expect(result.current.state.step).toBe('located'));
+
+    await act(() => result.current.chooseCity());
+    let pending: Promise<void> = Promise.resolve();
+    await act(() => {
+      pending = result.current.searchCity('Austin');
+    });
+    expect(result.current.citySearch).toBe('searching');
+    await act(() => result.current.cancelCity());
+    await act(async () => {
+      finish({ point: { latitude: 30.27, longitude: -97.74 }, label: 'Austin' });
+      await pending;
+    });
+
+    expect(result.current.origin).toEqual({ point: here, source: 'device', label: null });
+    expect(result.current.citySearch).toBe('idle');
+  });
+
+  it('keeps only the latest of two overlapping city lookups', async () => {
+    const finishers: ((match: { point: typeof here; label: string }) => void)[] = [];
+    const service = fakeService({
+      findCity: jest.fn(
+        () =>
+          new Promise<{ point: typeof here; label: string } | null>((resolve) => {
+            finishers.push(resolve);
+          }),
+      ),
+    });
+    const { result } = await renderHook(() => useNearbyLocation(service));
+    await act(() => result.current.chooseCity());
+    const lookups: Promise<void>[] = [];
+    await act(() => {
+      lookups.push(result.current.searchCity('Austin'));
+      lookups.push(result.current.searchCity('Boston'));
+    });
+    await act(async () => {
+      finishers[1]?.({ point: here, label: 'Boston' });
+      finishers[0]?.({ point: { latitude: 30.27, longitude: -97.74 }, label: 'Austin' });
+      await Promise.all(lookups);
+    });
+    expect(result.current.origin?.label).toBe('Boston');
+  });
+
   it('falls back when no position can be found', async () => {
     const service = fakeService({
       getPermission: jest.fn(async () => ({ status: 'granted', canAskAgain: true }) as const),
