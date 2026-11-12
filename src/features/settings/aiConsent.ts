@@ -7,9 +7,9 @@
  * server to confirm first, so the record of consent always exists before AI is used. A withdrawal
  * the server has not acknowledged yet is kept on the device and sent again by
  * `reconcileAiConsent`, which also brings a choice made on another device to this one. A write
- * that timed out but settles later is followed by the answer this device holds, so a stale answer
- * never stays on the account while the device shows another. An agreement is only sent again when
- * the account holds nothing newer, so a withdrawal made on another device is never undone.
+ * that timed out but settles later is followed up so the account and device agree: a withdrawal
+ * this device holds is sent again, while an agreement is never sent again automatically (the
+ * device follows the account instead), so a withdrawal made on another device is never undone.
  */
 import { useEffect } from 'react';
 import { z } from 'zod';
@@ -51,7 +51,9 @@ const unsentWithdrawal = (userId: string) =>
 
 function readUnsent(userId: string): AiConsentRecord | null {
   try {
-    return unsentWithdrawal(userId).getSync();
+    const record = unsentWithdrawal(userId).getSync();
+    // Only withdrawals are ever kept for resending; anything else is ignored.
+    return record && !record.granted ? record : null;
   } catch {
     return null;
   }
@@ -92,7 +94,8 @@ let lateSettles = 0;
 /**
  * The answer this device currently follows for one account: a withdrawal as soon as it is made,
  * an agreement once the server has confirmed it, or the account's record when it was adopted from
- * there. A late write that settles after it is answered by sending this again. `seq` is the
+ * there. A late write that settles after it is followed up from this: a withdrawal is sent again, an
+ * agreement is checked against the account, which the device then follows. `seq` is the
  * decision count it belongs to; once another answer has been started it is no longer the latest,
  * even before that answer is confirmed.
  */
@@ -161,7 +164,7 @@ function writeServerRecordWithTimeout(userId: string, record: AiConsentRecord): 
  * A timed-out write for `userId` has just settled, whether it reached the server or failed, and
  * may have overwritten a newer answer: a failed request can still have been applied when only the
  * response was lost. While that account is still signed in, the answer this device follows is
- * sent again; with none known (after a restart, say) the usual reconcile runs, which resends an
+ * settled again (a withdrawal resent, an agreement checked against the account); with none known (after a restart, say) the usual reconcile runs, which resends an
  * unsent withdrawal or adopts the account record. When a newer agreement is still on its way, the
  * check is deferred to it: the stale write may be applied before or after that agreement, so
  * `setAiConsent` checks the account once the agreement is confirmed (see `lateSettles`). A yes that
@@ -283,8 +286,8 @@ export async function setAiConsent(granted: boolean, now: Date = new Date()): Pr
       sent = await sendRecord(userId, record);
     } catch (error) {
       // The yes was not confirmed, so the device keeps following its previous answer. Mark that
-      // answer as current again: if the timed-out yes still lands on the server later, the late
-      // write is then followed by resending the previous answer, so account and device agree.
+      // answer as current again, so a late landing of the timed-out yes is settled from it: a
+      // previous withdrawal is sent again, a previous agreement is checked against the account.
       if (latest() && latestDecision?.userId === userId) {
         latestDecision = { ...latestDecision, seq: decision };
         // A previous withdrawal is also kept on the device until it is confirmed again, so a
@@ -301,7 +304,7 @@ export async function setAiConsent(granted: boolean, now: Date = new Date()): Pr
     rememberUnsent(userId, null);
     useSessionStore.getState().setAiConsent(true);
     // A stale write settled while this agreement was on its way and may have reached the server
-    // after it. The account is read first, so nothing is sent when it already holds this answer.
+    // after it. The account is read and this device follows it; the agreement is not resent.
     if (lateSettles !== settlesBefore) void resendDecision(confirmed);
     return;
   }
