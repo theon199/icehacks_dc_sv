@@ -343,9 +343,7 @@ export function createVoiceCommandStream(): VoiceCommandStream {
 }
 
 function sameCommand(a: VoiceCommand, b: VoiceCommand): boolean {
-  if (a.type === 'start_timer' || b.type === 'start_timer') {
-    return a.type === b.type && a.seconds === b.seconds;
-  }
+  if (a.type === 'start_timer') return b.type === 'start_timer' && a.seconds === b.seconds;
   return a.type === b.type;
 }
 
