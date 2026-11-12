@@ -12,6 +12,9 @@ export type ApiErrorKind =
   | 'validation'
   | 'server';
 
+/** Code used when a successful response fails schema validation. */
+export const INVALID_RESPONSE = 'invalid_response';
+
 export interface ApiErrorInit {
   kind: ApiErrorKind;
   /** Function name that failed, for logs. */
@@ -49,7 +52,9 @@ export class ApiError extends Error {
 
   /** Whether trying the same request again could succeed. */
   get retryable(): boolean {
-    return this.kind === 'network' || this.kind === 'timeout' || this.kind === 'server';
+    // A response that does not match the expected shape will not change on a second attempt.
+    if (this.kind === 'server') return this.code !== INVALID_RESPONSE;
+    return this.kind === 'network' || this.kind === 'timeout';
   }
 
   /** Copy that is safe and helpful to show to the person using the app. */

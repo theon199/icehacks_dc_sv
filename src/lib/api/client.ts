@@ -8,7 +8,7 @@
 import type { z } from 'zod';
 
 import { getPublicEnv } from '../env';
-import { ApiError, kindForStatus } from './errors';
+import { ApiError, INVALID_RESPONSE, kindForStatus } from './errors';
 import { getAccessToken } from '../supabase/client';
 
 export const DEFAULT_TIMEOUT_MS = 20_000;
@@ -85,32 +85,51 @@ export function createApiClient(deps: ApiClientDeps) {
     const onCallerAbort = () => controller.abort();
     signal?.addEventListener('abort', onCallerAbort, { once: true });
 
+    // Rejects the moment this call is aborted (timeout or caller). Racing against it stops us from
+    // waiting on steps that cannot take a signal themselves, such as a slow session refresh.
+    const abortGate = new Promise<never>((_resolve, reject) => {
+      controller.signal.addEventListener('abort', () => reject(controller.signal.reason), {
+        once: true,
+      });
+    });
+    abortGate.catch(() => undefined);
+    const beforeAbort = <T>(step: Promise<T>): Promise<T> => Promise.race([step, abortGate]);
+
+    /** Classifies a failure: an abort we caused wins over whatever the underlying step reported. */
+    const failure = (cause: unknown): ApiError => {
+      if (timedOut) return new ApiError({ kind: 'timeout', functionName: name, cause });
+      if (signal?.aborted) return new ApiError({ kind: 'cancelled', functionName: name, cause });
+      return new ApiError({ kind: 'network', functionName: name, cause });
+    };
+
     try {
-      // A failed token lookup is treated as signed out; the function then answers 401.
-      const token = await deps.getAccessToken().catch(() => null);
-      if (signal?.aborted) throw new ApiError({ kind: 'cancelled', functionName: name });
-      let response: Response;
-      try {
-        response = await deps.fetch(`${deps.baseUrl}/functions/v1/${name}`, {
+      // A failed token lookup counts as signed out; the function then decides whether that is ok.
+      const token = await beforeAbort(deps.getAccessToken().catch(() => null)).catch(
+        (cause: unknown) => {
+          throw failure(cause);
+        },
+      );
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        apikey: deps.publishableKey,
+      };
+      // Publishable keys are not JWTs, so a signed-out call carries no bearer token at all.
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const response = await deps
+        .fetch(`${deps.baseUrl}/functions/v1/${name}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            apikey: deps.publishableKey,
-            Authorization: `Bearer ${token ?? deps.publishableKey}`,
-          },
+          headers,
           body: JSON.stringify(input ?? {}),
           signal: controller.signal,
+        })
+        .catch((cause: unknown) => {
+          throw failure(cause);
         });
-      } catch (cause) {
-        if (timedOut) throw new ApiError({ kind: 'timeout', functionName: name, cause });
-        if (signal?.aborted) throw new ApiError({ kind: 'cancelled', functionName: name, cause });
-        throw new ApiError({ kind: 'network', functionName: name, cause });
-      }
 
-      const body = await safeJson(response).catch((cause: unknown) => {
-        if (timedOut) throw new ApiError({ kind: 'timeout', functionName: name, cause });
-        throw new ApiError({ kind: 'network', functionName: name, cause });
+      const body = await beforeAbort(safeJson(response)).catch((cause: unknown) => {
+        throw failure(cause);
       });
 
       if (!response.ok) {
@@ -132,7 +151,7 @@ export function createApiClient(deps: ApiClientDeps) {
           kind: 'server',
           functionName: name,
           status: response.status,
-          code: 'invalid_response',
+          code: INVALID_RESPONSE,
           cause: parsed.error,
         });
       }
