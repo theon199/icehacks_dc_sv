@@ -106,7 +106,8 @@ describe('usePrices', () => {
 
   it('shows saved prices only while signed out', async () => {
     useSessionStore.setState({ status: 'signedOut', userId: null });
-    priceCache.write([priced('flour', 400, 1, 'kg')]);
+    // Checked just now, so it is within the cache's freshness window.
+    priceCache.write([priced('flour', 400, 1, 'kg', { fetchedAt: new Date().toISOString() })]);
     const { result } = await renderHook(() => usePrices(['flour', 'egg']), { wrapper: wrapper() });
     expect(result.current.prices.flour?.priceCents).toBe(400);
     await waitFor(() => expect(result.current.lookupStopped).toBe(true));
