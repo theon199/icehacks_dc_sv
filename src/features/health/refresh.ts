@@ -22,10 +22,12 @@ import { useSessionStore } from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
 
 import {
-  findCookedMealIds as findCookedMealIdsFromApp,
+  isCookLogSettled,
   listCookedMeals as listCookedMealsFromApp,
+  matchCookedMeals as matchCookedMealsFromApp,
   pushHealthDocs as pushHealthDocsToAccount,
   type HealthSyncDoc,
+  type PairedMealRef,
 } from './deps';
 import { healthKitSource, type HealthSource, type TimeRange } from './healthKit';
 import { useHealthStore } from './healthStore';
@@ -51,7 +53,10 @@ export const REFRESH_RULES = {
 export interface RefreshDeps {
   source: HealthSource;
   listCookedMeals: (range: TimeRange) => Promise<CookedMeal[]>;
-  findCookedMealIds: (ids: readonly string[]) => Promise<Set<string>>;
+  /** Stored meal id → current cook log entry id, for the meals still in the cook log. */
+  matchCookedMeals: (meals: readonly PairedMealRef[]) => Promise<Map<string, string>>;
+  /** Whether the cook log on this device is complete (synced since the app started). */
+  cookLogSettled: () => boolean;
   pushHealthDocs: (docs: readonly HealthSyncDoc[]) => Promise<boolean>;
   /** The signed-in account, which is where pushes land. */
   currentUserId: () => string | null;
@@ -61,7 +66,8 @@ export interface RefreshDeps {
 const defaultDeps: RefreshDeps = {
   source: healthKitSource,
   listCookedMeals: listCookedMealsFromApp,
-  findCookedMealIds: findCookedMealIdsFromApp,
+  matchCookedMeals: matchCookedMealsFromApp,
+  cookLogSettled: isCookLogSettled,
   pushHealthDocs: pushHealthDocsToAccount,
   currentUserId: () => useSessionStore.getState().userId,
   now: Date.now,
@@ -87,22 +93,29 @@ async function readDayContext(deps: RefreshDeps, now: number): Promise<DayContex
 }
 
 /**
- * Older pairs whose meal is still in the cook log, or undefined when the log could not be checked
- * (the older pairs are then kept as they are until the next refresh).
+ * The stored pairs older than `from` whose meal is still in the cook log, each under the id its
+ * cook log entry has now (pairs saved by earlier builds carry a different meal id). When the log
+ * cannot be checked yet, every older pair is kept as it is until a later refresh.
  */
-async function confirmOlderMeals(
+async function confirmOlderPairs(
   deps: RefreshDeps,
   stored: readonly GlucosePair[],
   from: number,
-): Promise<ReadonlySet<string> | undefined> {
-  const older = stored.filter((pair) => pair.startedAt < from).map((pair) => pair.mealId);
-  if (older.length === 0) return undefined;
+): Promise<GlucosePair[]> {
+  const older = stored.filter((pair) => pair.startedAt < from);
+  if (older.length === 0) return older;
+  let matches: Map<string, string>;
   try {
-    return await deps.findCookedMealIds(older);
+    matches = await deps.matchCookedMeals(older);
   } catch (error) {
     logger.warn('Could not check older glucose pairs against the cook log', describeError(error));
-    return undefined;
+    return older;
   }
+  return older.flatMap((pair) => {
+    const mealId = matches.get(pair.mealId);
+    if (mealId === undefined) return [];
+    return [mealId === pair.mealId ? pair : { ...pair, mealId }];
+  });
 }
 
 /** Glucose readings across `range`, read slice by slice (oldest first). */
@@ -129,11 +142,11 @@ async function readGlucosePairs(
     to: now,
   });
   const candidates = meals.filter((meal) => meal.startedAt >= from && meal.startedAt <= now);
-  const olderMealIds = await confirmOlderMeals(deps, stored, from);
+  const older = await confirmOlderPairs(deps, stored, from);
   // Every stored pair from `from` onwards is replaced by this run's result, so a meal deleted from
   // the cook log loses its pair even when nothing is left to pair.
   const merge = (fresh: GlucosePair[]) =>
-    mergePairs({ stored, fresh, reevaluatedFrom: from, olderMealIds, now });
+    mergePairs({ stored: older, fresh, reevaluatedFrom: from, now });
   if (candidates.length === 0) return merge([]);
 
   const earliest = Math.min(...candidates.map((meal) => meal.startedAt));
@@ -204,6 +217,8 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
   if (!(await deps.source.canReadNow())) return 'locked';
 
   const backfill = state.glucoseBackfilledAt === null;
+  // Read before the cook log is: a sync finishing during this run does not make this read complete.
+  const settled = deps.cookLogSettled();
   const [day, glucose] = await Promise.allSettled([
     readDayContext(deps, now),
     readGlucosePairs(
@@ -219,6 +234,9 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
   if (glucose.status === 'rejected') {
     logger.warn('Glucose refresh failed', describeError(glucose.reason));
   }
+  // Until the cook log is settled, a failed glucose part (the log was still empty) or a backfill
+  // (it may have missed meals still being pulled) is run again once the first sync finishes.
+  awaitingCookLog = !settled && (glucose.status === 'rejected' || backfill);
   if (day.status === 'rejected' && glucose.status === 'rejected') return 'failed';
 
   // Health may have been turned off, or the person signed out or switched accounts, while
@@ -230,7 +248,7 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
     at: now,
     ...(day.status === 'fulfilled' ? { dayContext: day.value } : {}),
     ...(glucose.status === 'fulfilled'
-      ? { glucosePairs: glucose.value, glucoseBackfilled: backfill }
+      ? { glucosePairs: glucose.value, glucoseBackfilled: backfill && settled }
       : {}),
   });
 
@@ -239,6 +257,8 @@ async function run(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
 }
 
 let inFlight: Promise<RefreshOutcome> | null = null;
+/** The last run's glucose result was provisional because the cook log was not settled yet. */
+let awaitingCookLog = false;
 let forcedAfterInFlight: Promise<RefreshOutcome> | null = null;
 
 function startRun(deps: RefreshDeps, force: boolean): Promise<RefreshOutcome> {
@@ -274,6 +294,20 @@ export function refreshHealth(
     return startRun(deps, true);
   });
   return forcedAfterInFlight;
+}
+
+/**
+ * Runs the refresh again once the cook log is settled, when an earlier run could not use it (right
+ * after signing in, before the first sync pull finished). Does nothing otherwise, so a normal
+ * launch reads Apple Health only once. Resolves to null when no run was needed.
+ */
+export async function refreshHealthOnceCookLogSettles(
+  deps: RefreshDeps = defaultDeps,
+): Promise<RefreshOutcome | null> {
+  // A run that started before the sync finished decides whether a rerun is needed.
+  if (inFlight) await inFlight;
+  if (!awaitingCookLog || !deps.cookLogSettled()) return null;
+  return refreshHealth({ force: true }, deps);
 }
 
 function tombstones(now: number): HealthSyncDoc[] {

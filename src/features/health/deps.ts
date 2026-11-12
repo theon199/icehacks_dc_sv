@@ -11,6 +11,7 @@ import { getRecipeSummaries } from '@/lib/catalog';
 import { describeError, logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabase/client';
 import type { Json } from '@/lib/supabase/database.types';
+import { useSyncStatusStore } from '@/lib/sync';
 import { getDeviceId } from '@/lib/sync/deviceId';
 import { useCookLogStore, type CookEntry } from '@/stores';
 
@@ -23,18 +24,61 @@ import type { TimeRange } from './healthKit';
 const ESTIMATED_MEAL_PREFIX = 'snap:';
 
 /**
- * The cook log is wiped when someone signs out, so reading it without an account would look like
- * an empty log (and make every stored pair look deleted). Readers refuse instead.
+ * The cook log cannot be relied on yet. It is wiped when someone signs out, and after signing back
+ * in it stays empty until the first sync pull brings the person's cooks back, so an empty read then
+ * would make every stored pair look deleted. Readers refuse instead of answering.
  */
 export class CookLogUnavailableError extends Error {
-  constructor() {
-    super('The cook log cannot be read while signed out');
+  constructor(reason: 'signed_out' | 'not_synced') {
+    super(
+      reason === 'signed_out'
+        ? 'The cook log cannot be read while signed out'
+        : 'The cook log is empty and has not been synced yet',
+    );
     this.name = 'CookLogUnavailableError';
   }
 }
 
-function signedInCookLog(): Readonly<Record<string, CookEntry>> {
-  if (!useSessionStore.getState().userId) throw new CookLogUnavailableError();
+const signedIn = () => useSessionStore.getState().userId !== null;
+const syncedThisSession = () => useSyncStatusStore.getState().lastSyncedAt !== null;
+
+/**
+ * Whether the cook log on this device is complete for the signed-in person: a sync has finished
+ * since the app started (or since signing in), so the first pull has brought every cook back.
+ */
+export function isCookLogSettled(): boolean {
+  return signedIn() && syncedThisSession();
+}
+
+/** Re-renders when the cook log becomes settled (see `isCookLogSettled`). */
+export function useCookLogSettled(): boolean {
+  const synced = useSyncStatusStore((state) => state.lastSyncedAt !== null);
+  const hasAccount = useSessionStore((state) => state.userId !== null);
+  return synced && hasAccount;
+}
+
+/**
+ * The signed-in person's cook log for reading what they cooked. Before the first sync of this
+ * session a non-empty log is still used: it is what this device kept from earlier sessions, so
+ * health keeps working offline. A partly pulled log right after signing in can only cost recent
+ * pairs, which the next refresh pairs again.
+ */
+function readableCookLog(): Readonly<Record<string, CookEntry>> {
+  if (!signedIn()) throw new CookLogUnavailableError('signed_out');
+  const entries = useCookLogStore.getState().entries;
+  if (!syncedThisSession() && Object.keys(entries).length === 0) {
+    throw new CookLogUnavailableError('not_synced');
+  }
+  return entries;
+}
+
+/**
+ * The cook log for deciding which meals are gone. A missing meal permanently drops its stored
+ * pair, so this waits until the log is settled; until then older pairs are simply kept.
+ */
+function settledCookLog(): Readonly<Record<string, CookEntry>> {
+  if (!signedIn()) throw new CookLogUnavailableError('signed_out');
+  if (!syncedThisSession()) throw new CookLogUnavailableError('not_synced');
   return useCookLogStore.getState().entries;
 }
 
@@ -42,7 +86,11 @@ const isCookedDish = (entry: CookEntry) => !entry.recipeId.startsWith(ESTIMATED_
 
 const pad2 = (value: number) => String(value).padStart(2, '0');
 
-/** The device's calendar day for an instant, `YYYY-MM-DD`. */
+/**
+ * The device's calendar day for an instant, `YYYY-MM-DD`. Known limit: this uses the time zone the
+ * device is in now, not the one it was in at cook time, so for someone who has travelled since, a
+ * meal cooked close to midnight can land on the neighbouring day.
+ */
 function localDateOf(at: number): string {
   const date = new Date(at);
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
@@ -50,7 +98,7 @@ function localDateOf(at: number): string {
 
 /** Meals the person logged as cooked within the range, oldest first. */
 export async function listCookedMeals(range: TimeRange): Promise<CookedMeal[]> {
-  const entries = signedInCookLog();
+  const entries = readableCookLog();
   const meals: CookedMeal[] = [];
   for (const entry of Object.values(entries)) {
     if (!isCookedDish(entry)) continue;
@@ -66,15 +114,45 @@ export async function listCookedMeals(range: TimeRange): Promise<CookedMeal[]> {
   return meals.sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id));
 }
 
-/** Which of the given cook log entry ids are still in the person's cook log. */
-export async function findCookedMealIds(ids: readonly string[]): Promise<Set<string>> {
-  const entries = signedInCookLog();
-  const found = new Set<string>();
-  for (const id of ids) {
-    const entry = entries[id];
-    if (entry && isCookedDish(entry)) found.add(id);
+/** A meal as a stored glucose pair remembers it. */
+export interface PairedMealRef {
+  mealId: string;
+  recipeRef: string;
+  startedAt: number;
+}
+
+const dishAtKey = (recipeRef: string, startedAt: number) => `${recipeRef}|${startedAt}`;
+
+/**
+ * For each given meal that is still in the cook log, the id of its cook log entry. A meal is found
+ * by its id, or else by its dish and the exact moment it was cooked: pairs saved by earlier Famara
+ * builds carry the server's cook event id, while the cook log entry for the same cook has its own
+ * id but the same dish and `cookedAt`. Throws `CookLogUnavailableError` until the log is settled.
+ */
+export async function matchCookedMeals(
+  meals: readonly PairedMealRef[],
+): Promise<Map<string, string>> {
+  const entries = settledCookLog();
+  const matches = new Map<string, string>();
+  let byDishAt: Map<string, string> | null = null;
+  for (const meal of meals) {
+    const direct = entries[meal.mealId];
+    if (direct) {
+      if (isCookedDish(direct)) matches.set(meal.mealId, direct.id);
+      continue;
+    }
+    if (byDishAt === null) {
+      byDishAt = new Map();
+      for (const entry of Object.values(entries)) {
+        if (isCookedDish(entry)) {
+          byDishAt.set(dishAtKey(entry.recipeId, Date.parse(entry.cookedAt)), entry.id);
+        }
+      }
+    }
+    const found = byDishAt.get(dishAtKey(meal.recipeRef, meal.startedAt));
+    if (found) matches.set(meal.mealId, found);
   }
-  return found;
+  return matches;
 }
 
 /** Catalog titles for the given recipe refs; refs outside the catalog are simply absent. */

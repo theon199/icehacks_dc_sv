@@ -1,12 +1,14 @@
 import { getRecipeSummaries, type RecipeSummary } from '@/lib/catalog';
+import { useSyncStatusStore } from '@/lib/sync';
 import { getDeviceId } from '@/lib/sync/deviceId';
 import { useCookLogStore, type CookEntry } from '@/stores';
 
 import {
   CookLogUnavailableError,
-  findCookedMealIds,
   getDishTitles,
+  isCookLogSettled,
   listCookedMeals,
+  matchCookedMeals,
   pushHealthDocs,
 } from './deps';
 
@@ -40,10 +42,14 @@ function seedCookLog(entries: CookEntry[]): void {
   useCookLogStore.setState({ entries: Object.fromEntries(entries.map((e) => [e.id, e])) });
 }
 
+const markSynced = (at: number | null) =>
+  useSyncStatusStore.setState({ phase: 'idle', pending: 0, lastSyncedAt: at, lastError: null });
+
 beforeEach(() => {
   mockRpc.mockReset();
   mockUserId = 'user-a';
   useCookLogStore.getState().reset();
+  markSynced(1_000);
 });
 
 describe('listCookedMeals', () => {
@@ -82,21 +88,79 @@ describe('listCookedMeals', () => {
     mockUserId = null;
     await expect(listCookedMeals(range)).rejects.toBeInstanceOf(CookLogUnavailableError);
   });
+
+  it('throws for an empty log that has not been synced since signing in', async () => {
+    markSynced(null);
+    await expect(listCookedMeals(range)).rejects.toBeInstanceOf(CookLogUnavailableError);
+  });
+
+  it('reads an empty log once a sync has finished', async () => {
+    await expect(listCookedMeals(range)).resolves.toEqual([]);
+  });
+
+  it('reads the log this device kept before the first sync of the session', async () => {
+    markSynced(null);
+    seedCookLog([entry('kept', 'mealdb:1', '2026-11-05T12:00:00.000Z')]);
+    const meals = await listCookedMeals(range);
+    expect(meals.map((meal) => meal.id)).toEqual(['kept']);
+  });
 });
 
-describe('findCookedMealIds', () => {
-  it('returns the ids still in the cook log, never photo estimates', async () => {
+describe('matchCookedMeals', () => {
+  const ref = (mealId: string, recipeRef: string, cookedAt: string) => ({
+    mealId,
+    recipeRef,
+    startedAt: Date.parse(cookedAt),
+  });
+
+  it('finds meals still in the cook log by id, never photo estimates', async () => {
     seedCookLog([
       entry('meal-1', 'mealdb:1', '2026-11-05T12:00:00.000Z'),
       entry('meal-2', 'snap:soup', '2026-11-05T19:00:00.000Z'),
     ]);
-    const found = await findCookedMealIds(['meal-1', 'meal-2', 'meal-3', 'meal-1']);
-    expect([...found]).toEqual(['meal-1']);
+    const found = await matchCookedMeals([
+      ref('meal-1', 'mealdb:1', '2026-11-05T12:00:00.000Z'),
+      ref('meal-2', 'snap:soup', '2026-11-05T19:00:00.000Z'),
+      ref('meal-3', 'mealdb:3', '2026-11-06T12:00:00.000Z'),
+    ]);
+    expect([...found]).toEqual([['meal-1', 'meal-1']]);
+  });
+
+  it('finds a meal saved under another id by its dish and exact cook time', async () => {
+    seedCookLog([
+      entry('entry-1', 'mealdb:1', '2026-09-05T12:00:00.000Z'),
+      entry('entry-2', 'mealdb:2', '2026-09-06T12:00:00.000Z'),
+    ]);
+    const found = await matchCookedMeals([
+      ref('server-1', 'mealdb:1', '2026-09-05T12:00:00.000Z'),
+      // Same dish, different moment: a different cook.
+      ref('server-2', 'mealdb:2', '2026-09-06T12:05:00.000Z'),
+    ]);
+    expect([...found]).toEqual([['server-1', 'entry-1']]);
   });
 
   it('throws while signed out', async () => {
     mockUserId = null;
-    await expect(findCookedMealIds(['meal-1'])).rejects.toBeInstanceOf(CookLogUnavailableError);
+    await expect(matchCookedMeals([])).rejects.toBeInstanceOf(CookLogUnavailableError);
+  });
+
+  it('throws until a sync has finished, even with entries on the device', async () => {
+    markSynced(null);
+    seedCookLog([entry('meal-1', 'mealdb:1', '2026-11-05T12:00:00.000Z')]);
+    await expect(
+      matchCookedMeals([ref('meal-1', 'mealdb:1', '2026-11-05T12:00:00.000Z')]),
+    ).rejects.toBeInstanceOf(CookLogUnavailableError);
+  });
+});
+
+describe('isCookLogSettled', () => {
+  it('is settled only when signed in and synced', () => {
+    expect(isCookLogSettled()).toBe(true);
+    markSynced(null);
+    expect(isCookLogSettled()).toBe(false);
+    markSynced(1_000);
+    mockUserId = null;
+    expect(isCookLogSettled()).toBe(false);
   });
 });
 
