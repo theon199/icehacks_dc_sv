@@ -4,9 +4,12 @@
  * A decision is held as `pending` until the next one replaces it (or the hook commits it after a
  * short window), so "undo" can put the card back without any feedback having been written.
  * Every fill carries the key it was built for; a fill for an older key (the mode or preferences
- * changed while ranking ran) is ignored.
+ * changed while ranking ran) is ignored. A fill is ordered to follow the cards already queued, so
+ * the deck stays varied across the seam (see `deckRun.ts`).
  */
 import type { DeckCard, NotForMeReason } from '@/domain';
+
+import { continueRun } from './deckRun';
 
 export type DecisionKind = 'like' | 'pass' | 'save' | 'not_for_me';
 
@@ -56,9 +59,12 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       return state.key === action.key && state.fills === 0 ? state : initialQueue(action.key);
     case 'fill': {
       if (action.key !== state.key) return state;
-      const taken = new Set(state.cards.map((card) => card.recipe.id));
-      if (state.pending) taken.add(state.pending.card.recipe.id);
-      const added = action.cards.filter((card) => !taken.has(card.recipe.id));
+      const tail = state.pending ? [state.pending.card, ...state.cards] : state.cards;
+      const taken = new Set(tail.map((card) => card.recipe.id));
+      const added = continueRun(
+        tail,
+        action.cards.filter((card) => !taken.has(card.recipe.id)),
+      );
       return {
         ...state,
         cards: added.length > 0 ? [...state.cards, ...added] : state.cards,

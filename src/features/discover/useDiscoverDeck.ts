@@ -4,27 +4,23 @@
  *
  * - Candidates come from one coarse catalog query per mode; ranking (`buildDeck`, which re-checks
  *   safety) runs in a deferred task so it never competes with a swipe.
- * - Ranking work is keyed by a cheap string (mode, seed, input versions, feedback count, fills), so
- *   re-renders never redo it. Changing mode, preferences or pantry starts a fresh deck.
- * - Swipes are held for a few seconds as the undoable decision and written to the feedback store
- *   when the next swipe happens, the window passes, the app goes to the background or the deck
- *   unmounts.
+ * - Ranking work is keyed by a cheap string (mode, seed, input versions, feedback version, fills),
+ *   so re-renders never redo it. Changing mode, preferences, the day tilt or pantry starts a fresh
+ *   deck.
+ * - Swipes are held briefly so they can be undone (`useHeldDecision`).
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { AppState } from 'react-native';
 
 import {
   buildDeck,
   isRecipeSafe,
   type DeckCard,
   type DeckMode,
-  type Impression,
   type NotForMeReason,
   type RecipeSummary,
   type Seed,
 } from '@/domain';
 import { useCandidates, type CandidateFilters, type RecipeCandidate } from '@/lib/catalog';
-import { useFeedbackStore, useSavedStore } from '@/stores';
 
 import {
   FILL_SIZE,
@@ -33,16 +29,15 @@ import {
   queuedIds,
   queueReducer,
   type Decision,
-  type DecisionKind,
 } from './deckQueue';
 import { runDeferred, type DeferredTask } from './deferred';
 import { toRankRecipe } from './deps';
 import { candidateFilters, resolveMode } from './modes';
 import { useDeckInputs } from './useDeckInputs';
+import { useHeldDecision } from './useHeldDecision';
 import { useIdentityVersion } from './useIdentityVersion';
 
-/** How long the last swipe stays undoable before it is written. */
-export const UNDO_WINDOW_MS = 8000;
+export { UNDO_WINDOW_MS } from './useHeldDecision';
 
 export type DeckStatus = 'needsPreferences' | 'loading' | 'ready' | 'exhausted' | 'error';
 
@@ -78,33 +73,34 @@ export interface DiscoverDeck {
 
 const NO_FILTERS: CandidateFilters = { limit: 1 };
 
-const rankedCache = new WeakMap<readonly RecipeCandidate[], readonly RecipeSummary[]>();
-
-/** Candidates in the engine's shape, converted once per query result. */
-function rankRecipes(candidates: readonly RecipeCandidate[]): readonly RecipeSummary[] {
-  let out = rankedCache.get(candidates);
-  if (!out) {
-    out = candidates.map(toRankRecipe);
-    rankedCache.set(candidates, out);
-  }
-  return out;
+interface RankPool {
+  readonly recipes: readonly RecipeSummary[];
+  /** Recipe ids by dish family, so a fill can leave out variants of dishes already shown. */
+  readonly families: ReadonlyMap<string, readonly string[]>;
 }
 
-function recordDecision(decision: Decision) {
-  const recipeId = decision.card.recipe.id;
-  const at = new Date(decision.at).toISOString();
-  useFeedbackStore.getState().record(
-    decision.kind === 'not_for_me'
-      ? {
-          recipeId,
-          kind: 'not_for_me',
-          reason: decision.reason ?? null,
-          ingredientId:
-            decision.reason === 'dislike_ingredient' ? (decision.ingredientId ?? null) : null,
-        }
-      : { recipeId, kind: decision.kind },
-    at,
-  );
+const poolCache = new WeakMap<readonly RecipeCandidate[], RankPool>();
+
+/** Candidates in the engine's shape, converted once per query result. */
+function rankPool(candidates: readonly RecipeCandidate[]): RankPool {
+  let pool = poolCache.get(candidates);
+  if (!pool) {
+    const recipes = candidates.map(toRankRecipe);
+    const families = new Map<string, string[]>();
+    for (const recipe of recipes) {
+      const members = families.get(recipe.familyId);
+      if (members) members.push(recipe.id);
+      else families.set(recipe.familyId, [recipe.id]);
+    }
+    pool = { recipes, families };
+    poolCache.set(candidates, pool);
+  }
+  return pool;
+}
+
+/** The ranking seed for a session: "Start over" must shuffle anew, not replay the first order. */
+export function sessionSeed(seed: Seed, sessionVersion: number): Seed {
+  return sessionVersion === 0 ? seed : `${String(seed)}~${sessionVersion}`;
 }
 
 export function useDiscoverDeck(
@@ -112,67 +108,48 @@ export function useDiscoverDeck(
   options: DiscoverDeckOptions = {},
 ): DiscoverDeck {
   const clock = options.now ?? Date.now;
-  const [hour] = useState(() => new Date(clock()).getHours());
-  const inputs = useDeckInputs(hour);
+  const inputs = useDeckInputs(clock);
   const mode = resolveMode(requestedMode, inputs.smallAppetite);
   const [seed] = useState<Seed>(() => options.seed ?? clock().toString(36));
   const [wide, setWide] = useState(false);
   const [sessionVersion, setSessionVersion] = useState(0);
+  const rankSeed = sessionSeed(seed, sessionVersion);
 
   const filters = useMemo(
     () => candidateFilters(inputs.prefs, mode, wide),
     [inputs.prefs, mode, wide],
   );
   const query = useCandidates(filters ?? NO_FILTERS, { enabled: filters !== null });
+  // A new result array means the catalog itself changed (a refetch after an update or a retry);
+  // starting a fresh deck then is intended. Re-renders keep the same array, so this rarely moves.
   const candidatesVersion = useIdentityVersion(query.data);
 
-  const key = `${mode}|${wide ? 'wide' : 'meals'}|${String(seed)}.${sessionVersion}|${inputs.version}|c${candidatesVersion}`;
+  const key = `${mode}|${wide ? 'wide' : 'meals'}|${String(rankSeed)}|${inputs.version}|c${candidatesVersion}`;
   const [queue, dispatch] = useReducer(queueReducer, key, initialQueue);
+  const { seen, decide, undo, commit } = useHeldDecision(dispatch, clock);
 
-  // Session memory: what was swiped (never repeated in a session) and every recipe ranked so far
-  // (lets taste learning see liked dishes that the current mode filters out).
-  const seenRef = useRef(new Map<string, number>());
+  // Every recipe ranked so far this session: lets taste learning see liked dishes that the
+  // current mode filters out.
   const historyRef = useRef(new Map<string, RecipeSummary>());
-  const pendingRef = useRef<Decision | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskRef = useRef<{ key: string; task: DeferredTask } | null>(null);
-
-  const clearTimer = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = null;
-  }, []);
-
-  const commitPending = useCallback(() => {
-    clearTimer();
-    const pending = pendingRef.current;
-    if (!pending) return;
-    pendingRef.current = null;
-    recordDecision(pending);
-    dispatch({ type: 'commit' });
-  }, [clearTimer]);
 
   // A new deck key (mode, preferences, pantry, seed, candidates) starts a fresh queue.
   useEffect(() => {
     if (queue.key === key) return;
-    commitPending();
+    commit();
     dispatch({ type: 'reset', key });
-  }, [key, queue.key, commitPending]);
+  }, [key, queue.key, commit]);
 
-  // Write the held decision when the app leaves the foreground and when the deck goes away.
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') commitPending();
-    });
-    return () => {
-      subscription.remove();
-      commitPending();
+  useEffect(
+    () => () => {
       taskRef.current?.task.cancel();
       taskRef.current = null;
-    };
-  }, [commitPending]);
+    },
+    [],
+  );
 
   const candidates = query.data;
-  const fillKey = `${key}|f${inputs.feedbackCount}|n${queue.fills}`;
+  const fillKey = `${key}|f${inputs.feedbackVersion}|n${queue.fills}`;
   const wantsFill = queue.key === key && candidates !== undefined && needsFill(queue);
 
   useEffect(() => {
@@ -180,13 +157,21 @@ export function useDiscoverDeck(
     if (taskRef.current?.key === fillKey) return;
     taskRef.current?.task.cancel();
 
-    const exclude = new Set([...queuedIds(queue), ...seenRef.current.keys()]);
-    const shown: Impression[] = [...seenRef.current].map(([recipeId, at]) => ({ recipeId, at }));
+    const queued = queuedIds(queue);
+    const shown = [...seen].map(([recipeId, at]) => ({ recipeId, at }));
     const { prefs, feedback, pantry } = inputs;
+    // Measured with the domain benchmark: about 6 ms per 1,000 candidates on a laptop, so a wide
+    // (1,500) pool can pass the 8 ms budget on a phone. It runs in an idle slot, never mid-swipe.
     const task = runDeferred(() => {
-      const recipes = rankRecipes(candidates);
+      const { recipes, families } = rankPool(candidates);
       const history = historyRef.current;
       for (const recipe of recipes) history.set(recipe.id, recipe);
+      // Cards on screen or swiped this session stay out, and so do other variants of their dishes.
+      const exclude = new Set([...queued, ...seen.keys()]);
+      for (const id of [...exclude]) {
+        const family = history.get(id)?.familyId;
+        for (const member of (family && families.get(family)) || []) exclude.add(member);
+      }
       const deck = buildDeck({
         candidates: recipes,
         prefs,
@@ -196,47 +181,14 @@ export function useDiscoverDeck(
         history,
         now: clock(),
         mode,
-        seed,
+        seed: rankSeed,
         size: FILL_SIZE,
         exclude,
       });
       dispatch({ type: 'fill', key, cards: deck.cards });
     });
     taskRef.current = { key: fillKey, task };
-  }, [wantsFill, fillKey, candidates, queue, inputs, clock, mode, seed, key]);
-
-  const decide = useCallback(
-    (card: DeckCard, kind: DecisionKind, extra: Pick<Decision, 'reason' | 'ingredientId'> = {}) => {
-      if (pendingRef.current?.card.recipe.id === card.recipe.id) return;
-      commitPending();
-      const at = clock();
-      const decision: Decision = { card, kind, at, ...extra };
-      if (kind === 'save') {
-        const saved = useSavedStore.getState();
-        const savedBefore = !!saved.saved[card.recipe.id];
-        if (!savedBefore) saved.save(card.recipe.id, new Date(at).toISOString());
-        pendingRef.current = { ...decision, savedBefore };
-      } else {
-        pendingRef.current = decision;
-      }
-      seenRef.current.set(card.recipe.id, at);
-      dispatch({ type: 'decide', decision: pendingRef.current });
-      timerRef.current = setTimeout(commitPending, UNDO_WINDOW_MS);
-    },
-    [clock, commitPending],
-  );
-
-  const undo = useCallback(() => {
-    const pending = pendingRef.current;
-    if (!pending) return;
-    clearTimer();
-    pendingRef.current = null;
-    if (pending.kind === 'save' && !pending.savedBefore) {
-      useSavedStore.getState().unsave(pending.card.recipe.id);
-    }
-    seenRef.current.delete(pending.card.recipe.id);
-    dispatch({ type: 'undo' });
-  }, [clearTimer]);
+  }, [wantsFill, fillKey, candidates, queue, inputs, clock, mode, rankSeed, key, seen]);
 
   const like = useCallback((card: DeckCard) => decide(card, 'like'), [decide]);
   const pass = useCallback((card: DeckCard) => decide(card, 'pass'), [decide]);
@@ -248,10 +200,10 @@ export function useDiscoverDeck(
   );
   const widen = useCallback(() => setWide(true), []);
   const startOver = useCallback(() => {
-    commitPending();
-    seenRef.current.clear();
+    commit();
+    seen.clear();
     setSessionVersion((version) => version + 1);
-  }, [commitPending]);
+  }, [commit, seen]);
   const { refetch } = query;
   const retry = useCallback(() => {
     void refetch();
