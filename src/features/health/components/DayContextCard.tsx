@@ -21,7 +21,7 @@ export function DayContextCard({ context }: DayContextCardProps) {
         <Text variant="headline">{copy.title}</Text>
         {empty ? (
           <Text variant="subhead" tone="muted">
-            {context ? copy.empty : copy.expired}
+            {context ? copy.empty : copy.pending}
           </Text>
         ) : (
           <>

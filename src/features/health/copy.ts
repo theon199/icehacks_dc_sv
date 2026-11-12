@@ -36,7 +36,7 @@ export const healthCopy = {
   day: {
     title: 'Today',
     empty: 'No workouts or sleep recorded in the last 24 hours.',
-    expired: 'Your day context has expired. It updates the next time you open Famara.',
+    pending: 'Nothing to show yet. Today updates each time you open Famara.',
     activity: {
       rest: 'Rest day so far',
       light: 'Lightly active',
