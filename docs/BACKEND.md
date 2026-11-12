@@ -647,3 +647,19 @@ so a refused attempt still uses one unit of the `text_review` allowance.
 | `FAMARA_PUBLISH_AI_REVIEW` | `on` | `off` skips the AI review (SQL review terms still apply). Honoured only when `SUPABASE_URL` points at a local stack (`localhost`, `127.0.0.1`, `kong`, `host.docker.internal`); ignored with a warning anywhere else |
 
 Invalid numeric values are logged and replaced by the default, so a typo never removes a limit.
+
+## Push categories
+
+Migration `20261113140000_push_categories` adds `private.notification_preferences`: one row per
+account with two optional push categories, `social` (likes, comments and replies) and `follows`
+(new followers and accepted friend invites). Both are off until the member turns them on, from the
+in-app push offer or the switches in Settings; accounts that already had a registered device when
+the migration ran start with both on. Moderation outcomes, appeal decisions and badges are always
+pushed, and the inbox lists every notification whatever is chosen.
+
+The table is private (RLS on, no policies). The app reads and changes it through the `push` edge
+function (`{ action: "categories", social?, follows? }`, member session required), which calls
+`private.get_notification_preferences` and `private.set_notification_preferences`.
+`private.push_batch` now leaves out notifications whose category (`private.push_category(kind)`)
+the recipient has turned off, so they never reach the push service. Tests:
+`supabase/tests/14_push_categories.test.sql` and `supabase/functions/push/handler_test.ts`.
