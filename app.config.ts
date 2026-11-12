@@ -65,10 +65,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: 'com.famara.app',
-    adaptiveIcon: {
-      foregroundImage: './assets/images/adaptive-icon.png',
-      backgroundColor: configColors.basil,
-    },
     predictiveBackGestureEnabled: false,
   },
   web: {

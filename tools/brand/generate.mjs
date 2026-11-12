@@ -2,7 +2,6 @@
 /**
  * Renders Famara's raster brand assets from the vector mark:
  *   assets/images/icon.png           1024×1024, opaque (App Store / iOS icon)
- *   assets/images/adaptive-icon.png  1024×1024, transparent foreground (Android adaptive icon)
  *   assets/images/splash-icon.png    1024×1024, transparent (launch screen)
  *   assets/images/favicon.png        48×48 (web)
  *
@@ -81,11 +80,6 @@ const outputs = [
     size: 1024,
     svg: svg({ size: 1024, scale: 0.66, colors: onBasil, background: 'square' }),
     opaque: true,
-  },
-  {
-    file: 'adaptive-icon.png',
-    size: 1024,
-    svg: svg({ size: 1024, scale: 0.5, colors: onBasil, background: 'none' }),
   },
   {
     file: 'splash-icon.png',
