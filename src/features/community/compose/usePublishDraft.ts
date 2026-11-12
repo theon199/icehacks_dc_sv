@@ -1,6 +1,6 @@
 /**
  * Publishing a draft: validate, upload photos with progress, call the publish function, refresh
- * the feeds. Uploaded photos are remembered while the screen is open, so retrying after a network
+ * the feeds and the author's profile (posts grid, stats, badges). Uploaded photos are remembered while the screen is open, so retrying after a network
  * or server hiccup does not upload them again. When the server rejects the post itself (400/409,
  * e.g. a photo it can no longer use), the remembered uploads are dropped and the next attempt
  * uploads fresh copies.
@@ -8,6 +8,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 
+import { profileKeys } from '@/features/profile';
 import { isApiError } from '@/lib/api/errors';
 
 import type { PublishedPost } from '../api/schemas';
@@ -97,6 +98,10 @@ export function usePublishDraft(userId: string | null) {
         await Promise.all([
           client.invalidateQueries({ queryKey: communityKeys.feeds(viewer) }),
           client.invalidateQueries({ queryKey: communityKeys.profile(viewer, userId) }),
+          // A new post changes the author's own profile: its grid, post count and maybe a badge.
+          client.invalidateQueries({ queryKey: profileKeys.posts(userId) }),
+          client.invalidateQueries({ queryKey: profileKeys.statsAll(userId) }),
+          client.invalidateQueries({ queryKey: profileKeys.badges() }),
           draft.parentPostId
             ? client.invalidateQueries({
                 queryKey: communityKeys.remixes(viewer, draft.parentPostId),

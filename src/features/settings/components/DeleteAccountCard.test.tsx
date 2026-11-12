@@ -9,7 +9,7 @@ import { confirmsDeletion, DeleteAccountCard } from './DeleteAccountCard';
 
 const mockClient = {
   rpc: jest.fn(),
-  auth: { signOut: jest.fn() },
+  auth: { signOut: jest.fn(), getSession: jest.fn() },
 };
 jest.mock('@/lib/supabase/client', () => ({ getSupabase: () => mockClient }));
 
@@ -23,6 +23,7 @@ beforeEach(() => {
     onboardingComplete: true,
   });
   mockClient.auth.signOut.mockResolvedValue({ error: null });
+  mockClient.auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
 });
 
 async function openAndType(text: string) {

@@ -7,6 +7,7 @@ import { describeError, logger } from '@/lib/logger';
 import { toast } from '@/ui';
 
 import { setPushEnabled, usePushEnabled } from '../deps';
+import { savePushCategories } from './pushCategories';
 import {
   readPushPermission,
   requestPushPermission,
@@ -76,6 +77,8 @@ export function usePushOffer(): PushOffer {
         if (result.permission === 'granted') {
           setHidden(true);
           await syncPushRegistration(userId, { force: true });
+          // The offer promises likes, comments and follows, so it turns both categories on.
+          await savePushCategories({ social: true, follows: true });
           toast.success("You're all set. We'll let you know when something happens.");
           return;
         }

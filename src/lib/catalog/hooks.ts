@@ -78,7 +78,34 @@ export function useRecipes(ids: readonly string[]) {
   });
 }
 
-/** Paged full-text search. Keeps showing the previous results while a new query loads. */
+const allergenKey = (allergens: SearchFilters['avoidAllergens']): string =>
+  [...new Set(allergens ?? [])].sort().join(',');
+
+const dietKey = (mask: number | undefined): number =>
+  mask != null && Number.isFinite(mask) && mask > 0 ? Math.trunc(mask) : 0;
+
+/**
+ * True when two searches apply the same safety restrictions (avoided allergens and required diet
+ * bits). Only then can one search's results stand in for the other's while it loads: any change
+ * could make a previously shown recipe unsafe, so it must not stay on screen.
+ */
+export function sameSafetyFilters(a: SearchFilters, b: SearchFilters): boolean {
+  return (
+    allergenKey(a.avoidAllergens) === allergenKey(b.avoidAllergens) &&
+    dietKey(a.dietMask) === dietKey(b.dietMask)
+  );
+}
+
+function searchFiltersOf(queryKey: readonly unknown[] | undefined): SearchFilters | null {
+  if (!queryKey || queryKey[0] !== 'catalog' || queryKey[1] !== 'search') return null;
+  const filters = queryKey[3];
+  return typeof filters === 'object' && filters !== null ? (filters as SearchFilters) : null;
+}
+
+/**
+ * Paged full-text search. While a new query loads it keeps showing the previous results, but only
+ * when the allergen and diet restrictions are unchanged; otherwise it shows a loading state.
+ */
 export function useRecipeSearch(query: string, filters: SearchFilters = {}) {
   return useInfiniteQuery({
     ...catalogQueryOptions,
@@ -86,7 +113,10 @@ export function useRecipeSearch(query: string, filters: SearchFilters = {}) {
     queryFn: ({ pageParam }) => searchRecipes(query, filters, pageParam),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) => {
+      const previousFilters = searchFiltersOf(previousQuery?.queryKey);
+      return previousFilters && sameSafetyFilters(previousFilters, filters) ? previous : undefined;
+    },
   });
 }
 

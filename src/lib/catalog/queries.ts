@@ -140,23 +140,47 @@ function filterParams(f: FilterValues): SQLiteBindValue[] {
 const SUMMARY_BY_IDS_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS} FROM recipes r
   WHERE r.id IN (SELECT value FROM json_each(?))`;
 
-/** Summaries for many ids in one statement, in the order asked; unknown ids are skipped. */
-export async function getRecipeSummaries(ids: readonly string[]): Promise<RecipeSummary[]> {
-  const missing = [...new Set(ids.filter((id) => !summaryCache.has(id)))];
+/**
+ * Looks up many ids at once, in the order asked, skipping unknown ids. Results are gathered in a
+ * map owned by this call; the LRU only saves a query for ids it still holds, so a batch larger
+ * than the cache, or one whose cached entries get evicted by its own fresh rows, loses nothing.
+ */
+async function lookupMany<T>(
+  ids: readonly string[],
+  cache: LruCache<string, T>,
+  fetchMissing: (missing: readonly string[]) => Promise<(readonly [string, T])[]>,
+): Promise<T[]> {
+  const found = new Map<string, T>();
+  const missing: string[] = [];
+  for (const id of new Set(ids)) {
+    const cached = cache.get(id);
+    if (cached !== undefined) found.set(id, cached);
+    else missing.push(id);
+  }
   if (missing.length > 0) {
+    for (const [id, value] of await fetchMissing(missing)) {
+      found.set(id, value);
+      cache.set(id, value);
+    }
+  }
+  const out: T[] = [];
+  for (const id of ids) {
+    const value = found.get(id);
+    if (value !== undefined) out.push(value);
+  }
+  return out;
+}
+
+/** Summaries for many ids in one statement, in the order asked; unknown ids are skipped. */
+export function getRecipeSummaries(ids: readonly string[]): Promise<RecipeSummary[]> {
+  return lookupMany(ids, summaryCache, async (missing) => {
     const rows = await catalogPreparedQuery(
       SUMMARY_BY_IDS_SQL,
       [JSON.stringify(missing)],
       recipeRowSchema,
     );
-    for (const row of rows) summaryCache.set(row.id, toRecipeSummary(row));
-  }
-  const out: RecipeSummary[] = [];
-  for (const id of ids) {
-    const summary = summaryCache.get(id);
-    if (summary) out.push(summary);
-  }
-  return out;
+    return rows.map((row) => [row.id, toRecipeSummary(row)] as const);
+  });
 }
 
 export async function getRecipeSummary(id: string): Promise<RecipeSummary | null> {
@@ -300,22 +324,15 @@ const INGREDIENTS_BY_IDS_SQL = `SELECT ${INGREDIENT_COLUMNS} FROM ingredients i
   WHERE i.id IN (SELECT value FROM json_each(?))`;
 
 /** Ingredients for the given ids, in the order asked; unknown ids are skipped. */
-export async function getIngredients(ids: readonly string[]): Promise<Ingredient[]> {
-  const missing = [...new Set(ids.filter((id) => !ingredientCache.has(id)))];
-  if (missing.length > 0) {
+export function getIngredients(ids: readonly string[]): Promise<Ingredient[]> {
+  return lookupMany(ids, ingredientCache, async (missing) => {
     const rows = await catalogPreparedQuery(
       INGREDIENTS_BY_IDS_SQL,
       [JSON.stringify(missing)],
       ingredientRowSchema,
     );
-    for (const row of rows) ingredientCache.set(row.id, toIngredient(row));
-  }
-  const out: Ingredient[] = [];
-  for (const id of ids) {
-    const ingredient = ingredientCache.get(id);
-    if (ingredient) out.push(ingredient);
-  }
-  return out;
+    return rows.map((row) => [row.id, toIngredient(row)] as const);
+  });
 }
 
 const INGREDIENT_MATCH = `(i.name LIKE ? ESCAPE '\\' OR i.plural LIKE ? ESCAPE '\\'
