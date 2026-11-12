@@ -13,7 +13,14 @@ export interface CommentComposerProps {
   onCancelReply: () => void;
   onSend: (body: string, parentCommentId: string | null) => Promise<unknown>;
   autoFocus?: boolean;
+  /** Bump this number to move the cursor into the comment box (e.g. from the post's comment button). */
+  focusRequest?: number;
 }
+
+/** Where the composer is: idle, sending, or showing why the last attempt did not go through. */
+type SendState = { phase: 'idle' } | { phase: 'sending' } | { phase: 'failed'; message: string };
+
+const IDLE: SendState = { phase: 'idle' };
 
 /** Text box pinned under the comments; keeps the text if sending fails. */
 export function CommentComposer({
@@ -21,33 +28,37 @@ export function CommentComposer({
   onCancelReply,
   onSend,
   autoFocus,
+  focusRequest = 0,
 }: CommentComposerProps) {
   const theme = useTheme();
   const input = useRef<TextInput>(null);
   const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [sendState, setSendState] = useState<SendState>(IDLE);
+  const sending = sendState.phase === 'sending';
+  const error = sendState.phase === 'failed' ? sendState.message : null;
 
   useEffect(() => {
     if (replyTo) input.current?.focus();
   }, [replyTo]);
 
+  useEffect(() => {
+    if (focusRequest > 0) input.current?.focus();
+  }, [focusRequest]);
+
   const send = async () => {
     const checked = validateComment(text);
     if (!checked.ok) {
-      setError(checked.error);
+      setSendState({ phase: 'failed', message: checked.error });
       return;
     }
-    setSending(true);
-    setError(null);
+    setSendState({ phase: 'sending' });
     try {
       await onSend(checked.body, replyTo?.id ?? null);
       setText('');
       onCancelReply();
+      setSendState(IDLE);
     } catch (failure) {
-      setError(publishErrorMessage(failure));
-    } finally {
-      setSending(false);
+      setSendState({ phase: 'failed', message: publishErrorMessage(failure) });
     }
   };
 
@@ -73,7 +84,7 @@ export function CommentComposer({
           value={text}
           onChangeText={(next) => {
             setText(next);
-            if (error) setError(null);
+            if (error) setSendState(IDLE);
           }}
           placeholder={replyTo ? 'Write a reply' : 'Add a comment'}
           accessibilityLabel={replyTo ? 'Reply' : 'Comment'}

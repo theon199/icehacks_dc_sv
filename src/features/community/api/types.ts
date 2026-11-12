@@ -22,6 +22,18 @@ export interface Comment extends CommentRow {
   authorAvatarUrl: string | null;
 }
 
+/** Where the next page of comments starts: just after this comment. */
+export interface CommentCursor {
+  createdAt: string;
+  id: string;
+}
+
+/** A page of comments as the UI keeps it in the query cache. */
+export interface CommentPage {
+  items: Comment[];
+  nextCursor: CommentCursor | null;
+}
+
 /** A top-level comment with its replies (one level, oldest first). */
 export interface CommentThread {
   comment: Comment;

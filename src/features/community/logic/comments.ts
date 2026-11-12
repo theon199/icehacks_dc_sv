@@ -1,5 +1,5 @@
 /** Builds the one-level comment thread shown under a post. */
-import type { Comment, CommentThread } from '../api/types';
+import type { Comment, CommentPage, CommentThread } from '../api/types';
 
 /**
  * Groups replies under their parent, keeping server order (oldest first). A reply whose parent is
@@ -31,6 +31,19 @@ export function threadComments(comments: readonly Comment[]): CommentThread[] {
     .map((id) => threads.get(id))
     .filter((thread): thread is CommentThread => thread !== undefined)
     .filter((thread) => !isDeleted(thread.comment) || thread.replies.length > 0);
+}
+
+/** Flattens loaded comment pages, dropping any repeat of a comment already seen. */
+export function mergeCommentPages(pages: readonly CommentPage[] | undefined): Comment[] {
+  if (!pages) return [];
+  const seen = new Set<string>();
+  return pages.flatMap((page) =>
+    page.items.filter((comment) => {
+      if (seen.has(comment.id)) return false;
+      seen.add(comment.id);
+      return true;
+    }),
+  );
 }
 
 export function isDeleted(comment: Comment): boolean {

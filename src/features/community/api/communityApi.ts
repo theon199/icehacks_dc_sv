@@ -25,10 +25,11 @@ import {
   type SaveState,
   type WeeklyTopDishRow,
 } from './schemas';
-import type { Comment, FeedPage, Post } from './types';
+import type { CommentCursor, CommentPage, FeedPage, Post } from './types';
 
 export const FEED_PAGE_SIZE = 15;
-const COMMENT_LIMIT = 500;
+/** Comments load in pages, oldest first, so long threads (and the newest replies) stay reachable. */
+export const COMMENT_PAGE_SIZE = 50;
 const REMIX_LIMIT = 20;
 
 function parseOrThrow<S extends z.ZodType>(name: string, schema: S, data: unknown): z.infer<S> {
@@ -92,18 +93,42 @@ export async function fetchRemixes(postId: string): Promise<Post[]> {
   return toPosts(parseOrThrow('post_cards', z.array(postCardRowSchema), data ?? []));
 }
 
-/** Comments on a post, oldest first. RLS and the view already drop blocked people both ways. */
-export async function fetchComments(postId: string): Promise<Comment[]> {
-  const { data, error } = await supabase
-    .from('comment_cards')
-    .select('*')
-    .eq('post_id', postId)
+/** Quotes a value for a PostgREST logic filter (timestamps carry `:` and `+`). */
+function filterValue(value: string): string {
+  return `"${value.replace(/["\\]/g, '')}"`;
+}
+
+/**
+ * One page of comments on a post, oldest first, continuing after `cursor`. Paging is keyset-based
+ * on (created_at, id), so comments added or deleted meanwhile never shift what the next page
+ * returns. RLS and the view already drop blocked people both ways.
+ */
+export async function fetchCommentPage(
+  postId: string,
+  cursor: CommentCursor | null,
+  limit = COMMENT_PAGE_SIZE,
+): Promise<CommentPage> {
+  let query = supabase.from('comment_cards').select('*').eq('post_id', postId);
+  if (cursor) {
+    const at = filterValue(cursor.createdAt);
+    query = query.or(
+      `created_at.gt.${at},and(created_at.eq.${at},id.gt.${filterValue(cursor.id)})`,
+    );
+  }
+  const { data, error } = await query
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })
-    .limit(COMMENT_LIMIT);
+    .limit(limit + 1);
   if (error) throw toApiError('comment_cards', error);
   const rows = parseOrThrow('comment_cards', z.array(commentRowSchema), data ?? []);
-  return rows.map((row) => ({ ...row, authorAvatarUrl: avatarUrl(row.author_avatar_path) }));
+  const items = rows
+    .slice(0, limit)
+    .map((row) => ({ ...row, authorAvatarUrl: avatarUrl(row.author_avatar_path) }));
+  const last = items.at(-1);
+  return {
+    items,
+    nextCursor: rows.length > limit && last ? { createdAt: last.created_at, id: last.id } : null,
+  };
 }
 
 export async function toggleLike(postId: string): Promise<LikeState> {

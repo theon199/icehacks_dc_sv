@@ -38,7 +38,7 @@ export function RatingInput({ value, onChange }: RatingInputProps) {
       <Text variant="subhead" tone="muted">
         Your rating
       </Text>
-      <View style={styles.row} accessibilityRole="adjustable" accessibilityLabel="Rating">
+      <View style={styles.row}>
         {STARS.map((star) => {
           const filled = value != null && star <= value;
           return (

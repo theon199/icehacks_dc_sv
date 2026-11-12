@@ -3,7 +3,6 @@ import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { useSessionStore } from '@/features/auth';
 import { EmptyState, ErrorState, Screen, Text, gutter, space, useTheme } from '@/ui';
 
 import type { Comment } from '../api/types';
@@ -13,6 +12,7 @@ import { PostCard } from '../components/PostCard';
 import { PostSkeletonList } from '../components/PostSkeleton';
 import { BasedOn, RemixList } from '../components/RemixLineage';
 import { usePostMenu } from '../components/usePostMenu';
+import { useForgetOtherViewers, useViewer } from '../hooks/queryKeys';
 import { useBlockUser } from '../hooks/useAuthor';
 import { useAddComment, useComments, useDeleteComment, usePost } from '../hooks/usePost';
 import { threadComments } from '../logic/comments';
@@ -38,7 +38,8 @@ function leave() {
 /** A post with its remix lineage and comments (one level of replies). */
 export function PostScreen({ postId, focusComments = false }: PostScreenProps) {
   const theme = useTheme();
-  const userId = useSessionStore((state) => state.userId);
+  const userId = useViewer();
+  useForgetOtherViewers(userId);
   const post = usePost(postId);
   const visible = post.data != null;
   const comments = useComments(postId, visible);
@@ -47,15 +48,22 @@ export function PostScreen({ postId, focusComments = false }: PostScreenProps) {
   const { mutate: block } = useBlockUser();
   const openMenu = usePostMenu({ onDeleted: leave, onBlocked: leave });
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const focusComposer = useCallback(() => setFocusRequest((count) => count + 1), []);
 
   const entries = useMemo<CommentEntry[]>(
     () =>
-      threadComments(comments.data ?? []).flatMap((thread) => [
+      threadComments(comments.comments).flatMap((thread) => [
         { comment: thread.comment, isReply: false },
         ...thread.replies.map((reply) => ({ comment: reply, isReply: true })),
       ]),
-    [comments.data],
+    [comments.comments],
   );
+
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = comments;
+  const loadMoreComments = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   const onBlockCommenter = useCallback((comment: Comment) => block(comment.author_id), [block]);
 
@@ -104,7 +112,13 @@ export function PostScreen({ postId, focusComments = false }: PostScreenProps) {
 
   const header = (
     <View style={styles.header}>
-      <PostCard post={current} onMenu={openMenu} full priority="high" />
+      <PostCard
+        post={current}
+        onMenu={openMenu}
+        full
+        priority="high"
+        onComment={current.status === 'visible' ? focusComposer : undefined}
+      />
       {current.parent_post_id ? <BasedOn parentPostId={current.parent_post_id} /> : null}
       <RemixList post={current} />
       <Text variant="title3">Comments</Text>
@@ -135,6 +149,7 @@ export function PostScreen({ postId, focusComments = false }: PostScreenProps) {
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
             autoFocus={focusComments}
+            focusRequest={focusRequest}
             onSend={(body, parentCommentId) => addComment.mutateAsync({ body, parentCommentId })}
           />
         ) : undefined
@@ -146,6 +161,13 @@ export function PostScreen({ postId, focusComments = false }: PostScreenProps) {
         keyExtractor={keyExtractor}
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator color={theme.colors.primary} style={styles.loading} />
+          ) : null
+        }
+        onEndReached={loadMoreComments}
+        onEndReachedThreshold={0.5}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"

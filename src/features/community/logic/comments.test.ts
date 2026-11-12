@@ -1,4 +1,4 @@
-import { countVisible, threadComments, validateComment } from './comments';
+import { countVisible, mergeCommentPages, threadComments, validateComment } from './comments';
 import { makeComment } from '../testing/fixtures';
 
 describe('threadComments', () => {
@@ -39,5 +39,22 @@ describe('validateComment', () => {
   it('rejects empty and overlong text', () => {
     expect(validateComment('   ').ok).toBe(false);
     expect(validateComment('a'.repeat(1001)).ok).toBe(false);
+  });
+});
+
+describe('mergeCommentPages', () => {
+  it('joins pages in order and skips a comment seen on an earlier page', () => {
+    const a = makeComment();
+    const b = makeComment();
+    const c = makeComment();
+    const pages = [
+      { items: [a, b], nextCursor: { createdAt: b.created_at, id: b.id } },
+      { items: [b, c], nextCursor: null },
+    ];
+    expect(mergeCommentPages(pages).map((comment) => comment.id)).toEqual([a.id, b.id, c.id]);
+  });
+
+  it('is empty before anything has loaded', () => {
+    expect(mergeCommentPages(undefined)).toEqual([]);
   });
 });

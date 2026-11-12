@@ -66,9 +66,17 @@ function showMenu({ comment, isOwn, onDelete, onBlock }: CommentItemProps) {
 
 /** One comment or reply, with reply and report/block/delete actions. */
 export const CommentItem = memo(function CommentItem(props: CommentItemProps) {
-  const { comment, isReply, onReply } = props;
+  const { comment, isReply, isOwn, onReply } = props;
   const theme = useTheme();
   const deleted = isDeleted(comment);
+  // comment_cards has no team flag yet, so comments cannot show the team badge (see PR follow-ups).
+  // Only top-level comments take replies. A reply whose parent is out of view is listed at the
+  // top level so it is not lost, but it is still a reply and the server would refuse another.
+  const canReply =
+    !isReply &&
+    onReply != null &&
+    comment.parent_comment_id == null &&
+    comment.status === 'visible';
 
   return (
     <View
@@ -101,17 +109,19 @@ export const CommentItem = memo(function CommentItem(props: CommentItemProps) {
           </View>
           {comment.status !== 'visible' ? (
             <Text variant="caption" color="warning">
-              Waiting for review. Only you can see this.
+              {isOwn
+                ? 'Waiting for review. Only you can see this.'
+                : 'Hidden from the community while it is reviewed.'}
             </Text>
           ) : null}
           <Text variant="callout">{comment.body}</Text>
-          {!isReply && onReply && comment.status === 'visible' ? (
+          {canReply ? (
             <Button
               label="Reply"
               variant="ghost"
               size="sm"
               haptic={false}
-              onPress={() => onReply(comment)}
+              onPress={() => onReply?.(comment)}
               style={styles.replyButton}
             />
           ) : null}

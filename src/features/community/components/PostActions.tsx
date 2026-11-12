@@ -60,7 +60,8 @@ function Action({
 
 export interface PostActionsProps {
   post: Post;
-  onComment: () => void;
+  /** Left out where commenting is not possible; the comment action is then hidden. */
+  onComment?: (() => void) | undefined;
 }
 
 /** Like, comment and save for a post. Likes and saves update instantly and roll back on failure. */
@@ -82,14 +83,16 @@ export const PostActions = memo(function PostActions({ post, onComment }: PostAc
           like.mutate();
         }}
       />
-      <Action
-        testID="post-comment"
-        icon="bubble.left"
-        android="chat_bubble_outline"
-        label="Comments"
-        count={post.comment_count}
-        onPress={onComment}
-      />
+      {onComment ? (
+        <Action
+          testID="post-comment"
+          icon="bubble.left"
+          android="chat_bubble_outline"
+          label="Comments"
+          count={post.comment_count}
+          onPress={onComment}
+        />
+      ) : null}
       <View style={styles.spacer} />
       <Action
         testID="post-save"

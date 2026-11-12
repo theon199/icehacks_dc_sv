@@ -10,6 +10,7 @@ import { PostActions } from './PostActions';
 import { RatingStars } from './RatingStars';
 import { RecipeChip } from './RecipeChip';
 import type { Post } from '../api/types';
+import { useViewer } from '../hooks/queryKeys';
 
 const KIND_TAG: Record<Post['kind'], string | null> = {
   cook: null,
@@ -25,6 +26,11 @@ export interface PostCardProps {
   full?: boolean;
   /** Load the first photo eagerly (cards near the top of the feed). */
   priority?: 'low' | 'normal' | 'high';
+  /**
+   * Detail screen only: focuses its comment box. Without it the comment button is hidden there.
+   * Feed cards always open the post with the comment box focused.
+   */
+  onComment?: (() => void) | undefined;
 }
 
 export function openPost(postId: string, focusComments = false) {
@@ -44,14 +50,16 @@ export const PostCard = memo(function PostCard({
   onMenu,
   full = false,
   priority = 'normal',
+  onComment,
 }: PostCardProps) {
   const theme = useTheme();
+  const viewer = useViewer();
   const tag = KIND_TAG[post.kind];
   const openDetail = useCallback(() => openPost(post.id), [post.id]);
-  const openComments = useCallback(() => {
-    if (full) return;
-    openPost(post.id, true);
-  }, [full, post.id]);
+  const openComments = useCallback(() => openPost(post.id, true), [post.id]);
+  // On the detail screen the button focuses the comment box there, or is hidden when the post
+  // cannot take comments; in the feed it opens the post with the box focused.
+  const commentAction = full ? onComment : openComments;
 
   const body = (
     <View style={styles.body}>
@@ -97,7 +105,9 @@ export const PostCard = memo(function PostCard({
           ]}
         >
           <Text variant="footnote" color="onWarningSoft">
-            Only you can see this post while it is being reviewed.
+            {post.author_id === viewer
+              ? 'Only you can see this post while it is being reviewed.'
+              : 'Hidden from the community while it is reviewed.'}
           </Text>
         </View>
       ) : null}
@@ -128,7 +138,7 @@ export const PostCard = memo(function PostCard({
         </View>
       ) : null}
 
-      <PostActions post={post} onComment={openComments} />
+      <PostActions post={post} onComment={commentAction} />
     </Card>
   );
 });
