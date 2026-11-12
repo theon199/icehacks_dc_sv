@@ -45,11 +45,26 @@ describe('useHealthStore', () => {
     expect(useHealthStore.getState().glucosePairs).toEqual([]);
   });
 
+  it('marks the glucose backfill done only when backfilled pairs were stored', () => {
+    const store = useHealthStore.getState();
+    store.applyRefresh({ at: NOW, dayContext: context, glucoseBackfilled: true });
+    expect(useHealthStore.getState().glucoseBackfilledAt).toBeNull();
+    store.applyRefresh({ at: NOW + 1, glucosePairs: [pair] });
+    expect(useHealthStore.getState().glucoseBackfilledAt).toBeNull();
+    store.applyRefresh({ at: NOW + 2, glucosePairs: [pair], glucoseBackfilled: true });
+    expect(useHealthStore.getState().glucoseBackfilledAt).toBe(NOW + 2);
+  });
+
   it('forgets health data and stops syncing when turned off', () => {
     const store = useHealthStore.getState();
     store.setEnabled(true);
     store.setSyncEnabled(true);
-    store.applyRefresh({ at: NOW, dayContext: context, glucosePairs: [pair] });
+    store.applyRefresh({
+      at: NOW,
+      dayContext: context,
+      glucosePairs: [pair],
+      glucoseBackfilled: true,
+    });
     store.markSynced(NOW);
     useHealthStore.getState().setEnabled(false);
     expect(useHealthStore.getState()).toMatchObject({
@@ -59,6 +74,7 @@ describe('useHealthStore', () => {
       glucosePairs: [],
       lastRefreshAt: null,
       lastSyncedAt: null,
+      glucoseBackfilledAt: null,
     });
   });
 
@@ -96,6 +112,20 @@ describe('useHealthStore', () => {
     );
     await useHealthStore.persist.rehydrate();
     expect(useHealthStore.getState()).toMatchObject({ enabled: true, removalPendingFor: null });
+  });
+
+  it('restores state saved before the glucose backfill was tracked, so it runs once more', async () => {
+    const { glucoseBackfilledAt: _omitted, ...older } = initialHealth;
+    Storage.setItemSync(
+      storageKey('health.state'),
+      JSON.stringify({ state: { ...older, enabled: true, lastRefreshAt: NOW }, version: 1 }),
+    );
+    await useHealthStore.persist.rehydrate();
+    expect(useHealthStore.getState()).toMatchObject({
+      enabled: true,
+      lastRefreshAt: NOW,
+      glucoseBackfilledAt: null,
+    });
   });
 
   it('persists to device storage and restores from it', async () => {

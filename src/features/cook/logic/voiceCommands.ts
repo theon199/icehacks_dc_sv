@@ -303,7 +303,13 @@ export function createVoiceCommandStream(): VoiceCommandStream {
       const commands: VoiceCommand[] = [];
       if (result.status === 'command') {
         if (isFinal) commands.push(result.command);
-        else if (held?.words !== words.length) {
+        else if (
+          !held ||
+          held.words !== words.length ||
+          !sameCommand(held.command, result.command)
+        ) {
+          // New words, or the recogniser revised the words it had ("next" heard again as "back"):
+          // the revised command has to stand on its own before it acts.
           held = { command: result.command, words: words.length, since: at };
         }
       } else {
@@ -334,6 +340,11 @@ export function createVoiceCommandStream(): VoiceCommandStream {
       held = null;
     },
   };
+}
+
+function sameCommand(a: VoiceCommand, b: VoiceCommand): boolean {
+  if (a.type === 'start_timer') return b.type === 'start_timer' && a.seconds === b.seconds;
+  return a.type === b.type;
 }
 
 function hasCommandWord(words: readonly string[]): boolean {
