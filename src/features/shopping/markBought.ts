@@ -10,9 +10,13 @@ import type { ExtraItem } from './extrasStore';
 
 const MAX_UNIT_LENGTH = 24;
 
-/** Grams and millilitres to one decimal; counts are already whole. */
+/**
+ * Grams and millilitres to one decimal, rounded up: what was bought always covers what the list
+ * asked for, so a rounding crumb ("⅛ tsp garlic") never stays behind on the list. Counts are
+ * already whole.
+ */
 function tidy(quantity: number): number {
-  return Math.round(quantity * 10) / 10;
+  return Math.ceil(quantity * 10 - 1e-9) / 10;
 }
 
 /**

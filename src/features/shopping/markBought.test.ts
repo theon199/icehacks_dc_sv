@@ -1,7 +1,7 @@
 import type { ShoppingItem } from '@/domain/shopping';
 import { addPantryItem, type PantryItem } from '@/stores/pantry';
 
-import { INGREDIENTS, RECIPES } from './__fixtures__/catalog';
+import { INGREDIENTS, RECIPES, ingredient, line } from './__fixtures__/catalog';
 import { buildPlannedList } from './buildList';
 import { pantryInputsForExtras, pantryInputsForItems } from './markBought';
 
@@ -69,6 +69,25 @@ describe('mark bought → pantry', () => {
         .map((i) => i.key)
         .sort(),
     );
+  });
+
+  it('rounds bought amounts up, so no rounding crumb stays on the list', () => {
+    const vanilla = ingredient('vanilla_extract', 'baking');
+    const input = {
+      meals: [{ date: '2026-11-12', meal: 'dinner', recipeId: 'test:cake', servings: 1 }],
+      recipes: new Map([
+        [
+          'test:cake',
+          { id: 'test:cake', servings: 1, ingredients: [line(1, vanilla.id, 1, 'tsp')] },
+        ],
+      ]),
+      ingredients: [vanilla],
+      portion: 1,
+    } as const;
+    const before = buildPlannedList({ ...input, pantry: [] });
+    expect(before.items[0]?.amounts[0]?.unit).toBe('ml');
+    const pantry = pantryFrom(pantryInputsForItems(before.items, before.ingredientsById));
+    expect(buildPlannedList({ ...input, pantry }).items).toEqual([]);
   });
 
   it('tops up what was already there instead of adding a second entry', () => {
