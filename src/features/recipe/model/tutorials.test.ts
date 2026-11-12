@@ -1,4 +1,11 @@
-import { tutorialItems, youtubeEmbedUrl, youtubeVideoId } from './tutorials';
+import {
+  PLAYER_BASE_URL,
+  playerLoad,
+  tutorialItems,
+  youtubeEmbedUrl,
+  youtubePlayerHtml,
+  youtubeVideoId,
+} from './tutorials';
 
 describe('youtubeVideoId', () => {
   it.each([
@@ -46,5 +53,36 @@ describe('tutorialItems', () => {
         publisher: 'example.org',
       }),
     ]);
+  });
+});
+
+describe('youtubePlayerHtml', () => {
+  it('frames the embed with a referrer policy and names the app as the origin', () => {
+    const html = youtubePlayerHtml('uO0ejc85zSE', 'Knife <skills> & "tips"');
+    expect(html).toContain('referrerpolicy="strict-origin-when-cross-origin"');
+    expect(html).toContain('origin=https%3A%2F%2Fcom.famara.app');
+    expect(html).toContain('title="Knife &lt;skills&gt; &amp; &quot;tips&quot;"');
+    expect(html).not.toContain('<skills>');
+  });
+});
+
+describe('playerLoad', () => {
+  it('lets the embed load anything inside its own frames', () => {
+    expect(playerLoad('https://googleads.example/frame', false)).toBe('allow');
+  });
+
+  it('allows the player page itself', () => {
+    expect(playerLoad(PLAYER_BASE_URL, true)).toBe('allow');
+    expect(playerLoad('about:blank', true)).toBe('allow');
+  });
+
+  it('opens top-level clicks out of the player in the browser', () => {
+    expect(playerLoad('https://www.youtube.com/watch?v=uO0ejc85zSE', true)).toBe('open-outside');
+    expect(playerLoad('intent://something', true)).toBe('block');
+  });
+
+  it('still allows the embed where the platform does not report the frame', () => {
+    expect(playerLoad(youtubeEmbedUrl('uO0ejc85zSE'), undefined)).toBe('allow');
+    expect(playerLoad('https://www.youtube.com/', undefined)).toBe('open-outside');
   });
 });

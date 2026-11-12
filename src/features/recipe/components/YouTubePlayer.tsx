@@ -2,23 +2,33 @@ import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { memo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { WebView, type WebViewNavigation } from 'react-native-webview';
+import { WebView } from 'react-native-webview';
 
 import { Icon, PressableScale, Text, space, useTheme } from '@/ui';
 
-import { youtubeEmbedUrl, youtubeThumbnailUrl } from '../model/tutorials';
+import {
+  PLAYER_BASE_URL,
+  playerLoad,
+  youtubePlayerHtml,
+  youtubeThumbnailUrl,
+} from '../model/tutorials';
+
+function keepInPlayer(request: { readonly url: string; readonly isTopFrame?: boolean }): boolean {
+  const decision = playerLoad(request.url, request.isTopFrame);
+  if (decision === 'open-outside') void WebBrowser.openBrowserAsync(request.url);
+  return decision === 'allow';
+}
 
 export interface YouTubePlayerProps {
   videoId: string;
   title: string;
 }
 
-const EMBED_ORIGIN = 'https://www.youtube-nocookie.com/';
-
 /**
  * A YouTube tutorial. Shows a thumbnail first and only creates the web view when the person taps
  * play, so the recipe screen never pays for a player nobody watches. Playback uses the
- * privacy-enhanced embed; any link out of the player opens in the in-app browser instead.
+ * privacy-enhanced embed inside a small local page, so YouTube sees a referrer for the app; any
+ * link out of the player opens in the in-app browser instead.
  */
 export const YouTubePlayer = memo(function YouTubePlayer({ videoId, title }: YouTubePlayerProps) {
   const theme = useTheme();
@@ -53,23 +63,17 @@ export const YouTubePlayer = memo(function YouTubePlayer({ videoId, title }: You
     );
   }
 
-  const keepInPlayer = (request: Pick<WebViewNavigation, 'url'>) => {
-    if (request.url.startsWith(EMBED_ORIGIN) || request.url === 'about:blank') return true;
-    if (/^https?:\/\//i.test(request.url)) void WebBrowser.openBrowserAsync(request.url);
-    return false;
-  };
-
   return (
     <View style={[frame, styles.clip]}>
       <WebView
-        source={{ uri: youtubeEmbedUrl(videoId) }}
+        source={{ html: youtubePlayerHtml(videoId, title), baseUrl: PLAYER_BASE_URL }}
         style={styles.web}
         allowsInlineMediaPlayback
         allowsFullscreenVideo
         mediaPlaybackRequiresUserAction={false}
         javaScriptEnabled
         domStorageEnabled
-        originWhitelist={['https://*']}
+        originWhitelist={['https://*', 'about:blank']}
         onShouldStartLoadWithRequest={keepInPlayer}
         setSupportMultipleWindows={false}
         accessibilityLabel={`Video: ${title}`}
