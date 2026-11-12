@@ -405,6 +405,95 @@ migrations, runs pgTAP and the linter, regenerates the types and fails if the co
 Granting a moderator (service role or SQL editor):
 `insert into public.user_roles (user_id, role) values ('<uuid>', 'moderator');`
 
+## AI edge functions: chef, snap, makeover, nearby-chat
+
+Four functions under `supabase/functions/<name>/` (`handler.ts` holds the logic and is tested with
+injected fakes; `index.ts` only calls `Deno.serve`). The app calls them through
+`src/lib/api/ai.ts`, which holds the request types, zod response schemas and the client timeouts.
+
+Every call runs the same pipeline: CORS preflight → `requireUser` → `requireAdult` (18+) → body
+read with a size cap and validated with zod (400 `invalid_request`, 413, 415) → `consume_ai_quota`
+(429 `quota_exceeded` with `Retry-After`) → Claude with a per-function deadline → model output
+re-validated and trimmed → `{ ...result, quota: { remaining, reset_at } }`. Invalid input never
+spends quota. Errors use the shared envelope; Claude failures map through `anthropicErrorToHttp`
+(422 `ai_refused`, 502, 503, 504). Logs carry the feature, model, stop reason and token counts
+only, never request content or user ids. Each system prompt is byte-stable and cached (except
+`nearby-chat`, whose prompt is below the minimum cacheable size); per-user context goes into the
+user turn. Replies are constrained with structured outputs and then read
+back with a looser schema, so out-of-range values are trimmed instead of failing the call.
+
+| Function | Model / effort | Deadline | Body cap | Quota feature (default per day) |
+| --- | --- | --- | --- | --- |
+| `chef` | default tier, medium | 90 s | 2.6 MB | `chef` (60) |
+| `snap` | default tier; low (pantry), medium (dish) | 60 s | 4.2 MB | `snap_pantry` / `snap_dish` (20 each) |
+| `makeover` | default tier, medium | 100 s (140 s with the allergen retry) | 128 KB | `makeover` (20) |
+| `nearby-chat` | fast tier, low | 30 s | 32 KB | `nearby_chat` (30) |
+
+**`chef`** — input `{messages, profile, candidates, image?}`. `messages`: 1–40 `{role, content}`
+(≤ 4000 chars each, last one from the user); the most recent 16 are sent, consecutive turns from
+the same speaker are merged. `profile`: `{cuisines, diet, allergens, goals, time_budget_minutes,
+small_appetite}`. `candidates`: ≤ 60 recipes the device already filtered for allergens and diet,
+`{id, title, cuisine, minutes, kcal, protein_g, tags}` with unique ids. `image`: base64 JPEG
+≤ 1.5 MB decoded. Output `{reply, recipe_ids, follow_ups}`: `reply` is markdown-lite (links,
+images, HTML and headings are stripped), `recipe_ids` ≤ 6, `follow_ups` ≤ 3. The output schema
+makes `recipe_ids` an enum of exactly the candidate ids, and the function filters them again, so
+an id the device did not offer can never come back (none when `candidates` is empty).
+
+**`snap`** — input `{mode: "pantry" | "dish", image, note?}`; `image` is base64 JPEG, PNG or WebP
+≤ 3 MB decoded (HEIC is refused with 415), `note` ≤ 200 chars. Results:
+- `{status: "ok", mode: "pantry", items: [{name, quantity, unit, confidence}]}` — ≤ 40 items,
+  lowercase names, duplicates merged, sorted by confidence; `quantity` and `unit` are both null
+  when the amount is unknown or rounds to 0 (quantities keep 2 decimals); units come from a fixed
+  list (`piece`, `g`, `ml`, `cup`, `can`, …).
+- `{status: "ok", mode: "dish", dish: {name, cuisine, key_ingredients, portion, nutrition,
+  nutrition_confidence: "estimated", confidence}}` — `nutrition` has `kcal`, `protein_g`,
+  `carbs_g`, `fat_g`, `fiber_g`, `sodium_mg`, each `{estimate, low, high}` with
+  `low ≤ estimate ≤ high`.
+- `{status: "no_food", mode, reason: "not_food" | "unclear", message}` — a 200, so the app can ask
+  for another photo. The call still counts against the quota.
+
+**`makeover`** — input `{recipe: {title, servings, ingredients, steps}, goals, diet, allergens,
+request?}` (1–60 ingredient lines ≤ 200 chars, 1–40 steps ≤ 1000 chars, servings 1–24, `request`
+≤ 300 chars). Output `{title, servings, ingredients, steps, swaps: [{from, to, why}], note}`;
+servings always equal the input. **Allergen guard:** the title, adapted ingredients, steps, swap
+targets and note are scanned for words naming a declared allergen (`makeover/allergens.ts`:
+plurals, "-ed" and "-ies" forms, accents folded, known safe phrases such as "coconut milk" or
+"water chestnut"). An explicit qualifier such as "dairy-free" or "vegan" only covers the short
+ingredient phrase right after it (at most three words, ending at a preposition, article,
+participle or adverb, and right after the first ingredient of any allergen, so "vegan mayo tuna
+salad" is still flagged for fish), and never a word that is the allergen itself ("sesame-free
+za'atar", "soy-free tamari" and "gluten-free oats" are still flagged). The swap `from` and `why` fields are not scanned, since they name what was
+removed. On a hit, Claude is asked once more in the same call, told which words were found
+(about one extra model call, no extra quota; skipped when less than 30 s of the 140 s budget is
+left; the 140 s budget starts when the request arrives, and the app waits 150 s). If the answer still has a hit, the function returns 422 `ai_refused` with
+`details: {reason: "allergen_conflict", allergens: [...]}` and the makeover is not returned; that
+call still counts against the quota. The check is deliberately cautious (unqualified "flour" and
+breaded cakes count as wheat, oats as gluten, pesto as tree nuts and milk; "lactose-free" and
+"non-dairy" do not clear milk), and it is defence in depth, not a safety certificate: the app
+still re-checks AI output. Allergen ids and their prompt labels live in `makeover/allergens.ts`
+and are shared by `chef` and `nearby-chat`.
+
+**`nearby-chat`** — input `{dish: {name, cuisine?}, places: [{name, cuisine, rating}], goals,
+diet, allergens}` (≤ 20 places, rating 0–5). Output `{tips}`: 2–4 one-sentence tips. The prompt
+forbids claims about what a place serves; tips are phrased as things to look for or ask about.
+
+### Environment variables (AI functions)
+
+All optional; invalid values are ignored with a warning and the default is used.
+
+| Name | Default | Purpose |
+| --- | --- | --- |
+| `FAMARA_AI_LIMIT_CHEF` | 60 | `chef` calls per user per day (1–10000) |
+| `FAMARA_AI_LIMIT_SNAP_PANTRY` | 20 | `snap` pantry calls per user per day |
+| `FAMARA_AI_LIMIT_SNAP_DISH` | 20 | `snap` dish calls per user per day |
+| `FAMARA_AI_LIMIT_MAKEOVER` | 20 | `makeover` calls per user per day |
+| `FAMARA_AI_LIMIT_NEARBY_CHAT` | 30 | `nearby-chat` calls per user per day |
+
+They also use `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and `ANTHROPIC_FAST_MODEL` (see above).
+
+Tests: `cd supabase/functions && deno test --allow-env chef snap makeover nearby-chat` (Claude is
+mocked through an injected `fetch`, Supabase through an injected client factory).
+
 ## Commerce, places and publishing functions
 
 Four edge functions built on `_shared` (error envelope, quotas, Claude client). Each folder has
