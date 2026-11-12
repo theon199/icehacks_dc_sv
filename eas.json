@@ -14,7 +14,8 @@
       "channel": "development",
       "ios": {
         "simulator": false
-      }
+      },
+      "environment": "development"
     },
     "development-simulator": {
       "extends": "development",
@@ -25,12 +26,14 @@
     "preview": {
       "extends": "base",
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "environment": "preview"
     },
     "production": {
       "extends": "base",
       "channel": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "environment": "production"
     }
   },
   "submit": {

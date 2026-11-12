@@ -29,6 +29,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # expo-router writes typed-route declarations to the git-ignored .expo/types; without them
+      # tsc would accept any string as an href.
+      - name: Generate typed routes
+        run: npm run typegen
       - name: Typecheck
         run: npm run typecheck
       - name: Lint

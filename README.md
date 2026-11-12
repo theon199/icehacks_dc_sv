@@ -41,11 +41,32 @@ the project is linked to enable over-the-air updates.
 
 Without a valid `.env.local` the app opens a configuration screen listing what is missing.
 
+`.env.local` is git-ignored and is **not** uploaded to EAS. Before building the `preview` or
+`production` profile, add both public values as EAS environment variables for that environment
+(and for `development` if you build dev clients in the cloud). Each profile in `eas.json` reads the
+EAS environment of the same name:
+
+```sh
+npx eas-cli env:create --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value https://<project>.supabase.co --visibility plaintext
+npx eas-cli env:create --environment preview --name EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY --value sb_publishable_... --visibility plaintext
+# repeat with --environment production
+```
+
+Otherwise the release build opens the configuration screen instead of the app.
+
+### Recipe catalog
+
+The bundled catalog (`assets/catalog/famara-catalog.db`) is built by the data pipeline in
+`tools/data`. A fresh checkout can run without it: the bundler substitutes an empty module and the
+app shows a "catalog missing" state. Metro caches that substitution, so once the file exists
+restart the bundler with a clean cache: `npx expo start -c`.
+
 ### Useful scripts
 
 | Script                 | What it does                                                              |
 | ---------------------- | ------------------------------------------------------------------------- |
-| `npm run typecheck`    | `tsc --noEmit` with strict settings                                       |
+| `npm run typegen`      | Generates expo-router typed-route declarations into `.expo/types`         |
+| `npm run typecheck`    | `tsc --noEmit` with strict settings (run `typegen` first for route types) |
 | `npm run lint`         | ESLint (Expo flat config + React hooks rules), zero warnings allowed      |
 | `npm run format`       | Prettier write (`format:check` verifies)                                  |
 | `npm test`             | Jest with `jest-expo` and React Native Testing Library                    |

@@ -1,10 +1,10 @@
 // ESLint flat config for Famara.
-const { defineConfig } = require('eslint/config');
-const expoConfig = require('eslint-config-expo/flat');
+const eslintConfig = require('eslint/config');
+const expoFlat = require('eslint-config-expo/flat');
 const reactHooks = require('eslint-plugin-react-hooks');
 
-module.exports = defineConfig([
-  expoConfig,
+module.exports = eslintConfig.defineConfig([
+  expoFlat,
   {
     ignores: [
       'node_modules/**',
