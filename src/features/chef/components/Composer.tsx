@@ -1,6 +1,13 @@
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, TextInput, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { deviceLocale } from '@/lib/format';
 import { logger } from '@/lib/logger';
@@ -75,6 +82,17 @@ function useDayStart(active: boolean): number {
   return dayStart;
 }
 
+/**
+ * Reads the limit note out once when the limit starts (or moves to another reset time). The note
+ * is plain text that appears above the field, which VoiceOver would otherwise never mention.
+ */
+function useAnnounceLimit(limitedUntil: number | null): void {
+  useEffect(() => {
+    if (limitedUntil == null) return;
+    AccessibilityInfo.announceForAccessibility(limitResetNote(limitedUntil));
+  }, [limitedUntil]);
+}
+
 function joinDictation(base: string, spoken: string): string {
   const head = base.trimEnd();
   return head ? `${head} ${spoken}` : spoken;
@@ -127,6 +145,7 @@ export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
 
   const limited = limitedUntil != null;
   const dayStart = useDayStart(limited);
+  useAnnounceLimit(limitedUntil);
   const canSend = !busy && !limited && !preparing && (draft.trim().length > 0 || photo != null);
   const send = () => {
     if (!canSend) return;
