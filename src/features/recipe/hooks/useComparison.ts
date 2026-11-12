@@ -1,7 +1,8 @@
 /**
  * Resolves the two sides of a comparison. In order of preference:
- *   1. both ids given in the link (`from` is the original, `to` the adaptation);
- *   2. the person's own healthier version of `from`, when they have made one;
+ *   1. both ids given in the link (`from` is the original, `to` the adaptation), where `to` is
+ *      one of the person's own versions of `from` or else a catalog recipe;
+ *   2. the person's newest own healthier version of `from`, when they have made one;
  *   3. another version of the same dish in the catalog, the less healthy one as the original.
  *      Only versions that clear the person's allergens and diets are picked here.
  *
@@ -50,7 +51,8 @@ const NO_IDS: readonly string[] = [];
 
 export function useComparison(fromId: string | undefined, toId: string | undefined) {
   const from = useRecipe(fromId ?? null);
-  const variant = usePersonalVariant(toId ? undefined : fromId);
+  // A `to` id may name one of the person's own versions (the link from a saved makeover).
+  const variant = usePersonalVariant(fromId, toId);
   const needFamily = !!from.data && !toId && !variant;
   const prefs = useDomainPreferences();
   const allergens = prefs.allergens;
@@ -61,8 +63,10 @@ export function useComparison(fromId: string | undefined, toId: string | undefin
     () => (needFamily && from.data && family.data ? pairFamily(from.data, family.data) : null),
     [needFamily, from.data, family.data],
   );
-  const otherId =
-    toId ?? (pair ? (pair.original.id === fromId ? pair.adapted.id : pair.original.id) : undefined);
+  const otherId = variant
+    ? undefined
+    : (toId ??
+      (pair ? (pair.original.id === fromId ? pair.adapted.id : pair.original.id) : undefined));
   const other = useRecipe(otherId ?? null);
 
   const sides = useMemo((): { original: CompareSide; adapted: CompareSide } | null => {

@@ -4,9 +4,12 @@
  * shape (renders nothing, returns null). Swapping a stand-in for the real thing is a one-line
  * change here; nothing else in the recipe feature needs to know.
  */
-import { selectAge, selectCanUseAi, useSessionStore } from '@/features/auth';
+import { useMemo } from 'react';
 
-import type { CompareSide } from './model/compare';
+import { selectAge, selectCanUseAi, useSessionStore } from '@/features/auth';
+import { findVariant, useVariantGroups } from '@/features/makeover';
+
+import { sideFromPersonalVersion, type CompareSide } from './model/compare';
 
 /** Estimated grocery cost of a recipe (`recipeId`, optional `servings`). */
 export { CostSummary } from '@/features/grocery';
@@ -22,9 +25,20 @@ export function useAge(): number | null {
 }
 
 /**
- * The person's own healthier version of a recipe, made with "Make it healthier" and kept with
- * their saved recipes. Returns null until the saved store keeps such versions.
+ * The person's own healthier version of a recipe, made with "Make it healthier" and kept by that
+ * feature. With a `variantId` (the link from a saved makeover) that exact version; without one,
+ * their newest version of the recipe. Null when there is none.
  */
-export function usePersonalVariant(_recipeId: string | undefined): CompareSide | null {
-  return null;
+export function usePersonalVariant(
+  recipeId: string | undefined,
+  variantId: string | undefined,
+): CompareSide | null {
+  const groups = useVariantGroups();
+  return useMemo(() => {
+    if (!recipeId) return null;
+    const version = variantId
+      ? findVariant(groups, recipeId, variantId)
+      : (groups[recipeId]?.variants[0] ?? null);
+    return version ? sideFromPersonalVersion(version) : null;
+  }, [groups, recipeId, variantId]);
 }

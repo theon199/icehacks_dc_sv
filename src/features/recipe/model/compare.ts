@@ -53,6 +53,32 @@ export function sideFromRecipe(recipe: RecipeDetail): CompareSide {
   };
 }
 
+/** The parts of a saved personal version (from "Make it healthier") a comparison reads. */
+export interface PersonalVersion {
+  readonly id: string;
+  readonly title: string;
+  readonly servings: number;
+  /** Ingredient lines as written, e.g. "200 g greek yogurt". */
+  readonly ingredients: readonly string[];
+}
+
+/**
+ * A personal version as a comparison side. Its lines are free text, so they are matched to the
+ * original by name; it has no checked nutrition or allergen data, so both read as unknown and the
+ * safety check treats every allergen as unverified.
+ */
+export function sideFromPersonalVersion(version: PersonalVersion): CompareSide {
+  return {
+    id: version.id,
+    title: version.title,
+    servings: version.servings,
+    lines: version.ingredients.map((text) => ({ ingredientId: null, text, grams: null })),
+    nutrition: null,
+    confidence: 'none',
+    safety: null,
+  };
+}
+
 const ALL_UNKNOWN: SafetyFields = { allergens: unknownAllergenMap(), dietFlags: 0 };
 
 /**
@@ -147,6 +173,15 @@ const KIND_ORDER: Readonly<Record<DiffKind, number>> = {
   same: 5,
 };
 
+function amountChange(before: Grouped, after: Grouped): DiffKind {
+  if (before.gramsPerServing === null || after.gramsPerServing === null) return 'same';
+  if (before.gramsPerServing <= 0) return 'same';
+  const change = (after.gramsPerServing - before.gramsPerServing) / before.gramsPerServing;
+  if (change > AMOUNT_TOLERANCE) return 'more';
+  if (change < -AMOUNT_TOLERANCE) return 'less';
+  return 'same';
+}
+
 /**
  * Ingredient differences from `before` to `after`. A dropped ingredient and a new one are paired
  * as a swap when the catalog lists that substitution.
@@ -163,19 +198,33 @@ export function diffIngredients(
   const added = new Map<string, Grouped>();
   for (const [key, g] of b) if (!a.has(key)) added.set(key, g);
 
+  // Lines without a catalog match (a personal version's free text) pair up by name instead.
+  const addedByName = new Map<string, Grouped>();
+  for (const g of added.values()) {
+    const name = g.name.toLowerCase();
+    if (!addedByName.has(name)) addedByName.set(name, g);
+  }
+
   for (const [key, g] of a) {
-    const other = b.get(key);
+    let other = b.get(key);
+    if (!other) {
+      const byName = addedByName.get(g.name.toLowerCase());
+      if (byName && added.has(byName.key) && (!g.ingredientId || !byName.ingredientId)) {
+        added.delete(byName.key);
+        other = byName;
+      }
+    }
     if (!other) {
       removed.push(g);
       continue;
     }
-    let kind: DiffKind = 'same';
-    if (g.gramsPerServing !== null && other.gramsPerServing !== null && g.gramsPerServing > 0) {
-      const change = (other.gramsPerServing - g.gramsPerServing) / g.gramsPerServing;
-      if (change > AMOUNT_TOLERANCE) kind = 'more';
-      else if (change < -AMOUNT_TOLERANCE) kind = 'less';
-    }
-    entries.push({ key, kind, before: view(g), after: view(other), note: null });
+    entries.push({
+      key,
+      kind: amountChange(g, other),
+      before: view(g),
+      after: view(other),
+      note: null,
+    });
   }
 
   for (const g of removed) {

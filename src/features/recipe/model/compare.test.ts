@@ -6,6 +6,7 @@ import {
   familyCandidateFilters,
   nutritionDeltas,
   pairFamily,
+  sideFromPersonalVersion,
   sideFromRecipe,
   summariseComparison,
 } from './compare';
@@ -187,5 +188,27 @@ describe('adaptedSafety', () => {
   it('never clears a version before the person has answered the allergen questions', () => {
     const verdict = adaptedSafety(withPeanut('free'), { allergens: null, diets: null });
     expect(verdict.eligible).toBe(false);
+  });
+});
+
+describe('sideFromPersonalVersion', () => {
+  const side = sideFromPersonalVersion({
+    id: 'v1',
+    title: 'My lighter pasta',
+    servings: 2,
+    ingredients: ['100 ml greek yogurt', '200 g pasta'],
+  });
+
+  it('matches free-text lines to the original by name', () => {
+    const diff = diffIngredients(original, side);
+    expect(diff.find((d) => d.after?.name === 'Greek yogurt')?.kind).toBe('added');
+    expect(diff.find((d) => d.before?.name === 'Heavy cream')?.kind).toBe('removed');
+    expect(diff.find((d) => d.before?.name === 'Pasta')?.kind).toBe('same');
+  });
+
+  it('has no checked nutrition or allergen data', () => {
+    expect(side.nutrition).toBeNull();
+    expect(side.confidence).toBe('none');
+    expect(side.safety).toBeNull();
   });
 });

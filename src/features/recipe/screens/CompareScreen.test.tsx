@@ -14,13 +14,15 @@ import { usePreferencesStore } from '@/stores';
 import { renderWithTheme } from '@/test/render';
 
 import { CompareScreen } from './CompareScreen';
-import type { CompareSide } from '../model/compare';
+import { sideFromPersonalVersion, type CompareSide } from '../model/compare';
 import { allergenMap, line, makeDetail, prefs } from '../test/fixtures';
 
 let mockPersonalVariant: CompareSide | null = null;
 jest.mock('../deps', () => ({
   ...jest.requireActual<Record<string, unknown>>('../deps'),
-  usePersonalVariant: () => mockPersonalVariant,
+  // Like the real hook: a named version must match; without a name, the newest one is used.
+  usePersonalVariant: (_from: string | undefined, to: string | undefined) =>
+    mockPersonalVariant && (!to || to === mockPersonalVariant.id) ? mockPersonalVariant : null,
 }));
 
 jest.mock('expo-router', () => ({
@@ -217,23 +219,22 @@ describe('CompareScreen', () => {
     expect(screen.getByText(/May contain peanuts/)).toBeTruthy();
   });
 
-  it('treats a personal version without allergen data as unverified', async () => {
-    mockPersonalVariant = {
+  it('compares a saved personal version named in the link, warning that it is unverified', async () => {
+    mockPersonalVariant = sideFromPersonalVersion({
       id: 'mine',
       title: 'My lighter stew',
       servings: 2,
-      lines: solo.ingredients,
-      nutrition: solo.nutrition,
-      confidence: 'estimated',
-      safety: null,
-    };
+      ingredients: ['200 g greek yogurt', '1 tin chickpeas'],
+    });
     await renderWithTheme(
       <Providers>
-        <CompareScreen fromId="solo" />
+        <CompareScreen fromId="solo" toId="mine" />
       </Providers>,
     );
-    expect(await screen.findByText('Check before you cook', {}, SLOW)).toBeTruthy();
+    expect(await screen.findByText('My lighter stew', {}, SLOW)).toBeTruthy();
+    expect(screen.getByText('Check before you cook')).toBeTruthy();
     expect(screen.getByText(/May contain peanuts/)).toBeTruthy();
+    expect(getRecipeDetail).not.toHaveBeenCalledWith('mine');
     expect(listCandidates).not.toHaveBeenCalled();
   });
 
