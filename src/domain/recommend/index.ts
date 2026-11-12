@@ -20,13 +20,20 @@ export {
   DECK_MODES,
   fitsMode,
   recentlyPassedIds,
+  sampleOrder,
   type BuildDeckInput,
   type Deck,
   type DeckCard,
   type DeckExclusions,
   type DeckMode,
 } from './deck';
-export { diversify, jaccard, type DiversityItem, type DiversityRules } from './diversify';
+export {
+  diversify,
+  DIVERSITY_LEVELS,
+  jaccard,
+  type DiversityItem,
+  type DiversityRules,
+} from './diversify';
 export {
   explainRecipe,
   formatMinutes,

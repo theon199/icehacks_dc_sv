@@ -5,45 +5,17 @@
  * target locally.
  */
 import { buildDeck } from './deck';
-import { makeRecipe } from './fixtures/makeRecipe';
+import { syntheticCatalog } from './fixtures/synthetic';
 import { createRandom } from './random';
 import { rankRecipes } from './rank';
 import { DAY_MS } from './taste';
-import { CUISINES } from '../types/cuisines';
 import { type FeedbackEvent, type Impression } from '../types/feedback';
-import { GOAL_TAGS } from '../types/goals';
 import { userPreferencesSchema } from '../types/preferences';
-import { type RecipeSummary } from '../types/recipe';
 
 const TARGET_MS = 30;
 const CEILING_MS = process.env.FAMARA_STRICT_BENCH === '1' ? TARGET_MS : 150;
 const CANDIDATES = 2000;
 const NOW = Date.UTC(2026, 10, 1);
-
-function syntheticCatalog(count: number): RecipeSummary[] {
-  const random = createRandom('benchmark-catalog');
-  const pick = <T>(items: readonly T[]) => items[Math.floor(random() * items.length)]!;
-  const ingredients = Array.from({ length: 400 }, (_, i) => `ingredient_${i}`);
-  return Array.from({ length: count }, (_, i) => {
-    const core = new Set<string>();
-    const size = 3 + Math.floor(random() * 8);
-    while (core.size < size) core.add(pick(ingredients));
-    return makeRecipe({
-      id: `bench:${i}`,
-      cuisine: pick(CUISINES).id,
-      familyId: `family_${Math.floor(i / 2)}`,
-      totalMinutes: random() < 0.05 ? null : 10 + Math.floor(random() * 110),
-      effort: pick([1, 2, 3] as const),
-      dietFlags: Math.floor(random() * 512),
-      goalTags: GOAL_TAGS.filter(() => random() < 0.3),
-      gentle: random() < 0.2,
-      healthScore: random(),
-      nutritionConfidence: pick(['computed', 'estimated', 'none'] as const),
-      allergens: { peanut: pick(['free', 'free', 'free', 'contains', 'unknown'] as const) },
-      coreIngredientIds: [...core],
-    });
-  });
-}
 
 function median(values: number[]) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -63,7 +35,7 @@ function time(run: () => void, repeats = 9) {
 }
 
 describe('ranking performance', () => {
-  const candidates = syntheticCatalog(CANDIDATES);
+  const candidates = syntheticCatalog(CANDIDATES, 'benchmark-catalog');
   const random = createRandom('benchmark-history');
   const feedback: FeedbackEvent[] = Array.from({ length: 300 }, (_, i) => ({
     recipeId: candidates[Math.floor(random() * CANDIDATES)]!.id,

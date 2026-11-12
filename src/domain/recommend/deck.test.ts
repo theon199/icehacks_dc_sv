@@ -1,6 +1,8 @@
 import { RANKING_CONFIG_V1 } from './config';
-import { buildDeck, recentlyPassedIds, type BuildDeckInput } from './deck';
+import { buildDeck, recentlyPassedIds, type BuildDeckInput, type DeckCard } from './deck';
 import { CATALOG, recipe } from './fixtures/catalog';
+import { syntheticCatalog } from './fixtures/synthetic';
+import { rankRecipes } from './rank';
 import { DAY_MS } from './taste';
 import { type FeedbackEvent } from '../types/feedback';
 import { ANSWERED_PREFERENCES } from './fixtures/prefs';
@@ -65,6 +67,52 @@ describe('buildDeck', () => {
       if (first.fitScore >= 70) topIsStrong++;
     }
     expect(topIsStrong).toBeGreaterThanOrEqual(15);
+  });
+
+  it('keeps the head of the deck near the top of the ranking on a large pool', () => {
+    const candidates = syntheticCatalog(1500, 'large-pool');
+    const prefs = {
+      cuisines: ['indian', 'mexican'],
+      allergens: ['peanut' as const],
+      goals: ['more_protein' as const],
+      timeBudgetMinutes: 30,
+    };
+    const strictConfig = {
+      ...RANKING_CONFIG_V1,
+      feed: { ...RANKING_CONFIG_V1.feed, temperature: 0 },
+    };
+    const meanFit = (cards: readonly DeckCard[]) =>
+      cards.slice(0, 5).reduce((sum, card) => sum + card.fitScore, 0) / 5;
+
+    const ranked = rankRecipes(candidates, {
+      prefs: { ...ANSWERED_PREFERENCES, ...prefs },
+      now: NOW,
+    });
+    const top20 = new Set(ranked.slice(0, 20).map((r) => r.recipe.id));
+    const strict = deck({ candidates, prefs, config: strictConfig });
+    expect(strict.available).toBeGreaterThan(500);
+
+    const seeds = 60;
+    let firstInTop20 = 0;
+    let fitSum = 0;
+    const firsts = new Set<string>();
+    for (let s = 0; s < seeds; s++) {
+      const cards = deck({ candidates, prefs, seed: `large-${s}` }).cards;
+      if (top20.has(cards[0]!.recipe.id)) firstInTop20++;
+      firsts.add(cards[0]!.recipe.id);
+      fitSum += meanFit(cards);
+    }
+    expect(firstInTop20 / seeds).toBeGreaterThanOrEqual(0.9);
+    expect(fitSum / seeds).toBeGreaterThanOrEqual(meanFit(strict.cards) - 5);
+    // Still a different opening card across sessions.
+    expect(firsts.size).toBeGreaterThan(3);
+  });
+
+  it('shows nothing until allergens and diets are answered', () => {
+    const result = deck({ prefs: { allergens: null } });
+    expect(result.cards).toEqual([]);
+    expect(result.excluded.unsafe).toBe(CATALOG.length);
+    expect(deck({ prefs: { diets: null } }).cards).toEqual([]);
   });
 
   it('never includes unsafe recipes and counts them', () => {

@@ -10,6 +10,16 @@
  *   3. `score = clamp(base − repetition penalties − disliked-ingredient penalty + novelty boost
  *      + small-appetite boost)`; the feed samples from `score`, not `fitScore`, because freshness
  *      is about the feed rather than how well the dish fits the person.
+ *
+ * goalMatch is a blend, not a product: `coverageShare · (goals served / goals chosen) +
+ * (1 − coverageShare) · healthScore`. Health score lifts every recipe a little on its own, so a
+ * nutritious dish that serves none of the chosen goals still edges out an unhealthy one, while
+ * serving a goal always matters more. With no goals chosen, goalMatch is the health score.
+ *
+ * Feed sampling: only the best `samplePoolPerCard × size` recipes by score are shuffled (Gumbel
+ * noise at `temperature`); the rest follow in strict score order and are reached only when
+ * diversity rules skip the sampled ones. That keeps the head of a deck near the top of the
+ * ranking on large catalogs while still varying between sessions.
  */
 
 export const FEATURES = [
@@ -132,6 +142,8 @@ export interface RankingConfig {
   readonly feed: {
     /** Softmax temperature over scores for sampling; lower is closer to strict ranking. */
     readonly temperature: number;
+    /** Only the best `samplePoolPerCard × size` candidates are sampled; the rest stay ranked. */
+    readonly samplePoolPerCard: number;
     readonly passCooldownDays: number;
     readonly notForMeCooldownDays: number;
     readonly quickMaxMinutes: number;
@@ -140,9 +152,13 @@ export interface RankingConfig {
     readonly gentlePortionScale: number;
   };
   readonly diversity: {
-    /** At most `cuisineCap` cards of one cuisine in any `cuisineWindow` consecutive cards. */
+    /**
+     * At most `cuisineCap` cards of one cuisine, and `regionCap` cards of one region, in any
+     * `window` consecutive cards.
+     */
     readonly cuisineCap: number;
-    readonly cuisineWindow: number;
+    readonly regionCap: number;
+    readonly window: number;
     /** Highest allowed Jaccard overlap of core ingredients between two cards in a deck. */
     readonly maxIngredientOverlap: number;
   };
@@ -194,14 +210,15 @@ export const RANKING_CONFIG_V1: RankingConfig = {
   },
   boosts: { novelty: 0.04, gentle: 0.03 },
   feed: {
-    temperature: 0.05,
+    temperature: 0.03,
+    samplePoolPerCard: 3,
     passCooldownDays: 14,
     notForMeCooldownDays: 60,
     quickMaxMinutes: 30,
     pantryMinCoverage: 0.6,
     gentlePortionScale: 0.5,
   },
-  diversity: { cuisineCap: 2, cuisineWindow: 6, maxIngredientOverlap: 0.5 },
+  diversity: { cuisineCap: 2, regionCap: 3, window: 6, maxIngredientOverlap: 0.5 },
 };
 
 export const DEFAULT_RANKING_CONFIG = RANKING_CONFIG_V1;

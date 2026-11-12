@@ -3,9 +3,10 @@
  *   1. Drop duplicates, anything unsafe for the person, anything they passed on recently, explicit
  *      exclusions, and recipes that do not fit the mode.
  *   2. Score the rest (`score.ts`).
- *   3. Sample an order without replacement from softmax(score / temperature) using seeded Gumbel
- *      noise keyed by recipe id: a new seed gives a fresh deck, the same seed replays it exactly,
- *      regardless of the order candidates arrive in.
+ *   3. Rank by score, then reorder the best `samplePoolPerCard × size` by sampling without
+ *      replacement from softmax(score / temperature), using seeded Gumbel noise keyed by recipe
+ *      id: a new seed gives a fresh deck, the same seed replays it exactly, regardless of the
+ *      order candidates arrive in. Candidates below the sampling pool keep their ranked order.
  *   4. Diversify the sampled order and explain each card.
  */
 import { FEATURE_COUNT, type RankingConfig } from './config';
@@ -104,6 +105,37 @@ export function fitsMode(recipe: RecipeSummary, mode: DeckMode, ctx: RankContext
   }
 }
 
+/**
+ * Ranked order with its head shuffled: the best `samplePoolPerCard × size` indices are reordered by
+ * `score / temperature + Gumbel(seed, id)`, and the rest follow in score order.
+ */
+export function sampleOrder(
+  score: Float64Array,
+  ids: readonly RecipeId[],
+  size: number,
+  seed: Seed,
+  config: RankingConfig,
+): Uint32Array {
+  const ranked = sortIndices(score, ids);
+  const { temperature, samplePoolPerCard } = config.feed;
+  const depth = Math.min(ranked.length, Math.ceil(size * samplePoolPerCard));
+  if (temperature <= 0 || depth < 2) return ranked;
+
+  const noise = keyedSource(seed);
+  const headKeys = new Float64Array(depth);
+  const headIds: RecipeId[] = new Array<RecipeId>(depth);
+  for (let k = 0; k < depth; k++) {
+    const i = ranked[k]!;
+    headKeys[k] = score[i]! / temperature + noise.gumbel(ids[i]!);
+    headIds[k] = ids[i]!;
+  }
+  const head = sortIndices(headKeys, headIds);
+  const out = new Uint32Array(ranked.length);
+  for (let k = 0; k < depth; k++) out[k] = ranked[head[k]!]!;
+  out.set(ranked.subarray(depth), depth);
+  return out;
+}
+
 export function buildDeck(input: BuildDeckInput): Deck {
   const ctx = createRankContext(input, input.candidates);
   const { config } = ctx;
@@ -128,17 +160,11 @@ export function buildDeck(input: BuildDeckInput): Deck {
     else pool.push(recipe);
   }
 
+  const size = Math.max(0, Math.floor(input.size));
   const scored = scoreCandidates(pool, ctx);
   const ids = pool.map((recipe) => recipe.id);
-  const temperature = config.feed.temperature;
-  const keys = new Float64Array(pool.length);
-  const noise = keyedSource(input.seed);
-  for (let i = 0; i < pool.length; i++) {
-    keys[i] =
-      temperature > 0 ? scored.score[i]! / temperature + noise.gumbel(ids[i]!) : scored.score[i]!;
-  }
-  const order = sortIndices(keys, ids);
-  const picks = diversify(order, pool, Math.max(0, Math.floor(input.size)), config.diversity);
+  const order = sampleOrder(scored.score, ids, size, input.seed, config);
+  const picks = diversify(order, pool, size, config.diversity);
 
   const portionScale =
     input.mode === 'gentle' || input.prefs.smallAppetite ? config.feed.gentlePortionScale : 1;
