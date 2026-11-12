@@ -15,7 +15,7 @@ import { getDeviceId } from './deviceId';
 import { createSyncEngine, type SyncEngine } from './engine';
 import { kvLedgerStorage } from './ledger';
 import { clearDataOwner, readDataOwner, writeDataOwner } from './owner';
-import { syncedStores } from './registry';
+import { setSyncRunning, syncedStores } from './registry';
 import { useSyncStatusStore } from './status';
 import { createSupabaseTransport } from './transport';
 import type { Connectivity, Lifecycle } from './types';
@@ -74,6 +74,7 @@ async function stopEngine(): Promise<void> {
   const current = engine;
   engine = null;
   engineUser = null;
+  setSyncRunning(false);
   await current?.stop();
 }
 
@@ -124,6 +125,7 @@ async function startEngine(userId: string): Promise<void> {
   });
   engine = instance;
   engineUser = userId;
+  setSyncRunning(true);
   // Begin on the next macrotask: an auth change queued in the same tick (a sign-out right after
   // the sign-in) then replaces this engine before it sends anything. Starting also waits for every
   // store to load, which can take a moment for Keychain-backed ones, so it is not awaited here.

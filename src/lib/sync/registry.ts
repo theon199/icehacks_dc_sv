@@ -26,6 +26,21 @@ export function registerSyncedStore(store: SyncedStore): () => void {
   };
 }
 
+let syncRunning = false;
+
+/** Set by the sync session while an engine exists for an account. */
+export function setSyncRunning(running: boolean): void {
+  syncRunning = running;
+}
+
+/**
+ * Whether an engine is watching the registered stores. Resetting a store then reads as the person
+ * deleting everything, so resets must go through the session (sign-out), never directly.
+ */
+export function isSyncRunning(): boolean {
+  return syncRunning;
+}
+
 /** Every registered store, in registration order. */
 export function syncedStores(): readonly SyncedStore[] {
   return [...registered.values()];

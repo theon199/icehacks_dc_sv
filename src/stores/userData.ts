@@ -3,7 +3,7 @@
  * sync mirrors them all from its first start and wipes them all when the person signs out or
  * deletes their account, whichever screens have been opened.
  */
-import { registerSyncedStore } from '@/lib/sync/registry';
+import { isSyncRunning, registerSyncedStore } from '@/lib/sync/registry';
 import type { SyncCollectionAdapter } from '@/lib/sync/types';
 
 import { useChefStore, chefSync } from './chef';
@@ -43,8 +43,19 @@ function resetStore(store: ResettableStore): void {
   store.persist.clearStorage();
 }
 
-// Sync learns about the user stores only from here. Resetting goes through the sync session
-// (sign-out and account deletion), which stops the engine first so a wipe is never pushed.
+/**
+ * Resets every user store, for tests and tools. The app resets through the sync session
+ * (sign-out, account deletion), which stops the engine first; resetting under a running engine
+ * would be pushed as deleting all of the account's data, so that is refused.
+ */
+export function resetUserStores(): void {
+  if (isSyncRunning()) {
+    throw new Error('resetUserStores() cannot run while sync is running; sign out instead.');
+  }
+  for (const [store] of userStores) resetStore(store);
+}
+
+// Sync learns about the user stores only from here.
 for (const [store, adapter] of userStores) {
   registerSyncedStore({ adapter, reset: () => resetStore(store) });
 }

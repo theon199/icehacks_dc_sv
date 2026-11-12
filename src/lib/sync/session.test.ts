@@ -6,6 +6,7 @@ import { storageKey } from '@/lib/storage/kv';
 import {
   defaultPreferences,
   usePantryStore,
+  resetUserStores,
   usePreferencesStore,
   useSavedStore,
   useVariantStore,
@@ -175,6 +176,17 @@ describe('sync session', () => {
     await signOutCleanup();
     expect(useVariantStore.getState().groups).toEqual({});
     expect(Storage.getItemSync(storageKey('user.variants'))).toBeNull();
+  });
+
+  it('refuses a direct reset of the user stores while sync runs', async () => {
+    await startSync('user-1');
+    await waitFor(() => expect(useSyncStatusStore.getState().phase).toBe('idle'));
+    usePantryStore.getState().add({ name: 'kept' });
+    expect(() => resetUserStores()).toThrow(/sync is running/);
+    expect(Object.values(usePantryStore.getState().items)).toHaveLength(1);
+    await stopSync();
+    expect(() => resetUserStores()).not.toThrow();
+    expect(usePantryStore.getState().items).toEqual({});
   });
 
   it('starts a fresh engine for the same account after one stopped itself', async () => {

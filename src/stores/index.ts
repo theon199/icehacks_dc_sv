@@ -1,5 +1,5 @@
-// Registers every per-account store with sync (side effect only).
-import './userData';
+// Importing the stores registers every per-account store with sync.
+export { resetUserStores } from './userData';
 
 export * from './preferences';
 export * from './personalDetails';
