@@ -1,5 +1,7 @@
 import { useSessionStore } from '@/features/auth';
+import { toDomainRecipe as sharedToDomainRecipe } from '@/lib/catalog';
 import { defaultPreferences, useCookLogStore } from '@/stores';
+import * as bridge from '@/stores/domainBridge';
 
 import {
   estimatedMealId,
@@ -18,6 +20,11 @@ jest.mock('expo-crypto', () => ({
 }));
 
 describe('preference bridge', () => {
+  it('is the shared bridge', () => {
+    expect(toSafetyPrefs).toBe(bridge.toSafetyPrefs);
+    expect(toUserPreferences).toBe(bridge.toUserPreferences);
+  });
+
   it('reads unanswered allergens as "nothing is safe yet"', () => {
     expect(toSafetyPrefs({ ...defaultPreferences, diets: ['vegan'] })).toEqual({
       allergens: null,
@@ -66,11 +73,16 @@ describe('recipe bridge', () => {
     nutritionConfidence: 'none',
     nutrition: null,
     healthScore: 0.4,
-    ingredientIds: ['pasta', 'salt', 'tomato', 'pasta'],
+    ingredientIds: ['pasta', 'salt', 'tomato'],
+    coreIngredientIds: ['pasta', 'tomato'],
   });
 
-  it('drops staples from core ingredients and fills missing nutrition', () => {
-    const recipe = toDomainRecipe(candidate, new Set(['salt']));
+  it('is the shared catalog mapping', () => {
+    expect(toDomainRecipe).toBe(sharedToDomainRecipe);
+  });
+
+  it('takes core ingredients from the catalog and fills missing nutrition', () => {
+    const recipe = toDomainRecipe(candidate);
     expect(recipe.coreIngredientIds).toEqual(['pasta', 'tomato']);
     expect(recipe.nutrition.kcal).toBeNull();
     expect(recipe.region).toBe('global');

@@ -1,146 +1,34 @@
 /**
  * Bridges between the shapes the stores and catalog queries return and the shapes the domain
- * functions expect. The recipe screens read stores and the catalog, then hand domain code exactly
- * what it asks for, so every conversion lives here and is tested once.
+ * functions expect. Preferences, goals, feedback and recipes go through the app-wide bridges
+ * (`@/stores/domainBridge`, `@/lib/catalog`) and are re-exported here; only conversions specific
+ * to the recipe screens live in this file.
  *
  * Safety-relevant conversions are conservative: allergen and diet answers only count as given when
  * the person has actually answered, and an unrecognised region never becomes a crash or a label
  * that reads "undefined".
  */
-import {
-  isRegionId,
-  type FeedbackEvent as DomainFeedbackEvent,
-  type Goal,
-  type GoalTag,
-  type RecipeSummary as DomainRecipe,
-  type UserPreferences,
-} from '@/domain';
+import type { Goal, GoalTag, RecipeSummary as DomainRecipe } from '@/domain';
 import type { PersonalDetails as TargetDetails } from '@/domain/nutrition';
-import type {
-  Ingredient,
-  RecipeDetail,
-  RecipeNutrition,
-  RecipeSummary as CatalogRecipe,
+import {
+  toDomainRecipe as toDomainSummary,
+  type RecipeSummary as CatalogRecipe,
 } from '@/lib/catalog';
-import type {
-  FeedbackEvent as StoredFeedbackEvent,
-  HealthGoal,
-  PersonalDetails as StoredDetails,
-  Preferences,
-  Units,
-} from '@/stores';
+import type { PersonalDetails as StoredDetails } from '@/stores';
 
-const GOAL_FROM_STORE: Readonly<Record<HealthGoal, Goal>> = {
-  more_protein: 'more_protein',
-  more_fiber: 'more_fiber',
-  lower_sodium: 'lower_sodium',
-  heart_friendly: 'heart_friendly',
-  lighter_meals: 'lighter_meals',
-  plant_forward: 'plant_forward',
-  steadier_energy: 'steady_energy',
-};
-
-export function toDomainGoals(goals: readonly HealthGoal[]): Goal[] {
-  return [...new Set(goals.map((goal) => GOAL_FROM_STORE[goal]))];
-}
+export {
+  toDomainFeedback,
+  toDomainGoals,
+  toUserPreferences as toDomainPreferences,
+} from '@/stores/domainBridge';
 
 /**
- * Preferences as the domain reads them. Allergens count as answered only once the person has
- * answered that question (an explicit "none" included); diets are answered alongside, because
- * onboarding asks about diets first. Before that both stay `null`, so nothing reads as safe.
+ * A catalog recipe in the domain's shape, with the core ingredients worked out for it. A recipe
+ * detail carries its lines rather than core ids; `coreIngredientIdsOf` turns those lines into the
+ * ids passed here.
  */
-export function toDomainPreferences(prefs: Preferences, units: Units): UserPreferences {
-  const answered = prefs.allergensAnswered;
-  return {
-    cuisines: prefs.cuisines,
-    diets: answered ? prefs.diets : null,
-    allergens: answered ? prefs.allergens : null,
-    goals: toDomainGoals(prefs.goals),
-    timeBudgetMinutes: prefs.maxMinutes,
-    // No stated effort means any effort is fine.
-    effort: prefs.effort ?? 3,
-    householdSize: prefs.householdSize,
-    smallAppetite: prefs.smallAppetite,
-    units,
-  };
-}
-
-const EMPTY_NUTRITION: RecipeNutrition = {
-  kcal: null,
-  proteinG: null,
-  carbsG: null,
-  fatG: null,
-  satFatG: null,
-  fiberG: null,
-  sugarG: null,
-  addedSugarG: null,
-  sodiumMg: null,
-};
-
-/**
- * Distinct ingredient ids that say something about the dish: matched, not optional and, when the
- * ingredient is known, not a pantry staple such as salt or oil.
- */
-export function coreIngredientIds(
-  lines: RecipeDetail['ingredients'],
-  ingredients: ReadonlyMap<string, Pick<Ingredient, 'pantryStaple'>>,
-): string[] {
-  const out = new Set<string>();
-  for (const line of lines) {
-    if (!line.ingredientId || line.optional) continue;
-    if (ingredients.get(line.ingredientId)?.pantryStaple) continue;
-    out.add(line.ingredientId);
-  }
-  return [...out];
-}
-
-/** A catalog recipe in the domain's shape. */
 export function toDomainRecipe(recipe: CatalogRecipe, core: readonly string[]): DomainRecipe {
-  return {
-    id: recipe.id,
-    slug: recipe.slug,
-    title: recipe.title,
-    summary: recipe.summary,
-    cuisine: recipe.cuisine,
-    region: isRegionId(recipe.region) ? recipe.region : 'global',
-    course: recipe.course,
-    totalMinutes: recipe.totalMinutes,
-    activeMinutes: recipe.activeMinutes,
-    servings: recipe.servings,
-    effort: recipe.effort,
-    imageUrl: recipe.imageUrl,
-    imageCredit: recipe.imageCredit,
-    sourceName: recipe.sourceName,
-    sourceUrl: recipe.sourceUrl,
-    license: recipe.license,
-    nutrition: recipe.nutrition ?? EMPTY_NUTRITION,
-    nutritionConfidence: recipe.nutritionConfidence,
-    allergens: recipe.allergens,
-    dietFlags: recipe.dietFlags,
-    goalTags: recipe.goalTags,
-    gentle: recipe.gentle,
-    healthScore: recipe.healthScore,
-    familyId: recipe.familyId,
-    coreIngredientIds: core,
-  };
-}
-
-/** Stored feedback as ranking reads it; events the domain has no use for are dropped. */
-export function toDomainFeedback(events: readonly StoredFeedbackEvent[]): DomainFeedbackEvent[] {
-  const out: DomainFeedbackEvent[] = [];
-  for (const event of events) {
-    if (event.kind === 'unsave') continue;
-    const at = Date.parse(event.at);
-    if (!Number.isFinite(at)) continue;
-    const reasons = event.kind === 'not_for_me' && event.reason ? [event.reason] : [];
-    const base = { recipeId: event.recipeId, kind: event.kind, at, reasons };
-    out.push(
-      event.ingredientId && reasons.includes('dislike_ingredient')
-        ? { ...base, ingredientId: event.ingredientId }
-        : base,
-    );
-  }
-  return out;
+  return { ...toDomainSummary(recipe), coreIngredientIds: core };
 }
 
 /** Goal tags that move daily targets (protein up, sodium limit down). */
