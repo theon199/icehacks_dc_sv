@@ -3,8 +3,8 @@
  * person's own typical rise, never a clinical target, and nothing is said until there is enough
  * data for it to mean something.
  */
-import { DAY_MS } from './types';
 import type { GlucosePair } from './glucosePairing';
+import { DAY_MS } from './types';
 
 export const GLUCOSE_INSIGHT_RULES = {
   /** Pairs a dish needs before it can be called steadier. */
