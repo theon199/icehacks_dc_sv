@@ -121,3 +121,58 @@ Deno.test("reports each allergen once with the term that matched", () => {
   );
   assertEquals(findAllergenConflicts(["anything"], []), []);
 });
+
+Deno.test("a qualifier stops at the ingredient it modifies, whatever its allergen", () => {
+  assertEquals(hits("plant-based milk custard", ["egg"]), ["egg"]);
+  assertEquals(hits("vegan butter brioche buns", ["egg"]), ["egg"]);
+  assertEquals(hits("vegan mayo tuna salad", ["fish"]), ["fish"]);
+  assertEquals(hits("plant-based yogurt shrimp", ["shellfish"]), ["shellfish"]);
+  assertEquals(hits("vegan whipped cream meringue", ["egg"]), ["egg"]);
+  // Whole multi-word ingredients are still covered.
+  assertEquals(hits("2 tbsp dairy-free cream cheese", ["milk"]), []);
+  assertEquals(hits("dairy-free sour cream", ["milk"]), []);
+  assertEquals(hits("Spread with vegan peanut butter", ["milk"]), []);
+  assertEquals(hits("gluten-free all-purpose flour", ["gluten"]), []);
+});
+
+Deno.test("gluten-free oats still count as gluten", () => {
+  assertEquals(hits("1 cup gluten-free oats", ["gluten"]), ["gluten"]);
+  assertEquals(hits("gluten-free rolled oats", ["gluten"]), ["gluten"]);
+  assertEquals(hits("200 ml gluten-free oat milk", ["gluten"]), ["gluten"]);
+  assertEquals(hits("gluten-free oatmeal", ["gluten"]), ["gluten"]);
+  assertEquals(hits("gluten-free porridge oats", ["gluten"]), ["gluten"]);
+  assertEquals(hits("gluten-free oats", ["wheat"]), []);
+});
+
+Deno.test("a soy-free label never covers soy itself", () => {
+  assertEquals(hits("soy-free soy sauce", ["soy"]), ["soy"]);
+  assertEquals(hits("soy-free tamari", ["soy"]), ["soy"]);
+  assertEquals(hits("soy-free edamame", ["soy"]), ["soy"]);
+  assertEquals(hits("soy-free teriyaki", ["soy"]), []);
+});
+
+Deno.test("egg dishes, doughs, bakes and compound words are recognised", () => {
+  for (const text of ["a spinach omelette", "1 omelet", "pea frittata", "leek quiche"]) {
+    assertEquals(hits(text, ["egg"]), ["egg"], text);
+  }
+  for (
+    const text of [
+      "500 g pizza dough",
+      "Knead the dough",
+      "2 slices sourdough",
+      "6 bran muffins",
+      "buckwheat-free crêpes",
+      "1 baguette",
+      "soft pretzels",
+      "12 cupcakes",
+      "garlic breadsticks",
+      "glazed doughnuts",
+    ]
+  ) {
+    assertEquals(hits(text, ["wheat", "gluten"]), ["wheat", "gluten"], text);
+  }
+  assertEquals(hits("a slice of cheesecake", ["milk", "wheat"]), ["milk", "wheat"]);
+  assertEquals(hits("a scoop of pistachio gelato", ["milk"]), ["milk"]);
+  assertEquals(hits("Pour over the béchamel", ["milk"]), ["milk"]);
+  assertEquals(hits("Pipe the buttercream", ["milk"]), ["milk"]);
+});

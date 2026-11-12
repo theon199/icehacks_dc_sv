@@ -4,15 +4,16 @@
  * Famara's catalog allergen data is the source of truth for catalog recipes. A makeover, though,
  * is free text written by a model, so before it reaches the person this module looks for words
  * that name an ingredient containing one of their declared allergens. It is deliberately
- * cautious: an unqualified "flour" counts as wheat, "oats" count as gluten, "butter" counts as
- * milk. A false alarm costs a retry; a miss could cost much more.
+ * cautious: an unqualified "flour" counts as wheat, oats count as gluten (with or without a
+ * "gluten-free" label), "butter" counts as milk. A false alarm costs a retry; a miss could cost much more.
  *
  * Text is split into clauses (commas, brackets, "and", "or", "with" ...). An explicit qualifier
  * for an allergen ("dairy-free", "egg-free", "vegan" for milk and egg, ...) only covers the short
  * ingredient phrase right after it: at most three words, ending early at a preposition or article
  * ("in", "by", "the" ...), at a participle or adverb ("topped", "generously"), or once the phrase
- * has named an ingredient. Everything else in the clause is still checked, so "vegan pasta
- * drizzled in butter" is flagged for milk. A qualifier never covers a word that is the allergen
+ * has named an ingredient. That ingredient can belong to any allergen, so in "vegan mayo tuna
+ * salad" the qualifier covers "mayo" but not "tuna". Everything else in the clause is still
+ * checked, so "vegan pasta drizzled in butter" is flagged for milk. A qualifier never covers a word that is the allergen
  * itself ("sesame-free za'atar", "nut-free almonds"). A short list of known safe phrases
  * ("coconut milk", "peanut butter" for a milk allergy, "water chestnut" for tree nuts) is removed
  * before matching.
@@ -73,7 +74,8 @@ interface AllergenRule {
   /**
    * Terms that are the allergen itself, so a qualifier in front of them is a contradiction and
    * never covers them ("nut-free almonds"). Terms with real free-from versions (dairy-free
-   * cheese, gluten-free oats, plant-based tuna) stay out of this list.
+   * cheese, gluten-free pasta, plant-based tuna) stay out of this list. Oats are on the gluten
+   * list: Famara counts every oat as gluten, labelled gluten-free or not.
    */
   intrinsic: readonly string[];
 }
@@ -85,9 +87,15 @@ const WHEAT_TERMS = [
   "flour",
   "all-purpose flour",
   "bread",
+  "breadstick",
   "flatbread",
   "cornbread",
   "shortbread",
+  "sourdough",
+  "dough",
+  "pizza dough",
+  "doughnut",
+  "donut",
   "breadcrumb",
   "bread crumb",
   "panko",
@@ -132,6 +140,8 @@ const WHEAT_TERMS = [
   "paratha",
   "bun",
   "bagel",
+  "baguette",
+  "pretzel",
   "croissant",
   "pastry",
   "puff pastry",
@@ -143,8 +153,12 @@ const WHEAT_TERMS = [
   "pie crust",
   "biscuit",
   "cake",
+  "cupcake",
+  "cheesecake",
+  "muffin",
   "cookie",
   "pancake",
+  "crepe",
   "waffle",
 ] as const;
 
@@ -216,8 +230,12 @@ export const ALLERGEN_RULES: Readonly<Record<AllergenId, AllergenRule>> = {
       "buttermilk",
       "butter",
       "cream",
+      "sour cream",
+      "buttercream",
       "creme fraiche",
       "cheese",
+      "cream cheese",
+      "cheesecake",
       "cheddar",
       "mozzarella",
       "parmesan",
@@ -250,6 +268,8 @@ export const ALLERGEN_RULES: Readonly<Record<AllergenId, AllergenRule>> = {
       "custard",
       "half-and-half",
       "ice cream",
+      "gelato",
+      "bechamel",
       "dulce de leche",
       "raita",
       "tzatziki",
@@ -308,6 +328,10 @@ export const ALLERGEN_RULES: Readonly<Record<AllergenId, AllergenRule>> = {
       "hollandaise",
       "custard",
       "eggnog",
+      "omelette",
+      "omelet",
+      "frittata",
+      "quiche",
       "brioche",
     ],
     safe: ["flax egg", "chia egg"],
@@ -465,7 +489,7 @@ export const ALLERGEN_RULES: Readonly<Record<AllergenId, AllergenRule>> = {
     safe: [],
     freeOf: ["soy"],
     qualifiers: [],
-    intrinsic: [],
+    intrinsic: ["soy", "soya", "soybean", "soy sauce", "shoyu", "tamari", "edamame"],
   },
   sesame: {
     terms: [
@@ -522,7 +546,17 @@ export const ALLERGEN_RULES: Readonly<Record<AllergenId, AllergenRule>> = {
     safe: WHEAT_SAFE.filter((phrase) => phrase !== "oat flour"),
     freeOf: ["gluten"],
     qualifiers: [],
-    intrinsic: [...WHEAT_INTRINSIC, "barley", "rye", "triticale", "malt"],
+    intrinsic: [
+      ...WHEAT_INTRINSIC,
+      "barley",
+      "rye",
+      "triticale",
+      "malt",
+      "oat",
+      "oatmeal",
+      "rolled oat",
+      "porridge oat",
+    ],
   },
 };
 
@@ -596,6 +630,20 @@ const COMPILED: Readonly<Record<AllergenId, CompiledRule>> = {
   gluten: compile(ALLERGEN_RULES.gluten),
 };
 
+/**
+ * Anchored: an ingredient of any allergen, or a known safe phrase, at the start of the text. The
+ * longest phrase wins ("cream cheese" over "cream", "peanut butter" over "peanut"), so the
+ * qualifier ends right after the whole ingredient it modifies.
+ */
+const INGREDIENT_AT_START: RegExp = (() => {
+  const phrases = new Set<string>();
+  for (const rule of Object.values(ALLERGEN_RULES)) {
+    for (const phrase of [...rule.terms, ...rule.safe]) phrases.add(phrase);
+  }
+  const longestFirst = [...phrases].sort((a, b) => b.length - a.length);
+  return new RegExp(`^${anyOf(longestFirst)}${WORD_END}`);
+})();
+
 /** Lowercases, strips accents and normalises apostrophes so "Crème Fraîche" matches. */
 export function normalizeText(text: string): string {
   return text
@@ -660,9 +708,14 @@ function qualifiedLength(rest: string, rule: CompiledRule): number {
     const value = word.exec(rest)?.[1];
     if (value === undefined || PHRASE_BREAKERS.has(value)) break;
     if (count > 0 && VERB_LIKE.test(value)) break;
-    if (rule.intrinsic?.test(rest.slice(start).trimStart())) break;
+    const tail = rest.slice(start).trimStart();
+    if (rule.intrinsic?.test(tail)) break;
+    const ingredient = INGREDIENT_AT_START.exec(tail);
+    if (ingredient) {
+      covered = rest.length - tail.length + ingredient[0].length;
+      break;
+    }
     covered = word.lastIndex;
-    if (rule.terms.some(({ pattern }) => pattern.test(value))) break;
   }
   return covered;
 }
