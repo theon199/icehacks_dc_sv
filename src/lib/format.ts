@@ -69,14 +69,14 @@ export function formatKcal(kcal: number | null | undefined, locale = deviceLocal
 }
 
 /**
- * Mass in grams with sensible precision: under 10 g keeps one decimal (2.5 g), otherwise whole
- * grams. Values of 1000 g and more switch to kilograms.
+ * Mass in grams with sensible precision: under 10g keeps one decimal (2.5g), otherwise whole
+ * grams, with no space before the unit. Values of 1000g and more switch to kilograms.
  */
 export function formatGrams(grams: number | null | undefined, locale = deviceLocale()) {
   if (grams == null || !Number.isFinite(grams)) return '—';
-  if (Math.abs(grams) >= 1000) return `${formatNumber(grams / 1000, 2, locale)} kg`;
+  if (Math.abs(grams) >= 1000) return `${formatNumber(grams / 1000, 2, locale)}kg`;
   const digits = Math.abs(grams) < 10 ? 1 : 0;
-  return `${formatNumber(grams, digits, locale)} g`;
+  return `${formatNumber(grams, digits, locale)}g`;
 }
 
 /** Milligrams, used for sodium: 1234 → "1,234 mg". */

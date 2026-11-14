@@ -18,7 +18,7 @@ const original = sideFromRecipe(
     servings: 4,
     ingredients: [
       line(1, '4 tbsp butter', { ingredientId: 'butter', grams: 56 }),
-      line(2, '400 g pasta', { ingredientId: 'pasta', grams: 400 }),
+      line(2, '400g pasta', { ingredientId: 'pasta', grams: 400 }),
       line(3, '200 ml heavy cream', { ingredientId: 'heavy_cream', grams: 200 }),
       line(4, '1 tsp salt', { ingredientId: 'salt', grams: 6 }),
       line(5, 'A handful of crispy shallots', { grams: 20 }),
@@ -32,7 +32,7 @@ const adapted = sideFromRecipe(
     servings: 2,
     ingredients: [
       line(1, '1 tbsp olive oil', { ingredientId: 'olive_oil', grams: 14 }),
-      line(2, '200 g pasta', { ingredientId: 'pasta', grams: 200 }),
+      line(2, '200g pasta', { ingredientId: 'pasta', grams: 200 }),
       line(3, '100 ml greek yogurt', { ingredientId: 'greek_yogurt', grams: 100 }),
       line(4, 'A pinch of salt', { ingredientId: 'salt', grams: 1 }),
       line(5, '2 cups spinach', { ingredientId: 'spinach', grams: 60 }),
@@ -68,9 +68,9 @@ describe('diffIngredients', () => {
   });
 
   it('compares amounts per serving, not per recipe', () => {
-    // 400 g for 4 and 200 g for 2 are the same 100 g a serving.
+    // 400g for 4 and 200g for 2 are the same 100g a serving.
     expect(diff.find((d) => d.key === 'pasta')?.kind).toBe('same');
-    // 1.5 g of salt a serving drops to 0.5 g.
+    // 1.5g of salt a serving drops to 0.5 g.
     expect(diff.find((d) => d.key === 'salt')?.kind).toBe('less');
   });
 
@@ -87,8 +87,8 @@ describe('nutritionDeltas', () => {
   const get = (key: string) => deltas.find((d) => d.key === key)!;
 
   it('reads more protein and less saturated fat as better', () => {
-    expect(get('protein_g')).toMatchObject({ direction: 'better', change: '+4 g' });
-    expect(get('sat_fat_g')).toMatchObject({ direction: 'better', change: '−1.5 g' });
+    expect(get('protein_g')).toMatchObject({ direction: 'better', change: '+4g' });
+    expect(get('sat_fat_g')).toMatchObject({ direction: 'better', change: '−1.5g' });
   });
 
   it('reads more sodium as worse', () => {
@@ -197,7 +197,7 @@ describe('sideFromPersonalVersion', () => {
     id: 'v1',
     title: 'My lighter pasta',
     servings: 2,
-    ingredients: ['100 ml greek yogurt', '200 g pasta'],
+    ingredients: ['100 ml greek yogurt', '200g pasta'],
   });
 
   it('matches free-text lines to the original by name', () => {

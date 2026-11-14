@@ -11,7 +11,7 @@ const soup = { title: 'Lemon lentil soup', cuisine: 'italian', totalMinutes: 25 
 
 describe('card text', () => {
   it('summarises calories and protein per serving', () => {
-    expect(nutritionLine(deckCard('c1', soup))).toBe('480 kcal · 24 g protein per serving');
+    expect(nutritionLine(deckCard('c1', soup))).toBe('480 kcal · 24g protein per serving');
   });
 
   it('labels estimated nutrition and hides missing nutrition', () => {
@@ -27,7 +27,7 @@ describe('card text', () => {
     const computed = cardStats(deckCard('c1', soup));
     expect(computed[0]).toBe('25 min');
     expect(computed).toContain('480 kcal');
-    expect(computed).toContain('24 g protein');
+    expect(computed).toContain('24g protein');
     const estimated = cardStats(deckCard('c1', { ...soup, nutritionConfidence: 'estimated' }));
     expect(estimated.slice(1).every((stat) => stat.startsWith('Est. '))).toBe(true);
     expect(
