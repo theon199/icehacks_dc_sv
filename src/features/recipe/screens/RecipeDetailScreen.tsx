@@ -272,5 +272,5 @@ export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScr
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   centre: { flex: 1, justifyContent: 'center', padding: gutter },
-  top: { gap: space.md, paddingHorizontal: gutter, paddingTop: space.xs },
+  top: { gap: space.md, paddingHorizontal: gutter, paddingTop: space.sm },
 });

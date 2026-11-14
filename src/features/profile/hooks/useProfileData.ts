@@ -4,9 +4,10 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
+import { addDays, cookWeek, weekStartOf } from '@/domain/plan';
 import { useSessionStore } from '@/features/auth';
 
-import { fetchBadgeCatalog, fetchMyStats, fetchProfile } from '../api/profileApi';
+import { fetchBadgeCatalog, fetchMyCookDays, fetchMyStats, fetchProfile } from '../api/profileApi';
 import { fetchAuthorPosts, listCatalogCuisines } from '../deps';
 import { profileKeys } from './queryKeys';
 import { buildBadgeGrid } from '../model/badges';
@@ -34,6 +35,23 @@ export function useMyStats() {
     queryFn: () => fetchMyStats(today),
     enabled: userId != null,
   });
+}
+
+/** This week, Monday to Sunday, with the days the person logged a cook. */
+export function useMyCookWeek() {
+  const userId = useMyUserId();
+  const today = localDateString(new Date());
+  const monday = weekStartOf(today);
+  const days = useQuery({
+    queryKey: profileKeys.cookWeek(userId ?? '', monday),
+    queryFn: () => fetchMyCookDays(userId ?? '', monday, addDays(monday, 6)),
+    enabled: userId != null,
+  });
+  const data = useMemo(
+    () => (days.data ? cookWeek(today, days.data) : undefined),
+    [days.data, today],
+  );
+  return { ...days, data };
 }
 
 /**

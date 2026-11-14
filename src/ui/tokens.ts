@@ -180,6 +180,18 @@ export const space = {
 export type SpaceToken = keyof typeof space;
 
 /** Screen edge padding used by `Screen` and headers. */
+/**
+ * Initial discs for people without a photo. Fixed in both schemes: each pairs a muted fill with the
+ * letter colour that reads on it.
+ */
+export const avatarDiscs = [
+  { fill: '#17191B', ink: '#FFFFFF' },
+  { fill: '#9EC49A', ink: '#17191B' },
+  { fill: '#C9A2B0', ink: '#17191B' },
+  { fill: '#E9C46A', ink: '#17191B' },
+  { fill: '#62676D', ink: '#FFFFFF' },
+] as const;
+
 export const gutter = space.lg;
 
 export const radii = {

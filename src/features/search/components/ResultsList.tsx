@@ -96,6 +96,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   updating: { opacity: 0.6 },
   updatingCue: { position: 'absolute', top: space.md, alignSelf: 'center' },
-  content: { paddingHorizontal: gutter, paddingTop: space.sm, paddingBottom: space.xl },
+  content: { paddingHorizontal: gutter, paddingTop: space.md, paddingBottom: space.xl },
   footer: { paddingVertical: space.xl },
 });

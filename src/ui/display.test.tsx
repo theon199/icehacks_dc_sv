@@ -3,7 +3,7 @@ import { screen, userEvent } from '@testing-library/react-native';
 import { ApiError } from '@/lib/api/errors';
 import { renderWithTheme } from '@/test/render';
 
-import { Avatar, initialsFor } from './Avatar';
+import { Avatar, avatarDiscFor, initialsFor } from './Avatar';
 import { Badge, badgeText } from './Badge';
 import { EmptyState } from './EmptyState';
 import { ErrorState, errorMessageFor } from './ErrorState';
@@ -34,16 +34,24 @@ describe('ProgressRing', () => {
 });
 
 describe('Avatar', () => {
-  it('derives up to two initials', () => {
-    expect(initialsFor('Ana María López')).toBe('AL');
+  it('uses the first letter of the name', () => {
+    expect(initialsFor('Ana María López')).toBe('A');
     expect(initialsFor('  sam ')).toBe('S');
     expect(initialsFor('')).toBe('?');
+  });
+
+  it('gives the same seed the same disc', () => {
+    expect(avatarDiscFor('Jo Park')).toBe(avatarDiscFor('Jo Park'));
+    const fills = new Set(
+      ['Ana', 'Ben', 'Cy', 'Dee', 'Eve', 'Fin', 'Gus'].map((n) => avatarDiscFor(n).fill),
+    );
+    expect(fills.size).toBeGreaterThan(1);
   });
 
   it('is labelled with the person name', async () => {
     await renderWithTheme(<Avatar name="Jo Park" />);
     expect(screen.getByRole('image', { name: 'Jo Park' })).toBeOnTheScreen();
-    expect(screen.getByText('JP')).toBeOnTheScreen();
+    expect(screen.getByText('J')).toBeOnTheScreen();
   });
 });
 

@@ -60,6 +60,20 @@ export async function fetchMyStats(today: string): Promise<MyStats> {
   return parseResponse('my_stats', myStatsSchema, data);
 }
 
+const cookDaysSchema = z.array(z.object({ local_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }));
+
+/** The person's own cook days between two local dates, inclusive (one row per logged cook). */
+export async function fetchMyCookDays(userId: string, from: string, to: string): Promise<string[]> {
+  const { data, error } = await getSupabase()
+    .from('cook_events')
+    .select('local_date')
+    .eq('user_id', userId)
+    .gte('local_date', from)
+    .lte('local_date', to);
+  if (error) throw dbError('cook_events', error);
+  return parseResponse('cook_events', cookDaysSchema, data).map((row) => row.local_date);
+}
+
 export async function fetchBadgeCatalog(): Promise<BadgeDefinition[]> {
   const { data, error } = await getSupabase()
     .from('badges')

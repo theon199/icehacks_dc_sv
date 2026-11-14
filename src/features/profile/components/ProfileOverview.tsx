@@ -9,7 +9,7 @@ import { StatsRow } from './StatsRow';
 import { StreakSlab } from './StreakSlab';
 import { avatarUrl } from '../api/profileApi';
 import type { ProfileRow } from '../api/schemas';
-import { useMyStats } from '../hooks/useProfileData';
+import { useMyCookWeek, useMyStats } from '../hooks/useProfileData';
 import { useAvatarChange } from '../hooks/useProfileMutations';
 
 export interface ProfileOverviewProps {
@@ -22,6 +22,7 @@ export interface ProfileOverviewProps {
 /** Everything above the posts grid: the streak, who this is and the totals. */
 export function ProfileOverview({ profile, onEdit, postsAction }: ProfileOverviewProps) {
   const stats = useMyStats();
+  const week = useMyCookWeek();
   const avatar = useAvatarChange();
 
   const changeAvatar = () => {
@@ -43,7 +44,7 @@ export function ProfileOverview({ profile, onEdit, postsAction }: ProfileOvervie
   return (
     <View style={styles.container}>
       {stats.data ? (
-        <StreakSlab stats={stats.data} />
+        <StreakSlab stats={stats.data} week={week.data} />
       ) : stats.isPending ? (
         <Skeleton height={150} radius="card" />
       ) : null}

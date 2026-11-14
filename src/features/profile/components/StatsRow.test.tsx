@@ -1,5 +1,6 @@
 import { screen } from '@testing-library/react-native';
 
+import { cookWeek } from '@/domain/plan';
 import type { MyStats } from '@/lib/supabase/database.types';
 import { renderWithTheme } from '@/test/render';
 
@@ -59,5 +60,18 @@ describe('StreakSlab', () => {
     );
     expect(screen.getByLabelText('0 days in a row')).toBeOnTheScreen();
     expect(screen.getByText(/start your streak/)).toBeOnTheScreen();
+  });
+});
+
+describe('StreakSlab week dots', () => {
+  it('reads the cooked days of this week as one sentence', async () => {
+    const week = cookWeek('2026-11-14', ['2026-11-10', '2026-11-14']);
+    await renderWithTheme(<StreakSlab stats={stats} week={week} />);
+    expect(screen.getByLabelText('Cooked this week on Tuesday, Saturday')).toBeOnTheScreen();
+  });
+
+  it('leaves the row out until the week loads', async () => {
+    await renderWithTheme(<StreakSlab stats={stats} />);
+    expect(screen.queryByTestId('profile-streak-week')).toBeNull();
   });
 });

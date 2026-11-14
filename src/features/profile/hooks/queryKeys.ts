@@ -5,6 +5,9 @@ export const profileKeys = {
   stats: (userId: string, day: string) => ['profile', 'stats', userId, day] as const,
   statsAll: (userId: string) => ['profile', 'stats', userId] as const,
   badges: () => ['profile', 'badges'] as const,
+  /** Under the stats prefix, so logging a cook refreshes the week dots with the stats. */
+  cookWeek: (userId: string, monday: string) =>
+    ['profile', 'stats', userId, 'cookWeek', monday] as const,
   posts: (userId: string) => ['profile', 'posts', userId] as const,
   follows: (userId: string) => ['profile', 'follows', userId] as const,
   suggestions: (userId: string) => ['profile', 'suggestions', userId] as const,
