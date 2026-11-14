@@ -11,15 +11,24 @@ import { Wordmark } from '@/ui/brand';
  * The night page the age gate sits on: pure black, the wordmark top left, the content centred.
  * The welcome flow's one dark look carries on until the age question is answered.
  */
-export function NightGate({ children, testID }: { children: ReactNode; testID?: string }) {
+export interface NightGateProps {
+  children: ReactNode;
+  /** Pinned under the centred block (e.g. Sign out), so it never shifts the question off centre. */
+  footer?: ReactNode;
+  testID?: string;
+}
+
+export function NightGate({ children, footer, testID }: NightGateProps) {
   return (
     <NightTheme>
-      <GateBody {...(testID ? { testID } : {})}>{children}</GateBody>
+      <GateBody footer={footer} {...(testID ? { testID } : {})}>
+        {children}
+      </GateBody>
     </NightTheme>
   );
 }
 
-function GateBody({ children, testID }: { children: ReactNode; testID?: string }) {
+function GateBody({ children, footer, testID }: NightGateProps) {
   const insets = useSafeAreaInsets();
   return (
     <View
@@ -41,6 +50,7 @@ function GateBody({ children, testID }: { children: ReactNode; testID?: string }
           {children}
         </Animated.View>
       </ScrollView>
+      {footer ? <View style={styles.footer}>{footer}</View> : null}
     </View>
   );
 }
@@ -71,6 +81,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.section,
   },
   block: { gap: space.xl },
+  footer: { paddingHorizontal: space.xl, paddingBottom: space.md },
   heading: { gap: space.xs },
   title: { color: night.ink, fontFamily: fontFamily.display, letterSpacing: -0.6 },
   subtitle: { color: night.inkMuted },

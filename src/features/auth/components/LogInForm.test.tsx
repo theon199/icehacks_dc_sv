@@ -25,8 +25,12 @@ describe('LogInForm', () => {
     await fireEvent(screen.getByLabelText('Email'), 'blur');
     expect(screen.getByText('That email address doesn’t look right.')).toBeOnTheScreen();
 
+    // Log in stays dimmed until both fields have text.
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeDisabled();
+
+    await fireEvent.changeText(screen.getByLabelText('Password'), 'long enough password');
     await userEvent.setup().press(screen.getByRole('button', { name: 'Log in' }));
-    expect(screen.getByText('Enter your password.')).toBeOnTheScreen();
+    expect(screen.getByText('That email address doesn’t look right.')).toBeOnTheScreen();
     expect(signIn).not.toHaveBeenCalled();
   });
 

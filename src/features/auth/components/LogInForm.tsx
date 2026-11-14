@@ -101,6 +101,7 @@ export function LogInForm({ emailRef }: EmailFormProps) {
           testID="sign-in-submit"
           label="Log in"
           loading={attempt.busy}
+          disabled={email.value.trim() === '' || password.value === ''}
           onPress={signIn}
           style={styles.submit}
         />

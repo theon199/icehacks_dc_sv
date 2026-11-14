@@ -80,7 +80,11 @@ export function BirthYearScreen() {
   };
 
   return (
-    <NightGate>
+    <NightGate
+      footer={
+        chosen == null ? <NightTextLink label="Sign out" onPress={() => void signOut()} /> : null
+      }
+    >
       <GateHeading
         title="When were you born?"
         subtitle="Famara is for people 13 and older. We only keep the year, never the full date."
@@ -126,7 +130,6 @@ export function BirthYearScreen() {
             disabled={year == null}
             onPress={() => setReviewing(true)}
           />
-          <NightTextLink label="Sign out" onPress={() => void signOut()} />
         </View>
       )}
     </NightGate>
