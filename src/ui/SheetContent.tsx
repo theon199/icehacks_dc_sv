@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from './Text';
 import { useTheme } from './ThemeProvider';
-import { gutter, space } from './tokens';
+import { space } from './tokens';
 
 export interface SheetContentProps {
   title?: string;
@@ -17,8 +17,10 @@ export interface SheetContentProps {
 }
 
 /**
- * Body of a native form sheet route (`presentation: 'formSheet'`). The system draws the grabber and
- * the rounded container; this adds consistent padding, title and footer.
+ * Body of a sheet: a native form sheet route (`presentation: 'formSheet'`, see `sheetOptions`) or
+ * a page-sheet `Modal`. The system draws the grabber and the 32 pt rounded container; this adds the
+ * sheet's 20 pt side padding, title, 12 pt rhythm between blocks, and a footer pinned above the
+ * home indicator.
  */
 export function SheetContent({
   title,
@@ -60,9 +62,7 @@ export function SheetContent({
         </View>
       )}
       {footer ? (
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
-          {footer}
-        </View>
+        <View style={[styles.footer, { paddingBottom: insets.bottom + space.xl }]}>{footer}</View>
       ) : null}
     </View>
   );
@@ -70,7 +70,7 @@ export function SheetContent({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  body: { padding: gutter, paddingTop: space.xxl, gap: space.lg },
+  body: { padding: space.xl, paddingTop: space.xxl, gap: space.md },
   heading: { gap: space.xs },
-  footer: { paddingHorizontal: gutter, paddingTop: space.md, gap: space.sm },
+  footer: { paddingHorizontal: space.xl, paddingTop: space.md, gap: space.sm },
 });

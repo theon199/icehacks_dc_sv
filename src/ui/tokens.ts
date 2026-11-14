@@ -50,6 +50,12 @@ export interface Palette {
   onDangerSoft: string;
   focus: string;
   scrim: string;
+  /** Hairline edge of a solid (non-glass) floating control; real glass draws its own edge. */
+  controlBorder: string;
+  /** Pressed row wash and faint dividers inside glass menus and trays. */
+  hairline: string;
+  /** Frost tint laid on glass surfaces that carry text (menus, sheets, toasts). */
+  glassFrost: string;
   skeleton: string;
   skeletonHighlight: string;
   shadow: string;
@@ -98,6 +104,9 @@ export const palettes: Record<ColorScheme, Palette> = {
     onDangerSoft: '#7D1A14',
     focus: '#17191B',
     scrim: 'rgba(20, 20, 22, 0.42)',
+    controlBorder: 'rgba(20, 20, 22, 0.08)',
+    hairline: 'rgba(20, 20, 22, 0.06)',
+    glassFrost: 'rgba(255, 255, 255, 0.52)',
     skeleton: '#E4E4E1',
     skeletonHighlight: '#F1F1EE',
     shadow: '#0F0F14',
@@ -141,6 +150,9 @@ export const palettes: Record<ColorScheme, Palette> = {
     onDangerSoft: '#FFC9C2',
     focus: '#D0F64A',
     scrim: 'rgba(0, 0, 0, 0.6)',
+    controlBorder: 'rgba(255, 255, 255, 0.12)',
+    hairline: 'rgba(255, 255, 255, 0.08)',
+    glassFrost: 'rgba(31, 33, 35, 0.52)',
     skeleton: '#26282B',
     skeletonHighlight: '#303236',
     shadow: '#000000',
@@ -157,21 +169,29 @@ export const space = {
   lg: 16,
   xl: 20,
   xxl: 24,
+  /** Between page sections. */
+  section: 28,
   xxxl: 32,
+  /** Before a closing block, e.g. the last action on a long page. */
+  sectionLarge: 40,
   huge: 48,
   giant: 64,
 } as const;
 export type SpaceToken = keyof typeof space;
 
 /** Screen edge padding used by `Screen` and headers. */
-export const gutter = space.xl;
+export const gutter = space.lg;
 
 export const radii = {
   xs: 6,
   sm: 10,
   md: 12,
   lg: 20,
+  /** Medium tiles: list cards, thumbnails beside text. */
+  tile: 22,
   xl: 28,
+  /** Same as `xl`: feature cards, deck cards, day cards. */
+  card: 28,
   /** Bottom sheets and full-bleed hero cards. */
   sheet: 32,
   pill: 999,
@@ -192,6 +212,7 @@ export const fontFamily = {
 } as const;
 
 export type TextVariant =
+  | 'displayLarge'
   | 'display'
   | 'title1'
   | 'title2'
@@ -204,14 +225,16 @@ export type TextVariant =
   | 'footnote'
   | 'caption'
   | 'label'
+  | 'sectionLabel'
   | 'overline';
 
 type TypeStyle = Required<Pick<TextStyle, 'fontFamily' | 'fontSize' | 'lineHeight'>> &
   Pick<TextStyle, 'letterSpacing' | 'textTransform'>;
 
 export const typography: Record<TextVariant, TypeStyle> = {
-  display: { fontFamily: fontFamily.display, fontSize: 32, lineHeight: 38, letterSpacing: -0.4 },
-  title1: { fontFamily: fontFamily.display, fontSize: 24, lineHeight: 30, letterSpacing: -0.2 },
+  displayLarge: { fontFamily: fontFamily.display, fontSize: 48, lineHeight: 56 },
+  display: { fontFamily: fontFamily.display, fontSize: 32, lineHeight: 38 },
+  title1: { fontFamily: fontFamily.display, fontSize: 24, lineHeight: 30 },
   title2: { fontFamily: fontFamily.textSemiBold, fontSize: 19, lineHeight: 25 },
   title3: { fontFamily: fontFamily.textSemiBold, fontSize: 17, lineHeight: 23 },
   headline: { fontFamily: fontFamily.textSemiBold, fontSize: 16, lineHeight: 22 },
@@ -222,6 +245,8 @@ export const typography: Record<TextVariant, TypeStyle> = {
   footnote: { fontFamily: fontFamily.text, fontSize: 13, lineHeight: 18 },
   caption: { fontFamily: fontFamily.textMedium, fontSize: 12, lineHeight: 16 },
   label: { fontFamily: fontFamily.textSemiBold, fontSize: 14, lineHeight: 18 },
+  /** A section label in sentence case. */
+  sectionLabel: { fontFamily: fontFamily.textBold, fontSize: 13, lineHeight: 18 },
   overline: {
     fontFamily: fontFamily.textBold,
     fontSize: 12,
@@ -257,7 +282,7 @@ export const elevation: Record<'none' | 'low' | 'medium' | 'high', Elevation> = 
     elevation: 3,
   },
   high: {
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.055,
     shadowRadius: 36,
     shadowOffset: { width: 0, height: 12 },
     elevation: 6,

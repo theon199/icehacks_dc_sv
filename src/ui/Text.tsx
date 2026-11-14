@@ -27,7 +27,13 @@ export interface TextProps extends RNTextProps {
   ref?: Ref<RNText>;
 }
 
-const headingVariants = new Set<TextVariant>(['display', 'title1', 'title2', 'title3']);
+const headingVariants = new Set<TextVariant>([
+  'displayLarge',
+  'display',
+  'title1',
+  'title2',
+  'title3',
+]);
 
 /** Themed text that scales with Dynamic Type. Headings get the header role automatically. */
 export function Text({

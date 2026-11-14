@@ -59,3 +59,9 @@ jest.mock('expo-symbols', () => {
   const { View } = jest.requireActual<{ View: unknown }>('react-native');
   return { SymbolView: View };
 });
+
+// The icon font loads on mount; tests only need the component to render nothing.
+jest.mock('@expo/vector-icons/Ionicons', () => {
+  const Ionicons = Object.assign(() => null, { font: {}, glyphMap: {} });
+  return { __esModule: true, default: Ionicons };
+});

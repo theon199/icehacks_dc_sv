@@ -68,7 +68,7 @@ export function sheetOptions(
     presentation: 'formSheet',
     sheetAllowedDetents: detents,
     sheetGrabberVisible: true,
-    sheetCornerRadius: theme.radii.xl,
+    sheetCornerRadius: theme.radii.sheet,
     headerShown: false,
     contentStyle: { backgroundColor: theme.colors.surface },
   };

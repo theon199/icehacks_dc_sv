@@ -5,12 +5,14 @@ export interface TabSpec {
   /** Route name inside `src/app/(app)/(tabs)`. */
   name: string;
   label: string;
-  sf: { default: SFSymbol; selected: SFSymbol };
+  sf: SFSymbol | { default: SFSymbol; selected: SFSymbol };
   md: AndroidSymbol;
-  /** iOS 26 places the `search` role tab apart from the others. */
-  role?: 'search';
 }
 
+/**
+ * All five share one bar. Search is an ordinary item inside it rather than the iOS `search` role,
+ * which iOS 26 lifts out into a separate circle beside the bar.
+ */
 export const tabs: readonly TabSpec[] = [
   {
     name: '(discover)',
@@ -39,8 +41,7 @@ export const tabs: readonly TabSpec[] = [
   {
     name: 'search',
     label: 'Search',
-    sf: { default: 'magnifyingglass', selected: 'magnifyingglass' },
+    sf: 'magnifyingglass',
     md: 'search',
-    role: 'search',
   },
 ];
