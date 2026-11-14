@@ -125,7 +125,7 @@ function Preview({
             const recipe = recipes.get(a.meal.recipeId);
             return (
               <Card key={a.slot} variant="outlined" padding="md" style={styles.row}>
-                <Text variant="overline" tone="muted">
+                <Text variant="label" tone="muted">
                   {SLOT_LABELS[a.slot]}
                 </Text>
                 <Text variant="subhead">{recipe?.title ?? a.meal.recipeId}</Text>

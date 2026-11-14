@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native'
 
 import type { DayIndex } from '@/domain/plan';
 import { haptics } from '@/lib/haptics';
-import { minTouchTarget, PressableScale, space, Text, useTheme } from '@/ui';
+import { fontFamily, minTouchTarget, PressableScale, space, Text, useTheme } from '@/ui';
 
 import type { DayInfo } from '../model/week';
 
@@ -17,16 +17,19 @@ export interface DayRailProps {
 
 /** Room for a two-digit day number in the headline style at the default text size. */
 const DAY_NUMBER_WIDTH = 30;
+/** A rounded square rather than a pill, so the selected day reads as a tile. */
+const DAY_RADIUS = 16;
 
 /**
- * Monday-to-Sunday strip; a dot marks days that already have meals. Each day keeps at least a
- * 44pt target that grows with the text size; when seven of them no longer fit the width (narrow
- * phones, large Dynamic Type) the strip scrolls sideways instead of squeezing them.
+ * Monday-to-Sunday strip. The selected day is an ink tile; a dot marks days that already have
+ * meals (lime on the selected tile). Each day keeps at least a 44pt target that grows with the
+ * text size; when seven of them no longer fit the width (narrow phones, large Dynamic Type) the
+ * strip scrolls sideways instead of squeezing them.
  */
 export const DayRail = memo(function DayRail({ days, selected, counts, onSelect }: DayRailProps) {
   const theme = useTheme();
   const { fontScale } = useWindowDimensions();
-  const cellWidth = Math.max(minTouchTarget, Math.ceil(DAY_NUMBER_WIDTH * fontScale) + space.md);
+  const cellWidth = Math.max(minTouchTarget, Math.ceil(DAY_NUMBER_WIDTH * fontScale) + space.lg);
   return (
     <ScrollView
       horizontal
@@ -56,18 +59,18 @@ export const DayRail = memo(function DayRail({ days, selected, counts, onSelect 
               styles.day,
               {
                 minWidth: cellWidth,
-                borderRadius: theme.radii.md,
                 backgroundColor: isSelected ? theme.colors.primary : 'transparent',
                 borderColor: d.isToday && !isSelected ? theme.colors.primary : 'transparent',
               },
             ]}
           >
-            <Text variant="caption" color={isSelected ? 'onPrimary' : 'textMuted'}>
-              {d.short}
+            <Text variant="label" color={isSelected ? 'onPrimary' : 'textMuted'}>
+              {d.short.charAt(0)}
             </Text>
             <Text
-              variant="headline"
+              variant="title3"
               color={isSelected ? 'onPrimary' : d.isPast ? 'textSubtle' : 'text'}
+              style={styles.number}
             >
               {d.dayOfMonth}
             </Text>
@@ -79,8 +82,8 @@ export const DayRail = memo(function DayRail({ days, selected, counts, onSelect 
                     count === 0
                       ? 'transparent'
                       : isSelected
-                        ? theme.colors.onPrimary
-                        : theme.colors.accent,
+                        ? theme.colors.highlight
+                        : theme.colors.borderStrong,
                 },
               ]}
             />
@@ -95,12 +98,15 @@ const styles = StyleSheet.create({
   rail: { flexGrow: 1, flexDirection: 'row', justifyContent: 'space-between', gap: space.xxs },
   day: {
     flex: 1,
-    minHeight: minTouchTarget + space.lg,
+    minHeight: minTouchTarget + space.md,
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.xxs,
     borderWidth: 1.5,
-    paddingVertical: space.xs,
+    borderRadius: DAY_RADIUS,
+    paddingTop: space.sm,
+    paddingBottom: space.xs,
   },
-  dot: { width: 5, height: 5, borderRadius: 3 },
+  number: { fontFamily: fontFamily.textBold },
+  dot: { width: 6, height: 6, borderRadius: 3 },
 });

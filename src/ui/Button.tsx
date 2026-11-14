@@ -8,7 +8,8 @@ import { Text } from './Text';
 import { useTheme } from './ThemeProvider';
 import { minTouchTarget, type Palette } from './tokens';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive';
+/** `highlight` is the lime call to action, kept to one per screen. */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive' | 'highlight';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps {
@@ -47,6 +48,7 @@ const variantColors: Record<
   secondary: { bg: 'surface', pressed: 'surfaceSunken', fg: 'primary', border: 'border' },
   ghost: { bg: null, pressed: 'surfaceSunken', fg: 'primary' },
   destructive: { bg: 'danger', pressed: 'dangerPressed', fg: 'onDanger' },
+  highlight: { bg: 'highlight', pressed: null, fg: 'onHighlight' },
 };
 
 export function Button({

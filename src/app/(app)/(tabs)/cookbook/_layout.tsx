@@ -9,7 +9,8 @@ export default function CookbookStackLayout() {
   const pushed = { ...base, headerLargeTitle: false, headerTransparent: false };
   return (
     <Stack screenOptions={screenOptions}>
-      <Stack.Screen name="index" options={{ title: 'Cookbook' }} />
+      {/* The tab root draws its own title row with the glass controls beside it. */}
+      <Stack.Screen name="index" options={{ title: 'Cookbook', headerShown: false }} />
       <Stack.Screen name="plan-week" options={{ ...pushed, title: 'Plan my week' }} />
       <Stack.Screen name="two-day-plan" options={{ ...pushed, title: 'Two-day plan' }} />
       <Stack.Screen name="archive" options={{ ...pushed, title: 'Archived weeks' }} />

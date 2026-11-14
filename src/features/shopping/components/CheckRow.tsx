@@ -27,16 +27,25 @@ function CheckRowBase({ id, title, subtitle, checked, onToggle }: CheckRowProps)
         void haptics.selection();
         onToggle(id);
       }}
-      style={[styles.row, { borderColor: theme.colors.border }]}
+      style={[styles.row, { backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg }]}
     >
-      <Icon
-        name={checked ? 'checkmark.circle.fill' : 'circle'}
-        size={24}
-        color={checked ? 'primary' : 'borderStrong'}
-      />
+      <View
+        style={[
+          styles.box,
+          { borderRadius: theme.radii.sm },
+          checked
+            ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+            : {
+                backgroundColor: theme.colors.surfaceSunken,
+                borderColor: theme.colors.borderStrong,
+              },
+        ]}
+      >
+        {checked ? <Icon name="checkmark" size={14} color="onPrimary" weight="bold" /> : null}
+      </View>
       <View style={styles.text}>
         <Text
-          variant="body"
+          variant="bodyStrong"
           tone={checked ? 'subtle' : 'default'}
           style={checked ? styles.done : undefined}
           numberOfLines={3}
@@ -61,10 +70,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    minHeight: 52,
-    paddingVertical: space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    minHeight: 60,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    marginBottom: space.sm,
   },
-  text: { flex: 1, gap: 2 },
+  box: {
+    width: 28,
+    height: 28,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: { flex: 1, gap: space.xxs },
   done: { textDecorationLine: 'line-through' },
 });

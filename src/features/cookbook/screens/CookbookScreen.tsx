@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { SegmentedControl, Screen, space } from '@/ui';
 
+import { CookbookHeader } from '../components/CookbookHeader';
 import { PlanTab } from '../components/PlanTab';
 import { SavedTab } from '../components/SavedTab';
 import { useToday } from '../hooks/useToday';
@@ -18,12 +19,13 @@ export interface CookbookScreenProps {
   initialView?: CookbookView;
 }
 
-/** The Cookbook tab: saved recipes and the weekly planner behind one switch. */
+/** The Cookbook tab: a title row, then saved recipes and the weekly planner behind one switch. */
 export function CookbookScreen({ initialView = 'saved' }: CookbookScreenProps) {
   const [view, setView] = useState<CookbookView>(initialView);
   const today = useToday();
   const header = (
-    <View style={styles.switch}>
+    <View style={styles.header}>
+      <CookbookHeader />
       <SegmentedControl
         accessibilityLabel="Cookbook view"
         segments={SEGMENTS}
@@ -34,7 +36,7 @@ export function CookbookScreen({ initialView = 'saved' }: CookbookScreenProps) {
     </View>
   );
   return (
-    <Screen scroll={false} padded={false} testID="cookbook-screen">
+    <Screen safeTop scroll={false} padded={false} testID="cookbook-screen">
       {view === 'saved' ? (
         <SavedTab header={header} today={today} />
       ) : (
@@ -45,5 +47,5 @@ export function CookbookScreen({ initialView = 'saved' }: CookbookScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  switch: { paddingTop: space.xs },
+  header: { gap: space.lg, paddingTop: space.sm },
 });

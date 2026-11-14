@@ -53,7 +53,7 @@ export function MakeoverResult({ originalTitle, makeover, hits, checked }: Makeo
   return (
     <View style={styles.container}>
       <View style={styles.section}>
-        <Text variant="overline" tone="accent">
+        <Text variant="label" tone="muted">
           {`Healthier take on ${originalTitle}`}
         </Text>
         <Text variant="title2">{makeover.title}</Text>

@@ -29,11 +29,13 @@ export function AddItemField({ onAdd }: AddItemFieldProps) {
         returnKeyType="done"
         submitBehavior="submit"
         maxLength={80}
+        pill
         testID="draft-add-input"
       />
       <IconButton
-        icon="plus.circle.fill"
-        color="primary"
+        icon="plus"
+        variant="filled"
+        size={52}
         accessibilityLabel="Add item"
         onPress={submit}
         disabled={!name.trim()}
@@ -44,5 +46,5 @@ export function AddItemField({ onAdd }: AddItemFieldProps) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingTop: space.md },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingTop: space.md },
 });

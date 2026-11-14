@@ -69,15 +69,20 @@ describe('PlanTab', () => {
   it('opens on today and moves between days and weeks', async () => {
     const user = userEvent.setup();
     await renderPlan();
-    expect(screen.getByTestId('day-heading')).toHaveTextContent('Today, Wednesday, November 11');
+    expect(screen.getByTestId('day-heading')).toHaveAccessibleName(
+      /^Today, Wednesday, November 11/,
+    );
     expect(screen.getByTestId('week-title')).toHaveTextContent('This week');
 
     await user.press(screen.getByTestId('day-4'));
-    expect(screen.getByTestId('day-heading')).toHaveTextContent('Friday, November 13');
+    expect(screen.getByTestId('day-heading')).toHaveAccessibleName(/^Friday, November 13/);
+
+    await user.press(screen.getByLabelText('Next day, Saturday, November 14'));
+    expect(screen.getByTestId('day-heading')).toHaveAccessibleName(/^Saturday, November 14/);
 
     await user.press(screen.getByTestId('week-next'));
     expect(screen.getByTestId('week-title')).toHaveTextContent('Next week');
-    expect(screen.getByTestId('day-heading')).toHaveTextContent('Monday, November 16');
+    expect(screen.getByTestId('day-heading')).toHaveAccessibleName(/^Monday, November 16/);
   });
 
   it('adds a saved recipe to an empty slot', async () => {

@@ -104,7 +104,7 @@ export function CostSummaryCard({
   return (
     <Card testID="grocery-cost-summary">
       <View style={styles.stack}>
-        <Text variant="overline" tone="muted">
+        <Text variant="label" tone="muted">
           Estimated cost
         </Text>
         {body}

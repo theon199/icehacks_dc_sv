@@ -229,7 +229,7 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
   return (
     <Screen>
       <View style={styles.heading}>
-        <Text variant="overline" tone="accent">
+        <Text variant="label" tone="muted">
           Make it healthier
         </Text>
         <Text variant="title2">{recipe.title}</Text>

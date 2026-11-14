@@ -101,7 +101,7 @@ function ExcludedSection({ excluded }: { excluded: readonly MissingItem[] }) {
   if (excluded.length === 0) return null;
   return (
     <View style={styles.excluded}>
-      <Text variant="overline" tone="muted">
+      <Text variant="label" tone="muted">
         Not in the estimate
       </Text>
       {excluded.map((item) => (

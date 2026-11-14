@@ -48,6 +48,7 @@ describe('week labels', () => {
       date: TODAY,
       isToday: true,
       dayOfMonth: '11',
+      monthDay: 'Nov 11',
       weekday: 'Wednesday',
       long: 'Wednesday, November 11',
     });

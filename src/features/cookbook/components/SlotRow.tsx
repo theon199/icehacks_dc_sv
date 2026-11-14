@@ -6,7 +6,7 @@ import type { MealSlot } from '@/domain/plan';
 import type { RecipeSummary } from '@/lib/catalog';
 import { formatMinutes } from '@/lib/format';
 import type { PlanEntry } from '@/stores';
-import { Icon, IconButton, minTouchTarget, PressableScale, space, Text, useTheme } from '@/ui';
+import { Icon, IconButton, PressableScale, space, Text, useTheme, type Palette } from '@/ui';
 
 import { SLOT_LABELS } from '../model/week';
 
@@ -47,6 +47,33 @@ export function servingsText(servings: number, portion: number, spoken = false):
     : `${servings} ${noun} at ${size}× size`;
 }
 
+/** Each meal keeps one colour dot beside its label, so a day reads at a glance. */
+const SLOT_DOT: Readonly<Record<MealSlot, keyof Palette>> = {
+  breakfast: 'highlight',
+  lunch: 'success',
+  dinner: 'primary',
+  snack: 'borderStrong',
+};
+
+const THUMB = 56;
+
+/** The coloured dot and meal name at the top of a slot; the row's own label already says it. */
+function SlotLabel({ slot, label }: { slot: MealSlot; label: string }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={styles.label}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <View style={[styles.dot, { backgroundColor: theme.colors[SLOT_DOT[slot]] }]} />
+      <Text variant="label" tone="muted">
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 /** One meal slot of a day: the planned recipe with its actions, or an add button. */
 export const SlotRow = memo(function SlotRow({
   slot,
@@ -63,6 +90,7 @@ export const SlotRow = memo(function SlotRow({
 }: SlotRowProps) {
   const theme = useTheme();
   const label = SLOT_LABELS[slot];
+  const well = { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.lg };
 
   if (!entry) {
     return (
@@ -74,26 +102,22 @@ export const SlotRow = memo(function SlotRow({
         disabled={readOnly}
         onPress={() => onAdd(slot)}
         testID={`slot-add-${slot}`}
-        style={[
-          styles.empty,
-          {
-            borderRadius: theme.radii.md,
-            borderColor: theme.colors.border,
-            opacity: readOnly ? 0.6 : 1,
-          },
-        ]}
+        style={[styles.well, well, { opacity: readOnly ? 0.6 : 1 }]}
       >
-        <Text variant="overline" tone="muted" style={styles.flex}>
-          {label}
-        </Text>
-        {readOnly ? null : (
-          <View style={styles.addHint}>
-            <Icon name="plus" size={14} color="primary" />
-            <Text variant="subhead" tone="primary">
-              Add
-            </Text>
+        <SlotLabel slot={slot} label={label} />
+        <View style={styles.body}>
+          <View
+            style={[
+              styles.placeholder,
+              { borderRadius: theme.radii.md, borderColor: theme.colors.borderStrong },
+            ]}
+          >
+            {readOnly ? null : <Icon name="plus" size={18} color="textMuted" />}
           </View>
-        )}
+          <Text variant="subhead" tone="muted" style={styles.flex}>
+            {readOnly ? 'Nothing planned' : 'Add a recipe'}
+          </Text>
+        </View>
       </PressableScale>
     );
   }
@@ -112,91 +136,82 @@ export const SlotRow = memo(function SlotRow({
   };
 
   return (
-    <View
-      style={[
-        styles.filled,
-        { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md },
-      ]}
-    >
-      <PressableScale
-        accessibilityRole="button"
-        accessibilityLabel={[
-          `${label}: ${title}`,
-          spokenMeta,
-          unsafe ? 'Check allergens: does not fit your allergens or diet' : '',
-        ]
-          .filter(Boolean)
-          .join(', ')}
-        accessibilityActions={readOnly ? [{ name: 'activate' }] : FILLED_ACTIONS}
-        onAccessibilityAction={onA11yAction}
-        onPress={() => onOpen(entry.recipeId, portion)}
-        onLongPress={readOnly ? undefined : () => onActions(slot)}
-        pressedOpacity={0.8}
-        pressedScale={1}
-        style={styles.filledMain}
-        testID={`slot-${slot}`}
-      >
-        <Image
-          source={recipe?.imageUrl ? { uri: recipe.imageUrl } : null}
-          recyclingKey={entry.recipeId}
-          contentFit="cover"
-          style={[
-            styles.thumb,
-            { borderRadius: theme.radii.sm, backgroundColor: theme.colors.surfaceSunken },
-          ]}
-          accessible={false}
-        />
-        <View style={styles.flex}>
-          <Text variant="overline" tone="muted">
-            {label}
-          </Text>
-          <Text variant="subhead" numberOfLines={2}>
-            {title}
-          </Text>
-          <Text variant="caption" tone="muted" numberOfLines={1}>
-            {meta}
-          </Text>
-          {unsafe ? (
-            <View style={styles.flag} testID={`slot-unsafe-${slot}`}>
-              <Icon name="exclamationmark.triangle.fill" size={12} color="warning" />
-              <Text variant="caption" color="warning" numberOfLines={1}>
-                Check allergens
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      </PressableScale>
-      {readOnly ? null : (
-        <IconButton
-          icon="ellipsis"
-          accessibilityLabel={`Actions for ${label.toLowerCase()}`}
-          onPress={() => onActions(slot)}
-          testID={`slot-more-${slot}`}
-        />
-      )}
+    <View style={[styles.well, well]}>
+      <SlotLabel slot={slot} label={label} />
+      <View style={styles.body}>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={[
+            `${label}: ${title}`,
+            spokenMeta,
+            unsafe ? 'Check allergens: does not fit your allergens or diet' : '',
+          ]
+            .filter(Boolean)
+            .join(', ')}
+          accessibilityActions={readOnly ? [{ name: 'activate' }] : FILLED_ACTIONS}
+          onAccessibilityAction={onA11yAction}
+          onPress={() => onOpen(entry.recipeId, portion)}
+          onLongPress={readOnly ? undefined : () => onActions(slot)}
+          pressedOpacity={0.8}
+          pressedScale={1}
+          style={styles.main}
+          testID={`slot-${slot}`}
+        >
+          <Image
+            source={recipe?.imageUrl ? { uri: recipe.imageUrl } : null}
+            recyclingKey={entry.recipeId}
+            contentFit="cover"
+            style={[
+              styles.thumb,
+              { borderRadius: theme.radii.md, backgroundColor: theme.colors.skeleton },
+            ]}
+            accessible={false}
+          />
+          <View style={styles.flex}>
+            <Text variant="title3" numberOfLines={1}>
+              {title}
+            </Text>
+            <Text variant="subhead" tone="muted" numberOfLines={1}>
+              {meta}
+            </Text>
+            {unsafe ? (
+              <View style={styles.flag} testID={`slot-unsafe-${slot}`}>
+                <Icon name="exclamationmark.triangle.fill" size={12} color="warning" />
+                <Text variant="caption" color="warning" numberOfLines={1}>
+                  Check allergens
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </PressableScale>
+        {readOnly ? null : (
+          <IconButton
+            icon="ellipsis"
+            accessibilityLabel={`Actions for ${label.toLowerCase()}`}
+            onPress={() => onActions(slot)}
+            testID={`slot-more-${slot}`}
+          />
+        )}
+      </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: space.xxs },
-  empty: {
-    minHeight: minTouchTarget + space.md,
+  well: { padding: space.md, gap: space.sm },
+  label: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingLeft: space.xs },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  body: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  main: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  thumb: { width: THUMB, height: THUMB },
+  placeholder: {
+    width: THUMB,
+    height: THUMB,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    paddingHorizontal: space.lg,
-    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  addHint: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  filled: { flexDirection: 'row', alignItems: 'center', paddingRight: space.xs },
-  filledMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    padding: space.sm,
-  },
-  thumb: { width: 64, height: 64 },
   flag: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
 });

@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { SnapMode } from '@/lib/api/ai';
 import { haptics } from '@/lib/haptics';
-import { SegmentedControl, Text, toast, useTheme, radii, space } from '@/ui';
+import { Header, SegmentedControl, Text, toast, useTheme, radii, space } from '@/ui';
 
 import type { PhotoSource } from '../capture/preparePhoto';
 import { CameraPermission, type CameraAccess } from '../components/CameraPermission';
@@ -203,7 +203,7 @@ export function SnapCameraScreen({ requestedMode }: SnapCameraScreenProps = {}) 
       testID="snap-camera"
     >
       <View style={styles.header}>
-        <Text variant="title1">Snap</Text>
+        <Header size="tab" title="Snap" />
         <SegmentedControl
           segments={MODES}
           value={mode}
@@ -231,6 +231,6 @@ export function SnapCameraScreen({ requestedMode }: SnapCameraScreenProps = {}) 
 
 const styles = StyleSheet.create({
   screen: { flex: 1, gap: space.lg, paddingBottom: space.lg },
-  header: { paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.sm },
-  frame: { flex: 1, marginHorizontal: space.lg, borderRadius: radii.xl, overflow: 'hidden' },
+  header: { paddingHorizontal: space.xl, paddingTop: space.sm, gap: space.md },
+  frame: { flex: 1, marginHorizontal: space.xl, borderRadius: radii.sheet, overflow: 'hidden' },
 });

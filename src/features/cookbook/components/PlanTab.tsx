@@ -10,6 +10,7 @@ import { Button, Card, gutter, ListRow, space, Text } from '@/ui';
 
 import { CostSummary } from '../deps';
 import { DayMeals } from './DayMeals';
+import { DayPeek } from './DayPeek';
 import { DayRail } from './DayRail';
 import { PlanWeekMenu } from './PlanWeekMenu';
 import { WeekHeader } from './WeekHeader';
@@ -30,7 +31,9 @@ export interface PlanTabProps {
 
 const SWIPE_DISTANCE = 60;
 
-/** The weekly planner: week pager, day rail and the selected day's meals. */
+const openShopping = () => router.push('/shopping');
+
+/** The weekly planner: week pager, day rail, groceries and the selected day's meal card. */
 export function PlanTab({ header, today }: PlanTabProps) {
   const currentWeek = weekStartOf(today);
   // Week and day change together (swiping past Sunday turns the week), so they share one state.
@@ -62,26 +65,37 @@ export function PlanTab({ header, today }: PlanTabProps) {
 
   const goToWeek = (week: IsoDate) => setPosition({ week, day: initialDay(week, today) });
   const setDay = useCallback((next: DayIndex) => setPosition((p) => ({ ...p, day: next })), []);
-  // Built once: the swipe only ever moves relative to the current position.
-  const swipe = useMemo(() => {
-    const step = (delta: 1 | -1) =>
+  // Steps only ever move relative to the current position, so the swipe is built once.
+  const step = useCallback(
+    (delta: 1 | -1) =>
       setPosition((p) => {
         const next = p.day + delta;
         if (next < 0) return { week: addDays(p.week, -7), day: 6 };
         if (next > 6) return { week: addDays(p.week, 7), day: 0 };
         return { ...p, day: next as DayIndex };
-      });
-    return Gesture.Pan()
-      .activeOffsetX([-24, 24])
-      .failOffsetY([-16, 16])
-      .runOnJS(true)
-      .onEnd((e) => {
-        if (e.translationX <= -SWIPE_DISTANCE) step(1);
-        else if (e.translationX >= SWIPE_DISTANCE) step(-1);
-      });
-  }, []);
+      }),
+    [],
+  );
+  const stepNext = useCallback(() => step(1), [step]);
+  const swipe = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-24, 24])
+        .failOffsetY([-16, 16])
+        .runOnJS(true)
+        .onEnd((e) => {
+          if (e.translationX <= -SWIPE_DISTANCE) step(1);
+          else if (e.translationX >= SWIPE_DISTANCE) step(-1);
+        }),
+    [step],
+  );
 
   const info = days[day] ?? days[0];
+  // Sunday's neighbour is the next week's Monday.
+  const nextInfo = useMemo(
+    () => (day < 6 ? days[day + 1] : weekDays(addDays(weekStart, 7), today)[0]),
+    [day, days, weekStart, today],
+  );
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -98,6 +112,15 @@ export function PlanTab({ header, today }: PlanTabProps) {
         onToday={() => goToWeek(currentWeek)}
       />
       <DayRail days={days} selected={day} counts={counts} onSelect={setDay} />
+      <Button
+        // The shopping list opens on the rest of the current week, whichever week is shown here.
+        label="Groceries for this week"
+        variant="secondary"
+        size="lg"
+        fullWidth
+        onPress={openShopping}
+        testID="plan-groceries"
+      />
       {pastActive ? (
         <Card variant="sunken" padding="md" style={styles.banner}>
           <Text variant="footnote" tone="muted" style={styles.flex}>
@@ -148,35 +171,31 @@ export function PlanTab({ header, today }: PlanTabProps) {
         </View>
       ) : null}
       {info ? (
-        <GestureDetector gesture={swipe}>
-          <View collapsable={false}>
-            <DayMeals
-              key={`${weekStart}:${info.day}`}
-              weekStart={weekStart}
-              today={today}
-              info={info}
-              slots={slots}
-              recipes={recipes}
-              readOnly={archived}
-              smallAppetite={smallAppetite}
-              moveWeeks={[weekStart, addDays(weekStart, 7)]}
-              isSafe={isSafe}
-            />
-          </View>
-        </GestureDetector>
+        <View style={styles.pager}>
+          <GestureDetector gesture={swipe}>
+            <View collapsable={false} style={styles.flex}>
+              <DayMeals
+                key={`${weekStart}:${info.day}`}
+                weekStart={weekStart}
+                today={today}
+                info={info}
+                slots={slots}
+                recipes={recipes}
+                readOnly={archived}
+                smallAppetite={smallAppetite}
+                moveWeeks={[weekStart, addDays(weekStart, 7)]}
+                isSafe={isSafe}
+              />
+            </View>
+          </GestureDetector>
+          {nextInfo ? <DayPeek info={nextInfo} onPress={stepNext} /> : null}
+        </View>
       ) : null}
       {costRecipes.length > 0 ? (
         // An archived week is read-only, so it shows what it cost but offers no shopping.
         <CostSummary recipes={costRecipes} hideWalmart={archived} />
       ) : null}
       <View>
-        <ListRow
-          title="Shopping list"
-          subtitle="Everything this plan needs"
-          icon="cart"
-          onPress={() => router.push('/shopping')}
-          divider
-        />
         <ListRow
           title="Archived weeks"
           icon="archivebox"
@@ -199,5 +218,7 @@ const styles = StyleSheet.create({
   },
   banner: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   tools: { flexDirection: 'row', gap: space.sm },
+  // The next day's card peeks in from the screen edge, past the gutter.
+  pager: { flexDirection: 'row', gap: space.md, marginRight: -gutter },
   flex: { flex: 1 },
 });

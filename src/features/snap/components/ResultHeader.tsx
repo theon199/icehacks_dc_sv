@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { radii, space, Text, useTheme } from '@/ui';
+import { fontFamily, radii, space, Text, useTheme } from '@/ui';
 
 export interface ResultHeaderProps {
   photoUri: string;
@@ -13,7 +13,7 @@ export interface ResultHeaderProps {
   children?: ReactNode;
 }
 
-const THUMB = 76;
+const THUMB = 64;
 
 /** The photo that was read, with what Famara made of it. */
 export function ResultHeader({
@@ -33,7 +33,9 @@ export function ResultHeader({
         accessibilityLabel="Your photo"
       />
       <View style={styles.text}>
-        <Text variant="title2">{title}</Text>
+        <Text variant="title2" style={styles.title}>
+          {title}
+        </Text>
         {subtitle ? (
           <Text variant="subhead" tone="muted">
             {subtitle}
@@ -51,7 +53,8 @@ export function ResultHeader({
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
-  thumb: { width: THUMB, height: THUMB, borderRadius: radii.md },
+  row: { flexDirection: 'row', gap: space.lg, alignItems: 'flex-start' },
+  thumb: { width: THUMB, height: THUMB, borderRadius: radii.lg },
+  title: { fontFamily: fontFamily.textBold },
   text: { flex: 1, gap: space.xxs },
 });

@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { IsoDate } from '@/domain/plan';
-import { Button, IconButton, space, Text } from '@/ui';
+import { Button, fontFamily, IconButton, space, Text } from '@/ui';
 
 import { weekRangeLabel, weekTitle } from '../model/week';
 
@@ -15,7 +15,7 @@ export interface WeekHeaderProps {
   isCurrentWeek: boolean;
 }
 
-/** Week pager controls: previous / next week and a jump back to this week. */
+/** The week's name and dates on the left; previous / next week and "Today" on the right. */
 export function WeekHeader({
   weekStart,
   today,
@@ -28,36 +28,41 @@ export function WeekHeader({
   const range = weekRangeLabel(weekStart);
   return (
     <View style={styles.row}>
-      <IconButton
-        icon="chevron.left"
-        accessibilityLabel="Previous week"
-        onPress={onPrevious}
-        testID="week-previous"
-      />
       <View style={styles.title} accessible accessibilityRole="header">
-        <Text variant="headline" align="center" testID="week-title">
+        <Text variant="title2" style={styles.bold} testID="week-title">
           {title}
         </Text>
         {title !== range ? (
-          <Text variant="footnote" tone="muted" align="center">
+          <Text variant="subhead" tone="muted">
             {range}
           </Text>
         ) : null}
       </View>
+      {isCurrentWeek ? null : (
+        <Button label="Today" size="sm" variant="secondary" onPress={onToday} haptic={false} />
+      )}
+      <IconButton
+        icon="chevron.left"
+        accessibilityLabel="Previous week"
+        onPress={onPrevious}
+        size={36}
+        color="textMuted"
+        testID="week-previous"
+      />
       <IconButton
         icon="chevron.right"
         accessibilityLabel="Next week"
         onPress={onNext}
+        size={36}
+        color="textMuted"
         testID="week-next"
       />
-      {isCurrentWeek ? null : (
-        <Button label="Today" size="sm" variant="secondary" onPress={onToday} haptic={false} />
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.xxs },
   title: { flex: 1, gap: space.xxs },
+  bold: { fontFamily: fontFamily.textBold },
 });

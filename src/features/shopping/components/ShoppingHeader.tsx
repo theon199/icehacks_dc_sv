@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { ShoppingItem } from '@/domain/shopping';
-import { Button, SegmentedControl, Text, space } from '@/ui';
+import { Button, SegmentedControl, Text, fontFamily, space } from '@/ui';
 
 import { CostSummary } from '../deps';
 import { RANGE_LABELS, RANGE_PRESETS, type RangePreset } from '../planRange';
@@ -47,7 +47,9 @@ export function ShoppingHeader({
         onChange={onPresetChange}
       />
       <View style={styles.titles}>
-        <Text variant="headline">{rangeText}</Text>
+        <Text variant="title2" style={styles.range}>
+          {rangeText}
+        </Text>
         {summary ? (
           <Text variant="footnote" tone="muted">
             {summary}
@@ -93,5 +95,6 @@ export function ShoppingHeader({
 const styles = StyleSheet.create({
   container: { gap: space.lg, paddingTop: space.lg, paddingBottom: space.sm },
   titles: { gap: space.xxs },
+  range: { fontFamily: fontFamily.textBold },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

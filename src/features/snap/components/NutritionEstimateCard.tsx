@@ -21,7 +21,7 @@ export function NutritionEstimateCard({ dish }: { dish: SnapDish }) {
     <Card testID="dish-nutrition">
       <View style={styles.stack}>
         <View style={styles.titleRow}>
-          <Text variant="overline" tone="muted">
+          <Text variant="label" tone="muted">
             Estimated nutrition
           </Text>
           <View

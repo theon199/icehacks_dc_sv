@@ -137,7 +137,7 @@ export function SlotPickerSheet({
 function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
     <View style={styles.group} accessibilityRole="radiogroup" accessibilityLabel={label}>
-      <Text variant="overline" tone="muted">
+      <Text variant="label" tone="muted">
         {label}
       </Text>
       <View style={styles.chips}>{children}</View>

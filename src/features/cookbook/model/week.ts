@@ -96,6 +96,8 @@ export interface DayInfo {
   readonly weekday: string;
   /** "9" */
   readonly dayOfMonth: string;
+  /** "Nov 9" */
+  readonly monthDay: string;
   /** "Monday, November 9" — for VoiceOver and headings. */
   readonly long: string;
   readonly isToday: boolean;
@@ -106,6 +108,7 @@ export function weekDays(weekStart: IsoDate, today: IsoDate, locale = 'en-US'): 
   const short = formatter(locale, { weekday: 'short' });
   const weekday = formatter(locale, { weekday: 'long' });
   const long = formatter(locale, { weekday: 'long', month: 'long', day: 'numeric' });
+  const monthDay = formatter(locale, { month: 'short', day: 'numeric' });
   return DAY_INDICES.map((day) => {
     const date = addDays(weekStart, day);
     return {
@@ -114,6 +117,7 @@ export function weekDays(weekStart: IsoDate, today: IsoDate, locale = 'en-US'): 
       short: short.format(utc(date)),
       weekday: weekday.format(utc(date)),
       dayOfMonth: String(Number(date.slice(8))),
+      monthDay: monthDay.format(utc(date)),
       long: long.format(utc(date)),
       isToday: date === today,
       isPast: date < today,

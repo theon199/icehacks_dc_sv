@@ -51,7 +51,7 @@ export function CaptureControls({
         icon="photo.on.rectangle"
         accessibilityLabel="Choose a photo from your library"
         onPress={onPickPhoto}
-        variant="tinted"
+        variant="glass"
         size={SIDE}
         disabled={busy}
         testID="snap-library"
@@ -87,10 +87,16 @@ export function CaptureControls({
           testID="snap-flash"
           style={[
             styles.side,
-            { backgroundColor: theme.colors.surfaceSunken, opacity: busy ? 0.4 : 1 },
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              shadowColor: theme.colors.shadow,
+              ...theme.elevation.low,
+              opacity: busy ? 0.4 : 1,
+            },
           ]}
         >
-          <Icon name={flashInfo.icon} size={SIDE / 2} color="text" weight="semibold" />
+          <Icon name={flashInfo.icon} size={Math.round(SIDE * 0.45)} color="text" />
         </PressableScale>
       ) : (
         <View style={styles.placeholder} />
@@ -123,6 +129,7 @@ const styles = StyleSheet.create({
     width: SIDE,
     height: SIDE,
     borderRadius: SIDE / 2,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },

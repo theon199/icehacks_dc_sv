@@ -5,7 +5,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 import type { DayIndex, IsoDate, MealSlot } from '@/domain/plan';
 import type { RecipeSummary } from '@/lib/catalog';
 import { entryPortion, slotKey, type PlanWeek } from '@/stores';
-import { IconButton, space, Text, toast } from '@/ui';
+import { IconButton, space, Text, toast, useTheme } from '@/ui';
 
 import { ActionSheet } from './ActionSheet';
 import { AddMealSheet } from './AddMealSheet';
@@ -50,6 +50,7 @@ export function DayMeals({
   moveWeeks,
   isSafe,
 }: DayMealsProps) {
+  const theme = useTheme();
   const day: DayIndex = info.day;
   const meals = mealsForDay(slots, day);
   const [adding, setAdding] = useState<MealSlot | null>(null);
@@ -95,19 +96,65 @@ export function DayMeals({
     ]);
   };
 
-  const hasMeals = meals.some((m) => m.entry);
+  const planned = meals.filter((m) => m.entry).length;
+  const hasMeals = planned > 0;
+  const plannedText =
+    planned === 0
+      ? 'Nothing planned yet'
+      : planned === 1
+        ? '1 meal planned'
+        : `${planned} meals planned`;
   return (
-    <View style={styles.root}>
+    <View
+      style={[
+        styles.root,
+        {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.radii.xl,
+          // Today's card carries an ink outline; other days sit on a soft shadow.
+          ...(info.isToday
+            ? { borderWidth: 2, borderColor: theme.colors.primary }
+            : { ...theme.elevation.medium, shadowColor: theme.colors.shadow }),
+        },
+      ]}
+      testID="day-card"
+    >
       <View style={styles.heading}>
-        <Text variant="title3" style={styles.flex} testID="day-heading">
-          {info.isToday ? `Today, ${info.long}` : info.long}
-        </Text>
+        <View
+          style={styles.titles}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`${info.isToday ? `Today, ${info.long}` : info.long}, ${plannedText}`}
+          testID="day-heading"
+        >
+          <Text variant="title1" numberOfLines={1}>
+            {info.weekday}
+          </Text>
+          <Text variant="subhead" tone="muted" numberOfLines={1}>
+            {`${info.monthDay} · ${plannedText}`}
+          </Text>
+        </View>
+        {info.isToday ? (
+          <View
+            style={[
+              styles.today,
+              { backgroundColor: theme.colors.primary, borderRadius: theme.radii.pill },
+            ]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <Text variant="label" color="onPrimary">
+              Today
+            </Text>
+          </View>
+        ) : null}
         {hasMeals && !readOnly ? (
           <IconButton
             icon="trash"
             accessibilityLabel={`Clear ${info.long}`}
             onPress={clearDay}
             color="textMuted"
+            size={36}
             testID="clear-day"
           />
         ) : null}
@@ -209,7 +256,13 @@ export function DayMeals({
 }
 
 const styles = StyleSheet.create({
-  root: { gap: space.sm },
-  heading: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
-  flex: { flex: 1 },
+  root: { gap: space.md, padding: space.lg },
+  heading: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    paddingBottom: space.xs,
+  },
+  titles: { flex: 1, gap: space.xxs },
+  today: { paddingHorizontal: space.md, paddingVertical: space.xs, marginTop: space.xs },
 });

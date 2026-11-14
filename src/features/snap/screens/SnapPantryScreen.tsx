@@ -150,6 +150,9 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
       testID="snap-pantry"
       footer={
         <Button
+          variant="highlight"
+          size="lg"
+          fullWidth
           label={
             selected === 0
               ? 'Select items to add'
@@ -160,8 +163,6 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
           onPress={addToPantry}
           disabled={selected === 0}
           loading={isMatching && selected > 0}
-          fullWidth
-          size="lg"
           testID="snap-pantry-add"
         />
       }
@@ -184,7 +185,7 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
 }
 
 const styles = StyleSheet.create({
-  header: { gap: space.md, paddingBottom: space.sm },
+  header: { gap: space.lg, paddingBottom: space.sm },
   listTools: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   content: { paddingTop: space.lg, paddingBottom: space.xxl },
 });

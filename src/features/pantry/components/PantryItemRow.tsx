@@ -35,10 +35,10 @@ function PantryItemRowBase({ item, system, now, onEdit }: PantryItemRowProps) {
       pressedScale={0.99}
       pressedOpacity={0.7}
       onPress={() => onEdit(item.id)}
-      style={[styles.row, { borderColor: theme.colors.border }]}
+      style={[styles.row, { backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg }]}
     >
       <View style={styles.text}>
-        <Text variant="body" numberOfLines={1}>
+        <Text variant="bodyStrong" numberOfLines={1}>
           {item.name}
         </Text>
         {expiry ? (
@@ -62,9 +62,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    minHeight: 52,
-    paddingVertical: space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    minHeight: 60,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    marginBottom: space.sm,
   },
-  text: { flex: 1, gap: 2 },
+  text: { flex: 1, gap: space.xxs },
 });
