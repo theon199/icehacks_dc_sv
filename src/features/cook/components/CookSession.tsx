@@ -6,11 +6,12 @@ import { Directions, Gesture, GestureDetector } from 'react-native-gesture-handl
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { RecipeDetail } from '@/lib/catalog';
-import { Button, gutter, Text, useTheme } from '@/ui';
+import { IconButton, gutter, Text, useTheme } from '@/ui';
 
 import { CookStepView } from './CookStepView';
 import { CookTopBar } from './CookTopBar';
 import { IngredientDrawer } from './IngredientDrawer';
+import { StepNavButton } from './StepNavButton';
 import { StepTimerCard } from './StepTimerCard';
 import { TimerTray } from './TimerTray';
 import { TutorialVideo } from './TutorialVideo';
@@ -140,6 +141,7 @@ export function CookSession({ recipe }: CookSessionProps) {
           <CookStepView
             step={current}
             index={step}
+            count={steps.length}
             replayKey={replayKey}
             header={video && videoOpen ? <TutorialVideo video={video} /> : null}
           >
@@ -164,22 +166,19 @@ export function CookSession({ recipe }: CookSessionProps) {
         </View>
       </GestureDetector>
       <View style={[styles.controls, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <Button
-          label="Back"
+        <IconButton
           icon="chevron.left"
-          variant="secondary"
-          size="lg"
+          accessibilityLabel="Back"
+          variant="glass"
+          size={56}
           disabled={step === 0}
           onPress={back}
-          style={styles.control}
           testID="cook-back"
         />
-        <Button
+        <StepNavButton
           label={last ? 'Finish' : 'Next'}
-          icon={last ? 'checkmark' : 'chevron.right'}
-          size="lg"
+          icon={last ? 'checkmark' : 'arrow.right'}
           onPress={last ? finish : next}
-          style={styles.control}
           testID={last ? 'cook-finish' : 'cook-next'}
         />
       </View>
@@ -198,6 +197,11 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   top: { paddingHorizontal: gutter, gap: 10 },
   body: { flex: 1, paddingHorizontal: gutter },
-  controls: { flexDirection: 'row', gap: 12, paddingHorizontal: gutter, paddingTop: 12 },
-  control: { flex: 1 },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: gutter,
+    paddingTop: 12,
+  },
 });

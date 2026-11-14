@@ -1,11 +1,11 @@
-import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { memo, type ReactNode } from 'react';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { AllergenId } from '@/domain';
 import type { DailyTargets } from '@/domain/nutrition';
 import type { UnitSystem } from '@/domain/units';
 import type { RecipeDetail } from '@/lib/catalog';
-import { Button, Text, gutter, space } from '@/ui';
+import { Button, Text, gutter, space, useTheme } from '@/ui';
 
 import { AllergenPanel } from './AllergenPanel';
 import { IngredientRow } from './IngredientRow';
@@ -19,7 +19,7 @@ import { TutorialList } from './TutorialList';
 import { CostSummary } from '../deps';
 import type { useRecipeActions } from '../hooks/useRecipeActions';
 import type { RecipeFit } from '../hooks/useRecipeInsights';
-import type { DetailItem } from '../model/detailItems';
+import type { CardEdge, DetailItem } from '../model/detailItems';
 import type { BuiltRows } from '../model/ingredients';
 import type { SubstitutionSuggestion } from '../model/substitutions';
 
@@ -87,15 +87,15 @@ export const DetailRow = memo(function DetailRow({
       );
     case 'subheading':
       return (
-        <View style={[styles.padded, styles.subheading]}>
+        <CardSlice edge={item.edge} style={styles.subheading}>
           <Text variant="overline" tone="muted">
             {item.title}
           </Text>
-        </View>
+        </CardSlice>
       );
     case 'servings':
       return (
-        <View style={[styles.padded, styles.servings]}>
+        <CardSlice edge={item.edge} style={styles.servings}>
           <ServingsControl
             servings={context.servings}
             onChange={context.changeServings}
@@ -105,11 +105,11 @@ export const DetailRow = memo(function DetailRow({
             ownedCount={context.built.ownedCount}
             ingredientCount={context.built.rows.length}
           />
-        </View>
+        </CardSlice>
       );
     case 'ingredient':
       return (
-        <View style={styles.padded}>
+        <CardSlice edge={item.edge}>
           <IngredientRow
             row={item.row}
             suggestions={
@@ -118,25 +118,26 @@ export const DetailRow = memo(function DetailRow({
             allergenNote={
               item.row.ingredientId ? context.allergenNotes.get(item.row.ingredientId) : undefined
             }
+            last={item.edge === 'bottom' || item.edge === 'single'}
           />
-        </View>
+        </CardSlice>
       );
     case 'step':
       return (
-        <View style={styles.padded}>
+        <CardSlice edge={item.edge}>
           <StepRow step={item.step} number={item.number} />
-        </View>
+        </CardSlice>
       );
     case 'stepsToggle':
       return (
-        <View style={[styles.padded, styles.toggle]}>
+        <CardSlice edge={item.edge} style={styles.toggle}>
           <Button
             label={item.hidden > 0 ? `Show all ${recipe.steps.length} steps` : 'Show fewer steps'}
             variant="ghost"
             icon={item.hidden > 0 ? 'chevron.down' : 'chevron.up'}
             onPress={context.toggleSteps}
           />
-        </View>
+        </CardSlice>
       );
     case 'nutrition':
       return (
@@ -185,7 +186,48 @@ export const DetailRow = memo(function DetailRow({
   }
 });
 
+/**
+ * One row's share of a white card that spans several list rows. Each row paints its own slice so
+ * the list stays virtualised; the first and last slices round the card's corners.
+ */
+function CardSlice({
+  edge,
+  style,
+  children,
+}: {
+  edge: CardEdge;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  const radius = theme.radii.xl;
+  const top = edge === 'top' || edge === 'single';
+  const bottom = edge === 'bottom' || edge === 'single';
+  return (
+    <View style={styles.padded}>
+      <View
+        style={[
+          styles.slice,
+          {
+            backgroundColor: theme.colors.surface,
+            borderTopLeftRadius: top ? radius : 0,
+            borderTopRightRadius: top ? radius : 0,
+            borderBottomLeftRadius: bottom ? radius : 0,
+            borderBottomRightRadius: bottom ? radius : 0,
+            paddingTop: top ? space.md : 0,
+            paddingBottom: bottom ? space.md : 0,
+          },
+          style,
+        ]}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  slice: { paddingHorizontal: space.lg },
   padded: { paddingHorizontal: gutter },
   block: { paddingTop: space.lg },
   heading: { paddingTop: space.xxl, paddingBottom: space.sm },

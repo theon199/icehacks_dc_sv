@@ -44,7 +44,7 @@ export function FilterBar({ chips, onOpenFilters, onRemove, onClearAll }: Filter
           size={16}
           color={count > 0 ? 'onPrimary' : 'text'}
         />
-        <Text variant="subhead" color={count > 0 ? 'onPrimary' : 'text'} accessible={false}>
+        <Text variant="label" color={count > 0 ? 'onPrimary' : 'text'} accessible={false}>
           {count > 0 ? `Filters · ${count}` : 'Filters'}
         </Text>
       </PressableScale>
@@ -59,15 +59,15 @@ export function FilterBar({ chips, onOpenFilters, onRemove, onClearAll }: Filter
             styles.pill,
             {
               borderRadius: theme.radii.pill,
-              backgroundColor: theme.colors.primarySoft,
-              borderColor: theme.colors.primarySoft,
+              backgroundColor: theme.colors.highlight,
+              borderColor: theme.colors.highlight,
             },
           ]}
         >
-          <Text variant="subhead" color="onPrimarySoft" numberOfLines={1} accessible={false}>
+          <Text variant="label" color="onHighlight" numberOfLines={1} accessible={false}>
             {chip.label}
           </Text>
-          <Icon name="xmark" android="close" size={12} color="onPrimarySoft" weight="bold" />
+          <Icon name="xmark" android="close" size={12} color="onHighlight" weight="bold" />
         </PressableScale>
       ))}
       {count > 1 ? (
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 36,
     paddingHorizontal: 14,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   clear: { minHeight: minTouchTarget, justifyContent: 'center', paddingHorizontal: 8 },
 });

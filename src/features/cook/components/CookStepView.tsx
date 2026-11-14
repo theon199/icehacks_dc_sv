@@ -3,11 +3,13 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { RecipeStep } from '@/lib/catalog';
-import { Text, useTheme } from '@/ui';
+import { Text, space, useTheme } from '@/ui';
 
 export interface CookStepViewProps {
   step: RecipeStep;
   index: number;
+  /** Steps in the recipe, for "Step 2 of 5". */
+  count: number;
   /** Changes whenever the step should be shown again from the top ("repeat"). */
   replayKey: number;
   /** Timer card and video, shown with the step. */
@@ -16,10 +18,17 @@ export interface CookStepViewProps {
 }
 
 /**
- * One instruction in large type. Fades in on each new step (instantly with Reduce Motion).
+ * One instruction in large type on a white card. Fades in on each new step (instantly with Reduce Motion).
  * Not memoised: its header and children are fresh elements on every parent render.
  */
-export function CookStepView({ step, index, replayKey, children, header }: CookStepViewProps) {
+export function CookStepView({
+  step,
+  index,
+  count,
+  replayKey,
+  children,
+  header,
+}: CookStepViewProps) {
   const theme = useTheme();
   const scroll = useRef<ScrollView>(null);
 
@@ -39,11 +48,22 @@ export function CookStepView({ step, index, replayKey, children, header }: CookS
         key={`${index}:${replayKey}`}
         entering={FadeIn.duration(theme.motion.duration.base)}
       >
-        <View style={styles.body} testID="cook-step">
-          <Text variant="overline" tone="accent">
-            Step {index + 1}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.colors.surface,
+              borderRadius: theme.radii.xl,
+              ...theme.elevation.medium,
+              shadowColor: theme.colors.shadow,
+            },
+          ]}
+          testID="cook-step"
+        >
+          <Text variant="overline" tone="muted">
+            Step {index + 1} of {count}
           </Text>
-          <Text variant="body" style={styles.instruction}>
+          <Text variant="title2" style={styles.instruction}>
             {step.text}
           </Text>
         </View>
@@ -55,8 +75,8 @@ export function CookStepView({ step, index, replayKey, children, header }: CookS
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { gap: 20, paddingVertical: 20 },
-  body: { gap: 10 },
+  content: { gap: space.lg, paddingVertical: space.lg },
+  card: { gap: space.md, padding: space.xxl },
   // Readable at arm's length from the stove.
-  instruction: { fontSize: 26, lineHeight: 36 },
+  instruction: { fontSize: 25, lineHeight: 35 },
 });

@@ -5,6 +5,7 @@ import { cuisineLabel } from '@/domain/types';
 import { Text } from '@/ui';
 import { space } from '@/ui/tokens';
 
+import { AskChefCard } from './AskChefCard';
 import { RecentSearches } from './RecentSearches';
 import { SuggestionChips } from './SuggestionChips';
 import { STARTER_TERMS } from '../suggestions';
@@ -16,11 +17,12 @@ export interface IdlePanelProps {
   onRemoveRecent: (term: string) => void;
   onClearRecents: () => void;
   onPickCuisine: (cuisine: string) => void;
+  onAskChef: () => void;
 }
 
 /**
- * Shown above the browse grid while the search box is empty: recent searches, the person's own
- * cuisines and a few starting points.
+ * Shown above the browse grid while the search box is empty: the way into Chef, recent searches,
+ * the person's own cuisines and a few starting points.
  */
 export function IdlePanel({
   recentTerms,
@@ -29,6 +31,7 @@ export function IdlePanel({
   onRemoveRecent,
   onClearRecents,
   onPickCuisine,
+  onAskChef,
 }: IdlePanelProps) {
   const cuisineItems = useMemo(
     () => lovedCuisines.map((id) => ({ key: id, label: cuisineLabel(id) })),
@@ -37,6 +40,7 @@ export function IdlePanel({
   const starterItems = useMemo(() => STARTER_TERMS.map((term) => ({ key: term, label: term })), []);
   return (
     <View style={styles.panel} testID="search-idle">
+      <AskChefCard onPress={onAskChef} />
       <RecentSearches
         terms={recentTerms}
         onPick={onSearch}
@@ -50,7 +54,7 @@ export function IdlePanel({
         onPick={onPickCuisine}
       />
       <SuggestionChips title="Try searching" items={starterItems} onPick={onSearch} />
-      <Text variant="headline">Healthiest first</Text>
+      <Text variant="title2">Healthiest first</Text>
     </View>
   );
 }

@@ -12,6 +12,7 @@ export { Header, type HeaderProps } from './Header';
 export { Icon, type IconName, type IconProps } from './Icon';
 export { IconButton, type IconButtonProps } from './IconButton';
 export { ListRow, type ListRowProps } from './ListRow';
+export { photoOverlay } from './photoOverlay';
 export { PressableScale, type PressableScaleProps } from './PressableScale';
 export { ProgressRing, type ProgressRingProps } from './ProgressRing';
 export { Screen, type ScreenProps } from './Screen';

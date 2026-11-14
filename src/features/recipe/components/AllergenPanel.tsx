@@ -59,7 +59,7 @@ export const AllergenPanel = memo(function AllergenPanel({
   const summary = useMemo(() => summariseAllergens(allergens, declared), [allergens, declared]);
   const diets = useMemo(() => dietBadges(dietFlags, allergens), [dietFlags, allergens]);
   return (
-    <Card variant="outlined" padding="lg" style={styles.card} testID="recipe-allergens">
+    <Card padding="lg" style={styles.card} testID="recipe-allergens">
       <Text variant="headline">{summary.headline}</Text>
       {summary.yours.length > 0 ? (
         <View style={styles.wrap}>

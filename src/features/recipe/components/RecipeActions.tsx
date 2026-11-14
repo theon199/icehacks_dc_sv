@@ -69,11 +69,14 @@ export const RecipeActions = memo(function RecipeActions({
             onPress={action.onPress}
             style={[
               styles.action,
-              { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md },
+              {
+                backgroundColor: action.selected ? theme.colors.highlight : theme.colors.surface,
+                borderRadius: theme.radii.lg,
+              },
             ]}
           >
-            <Icon name={action.icon} size={22} color={action.selected ? 'accent' : 'primary'} />
-            <Text variant="caption" tone="muted">
+            <Icon name={action.icon} size={22} color={action.selected ? 'onHighlight' : 'text'} />
+            <Text variant="label" color={action.selected ? 'onHighlight' : 'textMuted'}>
               {action.label}
             </Text>
           </PressableScale>
@@ -100,7 +103,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.xs,
-    minHeight: 64,
-    paddingVertical: space.sm,
+    minHeight: 72,
+    paddingVertical: space.md,
   },
 });

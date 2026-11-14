@@ -191,4 +191,10 @@ describe('SearchScreen', () => {
     expect(screen.getByTestId('chef-pane')).toBeOnTheScreen();
     expect(screen.getByTestId('chef-screen')).toBeOnTheScreen();
   });
+
+  it('opens Chef from the card above the browse grid', async () => {
+    await renderScreen();
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Ask Chef' }));
+    expect(screen.getByTestId('chef-pane')).toBeOnTheScreen();
+  });
 });

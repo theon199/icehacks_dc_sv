@@ -17,7 +17,7 @@ export function RecentSearches({ terms, onPick, onRemove, onClear }: RecentSearc
   return (
     <View style={styles.section} testID="recent-searches">
       <View style={styles.header}>
-        <Text variant="headline">Recent</Text>
+        <Text variant="title3">Recent</Text>
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel="Clear recent searches"

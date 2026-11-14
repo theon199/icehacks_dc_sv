@@ -8,8 +8,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { UnitSystem } from '@/domain/units';
 import { useRecipe } from '@/lib/catalog';
 import { selectSmallAppetite, selectUnits, usePreferencesStore, useSettingsStore } from '@/stores';
-import { Button, EmptyState, ErrorState, gutter, space, Text, useTheme } from '@/ui';
+import { EmptyState, ErrorState, gutter, space, Text, useTheme } from '@/ui';
 
+import { CookButton } from '../components/CookButton';
 import { DetailRow } from '../components/DetailRow';
 import { PlanSlotSheet } from '../components/PlanSlotSheet';
 import { RecipeDetailSkeleton } from '../components/RecipeDetailSkeleton';
@@ -214,7 +215,6 @@ export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScr
           {
             paddingBottom: Math.max(insets.bottom, space.lg),
             backgroundColor: theme.colors.background,
-            borderTopColor: theme.colors.border,
           },
         ]}
       >
@@ -228,14 +228,7 @@ export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScr
             {portionNote}
           </Text>
         ) : null}
-        <Button
-          label="Cook now"
-          icon="frying.pan"
-          onPress={actions.cook}
-          fullWidth
-          size="lg"
-          testID="recipe-cook"
-        />
+        <CookButton onPress={actions.cook} testID="recipe-cook" />
       </View>
       <PlanSlotSheet
         visible={actions.sheet !== null}
@@ -257,7 +250,6 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: gutter,
     paddingTop: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   portionNote: { textAlign: 'center', marginBottom: space.sm },
 });

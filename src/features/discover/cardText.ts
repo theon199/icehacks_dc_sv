@@ -15,6 +15,23 @@ export function nutritionLine(card: DeckCard): string | null {
   return recipe.nutritionConfidence === 'estimated' ? `${line} (estimated)` : line;
 }
 
+/**
+ * The short stats shown as capsules on a card: time, then calories, protein and fiber per serving.
+ * Estimated nutrition carries "Est." on every figure, so no number reads as more exact than it is.
+ */
+export function cardStats(card: DeckCard): string[] {
+  const { recipe } = card;
+  const stats: string[] = [];
+  if (recipe.totalMinutes !== null) stats.push(formatMinutes(recipe.totalMinutes));
+  if (recipe.nutritionConfidence === 'none') return stats;
+  const prefix = recipe.nutritionConfidence === 'estimated' ? 'Est. ' : '';
+  const { kcal, proteinG, fiberG } = recipe.nutrition;
+  if (kcal !== null) stats.push(`${prefix}${formatKcal(kcal)}`);
+  if (proteinG !== null) stats.push(`${prefix}${formatGrams(proteinG)} protein`);
+  if (fiberG !== null) stats.push(`${prefix}${formatGrams(fiberG)} fiber`);
+  return stats;
+}
+
 /** One sentence VoiceOver reads for the whole card. */
 export function cardAccessibilityLabel(card: DeckCard): string {
   const { recipe } = card;

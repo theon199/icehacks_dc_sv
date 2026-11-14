@@ -193,13 +193,14 @@ describe('DiscoverScreen', () => {
   it('switches to Quick mode', async () => {
     await renderScreen();
     await untilCards();
+    await fireEvent.press(screen.getByTestId('discover-mode-menu'));
+    expect(screen.queryByTestId('discover-mode-gentle')).toBeNull();
     await fireEvent.press(screen.getByTestId('discover-mode-quick'));
     await waitFor(() =>
       expect(listCandidates).toHaveBeenLastCalledWith(expect.objectContaining({ maxMinutes: 30 })),
     );
     await untilCards();
     await waitFor(() => expect(topLabel()).toMatch(/\. 20 min\./));
-    expect(screen.queryByTestId('discover-mode-gentle')).toBeNull();
   });
 
   it('opens notifications and profile from the header', async () => {

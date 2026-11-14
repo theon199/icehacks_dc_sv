@@ -45,7 +45,7 @@ export const NutritionPanel = memo(function NutritionPanel({
   );
 
   return (
-    <Card variant="outlined" padding="lg" testID="recipe-nutrition" style={styles.card}>
+    <Card padding="lg" testID="recipe-nutrition" style={styles.card}>
       <View style={styles.header}>
         <Text variant="headline">Per serving{portion !== 1 ? ' (half portion)' : ''}</Text>
         <View

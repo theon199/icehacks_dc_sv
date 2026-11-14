@@ -16,7 +16,10 @@ export interface CookTopBarProps {
   onOpenIngredients: () => void;
 }
 
-/** Close, recipe name, step count and the cook-mode tools, with a progress bar underneath. */
+/**
+ * Close, recipe name and the cook-mode tools as round glass controls, with a progress bar
+ * underneath. The step count sits on the step card itself.
+ */
 export function CookTopBar({
   title,
   step,
@@ -37,22 +40,17 @@ export function CookTopBar({
         <IconButton
           icon="xmark"
           accessibilityLabel="Leave cook mode"
-          variant="tinted"
+          variant="glass"
           onPress={onClose}
           testID="cook-close"
         />
-        <View style={styles.title}>
-          <Text variant="caption" tone="muted" numberOfLines={1}>
-            {title}
-          </Text>
-          <Text variant="headline" numberOfLines={1}>
-            Step {step + 1} of {stepCount}
-          </Text>
-        </View>
+        <Text variant="headline" numberOfLines={1} style={styles.title}>
+          {title}
+        </Text>
         <IconButton
           icon={listening ? 'mic.fill' : 'mic'}
           accessibilityLabel={listening ? 'Turn off voice control' : 'Turn on voice control'}
-          variant={listening ? 'filled' : 'tinted'}
+          variant={listening ? 'filled' : 'glass'}
           selected={listening}
           onPress={onToggleVoice}
           testID="cook-voice-toggle"
@@ -61,7 +59,7 @@ export function CookTopBar({
           <IconButton
             icon="play.rectangle"
             accessibilityLabel={videoOpen ? 'Hide video' : 'Show video'}
-            variant={videoOpen ? 'filled' : 'tinted'}
+            variant={videoOpen ? 'filled' : 'glass'}
             selected={videoOpen}
             onPress={onToggleVideo}
             testID="cook-video-toggle"
@@ -70,13 +68,13 @@ export function CookTopBar({
         <IconButton
           icon="list.bullet"
           accessibilityLabel="Ingredients"
-          variant="tinted"
+          variant="glass"
           onPress={onOpenIngredients}
           testID="cook-ingredients-open"
         />
       </View>
       <View
-        style={[styles.track, { backgroundColor: theme.colors.surfaceSunken }]}
+        style={[styles.track, { backgroundColor: theme.colors.surface }]}
         accessibilityRole="progressbar"
         accessibilityLabel="Recipe progress"
         accessibilityValue={{ min: 0, max: stepCount, now: step + 1 }}
@@ -93,9 +91,9 @@ export function CookTopBar({
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: 10 },
+  wrapper: { gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { flex: 1, gap: 0 },
+  title: { flex: 1, paddingHorizontal: 4 },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 3 },
 });

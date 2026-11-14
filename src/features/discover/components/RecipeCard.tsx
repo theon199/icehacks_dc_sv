@@ -1,13 +1,13 @@
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { cuisineLabel, type DeckCard } from '@/domain';
-import { formatMinutes } from '@/lib/format';
-import { Chip, Icon, ProgressRing, Text, useTheme } from '@/ui';
+import { Icon, Text, useTheme, photoOverlay } from '@/ui';
 import { space } from '@/ui/tokens';
 
-import { nutritionLine } from '../cardText';
+import { cardStats } from '../cardText';
 
 export interface RecipeCardProps {
   card: DeckCard;
@@ -15,26 +15,26 @@ export interface RecipeCardProps {
   isTop: boolean;
 }
 
-/** The face of a Discover card: photo, fit score, the top two reasons and key nutrition. */
+/**
+ * The face of a Discover card: a full-bleed photo with the fit score on top, and the cuisine,
+ * title, the top two reasons and key stats over a dark scrim at the bottom. The whole card is read
+ * by VoiceOver as one label set on the swipeable wrapper, so nothing here is focusable.
+ */
 export const RecipeCard = memo(function RecipeCard({ card, isTop }: RecipeCardProps) {
   const theme = useTheme();
   const { recipe } = card;
-  const nutrition = nutritionLine(card);
+  const stats = cardStats(card);
+  const radius = { borderRadius: theme.radii.xl };
 
   return (
     <View
       style={[
-        styles.card,
-        {
-          backgroundColor: theme.colors.surface,
-          borderRadius: theme.radii.xl,
-          borderColor: theme.colors.border,
-          ...theme.elevation.medium,
-          shadowColor: theme.colors.shadow,
-        },
+        styles.shadow,
+        radius,
+        { ...theme.elevation.medium, shadowColor: theme.colors.shadow },
       ]}
     >
-      <View style={[styles.hero, { backgroundColor: theme.colors.primarySoft }]}>
+      <View style={[styles.card, radius, { backgroundColor: theme.colors.primarySoft }]}>
         {recipe.imageUrl ? (
           <Image
             source={{ uri: recipe.imageUrl }}
@@ -50,73 +50,139 @@ export const RecipeCard = memo(function RecipeCard({ card, isTop }: RecipeCardPr
             <Icon name="fork.knife" android="restaurant" size={44} color="onPrimarySoft" />
           </View>
         )}
-        <View
-          style={[
-            styles.ring,
-            { backgroundColor: theme.colors.surfaceRaised, ...theme.elevation.low },
-          ]}
-        >
-          <ProgressRing
-            progress={card.fitScore / 100}
-            size={56}
-            strokeWidth={5}
-            accessibilityLabel={`Fit score ${card.fitScore} out of 100`}
-          >
-            <Text variant="headline" accessible={false} maxFontSizeMultiplier={1.1}>
-              {card.fitScore}
-            </Text>
-          </ProgressRing>
-        </View>
-        {card.portionScale < 1 ? (
-          <Chip label="Half portion" icon="leaf" tone="primary" style={styles.portion} />
-        ) : null}
-      </View>
+        <LinearGradient
+          colors={photoOverlay.scrim}
+          locations={photoOverlay.scrimStops}
+          style={styles.scrim}
+          pointerEvents="none"
+        />
 
-      <View style={styles.body}>
-        <Text variant="title3" numberOfLines={2}>
-          {recipe.title}
-        </Text>
-        <View style={styles.chips}>
-          <Chip label={cuisineLabel(recipe.cuisine)} icon="globe" />
-          {recipe.totalMinutes !== null ? (
-            <Chip label={formatMinutes(recipe.totalMinutes)} icon="clock" />
+        <View style={styles.top}>
+          <View
+            style={[
+              styles.pill,
+              { backgroundColor: theme.colors.highlight, borderRadius: theme.radii.pill },
+            ]}
+          >
+            <Text
+              variant="label"
+              color="onHighlight"
+              accessible={false}
+              maxFontSizeMultiplier={1.3}
+            >
+              {`${card.fitScore}% fit`}
+            </Text>
+          </View>
+          {card.portionScale < 1 ? (
+            <View
+              style={[
+                styles.pill,
+                styles.row,
+                { backgroundColor: photoOverlay.chip, borderRadius: theme.radii.pill },
+              ]}
+            >
+              <Icon name="leaf" android="eco" size={14} color="highlight" weight="semibold" />
+              <Text
+                variant="label"
+                style={{ color: photoOverlay.text }}
+                accessible={false}
+                maxFontSizeMultiplier={1.3}
+              >
+                Half portion
+              </Text>
+            </View>
           ) : null}
         </View>
-        <View style={styles.reasons}>
+
+        <View style={styles.body}>
+          <Text
+            variant="overline"
+            style={{ color: photoOverlay.textMuted }}
+            numberOfLines={1}
+            accessible={false}
+          >
+            {cuisineLabel(recipe.cuisine)}
+          </Text>
+          <Text
+            variant="display"
+            style={[styles.title, { color: photoOverlay.text }]}
+            numberOfLines={2}
+            accessible={false}
+            maxFontSizeMultiplier={1.3}
+          >
+            {recipe.title}
+          </Text>
           {card.reasons.slice(0, 2).map((reason) => (
-            <View key={reason.code} style={styles.reason}>
-              <Icon name="checkmark.circle.fill" android="check_circle" size={18} color="primary" />
-              <Text variant="callout" numberOfLines={1} style={styles.reasonText}>
+            <View key={reason.code} style={styles.row}>
+              <Icon
+                name="checkmark.circle.fill"
+                android="check_circle"
+                size={16}
+                color="highlight"
+              />
+              <Text
+                variant="subhead"
+                numberOfLines={1}
+                style={[styles.reasonText, { color: photoOverlay.textMuted }]}
+                accessible={false}
+              >
                 {reason.text}
               </Text>
             </View>
           ))}
+          {stats.length > 0 ? (
+            <View style={styles.stats}>
+              {stats.map((stat) => (
+                <View
+                  key={stat}
+                  style={[
+                    styles.stat,
+                    { backgroundColor: photoOverlay.chip, borderRadius: theme.radii.pill },
+                  ]}
+                >
+                  <Text
+                    variant="label"
+                    style={{ color: photoOverlay.text }}
+                    numberOfLines={1}
+                    accessible={false}
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    {stat}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
-        {nutrition ? (
-          <Text variant="footnote" tone="muted" numberOfLines={1}>
-            {nutrition}
-          </Text>
-        ) : null}
       </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  card: { flex: 1, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  hero: { flex: 1, minHeight: 160 },
-  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  ring: {
+  shadow: { flex: 1 },
+  card: { flex: 1, overflow: 'hidden', justifyContent: 'space-between' },
+  placeholder: {
     position: 'absolute',
-    top: space.md,
-    right: space.md,
-    borderRadius: 36,
-    padding: space.xs,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  portion: { position: 'absolute', top: space.md, left: space.md },
-  body: { padding: space.lg, gap: space.sm },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
-  reasons: { gap: space.xs },
-  reason: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '62%' },
+  top: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: space.lg,
+  },
+  pill: { paddingHorizontal: space.md, paddingVertical: space.xs + 1 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2 },
+  body: { paddingHorizontal: space.xl, paddingBottom: space.xl, gap: space.xs + 2 },
+  title: { fontSize: 28, lineHeight: 33 },
   reasonText: { flex: 1 },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs + 2, paddingTop: space.sm },
+  stat: { paddingHorizontal: space.md, paddingVertical: space.xs + 3 },
 });

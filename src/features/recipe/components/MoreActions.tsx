@@ -19,7 +19,7 @@ export const MoreActions = memo(function MoreActions({
 }: MoreActionsProps) {
   return (
     <View style={styles.container}>
-      <Card variant="outlined" padding="none">
+      <Card padding="none">
         <ListRow
           title="Compare versions"
           subtitle="See the original next to a healthier take"

@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { SegmentedControl, useTheme, type Segment } from '@/ui';
+import { Header, SegmentedControl, useTheme, type Segment } from '@/ui';
 import { gutter, space } from '@/ui/tokens';
 
 import { ChefPane } from '../components/ChefPane';
@@ -15,6 +16,7 @@ const SEGMENTS: readonly Segment<SearchMode>[] = [
 /** The Search tab: instant recipe search, with Chef one segment away. */
 export function SearchScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const mode = useSearchStore((state) => state.mode);
   const setMode = useSearchStore((state) => state.setMode);
   return (
@@ -22,13 +24,15 @@ export function SearchScreen() {
       style={[styles.flex, { backgroundColor: theme.colors.background }]}
       testID="search-screen"
     >
-      <SegmentedControl
-        segments={SEGMENTS}
-        value={mode}
-        onChange={setMode}
-        accessibilityLabel="Search or ask Chef"
-        style={styles.segments}
-      />
+      <View style={[styles.top, { paddingTop: insets.top + space.sm }]}>
+        <Header size="tab" title="Search" />
+        <SegmentedControl
+          segments={SEGMENTS}
+          value={mode}
+          onChange={setMode}
+          accessibilityLabel="Search or ask Chef"
+        />
+      </View>
       {mode === 'search' ? <SearchPane /> : <ChefPane />}
     </View>
   );
@@ -36,5 +40,5 @@ export function SearchScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  segments: { marginHorizontal: gutter, marginTop: space.sm, marginBottom: space.md },
+  top: { gap: space.md, paddingHorizontal: gutter, paddingBottom: space.md },
 });

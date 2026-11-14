@@ -10,20 +10,32 @@ import type { TutorialItem } from './tutorials';
 /** Steps shown before "Show all steps". */
 export const STEP_PREVIEW = 3;
 
+/**
+ * Where a row sits in the white card that groups the ingredients (servings, section names, lines)
+ * and the method (steps, toggle): the first and last rows carry the card's rounded corners.
+ */
+export type CardEdge = 'top' | 'middle' | 'bottom' | 'single';
+
+type Grouped = { readonly edge: CardEdge };
+
 export type DetailItem =
   | { readonly type: 'intro'; readonly key: 'intro' }
   | { readonly type: 'actions'; readonly key: 'actions' }
   | { readonly type: 'heading'; readonly key: string; readonly title: string }
-  | { readonly type: 'subheading'; readonly key: string; readonly title: string }
-  | { readonly type: 'servings'; readonly key: 'servings' }
-  | { readonly type: 'ingredient'; readonly key: string; readonly row: IngredientRow }
-  | {
+  | ({ readonly type: 'subheading'; readonly key: string; readonly title: string } & Grouped)
+  | ({ readonly type: 'servings'; readonly key: 'servings' } & Grouped)
+  | ({ readonly type: 'ingredient'; readonly key: string; readonly row: IngredientRow } & Grouped)
+  | ({
       readonly type: 'step';
       readonly key: string;
       readonly step: RecipeStep;
       readonly number: number;
-    }
-  | { readonly type: 'stepsToggle'; readonly key: 'steps-toggle'; readonly hidden: number }
+    } & Grouped)
+  | ({
+      readonly type: 'stepsToggle';
+      readonly key: 'steps-toggle';
+      readonly hidden: number;
+    } & Grouped)
   | { readonly type: 'nutrition'; readonly key: 'nutrition' }
   | { readonly type: 'allergens'; readonly key: 'allergens' }
   | { readonly type: 'tutorials'; readonly key: 'tutorials' }
@@ -42,16 +54,16 @@ export function buildDetailItems(input: DetailItemsInput): DetailItem[] {
     { type: 'intro', key: 'intro' },
     { type: 'actions', key: 'actions' },
     { type: 'heading', key: 'h-ingredients', title: 'Ingredients' },
-    { type: 'servings', key: 'servings' },
+    { type: 'servings', key: 'servings', edge: 'middle' },
   ];
 
   let section: string | null = null;
   for (const row of input.rows) {
     if (row.section && row.section !== section) {
-      items.push({ type: 'subheading', key: `s-${row.key}`, title: row.section });
+      items.push({ type: 'subheading', key: `s-${row.key}`, title: row.section, edge: 'middle' });
     }
     section = row.section;
-    items.push({ type: 'ingredient', key: row.key, row });
+    items.push({ type: 'ingredient', key: row.key, row, edge: 'middle' });
   }
 
   const steps = input.recipe.steps;
@@ -59,13 +71,20 @@ export function buildDetailItems(input: DetailItemsInput): DetailItem[] {
     items.push({ type: 'heading', key: 'h-steps', title: 'Method' });
     const shown = input.showAllSteps ? steps : steps.slice(0, STEP_PREVIEW);
     shown.forEach((step, index) =>
-      items.push({ type: 'step', key: `step-${step.position}`, step, number: index + 1 }),
+      items.push({
+        type: 'step',
+        key: `step-${step.position}`,
+        step,
+        number: index + 1,
+        edge: 'middle',
+      }),
     );
     if (steps.length > STEP_PREVIEW) {
       items.push({
         type: 'stepsToggle',
         key: 'steps-toggle',
         hidden: input.showAllSteps ? 0 : steps.length - STEP_PREVIEW,
+        edge: 'middle',
       });
     }
   }
@@ -80,5 +99,20 @@ export function buildDetailItems(input: DetailItemsInput): DetailItem[] {
   }
   items.push({ type: 'cost', key: 'cost' });
   items.push({ type: 'more', key: 'more' });
-  return items;
+  return withCardEdges(items);
+}
+
+function isGrouped(item: DetailItem | undefined): item is DetailItem & Grouped {
+  return item !== undefined && 'edge' in item;
+}
+
+/** Marks the first and last row of each run of grouped rows. */
+function withCardEdges(items: DetailItem[]): DetailItem[] {
+  return items.map((item, index) => {
+    if (!isGrouped(item)) return item;
+    const first = !isGrouped(items[index - 1]);
+    const last = !isGrouped(items[index + 1]);
+    const edge: CardEdge = first && last ? 'single' : first ? 'top' : last ? 'bottom' : 'middle';
+    return edge === item.edge ? item : { ...item, edge };
+  });
 }

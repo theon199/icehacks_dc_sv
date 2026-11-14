@@ -1,7 +1,7 @@
 import { StyleSheet, TextInput, View } from 'react-native';
 
 import { Icon, IconButton, useTheme } from '@/ui';
-import { maxFontSizeMultiplier, minTouchTarget } from '@/ui/tokens';
+import { maxFontSizeMultiplier, minTouchTarget, space } from '@/ui/tokens';
 
 export interface SearchFieldProps {
   value: string;
@@ -10,17 +10,23 @@ export interface SearchFieldProps {
   onSubmit: () => void;
 }
 
-/** The search box: icon, text, and a clear button while it has text. */
+/** The search box, a white capsule: icon, text, and a clear button while it has text. */
 export function SearchField({ value, onChangeText, onSubmit }: SearchFieldProps) {
   const theme = useTheme();
   return (
     <View
       style={[
         styles.field,
-        { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.md },
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radii.pill,
+          ...theme.elevation.low,
+          shadowColor: theme.colors.shadow,
+        },
       ]}
     >
-      <Icon name="magnifyingglass" android="search" size={18} color="textSubtle" />
+      <Icon name="magnifyingglass" android="search" size={20} color="textMuted" />
       <TextInput
         testID="search-input"
         value={value}
@@ -56,10 +62,11 @@ const styles = StyleSheet.create({
   field: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    minHeight: minTouchTarget,
-    paddingLeft: 12,
-    paddingRight: 4,
+    gap: space.sm + 2,
+    minHeight: minTouchTarget + space.sm,
+    paddingLeft: space.lg,
+    paddingRight: space.sm,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  input: { flex: 1, paddingVertical: 10 },
+  input: { flex: 1, paddingVertical: space.md },
 });

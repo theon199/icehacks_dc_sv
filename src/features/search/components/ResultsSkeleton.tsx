@@ -16,9 +16,7 @@ export function ResultsSkeleton() {
     >
       {CELLS.map((cell) => (
         <View key={cell} style={styles.cell}>
-          <Skeleton height="auto" radius="md" style={styles.photo} />
-          <Skeleton height={14} width="85%" />
-          <Skeleton height={12} width="55%" />
+          <Skeleton height="auto" radius="lg" style={styles.photo} />
         </View>
       ))}
     </View>
@@ -27,6 +25,6 @@ export function ResultsSkeleton() {
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: '50%', paddingHorizontal: space.md / 2, paddingBottom: space.xl, gap: 6 },
-  photo: { aspectRatio: 1 },
+  cell: { width: '50%', paddingHorizontal: space.md / 2, paddingBottom: space.md },
+  photo: { aspectRatio: 0.8 },
 });

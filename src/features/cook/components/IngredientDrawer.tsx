@@ -100,8 +100,8 @@ export function IngredientDrawer({
             styles.sheet,
             {
               backgroundColor: theme.colors.surface,
-              borderTopLeftRadius: theme.radii.xl,
-              borderTopRightRadius: theme.radii.xl,
+              borderTopLeftRadius: theme.radii.sheet,
+              borderTopRightRadius: theme.radii.sheet,
               paddingBottom: insets.bottom,
             },
           ]}

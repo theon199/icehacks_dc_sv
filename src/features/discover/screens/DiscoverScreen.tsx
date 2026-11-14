@@ -4,12 +4,10 @@ import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { DeckCard, DeckMode, NotForMeReason } from '@/domain';
-import { Text, useTheme } from '@/ui';
-import { gutter } from '@/ui/tokens';
+import { useTheme } from '@/ui';
 
 import { DeckStatusView } from '../components/DeckStatusView';
 import { DiscoverHeader } from '../components/DiscoverHeader';
-import { ModeSwitcher } from '../components/ModeSwitcher';
 import { NotForMeSheet } from '../components/NotForMeSheet';
 import { SwipeDeck } from '../components/SwipeDeck';
 import { availableModes } from '../modes';
@@ -51,13 +49,13 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
       edges={['top', 'bottom']}
       style={[styles.flex, { backgroundColor: theme.colors.background }]}
     >
-      <DiscoverHeader onProfile={openProfile} />
-      <ModeSwitcher modes={modes} value={deck.mode} onChange={setRequestedMode} />
-      {deck.dayNote ? (
-        <Text variant="footnote" tone="muted" style={styles.note}>
-          {deck.dayNote}
-        </Text>
-      ) : null}
+      <DiscoverHeader
+        onProfile={openProfile}
+        modes={modes}
+        mode={deck.mode}
+        onModeChange={setRequestedMode}
+        note={deck.dayNote}
+      />
       <View style={styles.flex}>
         {deck.status === 'ready' ? (
           <SwipeDeck
@@ -92,5 +90,4 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  note: { paddingHorizontal: gutter },
 });

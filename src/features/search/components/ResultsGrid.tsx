@@ -104,8 +104,8 @@ const styles = StyleSheet.create({
   updating: { opacity: 0.6 },
   updatingCue: { position: 'absolute', top: space.md, alignSelf: 'center' },
   content: { paddingHorizontal: gutter - GAP / 2, paddingBottom: space.huge },
-  header: { paddingHorizontal: GAP / 2, paddingTop: space.md },
+  header: { paddingHorizontal: GAP / 2, paddingTop: space.xs, paddingBottom: space.md },
   empty: { paddingHorizontal: GAP / 2 },
-  cell: { flex: 1, paddingHorizontal: GAP / 2, paddingBottom: space.xl },
+  cell: { flex: 1, paddingHorizontal: GAP / 2, paddingBottom: GAP },
   footer: { paddingVertical: space.xl },
 });

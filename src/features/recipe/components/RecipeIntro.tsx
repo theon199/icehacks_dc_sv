@@ -36,10 +36,10 @@ export const RecipeIntro = memo(function RecipeIntro({
   return (
     <View style={styles.container}>
       <View style={styles.titles}>
-        <Text variant="overline" tone="accent">
+        <Text variant="overline" tone="muted">
           {cuisineLabel(recipe.cuisine)}
         </Text>
-        <Text variant="title1" accessibilityRole="header">
+        <Text variant="display" accessibilityRole="header" style={styles.title}>
           {recipe.title}
         </Text>
         {recipe.summary ? (
@@ -89,6 +89,7 @@ export const RecipeIntro = memo(function RecipeIntro({
 const styles = StyleSheet.create({
   container: { gap: space.md, paddingTop: space.lg },
   titles: { gap: space.xs },
+  title: { fontSize: 28, lineHeight: 34 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   source: { flexDirection: 'row', alignItems: 'center', gap: space.xs, alignSelf: 'flex-start' },
 });

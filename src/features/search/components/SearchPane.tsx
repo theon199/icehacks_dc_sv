@@ -101,6 +101,7 @@ export function SearchPane() {
         onPickCuisine={(cuisine) =>
           setFilters({ ...filters, cuisines: toggleValue(filters.cuisines, cuisine) })
         }
+        onAskChef={() => setMode('chef')}
       />
     </View>
   );
