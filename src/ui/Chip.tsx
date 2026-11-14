@@ -102,20 +102,20 @@ export function ChoiceChip({
         styles.choice,
         {
           borderRadius: theme.radii.pill,
-          backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
-          borderColor: selected ? theme.colors.primary : theme.colors.border,
+          backgroundColor: selected ? theme.colors.highlight : theme.colors.surface,
+          borderColor: selected ? theme.colors.highlight : theme.colors.border,
           opacity: disabled ? 0.45 : 1,
         },
       ]}
     >
       {selected ? (
-        <Icon name="checkmark" size={14} color="onPrimary" weight="bold" />
+        <Icon name="checkmark" size={14} color="onHighlight" weight="bold" />
       ) : icon ? (
         <Icon name={icon} size={16} color="textMuted" />
       ) : null}
       <Text
-        variant="subhead"
-        color={selected ? 'onPrimary' : 'text'}
+        variant="label"
+        color={selected ? 'onHighlight' : 'textMuted'}
         numberOfLines={1}
         accessible={false}
       >
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     minHeight: 44,
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
     borderWidth: 1,
   },
 });

@@ -7,7 +7,11 @@ import { PressableScale } from './PressableScale';
 import { useTheme } from './ThemeProvider';
 import { minTouchTarget, type Palette } from './tokens';
 
-export type IconButtonVariant = 'plain' | 'tinted' | 'filled';
+/**
+ * `glass` is the header control: a 44 pt white disc with a faint hairline, used for every round
+ * action that sits beside a screen title (profile, filters, create, notifications).
+ */
+export type IconButtonVariant = 'plain' | 'tinted' | 'filled' | 'glass';
 
 export interface IconButtonProps {
   icon: IconName;
@@ -28,6 +32,7 @@ const variantBg: Record<IconButtonVariant, keyof Palette | null> = {
   plain: null,
   tinted: 'surfaceSunken',
   filled: 'primary',
+  glass: 'surface',
 };
 
 /** Round, icon-only button with a 44 pt minimum touch target. */
@@ -36,7 +41,7 @@ export function IconButton({
   accessibilityLabel,
   onPress,
   variant = 'plain',
-  size = 40,
+  size,
   color,
   disabled = false,
   selected,
@@ -46,8 +51,10 @@ export function IconButton({
 }: IconButtonProps) {
   const theme = useTheme();
   const bg = variantBg[variant];
+  const glass = variant === 'glass';
+  const side = size ?? (glass ? minTouchTarget : 40);
   const iconColor = color ?? (variant === 'filled' ? 'onPrimary' : 'text');
-  const slop = size < minTouchTarget ? (minTouchTarget - size) / 2 : 0;
+  const slop = side < minTouchTarget ? (minTouchTarget - side) / 2 : 0;
 
   return (
     <PressableScale
@@ -64,20 +71,34 @@ export function IconButton({
       style={({ pressed }) => [
         styles.base,
         {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
+          width: side,
+          height: side,
+          borderRadius: side / 2,
+          ...(glass
+            ? {
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.colors.border,
+                ...theme.elevation.low,
+                shadowColor: theme.colors.shadow,
+              }
+            : null),
           backgroundColor: bg
             ? theme.colors[bg]
             : pressed
               ? theme.colors.surfaceSunken
               : 'transparent',
           opacity: disabled ? 0.4 : pressed && bg ? 0.85 : 1,
+          ...(glass && pressed ? { backgroundColor: theme.colors.surfaceSunken } : null),
         },
         style,
       ]}
     >
-      <Icon name={icon} size={Math.round(size * 0.5)} color={iconColor} weight="semibold" />
+      <Icon
+        name={icon}
+        size={Math.round(side * (glass ? 0.45 : 0.5))}
+        color={iconColor}
+        weight={glass ? 'regular' : 'semibold'}
+      />
     </PressableScale>
   );
 }

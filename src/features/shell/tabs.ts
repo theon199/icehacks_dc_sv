@@ -15,26 +15,26 @@ export const tabs: readonly TabSpec[] = [
   {
     name: '(discover)',
     label: 'Discover',
-    sf: { default: 'sparkles', selected: 'sparkles' },
+    sf: { default: 'safari', selected: 'safari.fill' },
     md: 'explore',
   },
   {
     name: 'cookbook',
     label: 'Cookbook',
-    sf: { default: 'book.closed', selected: 'book.closed.fill' },
+    sf: { default: 'bookmark', selected: 'bookmark.fill' },
     md: 'menu_book',
-  },
-  {
-    name: 'snap',
-    label: 'Snap',
-    sf: { default: 'camera', selected: 'camera.fill' },
-    md: 'photo_camera',
   },
   {
     name: 'community',
     label: 'Community',
     sf: { default: 'person.2', selected: 'person.2.fill' },
     md: 'groups',
+  },
+  {
+    name: 'snap',
+    label: 'Snap',
+    sf: { default: 'camera', selected: 'camera.fill' },
+    md: 'photo_camera',
   },
   {
     name: 'search',
