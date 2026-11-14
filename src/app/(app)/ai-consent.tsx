@@ -1,4 +1,4 @@
-import { AiConsentScreen } from '@/features/settings/screens/AiConsentScreen';
+import { AiConsentScreen } from '@/features/about';
 
 export default function AppAiConsentRoute() {
   return <AiConsentScreen />;

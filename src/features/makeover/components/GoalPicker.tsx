@@ -63,7 +63,7 @@ export function GoalPicker({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: space.xl },
-  section: { gap: space.md },
+  container: { gap: space.lg },
+  section: { gap: space.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

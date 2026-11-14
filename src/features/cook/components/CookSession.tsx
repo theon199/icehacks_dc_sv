@@ -6,22 +6,26 @@ import { Directions, Gesture, GestureDetector } from 'react-native-gesture-handl
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { RecipeDetail } from '@/lib/catalog';
-import { IconButton, gutter, Text, useTheme } from '@/ui';
+import { GlassIconButton, Text, gutter, space, useTheme } from '@/ui';
 
+import { CookHeader } from './CookHeader';
 import { CookStepView } from './CookStepView';
-import { CookTopBar } from './CookTopBar';
 import { IngredientDrawer } from './IngredientDrawer';
-import { StepNavButton } from './StepNavButton';
+import { IngredientsPill } from './IngredientsPill';
+import { StepBackButton, StepNavButton } from './StepNavButton';
 import { StepTimerCard } from './StepTimerCard';
 import { TimerTray } from './TimerTray';
 import { TutorialVideo } from './TutorialVideo';
 import { VoiceBanner } from './VoiceBanner';
 import { useCookControls } from '../hooks/useCookControls';
 import { useStepPosition } from '../hooks/useStepPosition';
-import { pickTutorialVideo, stepProgress } from '../logic/session';
+import { pickTutorialVideo } from '../logic/session';
 import { stepTimerId } from '../logic/timers';
 
 const KEEP_AWAKE_TAG = 'famara-cook-mode';
+
+/** Scroll room under the last block so it clears the floating Ingredients pill. */
+const PILL_CLEARANCE = 88;
 
 export interface CookSessionProps {
   recipe: RecipeDetail;
@@ -106,28 +110,38 @@ export function CookSession({ recipe }: CookSessionProps) {
   const last = step === steps.length - 1;
   const stepTimer = timers.byId[stepTimerId(step)];
 
+  const pillBottom = insets.bottom + space.md;
+
   return (
-    <View
-      style={[
-        styles.screen,
-        { backgroundColor: theme.colors.background, paddingTop: insets.top + 8 },
-      ]}
-      testID="cook-mode"
-    >
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]} testID="cook-mode">
+      <CookHeader
+        title={recipe.title}
+        onBack={leave}
+        backLabel="Leave cook mode"
+        actions={
+          <>
+            <GlassIconButton
+              icon={voice.listening ? 'mic.fill' : 'mic'}
+              accessibilityLabel={
+                voice.listening ? 'Turn off voice control' : 'Turn on voice control'
+              }
+              selected={voice.listening}
+              onPress={voice.listening ? voice.stop : () => void voice.start()}
+              testID="cook-voice-toggle"
+            />
+            {video ? (
+              <GlassIconButton
+                icon="play.rectangle"
+                accessibilityLabel={videoOpen ? 'Hide video' : 'Show video'}
+                selected={videoOpen}
+                onPress={() => setVideoOpen((open) => !open)}
+                testID="cook-video-toggle"
+              />
+            ) : null}
+          </>
+        }
+      />
       <View style={styles.top}>
-        <CookTopBar
-          title={recipe.title}
-          step={step}
-          stepCount={steps.length}
-          progress={stepProgress(step, steps.length)}
-          listening={voice.listening}
-          hasVideo={video !== null}
-          videoOpen={videoOpen}
-          onClose={leave}
-          onToggleVoice={voice.listening ? voice.stop : () => void voice.start()}
-          onToggleVideo={() => setVideoOpen((open) => !open)}
-          onOpenIngredients={() => setDrawerOpen(true)}
-        />
         <VoiceBanner status={voice.status} heard={heard} onDismiss={voice.stop} />
         <TimerTray
           timers={timers.timers}
@@ -139,11 +153,22 @@ export function CookSession({ recipe }: CookSessionProps) {
       <GestureDetector gesture={swipe}>
         <View style={styles.body} collapsable={false}>
           <CookStepView
-            step={current}
+            steps={steps}
             index={step}
-            count={steps.length}
             replayKey={replayKey}
+            bottomInset={insets.bottom + PILL_CLEARANCE}
             header={video && videoOpen ? <TutorialVideo video={video} /> : null}
+            controls={
+              <View style={styles.controls}>
+                <StepBackButton disabled={step === 0} onPress={back} />
+                <StepNavButton
+                  label={last ? 'Done' : 'Next step'}
+                  icon={last ? 'checkmark' : 'arrow.right'}
+                  onPress={last ? finish : next}
+                  testID={last ? 'cook-finish' : 'cook-next'}
+                />
+              </View>
+            }
           >
             {current.timerSeconds ? (
               <StepTimerCard
@@ -165,23 +190,7 @@ export function CookSession({ recipe }: CookSessionProps) {
           </CookStepView>
         </View>
       </GestureDetector>
-      <View style={[styles.controls, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <IconButton
-          icon="chevron.left"
-          accessibilityLabel="Back"
-          variant="glass"
-          size={56}
-          disabled={step === 0}
-          onPress={back}
-          testID="cook-back"
-        />
-        <StepNavButton
-          label={last ? 'Finish' : 'Next'}
-          icon={last ? 'checkmark' : 'arrow.right'}
-          onPress={last ? finish : next}
-          testID={last ? 'cook-finish' : 'cook-next'}
-        />
-      </View>
+      <IngredientsPill bottom={pillBottom} onPress={() => setDrawerOpen(true)} />
       <IngredientDrawer
         visible={drawerOpen}
         ingredients={recipe.ingredients}
@@ -195,13 +204,12 @@ export function CookSession({ recipe }: CookSessionProps) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  top: { paddingHorizontal: gutter, gap: 10 },
-  body: { flex: 1, paddingHorizontal: gutter },
+  top: { paddingHorizontal: gutter, gap: space.sm },
+  body: { flex: 1 },
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: gutter,
-    paddingTop: 12,
+    gap: space.sm,
+    marginTop: space.xs,
   },
 });

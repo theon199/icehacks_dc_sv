@@ -50,6 +50,6 @@ function Separator() {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.md },
+  content: { paddingHorizontal: gutter, paddingTop: space.sm, paddingBottom: space.huge },
   separator: { height: space.lg },
 });

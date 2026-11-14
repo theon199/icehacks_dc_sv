@@ -1,3 +1,4 @@
+import type { Href } from 'expo-router';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -5,9 +6,15 @@ import { EmptyState, ErrorState, Skeleton, SkeletonGroup, useTheme } from '@/ui'
 import { gutter } from '@/ui/tokens';
 
 import { useIsModerator } from '../queries';
+import { ModerationPage } from './ModerationPage';
 
 export interface ModeratorGateProps {
   children: ReactNode;
+  /**
+   * Draws the page frame (back circle and heading) around the gate's own states, for a screen
+   * whose content draws its frame itself once access is confirmed.
+   */
+  frame?: { eyebrow: string; title: string; fallbackHref: Href };
 }
 
 /**
@@ -15,9 +22,29 @@ export interface ModeratorGateProps {
  * behind the tools is refused by the server for them in any case. If the roles cannot be read the
  * tools stay hidden and a retry is offered instead of a misleading "no access".
  */
-export function ModeratorGate({ children }: ModeratorGateProps) {
-  const theme = useTheme();
+export function ModeratorGate({ children, frame }: ModeratorGateProps) {
   const { isModerator, isLoading, error, retry } = useIsModerator();
+  if (isModerator) return <>{children}</>;
+  const state = <GateState isLoading={isLoading} error={error} retry={retry} />;
+  if (!frame) return state;
+  return (
+    <ModerationPage
+      eyebrow={frame.eyebrow}
+      title={frame.title}
+      fallbackHref={frame.fallbackHref}
+      scroll={false}
+    >
+      {state}
+    </ModerationPage>
+  );
+}
+
+function GateState({
+  isLoading,
+  error,
+  retry,
+}: Pick<ReturnType<typeof useIsModerator>, 'isLoading' | 'error' | 'retry'>) {
+  const theme = useTheme();
   if (isLoading) {
     return (
       <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
@@ -28,7 +55,7 @@ export function ModeratorGate({ children }: ModeratorGateProps) {
       </View>
     );
   }
-  if (error && !isModerator) {
+  if (error) {
     return (
       <View
         style={[styles.flex, { backgroundColor: theme.colors.background }]}
@@ -38,21 +65,18 @@ export function ModeratorGate({ children }: ModeratorGateProps) {
       </View>
     );
   }
-  if (!isModerator) {
-    return (
-      <View
-        style={[styles.flex, { backgroundColor: theme.colors.background }]}
-        testID="moderator-gate-denied"
-      >
-        <EmptyState
-          icon="lock.shield"
-          title="For moderators only"
-          message="The review queue is available to Famara community moderators."
-        />
-      </View>
-    );
-  }
-  return <>{children}</>;
+  return (
+    <View
+      style={[styles.flex, { backgroundColor: theme.colors.background }]}
+      testID="moderator-gate-denied"
+    >
+      <EmptyState
+        icon="lock.shield"
+        title="For moderators only"
+        message="The review queue is available to Famara community moderators."
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

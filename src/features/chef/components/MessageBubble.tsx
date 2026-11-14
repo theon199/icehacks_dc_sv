@@ -17,9 +17,12 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
       <View style={styles.userRow}>
         <View
           style={[
-            styles.bubble,
             styles.user,
-            { backgroundColor: theme.colors.primary, borderRadius: theme.radii.lg },
+            {
+              backgroundColor: theme.colors.primary,
+              borderRadius: theme.radii.card,
+              borderBottomRightRadius: theme.radii.md,
+            },
           ]}
         >
           {hasPhoto ? (
@@ -30,7 +33,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
               </Text>
             </View>
           ) : null}
-          <Text variant="body" color="onPrimary" selectable>
+          <Text variant="bodyStrong" color="onPrimary" selectable>
             {text}
           </Text>
         </View>
@@ -39,12 +42,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
   }
   return (
     <View style={styles.assistant}>
-      <View
-        style={[
-          styles.bubble,
-          { backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg },
-        ]}
-      >
+      <View style={styles.reply}>
         <ReplyText text={message.text} />
       </View>
       {message.recipeIds.length > 0 ? <RecipeCardRow ids={message.recipeIds} /> : null}
@@ -54,8 +52,13 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
 
 const styles = StyleSheet.create({
   userRow: { alignItems: 'flex-end' },
-  bubble: { paddingHorizontal: space.md, paddingVertical: space.sm + 2, gap: space.xs },
-  user: { maxWidth: '85%' },
+  user: {
+    maxWidth: '88%',
+    paddingHorizontal: space.xl,
+    paddingVertical: space.md,
+    gap: space.xs,
+  },
+  reply: { gap: space.xs },
   assistant: { gap: space.sm, maxWidth: '100%' },
   photoTag: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
 });

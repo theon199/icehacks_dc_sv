@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Icon, PressableScale, Text, useTheme, type IconName } from '@/ui';
+import { Icon, PressableScale, Text, minTouchTarget, space, useTheme, type IconName } from '@/ui';
 
 export interface StepNavButtonProps {
   label: string;
@@ -10,10 +10,7 @@ export interface StepNavButtonProps {
   testID?: string;
 }
 
-const HEIGHT = 56;
-const DISC = 40;
-
-/** Next or Finish: an ink capsule with a lime disc holding the arrow or check. */
+/** Next step or Done: an ink capsule that fills the rest of the step card's control row. */
 export const StepNavButton = memo(function StepNavButton({
   label,
   icon,
@@ -37,12 +34,42 @@ export const StepNavButton = memo(function StepNavButton({
         },
       ]}
     >
-      <Text variant="headline" color="onPrimary" style={styles.label} accessible={false}>
-        {label}
-      </Text>
-      <View style={[styles.disc, { backgroundColor: theme.colors.highlight }]}>
-        <Icon name={icon} size={18} color="onHighlight" weight="semibold" />
+      <View style={styles.content}>
+        <Text variant="headline" color="onPrimary" accessible={false}>
+          {label}
+        </Text>
+        <Icon name={icon} size={16} color="onPrimary" />
       </View>
+    </PressableScale>
+  );
+});
+
+export interface StepBackButtonProps {
+  disabled: boolean;
+  onPress: () => void;
+}
+
+/** The previous-step circle at the start of the control row. */
+export const StepBackButton = memo(function StepBackButton({
+  disabled,
+  onPress,
+}: StepBackButtonProps) {
+  const theme = useTheme();
+  return (
+    <PressableScale
+      testID="cook-back"
+      accessibilityRole="button"
+      accessibilityLabel="Previous step"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[
+        styles.circle,
+        { backgroundColor: theme.colors.surfaceSunken },
+        disabled && styles.disabled,
+      ]}
+    >
+      <Icon name="chevron.left" size={20} color="text" />
     </PressableScale>
   );
 });
@@ -50,18 +77,22 @@ export const StepNavButton = memo(function StepNavButton({
 const styles = StyleSheet.create({
   button: {
     flex: 1,
-    height: HEIGHT,
+    minHeight: minTouchTarget,
+    justifyContent: 'center',
+    paddingHorizontal: space.xl,
+  },
+  content: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 24,
-    paddingRight: 8,
+    justifyContent: 'center',
+    gap: space.xs,
   },
-  label: { flex: 1, textAlign: 'center', paddingLeft: DISC },
-  disc: {
-    width: DISC,
-    height: DISC,
-    borderRadius: DISC / 2,
+  circle: {
+    width: minTouchTarget,
+    height: minTouchTarget,
+    borderRadius: minTouchTarget / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  disabled: { opacity: 0.4 },
 });

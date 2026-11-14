@@ -27,7 +27,7 @@ export function RootNavigator() {
         <Stack.Screen name="(app)" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Screen name="auth/callback" options={{ headerShown: false, animation: 'fade' }} />
-      <Stack.Screen name="auth/reset-password" options={{ title: 'New password' }} />
+      <Stack.Screen name="auth/reset-password" options={{ headerShown: false }} />
       <Stack.Screen name="about" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>

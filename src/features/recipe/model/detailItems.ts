@@ -1,8 +1,9 @@
 /**
- * The recipe screen is one virtualised list. This module lays out its rows (intro, ingredient
- * lines, steps, panels) so the screen only renders what is on screen and long recipes stay smooth.
+ * The recipe screen is one virtualised list under a fixed photo, tile and tab header. This module
+ * lays out the rows of the selected tab (Overview, Ingredients, Nutrition, Why it fits) so the
+ * screen only renders what is on screen and long recipes stay smooth.
  */
-import type { RecipeDetail, RecipeStep } from '@/lib/catalog';
+import type { RecipeDetail } from '@/lib/catalog';
 
 import type { IngredientRow } from './ingredients';
 import type { TutorialItem } from './tutorials';
@@ -10,25 +11,34 @@ import type { TutorialItem } from './tutorials';
 /** Steps shown before "Show all steps". */
 export const STEP_PREVIEW = 3;
 
+export const RECIPE_TABS = ['overview', 'ingredients', 'nutrition', 'why'] as const;
+export type RecipeTab = (typeof RECIPE_TABS)[number];
+
+export const RECIPE_TAB_LABELS: Readonly<Record<RecipeTab, string>> = {
+  overview: 'Overview',
+  ingredients: 'Ingredients',
+  nutrition: 'Nutrition',
+  why: 'Why it fits',
+};
+
 /**
- * Where a row sits in the white card that groups the ingredients (servings, section names, lines)
- * and the method (steps, toggle): the first and last rows carry the card's rounded corners.
+ * Where a row sits in a white card that spans several list rows (the ingredients, the method):
+ * the first and last rows carry the card's rounded corners.
  */
 export type CardEdge = 'top' | 'middle' | 'bottom' | 'single';
 
 type Grouped = { readonly edge: CardEdge };
 
 export type DetailItem =
-  | { readonly type: 'intro'; readonly key: 'intro' }
-  | { readonly type: 'actions'; readonly key: 'actions' }
-  | { readonly type: 'heading'; readonly key: string; readonly title: string }
+  | { readonly type: 'overview'; readonly key: 'overview' }
+  | ({ readonly type: 'cardTitle'; readonly key: string; readonly title: string } & Grouped)
   | ({ readonly type: 'subheading'; readonly key: string; readonly title: string } & Grouped)
   | ({ readonly type: 'servings'; readonly key: 'servings' } & Grouped)
   | ({ readonly type: 'ingredient'; readonly key: string; readonly row: IngredientRow } & Grouped)
   | ({
       readonly type: 'step';
       readonly key: string;
-      readonly step: RecipeStep;
+      readonly step: RecipeDetail['steps'][number];
       readonly number: number;
     } & Grouped)
   | ({
@@ -36,13 +46,14 @@ export type DetailItem =
       readonly key: 'steps-toggle';
       readonly hidden: number;
     } & Grouped)
-  | { readonly type: 'nutrition'; readonly key: 'nutrition' }
-  | { readonly type: 'allergens'; readonly key: 'allergens' }
   | { readonly type: 'tutorials'; readonly key: 'tutorials' }
+  | { readonly type: 'allergens'; readonly key: 'allergens' }
   | { readonly type: 'cost'; readonly key: 'cost' }
-  | { readonly type: 'more'; readonly key: 'more' };
+  | { readonly type: 'nutrition'; readonly key: 'nutrition' }
+  | { readonly type: 'why'; readonly key: 'why' };
 
 export interface DetailItemsInput {
+  readonly tab: RecipeTab;
   readonly recipe: Pick<RecipeDetail, 'steps'>;
   readonly rows: readonly IngredientRow[];
   readonly showAllSteps: boolean;
@@ -50,56 +61,65 @@ export interface DetailItemsInput {
 }
 
 export function buildDetailItems(input: DetailItemsInput): DetailItem[] {
-  const items: DetailItem[] = [
-    { type: 'intro', key: 'intro' },
-    { type: 'actions', key: 'actions' },
-    { type: 'heading', key: 'h-ingredients', title: 'Ingredients' },
-    { type: 'servings', key: 'servings', edge: 'middle' },
-  ];
-
-  let section: string | null = null;
-  for (const row of input.rows) {
-    if (row.section && row.section !== section) {
-      items.push({ type: 'subheading', key: `s-${row.key}`, title: row.section, edge: 'middle' });
+  const items: DetailItem[] = [];
+  switch (input.tab) {
+    case 'overview':
+      items.push({ type: 'overview', key: 'overview' });
+      pushMethod(items, input);
+      if (input.tutorials.length > 0) items.push({ type: 'tutorials', key: 'tutorials' });
+      break;
+    case 'ingredients': {
+      items.push({ type: 'servings', key: 'servings', edge: 'middle' });
+      let section: string | null = null;
+      for (const row of input.rows) {
+        if (row.section && row.section !== section) {
+          items.push({
+            type: 'subheading',
+            key: `s-${row.key}`,
+            title: row.section,
+            edge: 'middle',
+          });
+        }
+        section = row.section;
+        items.push({ type: 'ingredient', key: row.key, row, edge: 'middle' });
+      }
+      items.push({ type: 'allergens', key: 'allergens' });
+      items.push({ type: 'cost', key: 'cost' });
+      break;
     }
-    section = row.section;
-    items.push({ type: 'ingredient', key: row.key, row, edge: 'middle' });
+    case 'nutrition':
+      items.push({ type: 'nutrition', key: 'nutrition' });
+      break;
+    case 'why':
+      items.push({ type: 'why', key: 'why' });
+      break;
   }
-
-  const steps = input.recipe.steps;
-  if (steps.length > 0) {
-    items.push({ type: 'heading', key: 'h-steps', title: 'Method' });
-    const shown = input.showAllSteps ? steps : steps.slice(0, STEP_PREVIEW);
-    shown.forEach((step, index) =>
-      items.push({
-        type: 'step',
-        key: `step-${step.position}`,
-        step,
-        number: index + 1,
-        edge: 'middle',
-      }),
-    );
-    if (steps.length > STEP_PREVIEW) {
-      items.push({
-        type: 'stepsToggle',
-        key: 'steps-toggle',
-        hidden: input.showAllSteps ? 0 : steps.length - STEP_PREVIEW,
-        edge: 'middle',
-      });
-    }
-  }
-
-  items.push({ type: 'heading', key: 'h-nutrition', title: 'Nutrition' });
-  items.push({ type: 'nutrition', key: 'nutrition' });
-  items.push({ type: 'heading', key: 'h-allergens', title: 'Allergens and diets' });
-  items.push({ type: 'allergens', key: 'allergens' });
-  if (input.tutorials.length > 0) {
-    items.push({ type: 'heading', key: 'h-tutorials', title: 'Watch and learn' });
-    items.push({ type: 'tutorials', key: 'tutorials' });
-  }
-  items.push({ type: 'cost', key: 'cost' });
-  items.push({ type: 'more', key: 'more' });
   return withCardEdges(items);
+}
+
+/** The method preview: a titled card of the first steps, with a toggle for the rest. */
+function pushMethod(items: DetailItem[], input: DetailItemsInput): void {
+  const steps = input.recipe.steps;
+  if (steps.length === 0) return;
+  items.push({ type: 'cardTitle', key: 't-method', title: 'Method', edge: 'middle' });
+  const shown = input.showAllSteps ? steps : steps.slice(0, STEP_PREVIEW);
+  shown.forEach((step, index) =>
+    items.push({
+      type: 'step',
+      key: `step-${step.position}`,
+      step,
+      number: index + 1,
+      edge: 'middle',
+    }),
+  );
+  if (steps.length > STEP_PREVIEW) {
+    items.push({
+      type: 'stepsToggle',
+      key: 'steps-toggle',
+      hidden: input.showAllSteps ? 0 : steps.length - STEP_PREVIEW,
+      edge: 'middle',
+    });
+  }
 }
 
 function isGrouped(item: DetailItem | undefined): item is DetailItem & Grouped {

@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
 import { memo, useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { formatRelativeTime } from '@/lib/format';
-import { Card, IconButton, PressableScale, Text, space, useTheme } from '@/ui';
+import { Icon, PressableScale, Text, fontFamily, space, useTheme } from '@/ui';
 
 import { AuthorLine } from './AuthorLine';
 import { DishLine } from './DishLine';
@@ -76,9 +76,11 @@ export const PostCard = memo(function PostCard({
           </Text>
         </View>
       ) : null}
-      <Text variant="headline">{post.title}</Text>
+      <Text variant="headline" style={styles.title}>
+        {post.title}
+      </Text>
       {post.body ? (
-        <Text variant="callout" tone="muted" numberOfLines={full ? undefined : 3}>
+        <Text variant="subhead" tone="muted" numberOfLines={full ? undefined : 3}>
           {post.body}
         </Text>
       ) : null}
@@ -86,7 +88,18 @@ export const PostCard = memo(function PostCard({
   );
 
   return (
-    <Card padding="none" style={styles.card} testID={`post-card-${post.id}`}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.radii.tile,
+          borderColor: theme.colors.border,
+          borderWidth: theme.scheme === 'dark' ? StyleSheet.hairlineWidth : 0,
+        },
+      ]}
+      testID={`post-card-${post.id}`}
+    >
       <View style={styles.header}>
         <View style={styles.author}>
           <AuthorLine
@@ -95,27 +108,29 @@ export const PostCard = memo(function PostCard({
             avatarUrl={post.authorAvatarUrl}
             isTeam={post.author_is_team}
             createdAt={post.created_at}
+            avatarSize={30}
             hideTime
             onPress={() => openAuthor(post.author_id)}
           />
         </View>
-        <Text variant="footnote" tone="muted" accessible={false}>
+        <Text variant="caption" tone="muted" accessible={false} style={styles.age}>
           {formatRelativeTime(post.created_at)}
         </Text>
-        <IconButton
-          icon="ellipsis"
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel="More options for this post"
-          size={36}
-          color="textMuted"
+          hitSlop={space.sm}
           onPress={() => onMenu(post)}
-        />
+          style={({ pressed }) => [styles.more, pressed && styles.pressed]}
+        >
+          <Icon name="ellipsis" size={20} color="textMuted" />
+        </Pressable>
       </View>
 
       {post.status !== 'visible' ? (
         <View
           style={[
             styles.notice,
-            styles.inset,
             { backgroundColor: theme.colors.warningSoft, borderRadius: theme.radii.sm },
           ]}
         >
@@ -136,7 +151,7 @@ export const PostCard = memo(function PostCard({
         />
       ) : null}
 
-      <View style={[styles.content, styles.inset]}>
+      <View style={styles.content}>
         {full ? (
           body
         ) : (
@@ -165,27 +180,41 @@ export const PostCard = memo(function PostCard({
 
         <PostActions post={post} onComment={commentAction} />
       </View>
-    </Card>
+    </View>
   );
 });
 
-const CARD_PADDING = space.lg;
+/** Side padding of everything inside the card, lined up with the photo strip. */
+const CARD_PADDING = space.md;
 
 const styles = StyleSheet.create({
-  card: { gap: space.md, paddingTop: space.md, paddingBottom: space.xs },
+  card: { overflow: 'hidden' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.xs,
-    paddingLeft: CARD_PADDING,
-    paddingRight: space.sm,
+    gap: space.sm,
+    paddingHorizontal: CARD_PADDING,
+    paddingVertical: space.sm,
   },
   author: { flex: 1, flexShrink: 1 },
-  inset: { marginHorizontal: CARD_PADDING },
-  content: { gap: space.sm },
+  age: { fontVariant: ['tabular-nums'] },
+  more: { minWidth: 32, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
+  pressed: { opacity: 0.55 },
+  content: {
+    gap: space.sm,
+    paddingHorizontal: CARD_PADDING,
+    paddingTop: space.md,
+    paddingBottom: space.sm,
+  },
   body: { gap: space.xs, alignItems: 'flex-start' },
+  title: { fontFamily: fontFamily.textBold },
   tag: { paddingHorizontal: space.sm, paddingVertical: space.xxs },
   meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.md },
   dish: { flexShrink: 1 },
-  notice: { paddingHorizontal: 10, paddingVertical: 6 },
+  notice: {
+    marginHorizontal: CARD_PADDING,
+    marginBottom: space.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
 });

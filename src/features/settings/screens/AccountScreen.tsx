@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
-import { Button, Card, ErrorState, Screen, Skeleton, Text, space } from '@/ui';
+import { Button, Card, ErrorState, Skeleton, Text, fontFamily, space, useTheme } from '@/ui';
 
 import { AccountError, accountUserQueryKey, fetchAccountUser } from '../account/accountApi';
 import { useDataExport } from '../account/useDataExport';
@@ -10,9 +10,11 @@ import { ChangeEmailForm } from '../components/ChangeEmailForm';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { EXPORT_FOOTNOTE } from '../components/DataPrivacySection';
 import { DeleteAccountCard } from '../components/DeleteAccountCard';
+import { SettingsPage } from '../components/SettingsPage';
 
 /** Email, password, data export and account deletion. */
 export function AccountScreen() {
+  const theme = useTheme();
   const userId = useSessionStore((s) => s.userId);
   const user = useQuery({
     queryKey: accountUserQueryKey(userId),
@@ -23,46 +25,50 @@ export function AccountScreen() {
 
   if (user.isPending) {
     return (
-      <Screen testID="account-screen">
-        <Skeleton height={64} />
-        <Skeleton height={200} />
-      </Screen>
+      <SettingsPage title="Account" testID="account-screen">
+        <Skeleton height={96} radius="xl" />
+        <Skeleton height={200} radius="xl" />
+      </SettingsPage>
     );
   }
   if (user.isError) {
     return (
-      <Screen testID="account-screen">
+      <SettingsPage title="Account" testID="account-screen">
         <ErrorState
           error={user.error}
           {...(user.error instanceof AccountError ? { message: user.error.message } : {})}
           onRetry={() => void user.refetch()}
         />
-      </Screen>
+      </SettingsPage>
     );
   }
 
   const { email, pendingEmail, hasPassword } = user.data;
   return (
-    <Screen testID="account-screen">
-      <View style={styles.block}>
-        <Text variant="footnote" tone="muted">
-          Signed in as
+    <SettingsPage title="Account" heading="Your sign-in and your data" testID="account-screen">
+      <Text variant="body" tone="muted">
+        Change how you sign in, take a copy of your data, or delete your account.
+      </Text>
+
+      <Card padding="section" style={[styles.card, { borderColor: theme.colors.border }]}>
+        <Text variant="label" style={styles.label}>
+          Signed in
         </Text>
-        <Text variant="title3" selectable testID="account-email">
+        <Text variant="body" selectable testID="account-email">
           {email ?? 'No email on this account'}
         </Text>
         {pendingEmail ? (
-          <Text variant="footnote" tone="accent">
+          <Text variant="subhead" tone="muted">
             {`Waiting for you to confirm ${pendingEmail}.`}
           </Text>
         ) : null}
-      </View>
+      </Card>
 
-      <Card style={styles.card}>
+      <Card padding="section" style={[styles.card, { borderColor: theme.colors.border }]}>
         <ChangeEmailForm currentEmail={email} onChanged={() => void user.refetch()} />
       </Card>
 
-      <Card style={styles.card}>
+      <Card padding="section" style={[styles.card, { borderColor: theme.colors.border }]}>
         <ChangePasswordForm
           email={email}
           hasPassword={hasPassword}
@@ -70,9 +76,9 @@ export function AccountScreen() {
         />
       </Card>
 
-      <Card style={styles.card}>
+      <Card padding="section" style={[styles.card, { borderColor: theme.colors.border }]}>
         <Text variant="headline">Your data</Text>
-        <Text variant="callout" tone="muted">
+        <Text variant="subhead" tone="muted">
           {EXPORT_FOOTNOTE}
         </Text>
         <Button
@@ -87,11 +93,11 @@ export function AccountScreen() {
       </Card>
 
       <DeleteAccountCard />
-    </Screen>
+    </SettingsPage>
   );
 }
 
 const styles = StyleSheet.create({
-  block: { gap: space.xs },
-  card: { gap: space.md },
+  card: { gap: space.md, borderWidth: StyleSheet.hairlineWidth },
+  label: { fontFamily: fontFamily.textBold },
 });

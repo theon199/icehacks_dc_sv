@@ -3,7 +3,7 @@
  *
  * - Store documents and catalog rows reach the recommendation engine through the shared bridges
  *   (`@/stores/domainBridge` and `@/lib/catalog`), re-exported here under Discover's names.
- * - Sibling features (Health's day context, the notification bell) are reached only from here, so
+ * - Sibling features (Health's day context, the unread inbox count) are reached only from here, so
  *   the rest of the folder depends on one seam rather than on their internals.
  */
 import type { Goal, UserPreferences } from '@/domain';
@@ -79,5 +79,5 @@ export function dayTiltNote(tilt: DayTilt): string | null {
 
 // --- Notifications -----------------------------------------------------------------------------
 
-/** The header bell with its unread badge. */
-export { NotificationBell } from '@/features/notifications';
+/** Unread inbox count, shown on the deck options button and in its menu. */
+export { useUnreadCount } from '@/features/notifications';

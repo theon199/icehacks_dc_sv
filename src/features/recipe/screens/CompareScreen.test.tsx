@@ -33,6 +33,7 @@ jest.mock('expo-router', () => ({
     replace: jest.fn(),
     canGoBack: () => true,
   }),
+  Stack: { Screen: () => null },
 }));
 jest.mock('@/lib/catalog/queries', () => ({
   getRecipeDetail: jest.fn(),

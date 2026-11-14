@@ -1,27 +1,27 @@
+import type { ReactNode } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { ErrorState, gutter, space } from '@/ui';
+import { ErrorState, Skeleton, space } from '@/ui';
 
-import { BadgeGrid } from './BadgeGrid';
 import { ProfileHeader } from './ProfileHeader';
 import { SectionTitle } from './SectionTitle';
 import { StatsRow } from './StatsRow';
+import { StreakSlab } from './StreakSlab';
 import { avatarUrl } from '../api/profileApi';
 import type { ProfileRow } from '../api/schemas';
-import { useBadgeGrid, useMyStats } from '../hooks/useProfileData';
+import { useMyStats } from '../hooks/useProfileData';
 import { useAvatarChange } from '../hooks/useProfileMutations';
 
 export interface ProfileOverviewProps {
   profile: ProfileRow;
   onEdit: () => void;
-  onFriends: () => void;
-  onSettings: () => void;
+  /** Trailing control on the "Recent dishes" row, e.g. "See all". */
+  postsAction?: ReactNode;
 }
 
-/** Everything above the posts grid: identity, stats and badges. */
-export function ProfileOverview({ profile, onEdit, onFriends, onSettings }: ProfileOverviewProps) {
+/** Everything above the posts grid: the streak, who this is and the totals. */
+export function ProfileOverview({ profile, onEdit, postsAction }: ProfileOverviewProps) {
   const stats = useMyStats();
-  const badges = useBadgeGrid();
   const avatar = useAvatarChange();
 
   const changeAvatar = () => {
@@ -42,17 +42,18 @@ export function ProfileOverview({ profile, onEdit, onFriends, onSettings }: Prof
 
   return (
     <View style={styles.container}>
+      {stats.data ? (
+        <StreakSlab stats={stats.data} />
+      ) : stats.isPending ? (
+        <Skeleton height={150} radius="card" />
+      ) : null}
       <ProfileHeader
         profile={profile}
         avatarUri={avatarUrl(profile.avatar_path)}
         avatarBusy={avatar.isPending}
         onAvatarPress={changeAvatar}
         onEdit={onEdit}
-        onFriends={onFriends}
-        onSettings={onSettings}
       />
-
-      <SectionTitle title="Your cooking" />
       {stats.error && !stats.data ? (
         <ErrorState
           error={stats.error}
@@ -63,30 +64,15 @@ export function ProfileOverview({ profile, onEdit, onFriends, onSettings }: Prof
       ) : (
         <StatsRow stats={stats.data} loading={stats.isPending} />
       )}
-
-      <SectionTitle title="Badges" />
-      {badges.error && badges.grid.length === 0 ? (
-        <ErrorState
-          error={badges.error}
-          title="Badges didn't load"
-          onRetry={badges.refetch}
-          style={styles.compactError}
-        />
-      ) : (
-        <BadgeGrid badges={badges.grid} loading={badges.isPending} />
-      )}
-
-      <SectionTitle title="Your posts" />
+      <View style={styles.postsTitle}>
+        <SectionTitle title="Recent dishes" trailing={postsAction} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: gutter,
-    paddingTop: space.lg,
-    paddingBottom: space.md,
-    gap: space.lg,
-  },
+  container: { gap: space.md, paddingBottom: space.sm },
+  postsTitle: { paddingTop: space.xs },
   compactError: { paddingVertical: space.md },
 });

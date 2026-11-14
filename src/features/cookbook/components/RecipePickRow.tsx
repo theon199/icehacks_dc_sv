@@ -5,7 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import type { RecipeSummary } from '@/lib/catalog';
 import { Icon, PressableScale, space, Text, useTheme } from '@/ui';
 
-import { cardMeta } from './SavedRecipeCard';
+import { cardMeta } from './SavedRecipeRow';
 
 export interface RecipePickRowProps {
   recipe: RecipeSummary;

@@ -18,6 +18,7 @@ import { renderWithTheme } from '@/test/render';
 import { SearchPane } from './SearchPane';
 import { searchRecipe } from '../__fixtures__/recipes';
 import { useRecentSearchesStore } from '../recentSearches';
+import { DEFAULT_RETURN_TARGET } from '../returnTab';
 import { useSearchStore } from '../searchStore';
 
 jest.mock('@/lib/catalog/queries', () => ({
@@ -52,7 +53,14 @@ configure({ asyncUtilTimeout: 10_000 });
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
+  useRouter: () => ({
+    push: mockPush,
+    navigate: jest.fn(),
+    back: jest.fn(),
+    canGoBack: () => true,
+  }),
+  useNavigation: () => ({ getParent: () => undefined }),
+  useIsFocused: () => true,
 }));
 
 const soup = searchRecipe('mealdb:1', { title: 'Lentil soup' });
@@ -93,7 +101,7 @@ async function renderPane() {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await renderWithTheme(
     <QueryClientProvider client={client}>
-      <SearchPane />
+      <SearchPane returnTarget={DEFAULT_RETURN_TARGET} onReturn={jest.fn()} />
     </QueryClientProvider>,
   );
 }

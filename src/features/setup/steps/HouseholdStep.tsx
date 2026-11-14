@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { IconButton, Text } from '@/ui';
+import { IconButton, Text, radii, space, useTheme } from '@/ui';
 
 import { StepHeader } from '../components/StepHeader';
 import { MAX_HOUSEHOLD, clampHousehold } from '../onboardingModel';
@@ -11,6 +11,7 @@ function peopleLabel(size: number): string {
 }
 
 export function HouseholdStep({ draft, onChange }: StepProps) {
+  const theme = useTheme();
   const size = draft.householdSize;
   const set = (next: number) => onChange({ ...draft, householdSize: clampHousehold(next) });
   return (
@@ -20,7 +21,11 @@ export function HouseholdStep({ draft, onChange }: StepProps) {
         description="Servings and shopping lists scale to this."
       />
       <View
-        style={styles.row}
+        style={[
+          styles.card,
+          { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow },
+          theme.elevation.medium,
+        ]}
         accessibilityRole="adjustable"
         accessibilityLabel="Household size"
         accessibilityValue={{ text: peopleLabel(size) }}
@@ -62,6 +67,14 @@ export function HouseholdStep({ draft, onChange }: StepProps) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24 },
+  card: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: space.xl,
+    paddingHorizontal: space.lg,
+    borderRadius: radii.tile,
+  },
   value: { minWidth: 96 },
 });

@@ -1,7 +1,7 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import type { StepProps } from './types';
-import { OptionCard } from '../components/OptionCard';
+import { OptionList } from '../components/OptionList';
 import { StepHeader } from '../components/StepHeader';
 import { effortChoices } from '../options';
 
@@ -9,23 +9,15 @@ export function EffortStep({ draft, onChange }: StepProps) {
   return (
     <>
       <StepHeader title="How much effort feels right?" />
-      <View style={styles.list} accessibilityRole="radiogroup">
-        {effortChoices.map((choice) => (
-          <OptionCard
-            key={choice.id}
-            testID={`effort-${choice.id}`}
-            label={choice.label}
-            {...(choice.description ? { description: choice.description } : {})}
-            {...(choice.icon ? { icon: choice.icon } : {})}
-            selected={draft.effort === choice.id}
-            onSelect={() => onChange({ ...draft, effort: choice.id })}
-          />
-        ))}
-      </View>
+      <OptionList
+        items={effortChoices}
+        selected={draft.effort == null ? [] : [draft.effort]}
+        onPress={(effort) => onChange({ ...draft, effort })}
+        testIDPrefix="effort"
+        style={styles.list}
+      />
     </>
   );
 }
 
-const styles = StyleSheet.create({
-  list: { gap: 10 },
-});
+const styles = StyleSheet.create({ list: { marginTop: 20 } });

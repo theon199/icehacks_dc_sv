@@ -18,7 +18,7 @@ export function NutritionEstimateCard({ dish }: { dish: SnapDish }) {
   const theme = useTheme();
   const certainty = certaintyOf(dish);
   return (
-    <Card testID="dish-nutrition">
+    <Card variant="sunken" testID="dish-nutrition">
       <View style={styles.stack}>
         <View style={styles.titleRow}>
           <Text variant="label" tone="muted">

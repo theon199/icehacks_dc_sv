@@ -1,8 +1,11 @@
 import { router } from 'expo-router';
 
-import { EmptyState, Screen } from '@/ui';
-
 import { snapCameraHref } from '../links';
+import { PhotoBackdrop } from './PhotoBackdrop';
+import { SnapPill } from './SnapPill';
+import { StatusCard } from './StatusCard';
+
+const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
 /**
  * Shown when a result screen opens without a snap to show, e.g. from an old link or after the app
@@ -10,16 +13,20 @@ import { snapCameraHref } from '../links';
  */
 export function NoSnapResult({ mode }: { mode: 'pantry' | 'dish' }) {
   return (
-    <Screen testID="snap-no-result">
-      <EmptyState
-        icon="camera.viewfinder"
+    <PhotoBackdrop photoUri={null} onClose={back} testID="snap-no-result">
+      <StatusCard
         title={mode === 'pantry' ? 'No pantry photo yet' : 'No dish photo yet'}
         message="Snap results are kept until you take another photo or close Famara."
-        actionLabel="Open Snap"
-        // Straight to the camera in the right mode: going back could return to the screen that
-        // opened this one and loop.
-        onAction={() => router.replace(snapCameraHref({ mode }))}
+        actions={
+          <SnapPill
+            label="Open Snap"
+            tone="lime"
+            // Straight to the camera in the right mode: going back could return to the screen
+            // that opened this one and loop.
+            onPress={() => router.replace(snapCameraHref({ mode }))}
+          />
+        }
       />
-    </Screen>
+    </PhotoBackdrop>
   );
 }

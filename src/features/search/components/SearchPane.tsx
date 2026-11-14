@@ -1,29 +1,49 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { cuisineLabel, DIET_LABELS } from '@/domain/types';
 import { tokenize } from '@/lib/catalog';
-import { EmptyState, ErrorState } from '@/ui';
-import { gutter, space } from '@/ui/tokens';
+import { EmptyState, ErrorState, GlassIconButton, gutter, space } from '@/ui';
 
+import { AskChefCard } from './AskChefCard';
+import { CuisineGrid } from './CuisineGrid';
 import { FilterBar } from './FilterBar';
-import { IdlePanel } from './IdlePanel';
 import { NoResults } from './NoResults';
-import { ResultsGrid } from './ResultsGrid';
+import { RecentSearches } from './RecentSearches';
+import { TopResultCard } from './ResultCard';
+import { ResultsList } from './ResultsList';
 import { ResultsSkeleton } from './ResultsSkeleton';
 import { SafetyNotice } from './SafetyNotice';
+import { SearchBar } from './SearchBar';
 import { SearchErrorBanner } from './SearchErrorBanner';
-import { SearchField } from './SearchField';
-import { useAiAccess, useLovedCuisines, useSearchOwnerId } from '../deps';
+import { SectionHeading, TermRow } from './SearchRows';
+import { AskHeader, useAiAccess, useLovedCuisines, useSearchOwnerId } from '../deps';
 import { activeFilterChips, toggleValue, type ActiveFilterChip } from '../filters';
 import { useRecentSearches, useRecentSearchesStore } from '../recentSearches';
 import type { SearchResultItem } from '../resultItems';
+import type { ReturnTarget } from '../returnTab';
 import { useSearchStore } from '../searchStore';
+import { STARTER_TERMS } from '../suggestions';
 import { useSearchResults } from '../useSearchResults';
 
-/** The Search segment: box, filters, and the results grid with its idle and empty states. */
-export function SearchPane() {
+/** How many results lead as large cards before the plain rows. */
+export const TOP_RESULTS = 5;
+
+export interface SearchPaneProps {
+  /** The Search | Chef switch, floating above the search field. */
+  accessory?: ReactNode;
+  returnTarget: ReturnTarget;
+  /** The back circle and the round circle beside the field: back to the tab before Search. */
+  onReturn: () => void;
+}
+
+/**
+ * The Search side of the Ask page. At rest: the way into Chef, cuisines to browse and the
+ * healthiest recipes. Typing in the bottom field shows recent searches, then results: the filter
+ * chips, the top results as cards and the rest as rows.
+ */
+export function SearchPane({ accessory, returnTarget, onReturn }: SearchPaneProps) {
   const router = useRouter();
   const query = useSearchStore((state) => state.query);
   const filters = useSearchStore((state) => state.filters);
@@ -32,6 +52,7 @@ export function SearchPane() {
   const setFilters = useSearchStore((state) => state.setFilters);
   const resetFilters = useSearchStore((state) => state.resetFilters);
   const results = useSearchResults();
+  const [focused, setFocused] = useState(false);
 
   const ownerId = useSearchOwnerId();
   const recentTerms = useRecentSearches(ownerId);
@@ -56,7 +77,7 @@ export function SearchPane() {
     [setQuery, remember],
   );
 
-  // The grid shows results for the settled text, which can lag behind what is still being typed;
+  // The list shows results for the settled text, which can lag behind what is still being typed;
   // the recent search is the one that found the recipe.
   const { settledQuery } = results;
   const openRecipe = useCallback(
@@ -71,6 +92,17 @@ export function SearchPane() {
     () => activeFilterChips(filters, cuisineLabel, (diet) => DIET_LABELS[diet]),
     [filters],
   );
+  const openFilters = useCallback(() => router.push('/search/filters'), [router]);
+  const pickCuisine = useCallback(
+    (cuisine: string) =>
+      setFilters({
+        ...filters,
+        cuisines: filters.cuisines.includes(cuisine)
+          ? filters.cuisines
+          : toggleValue(filters.cuisines, cuisine),
+      }),
+    [filters, setFilters],
+  );
 
   const setUpSafety = () => router.push('/preferences');
   // Results already on screen stay usable when a later load fails; the banner says what is missing.
@@ -79,35 +111,84 @@ export function SearchPane() {
       <SearchErrorBanner error={results.error} onRetry={results.retry} />
     ) : null;
   const safetyNotice = results.safetyAnswered ? null : <SafetyNotice onSetUp={setUpSafety} />;
+  const showRecents = focused && query.trim().length === 0;
 
-  const header = results.active ? (
-    errorBanner || safetyNotice ? (
-      <View>
+  let header: ReactNode;
+  let rows: readonly SearchResultItem[] = results.items;
+  if (showRecents) {
+    rows = [];
+    header = (
+      <View style={styles.stack}>
+        <RecentSearches
+          terms={recentTerms}
+          onPick={runSearch}
+          onRemove={(term) => {
+            if (ownerId) removeRecent(ownerId, term);
+          }}
+          onClear={clearRecents}
+        />
+        <View>
+          <SectionHeading title="Try searching" />
+          {STARTER_TERMS.map((term) => (
+            <TermRow
+              key={term}
+              term={term}
+              subtitle="Search"
+              accessibilityLabel={`Search for ${term}`}
+              onPress={() => runSearch(term)}
+            />
+          ))}
+        </View>
+      </View>
+    );
+  } else if (results.active) {
+    const top = results.items.slice(0, TOP_RESULTS);
+    rows = results.items.slice(TOP_RESULTS);
+    header = (
+      <View style={styles.results}>
         {errorBanner}
         {safetyNotice}
+        <View style={styles.bleed}>
+          <FilterBar
+            chips={chips}
+            onOpenFilters={openFilters}
+            onRemove={(chip: ActiveFilterChip) => setFilters(chip.remove(filters))}
+            onClearAll={resetFilters}
+          />
+        </View>
+        {top.length > 0 ? (
+          <View style={styles.section}>
+            <SectionHeading title="Top Results" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={styles.bleed}
+              contentContainerStyle={styles.topRow}
+            >
+              {top.map((item) => (
+                <TopResultCard key={item.recipe.id} item={item} onOpen={openRecipe} />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+        {rows.length > 0 ? <SectionHeading title="Recipes" /> : null}
       </View>
-    ) : null
-  ) : (
-    <View style={styles.idle}>
-      {safetyNotice}
-      <IdlePanel
-        recentTerms={recentTerms}
-        lovedCuisines={lovedCuisines}
-        onSearch={runSearch}
-        onRemoveRecent={(term) => {
-          if (ownerId) removeRecent(ownerId, term);
-        }}
-        onClearRecents={clearRecents}
-        onPickCuisine={(cuisine) =>
-          setFilters({ ...filters, cuisines: toggleValue(filters.cuisines, cuisine) })
-        }
-        onAskChef={() => setMode('chef')}
-      />
-    </View>
-  );
+    );
+  } else {
+    header = (
+      <View style={styles.stack}>
+        {safetyNotice}
+        <AskChefCard onPress={() => setMode('chef')} />
+        <CuisineGrid loved={lovedCuisines} onPick={pickCuisine} />
+        {results.items.length > 0 ? <SectionHeading title="Healthiest first" /> : null}
+      </View>
+    );
+  }
 
-  let empty;
-  if (results.loading) empty = <ResultsSkeleton />;
+  let empty: ReactNode = null;
+  if (showRecents || results.items.length > 0) empty = null;
+  else if (results.loading) empty = <ResultsSkeleton />;
   else if (results.error) {
     empty = <ErrorState error={results.error} title="Search didn't load" onRetry={results.retry} />;
   } else if (results.active) {
@@ -131,35 +212,64 @@ export function SearchPane() {
   }
 
   return (
-    <View style={styles.flex}>
-      <View style={styles.controls}>
-        <View style={styles.field}>
-          <SearchField value={query} onChangeText={setQuery} onSubmit={() => remember(query)} />
-        </View>
-        <FilterBar
-          chips={chips}
-          onOpenFilters={() => router.push('/search/filters')}
-          onRemove={(chip: ActiveFilterChip) => setFilters(chip.remove(filters))}
-          onClearAll={resetFilters}
-        />
-      </View>
-      <ResultsGrid
-        items={results.items}
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <AskHeader
+        title="Ask"
+        onBack={onReturn}
+        backLabel={`Back to ${returnTarget.label}`}
+        trailing={
+          <GlassIconButton
+            icon="slider.horizontal.3"
+            accessibilityLabel={chips.length > 0 ? `Filters, ${chips.length} on` : 'Filters'}
+            onPress={openFilters}
+            selected={chips.length > 0}
+            testID="search-filters"
+            {...(chips.length > 0
+              ? {
+                  badge: {
+                    label: String(chips.length),
+                    accessibilityLabel: `${chips.length} on`,
+                  },
+                }
+              : {})}
+          />
+        }
+      />
+      <ResultsList
+        items={rows}
         searchKey={results.searchKey}
         updating={results.updating}
         onOpen={openRecipe}
         onEndReached={results.loadMore}
         loadingMore={results.loadingMore}
-        header={header}
-        empty={empty}
+        header={<View style={styles.header}>{header}</View>}
+        empty={empty === null ? null : <View>{empty}</View>}
       />
-    </View>
+      <SearchBar
+        value={query}
+        onChangeText={setQuery}
+        onSubmit={() => remember(query)}
+        focused={focused}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        returnTarget={returnTarget}
+        onReturn={onReturn}
+        accessory={accessory}
+      />
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  controls: { gap: space.sm, paddingBottom: space.sm },
-  field: { paddingHorizontal: gutter },
-  idle: { gap: space.lg },
+  header: { paddingBottom: space.xs },
+  stack: { gap: space.xl },
+  results: { gap: space.md },
+  section: { gap: space.sm },
+  // Chips and the top row run to the screen edges while scrolling sideways.
+  bleed: { marginHorizontal: -gutter },
+  topRow: { gap: space.md, paddingHorizontal: gutter },
 });

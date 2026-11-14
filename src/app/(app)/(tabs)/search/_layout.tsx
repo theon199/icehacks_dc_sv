@@ -4,8 +4,8 @@ import { useTheme } from '@/ui';
 import { sheetOptions, useStackScreenOptions } from '@/ui/navigation';
 
 /**
- * Search tab stack. The tab root draws its own title row, with the segmented control and search box
- * right under it and the results grid scrolling beneath them, so the native bar stays hidden there.
+ * Search tab stack. The tab root is the Ask page: it draws its own glass header and bottom search
+ * bar, so the native bar stays hidden there. Filters open as a sheet.
  */
 export default function SearchStackLayout() {
   const theme = useTheme();

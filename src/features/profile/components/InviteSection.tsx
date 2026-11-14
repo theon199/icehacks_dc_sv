@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { Button, Card, IconButton, space, Text, TextField } from '@/ui';
+import { Button, IconButton, space, Text, TextField, fontFamily, useTheme } from '@/ui';
 
 import {
   reshareInvite,
@@ -21,7 +21,7 @@ function OpenInvites() {
 
   return (
     <View style={styles.openList} testID="open-invites">
-      <Text variant="subhead" tone="muted">
+      <Text variant="sectionLabel" tone="muted">
         Waiting to be accepted
       </Text>
       {list.map((invite) => (
@@ -109,12 +109,27 @@ function EnterCode() {
 
 /** Create and share invite links, see open invites, or enter a code someone sent. */
 export function InviteSection() {
+  const theme = useTheme();
   const share = useShareInvite();
   return (
-    <Card style={styles.card} testID="invite-section">
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radii.card,
+          ...theme.elevation.low,
+          shadowColor: theme.colors.shadow,
+        },
+      ]}
+      testID="invite-section"
+    >
       <View style={styles.intro}>
-        <Text variant="title3">Invite a friend</Text>
-        <Text variant="callout" tone="muted">
+        <Text variant="title2" style={styles.title}>
+          Invite a friend
+        </Text>
+        <Text variant="subhead" tone="muted">
           Send a link. When your friend opens it in Famara, you follow each other straight away.
           Each link works once, for 7 days.
         </Text>
@@ -129,12 +144,13 @@ export function InviteSection() {
       />
       <OpenInvites />
       <EnterCode />
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { gap: space.lg },
+  card: { borderWidth: 1, paddingHorizontal: 18, paddingVertical: space.xl, gap: space.md },
+  title: { fontFamily: fontFamily.textBold, letterSpacing: -0.3 },
   intro: { gap: space.xs },
   flex: { flex: 1 },
   openList: { gap: space.xs },

@@ -1,5 +1,8 @@
-import { ContinueSheet } from '@/features/auth/screens/ContinueSheet';
+import { Redirect } from 'expo-router';
 
+import { accountSheetHref } from '@/features/auth';
+
+/** The account sheet lives over the welcome carousel; this keeps old links working. */
 export default function AuthContinueRoute() {
-  return <ContinueSheet />;
+  return <Redirect href={accountSheetHref({ intent: 'get-started', step: 'providers' })} />;
 }

@@ -1,29 +1,32 @@
-import type { SnapMode } from '@/lib/api/ai';
-import { Screen } from '@/ui';
+import { router, useIsFocused } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useCallback } from 'react';
 
-import { AiGate, selectCanUseAi, useSessionStore } from '../deps';
+import type { SnapMode } from '@/lib/api/ai';
+
+import { SnapGate } from '../components/SnapGate';
+import { selectCanUseAi, useHideTabBar, useSessionStore } from '../deps';
 import { SnapCameraScreen } from './SnapCameraScreen';
 
-const PURPOSE =
-  'Snap reads a photo of your fridge or your plate: it lists what you have to cook with, or estimates a dish and finds a healthier version among Famara recipes.';
-
 /**
- * The Snap tab. Tabs cannot sit inside the `Stack.Protected` guard that covers AI routes, so the
- * tab gates itself: the camera only mounts for people who are 18+ and have agreed to AI use.
+ * The Snap tab: full screen on black, with the tab bar hidden while it is focused. Tabs cannot sit
+ * inside the `Stack.Protected` guard that covers AI routes, so the tab gates itself: the camera
+ * only mounts for people who are 18+ and have agreed to AI use; everyone else sees the gate.
  */
 export function SnapScreen({ mode }: { mode?: SnapMode | undefined } = {}) {
+  const focused = useIsFocused();
   const unlocked = useSessionStore((state) => selectCanUseAi(state));
-  const gated = (
-    <AiGate feature="Snap" purpose={PURPOSE} testID="snap-ai-gate">
-      <SnapCameraScreen requestedMode={mode} />
-    </AiGate>
-  );
-  // The camera runs edge to edge under the status bar. The shared gate has no top inset of its
-  // own, so only the locked explanation gets one.
-  if (unlocked) return gated;
+  useHideTabBar('snap', focused);
+  // With the tab bar hidden, the close circle is the way out; it returns to Discover.
+  const close = useCallback(() => router.navigate('/'), []);
   return (
-    <Screen safeTop scroll={false} padded={false}>
-      {gated}
-    </Screen>
+    <>
+      {focused ? <StatusBar style="light" /> : null}
+      {unlocked ? (
+        <SnapCameraScreen requestedMode={mode} onClose={close} />
+      ) : (
+        <SnapGate onClose={close} />
+      )}
+    </>
   );
 }

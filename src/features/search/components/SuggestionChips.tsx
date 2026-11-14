@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { Icon, PressableScale, Text, useTheme, type IconName } from '@/ui';
+import { Icon, PressableScale, Text, fontFamily, useTheme, type IconName } from '@/ui';
 import { space } from '@/ui/tokens';
 
 export interface SuggestionChipsProps {
@@ -24,7 +24,9 @@ export function SuggestionChips({
   if (items.length === 0) return null;
   return (
     <View style={styles.section}>
-      <Text variant="title3">{title}</Text>
+      <Text variant="title2" style={styles.heading}>
+        {title}
+      </Text>
       <View style={styles.wrap}>
         {items.map((item) => (
           <PressableScale
@@ -55,6 +57,7 @@ export function SuggestionChips({
 
 const styles = StyleSheet.create({
   section: { gap: space.md },
+  heading: { fontFamily: fontFamily.textBold },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   pill: {
     flexDirection: 'row',

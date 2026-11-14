@@ -44,7 +44,14 @@ configure({ asyncUtilTimeout: 10_000 });
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
+  useRouter: () => ({
+    push: mockPush,
+    navigate: jest.fn(),
+    back: jest.fn(),
+    canGoBack: () => true,
+  }),
+  useNavigation: () => ({ getParent: () => undefined }),
+  useIsFocused: () => true,
 }));
 
 const fits = searchRecipe('mealdb:1', { title: 'Lentil soup' });
@@ -151,6 +158,8 @@ describe('SearchScreen', () => {
     });
 
     await fireEvent.changeText(screen.getByTestId('search-input'), '');
+    // Recent searches show while the field is focused and empty.
+    await fireEvent(screen.getByTestId('search-input'), 'focus');
     expect(await screen.findByRole('button', { name: 'Search again for soup' })).toBeOnTheScreen();
   });
 

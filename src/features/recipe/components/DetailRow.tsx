@@ -9,10 +9,10 @@ import { Button, Text, gutter, space, useTheme } from '@/ui';
 
 import { AllergenPanel } from './AllergenPanel';
 import { IngredientRow } from './IngredientRow';
-import { MoreActions } from './MoreActions';
 import { NutritionPanel } from './NutritionPanel';
-import { RecipeActions } from './RecipeActions';
-import { RecipeIntro } from './RecipeIntro';
+import { RecipeOverviewPane } from './RecipeOverviewPane';
+import { PANE_PADDING, PANE_RADIUS, RecipePane } from './RecipePane';
+import { RecipeWhyPane } from './RecipeWhyPane';
 import { ServingsControl } from './ServingsControl';
 import { StepRow } from './StepRow';
 import { TutorialList } from './TutorialList';
@@ -53,37 +53,25 @@ export const DetailRow = memo(function DetailRow({
 }) {
   const { recipe, actions } = context;
   switch (item.type) {
-    case 'intro':
+    case 'overview':
       return (
-        <View style={styles.padded}>
-          <RecipeIntro
+        <Block>
+          <RecipeOverviewPane
             recipe={recipe}
-            fitScore={context.fit?.score.fitScore ?? null}
-            reasons={context.fit?.reasons ?? EMPTY_REASONS}
-            safety={context.fit?.safety ?? null}
-            onOpenWhy={actions.openWhy}
-          />
-        </View>
-      );
-    case 'actions':
-      return (
-        <View style={[styles.padded, styles.block]}>
-          <RecipeActions
             saved={actions.saved}
             onToggleSave={actions.toggleSave}
             onPlan={actions.openPlan}
             onShop={actions.openShop}
-            onMakeHealthier={actions.makeHealthier}
           />
-        </View>
+        </Block>
       );
-    case 'heading':
+    case 'cardTitle':
       return (
-        <View style={[styles.padded, styles.heading]}>
-          <Text variant="title2" accessibilityRole="header">
+        <CardSlice edge={item.edge} style={styles.cardTitle}>
+          <Text variant="headline" accessibilityRole="header">
             {item.title}
           </Text>
-        </View>
+        </CardSlice>
       );
     case 'subheading':
       return (
@@ -93,9 +81,13 @@ export const DetailRow = memo(function DetailRow({
           </Text>
         </CardSlice>
       );
-    case 'servings':
+    case 'servings': {
+      const count = context.built.rows.length;
       return (
         <CardSlice edge={item.edge} style={styles.servings}>
+          <Text variant="headline" accessibilityRole="header" style={styles.servingsTitle}>
+            {count === 1 ? '1 ingredient' : `${count} ingredients`}
+          </Text>
           <ServingsControl
             servings={context.servings}
             onChange={context.changeServings}
@@ -103,10 +95,11 @@ export const DetailRow = memo(function DetailRow({
             onUnitsChange={context.setUnits}
             halfPortions={context.smallAppetite}
             ownedCount={context.built.ownedCount}
-            ingredientCount={context.built.rows.length}
+            ingredientCount={count}
           />
         </CardSlice>
       );
+    }
     case 'ingredient':
       return (
         <CardSlice edge={item.edge}>
@@ -139,52 +132,61 @@ export const DetailRow = memo(function DetailRow({
           />
         </CardSlice>
       );
+    case 'tutorials':
+      return (
+        <Block>
+          <RecipePane>
+            <Text variant="headline" accessibilityRole="header">
+              Watch and learn
+            </Text>
+            <TutorialList tutorials={recipe.tutorials} />
+          </RecipePane>
+        </Block>
+      );
+    case 'allergens':
+      return (
+        <Block>
+          <AllergenPanel
+            allergens={recipe.allergens}
+            dietFlags={recipe.dietFlags}
+            declared={context.declared}
+          />
+        </Block>
+      );
+    case 'cost':
+      return (
+        <Block>
+          <CostSummary recipeId={recipe.id} servings={context.servings * context.built.portion} />
+        </Block>
+      );
     case 'nutrition':
       return (
-        <View style={styles.padded}>
+        <Block>
           <NutritionPanel
             nutrition={recipe.nutrition}
             confidence={recipe.nutritionConfidence}
             targets={context.targets}
             portion={context.built.portion}
           />
-        </View>
+        </Block>
       );
-    case 'allergens':
+    case 'why':
       return (
-        <View style={styles.padded}>
-          <AllergenPanel
-            allergens={recipe.allergens}
-            dietFlags={recipe.dietFlags}
-            declared={context.declared}
+        <Block>
+          <RecipeWhyPane
+            fitScore={context.fit?.score.fitScore ?? null}
+            reasons={context.fit?.reasons ?? EMPTY_REASONS}
+            onOpenBreakdown={actions.openWhy}
           />
-        </View>
-      );
-    case 'tutorials':
-      return (
-        <View style={styles.padded}>
-          <TutorialList tutorials={recipe.tutorials} />
-        </View>
-      );
-    case 'cost':
-      return (
-        <View style={[styles.padded, styles.block]}>
-          <CostSummary recipeId={recipe.id} servings={context.servings * context.built.portion} />
-        </View>
-      );
-    case 'more':
-      return (
-        <View style={[styles.padded, styles.block]}>
-          <MoreActions
-            onCompare={actions.compare}
-            onNearby={actions.nearby}
-            onShare={actions.share}
-            onReport={actions.report}
-          />
-        </View>
+        </Block>
       );
   }
 });
+
+/** A row that is a whole card on its own: inset to the gutter, a pane's gap above it. */
+function Block({ children }: { children: ReactNode }) {
+  return <View style={[styles.padded, styles.block]}>{children}</View>;
+}
 
 /**
  * One row's share of a white card that spans several list rows. Each row paints its own slice so
@@ -200,11 +202,11 @@ function CardSlice({
   children: ReactNode;
 }) {
   const theme = useTheme();
-  const radius = theme.radii.xl;
+  const radius = PANE_RADIUS;
   const top = edge === 'top' || edge === 'single';
   const bottom = edge === 'bottom' || edge === 'single';
   return (
-    <View style={styles.padded}>
+    <View style={[styles.padded, top && styles.block]}>
       <View
         style={[
           styles.slice,
@@ -214,8 +216,8 @@ function CardSlice({
             borderTopRightRadius: top ? radius : 0,
             borderBottomLeftRadius: bottom ? radius : 0,
             borderBottomRightRadius: bottom ? radius : 0,
-            paddingTop: top ? space.md : 0,
-            paddingBottom: bottom ? space.md : 0,
+            paddingTop: top ? PANE_PADDING : 0,
+            paddingBottom: bottom ? PANE_PADDING : 0,
           },
           style,
         ]}
@@ -227,11 +229,12 @@ function CardSlice({
 }
 
 const styles = StyleSheet.create({
-  slice: { paddingHorizontal: space.lg },
+  slice: { paddingHorizontal: PANE_PADDING },
   padded: { paddingHorizontal: gutter },
-  block: { paddingTop: space.lg },
-  heading: { paddingTop: space.xxl, paddingBottom: space.sm },
+  block: { paddingTop: space.md },
+  cardTitle: { paddingBottom: space.xs },
   subheading: { paddingTop: space.md, paddingBottom: space.xs },
-  servings: { paddingBottom: space.sm },
+  servings: { paddingBottom: space.sm, gap: space.sm },
+  servingsTitle: { paddingTop: space.xxs },
   toggle: { alignItems: 'flex-start' },
 });

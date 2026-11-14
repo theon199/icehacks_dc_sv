@@ -59,9 +59,15 @@ beforeEach(() => {
     .signedIn({ userId: 'user-1', birthYear: 1990, onboardingComplete: true });
 });
 
+/** The photo comes first and is optional; skipping it opens the review sheet. */
+async function skipPhoto() {
+  await act(async () => fireEvent.press(screen.getByTestId('cook-done-skip-photo')));
+}
+
 async function rateAndNote() {
   await renderWithTheme(<CookDoneScreen recipeId="mealdb:1" />);
   expect(screen.getByText('Lentil soup')).toBeTruthy();
+  await skipPhoto();
   await act(async () => fireEvent.press(screen.getByTestId('cook-rating-4')));
   await act(async () => fireEvent.press(screen.getByTestId('cook-again-yes')));
   await act(async () =>
@@ -72,6 +78,25 @@ async function rateAndNote() {
 const cookEventCalls = () => mockServer.calls.filter((call) => call.fn === 'record_cook_event');
 
 describe('CookDoneScreen', () => {
+  it('celebrates first and asks for an optional photo before the review', async () => {
+    await renderWithTheme(<CookDoneScreen recipeId="mealdb:1" />);
+    expect(screen.getByText('Cooked it')).toBeTruthy();
+    expect(screen.getByTestId('cook-done-take-photo')).toBeTruthy();
+    expect(screen.queryByTestId('cook-done-save')).toBeNull();
+    await skipPhoto();
+    expect(screen.getByTestId('cook-done-sheet')).toBeTruthy();
+    await act(async () => fireEvent.press(screen.getByTestId('cook-done-add-photo')));
+    expect(screen.getByTestId('cook-done-photo-ask')).toBeTruthy();
+  });
+
+  it('closes without saving from the review', async () => {
+    await renderWithTheme(<CookDoneScreen recipeId="mealdb:1" />);
+    await skipPhoto();
+    await act(async () => fireEvent.press(screen.getByLabelText('Close without saving')));
+    expect(mockNav.back).toHaveBeenCalled();
+    expect(selectCookEntries(useCookLogStore.getState())).toEqual([]);
+  });
+
   it('logs the cook, feeds recommendations and records the cook event', async () => {
     await rateAndNote();
     await act(async () => fireEvent.press(screen.getByTestId('cook-done-save')));
@@ -149,6 +174,7 @@ describe('CookDoneScreen', () => {
   it('keeps Save and Share off until the recipe has loaded', async () => {
     mockCatalog.result = { data: undefined, isSuccess: false };
     await renderWithTheme(<CookDoneScreen recipeId="mealdb:1" />);
+    await skipPhoto();
 
     expect(screen.getByTestId('cook-done-save')).toBeDisabled();
     expect(screen.getByTestId('cook-done-share')).toBeDisabled();

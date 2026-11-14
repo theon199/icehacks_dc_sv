@@ -2,6 +2,8 @@ import { StyleSheet, View, type AccessibilityActionEvent } from 'react-native';
 
 import { IconButton, Text, space } from '@/ui';
 
+import { PreferenceCard } from './PreferenceCard';
+
 export const HOUSEHOLD_RANGE = { min: 1, max: 20 } as const;
 
 /** Keeps a household size inside the allowed range. */
@@ -32,8 +34,7 @@ export function HouseholdStepper({ value, onChange }: HouseholdStepperProps) {
 
   const text = describe(value);
   return (
-    <View style={styles.group}>
-      <Text variant="headline">Household size</Text>
+    <PreferenceCard title="Household size">
       <View
         style={styles.row}
         accessible
@@ -63,12 +64,11 @@ export function HouseholdStepper({ value, onChange }: HouseholdStepperProps) {
           onPress={() => step(1)}
         />
       </View>
-    </View>
+    </PreferenceCard>
   );
 }
 
 const styles = StyleSheet.create({
-  group: { gap: space.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   count: { minWidth: 110, textAlign: 'center' },
 });

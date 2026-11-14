@@ -1,17 +1,21 @@
 import { FlashList } from '@shopify/flash-list';
+import { router } from 'expo-router';
 import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
 import { MAX_PANTRY_ITEMS, usePantryStore } from '@/stores';
-import { Button, EmptyState, Screen, space, Text, toast } from '@/ui';
+import { Button, EmptyState, space, Text, toast } from '@/ui';
 
 import { AddItemField } from '../components/AddItemField';
 import { DraftItemRow } from '../components/DraftItemRow';
 import { NoSnapResult } from '../components/NoSnapResult';
 import { PantryMeals } from '../components/PantryMeals';
 import { ResultHeader } from '../components/ResultHeader';
+import { ResultSheet } from '../components/ResultSheet';
+import { SnapPill } from '../components/SnapPill';
 import { useIngredientMatches } from '../hooks/useIngredientMatches';
+import { snapCameraHref } from '../links';
 import {
   draftFromDetections,
   draftReducer,
@@ -22,6 +26,12 @@ import {
 } from '../logic/pantryDraft';
 import { nameKey } from '../logic/words';
 import { selectPantryResult, useSnapSession, type PantrySnapResult } from '../snapSession';
+
+/** Back to the camera for another photo. */
+function retake() {
+  if (router.canGoBack()) router.back();
+  else router.replace(snapCameraHref({ mode: 'pantry' }));
+}
 
 /** What to say when the pantry kept some (or none) of the ticked items. */
 function refusalMessage(landed: number, refused: number, full: boolean): string {
@@ -108,7 +118,16 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
     });
   };
 
-  if (added) return <PantryMeals addedCount={added.count} snappedIds={added.snappedIds} />;
+  if (added) {
+    return (
+      <PantryMeals
+        photoUri={result.photoUri}
+        onClose={retake}
+        addedCount={added.count}
+        snappedIds={added.snappedIds}
+      />
+    );
+  }
 
   const found = result.items.length;
   const header = (
@@ -144,25 +163,25 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
     />
   );
 
+  const addLabel =
+    selected === 0
+      ? 'Select items to add'
+      : selected === 1
+        ? 'Add 1 item to pantry'
+        : `Add ${selected} items to pantry`;
   return (
-    <Screen
-      scroll={false}
+    <ResultSheet
+      photoUri={result.photoUri}
+      onClose={retake}
+      peek={0.24}
       testID="snap-pantry"
       footer={
-        <Button
-          variant="highlight"
-          size="lg"
-          fullWidth
-          label={
-            selected === 0
-              ? 'Select items to add'
-              : selected === 1
-                ? 'Add 1 item to pantry'
-                : `Add ${selected} items to pantry`
-          }
+        <SnapPill
+          label={addLabel}
+          tone="lime"
           onPress={addToPantry}
-          disabled={selected === 0}
-          loading={isMatching && selected > 0}
+          // Adding waits for catalog matching, so each item lands under its catalog name.
+          disabled={selected === 0 || isMatching}
           testID="snap-pantry-add"
         />
       }
@@ -176,16 +195,16 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
         ListEmptyComponent={empty}
         ListFooterComponent={<AddItemField onAdd={addItem} />}
         contentContainerStyle={styles.content}
-        contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
       />
-    </Screen>
+    </ResultSheet>
   );
 }
 
 const styles = StyleSheet.create({
   header: { gap: space.lg, paddingBottom: space.sm },
   listTools: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  content: { paddingTop: space.lg, paddingBottom: space.xxl },
+  content: { paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xl },
 });

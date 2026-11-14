@@ -1,6 +1,7 @@
 import { FlashList } from '@shopify/flash-list';
 import { useCallback, useMemo } from 'react';
 import { Alert, RefreshControl, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSessionStore } from '@/features/auth';
 import {
@@ -9,6 +10,7 @@ import {
   EmptyState,
   ErrorState,
   errorMessageFor,
+  fontFamily,
   Skeleton,
   SkeletonGroup,
   Text,
@@ -18,6 +20,7 @@ import {
 import { gutter, space } from '@/ui/tokens';
 
 import { lookupBlocked, useBlockedDirectory } from '../blockedDirectory';
+import { ModerationPage } from '../components/ModerationPage';
 import { useBlocks, useUnblockUser } from '../queries';
 
 interface BlockedRow {
@@ -31,6 +34,7 @@ const UNNAMED = 'Blocked member';
 
 export function BlockedUsersScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const userId = useSessionStore((s) => s.userId);
   const blocks = useBlocks();
   const people = useBlockedDirectory((s) => s.people);
@@ -74,34 +78,35 @@ export function BlockedUsersScreen() {
 
   if (blocks.isPending) {
     return (
-      <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+      <ModerationPage title="Blocked people" scroll={false}>
         <SkeletonGroup label="Loading blocked people" style={styles.padded}>
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} height={52} radius="md" />
+            <Skeleton key={i} height={64} radius="lg" />
           ))}
         </SkeletonGroup>
-      </View>
+      </ModerationPage>
     );
   }
 
   if (blocks.isError) {
     return (
-      <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+      <ModerationPage title="Blocked people" scroll={false}>
         <ErrorState error={blocks.error} onRetry={() => void blocks.refetch()} />
-      </View>
+      </ModerationPage>
     );
   }
 
   return (
-    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+    <ModerationPage title="Blocked people" scroll={false}>
       <FlashList
         data={rows}
         keyExtractor={(row) => row.userId}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.padded}
+        contentInsetAdjustmentBehavior="never"
+        contentContainerStyle={{ ...styles.padded, paddingBottom: insets.bottom + space.xl }}
+        ItemSeparatorComponent={Separator}
         ListHeaderComponent={
           rows.length > 0 ? (
-            <Text variant="footnote" tone="muted" style={styles.intro}>
+            <Text variant="body" tone="muted" style={styles.intro}>
               {
                 "Blocked people can't see your posts, comments or profile, and you won't see theirs. They aren't told that you blocked them."
               }
@@ -116,13 +121,18 @@ export function BlockedUsersScreen() {
           />
         }
         renderItem={({ item: row }) => (
-          <View style={[styles.row, { borderColor: theme.colors.border }]}>
+          <View
+            style={[
+              styles.row,
+              { backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg },
+            ]}
+          >
             <Avatar name={row.name} size={40} />
             <View style={styles.text}>
-              <Text variant="body" numberOfLines={1}>
+              <Text variant="body" numberOfLines={1} style={styles.name}>
                 {row.name}
               </Text>
-              <Text variant="footnote" tone="subtle">
+              <Text variant="label" tone="muted">
                 {row.handle ? `@${row.handle} · ` : ''}Blocked {row.since}
               </Text>
             </View>
@@ -145,20 +155,19 @@ export function BlockedUsersScreen() {
           />
         }
       />
-    </View>
+    </ModerationPage>
   );
 }
 
+function Separator() {
+  return <View style={styles.separator} />;
+}
+
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   padded: { paddingHorizontal: gutter, paddingTop: space.md },
   intro: { paddingBottom: space.md },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingVertical: space.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  text: { flex: 1, gap: space.xxs },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md },
+  text: { flex: 1, gap: 2 },
+  name: { fontFamily: fontFamily.textBold },
+  separator: { height: space.sm },
 });

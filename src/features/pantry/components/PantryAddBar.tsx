@@ -3,7 +3,17 @@ import { StyleSheet, View } from 'react-native';
 
 import { useIngredientSearch, type Ingredient } from '@/lib/catalog';
 import type { NewPantryItem } from '@/stores/pantry';
-import { Icon, PressableScale, Text, TextField, space, useTheme } from '@/ui';
+import {
+  Icon,
+  PressableScale,
+  Text,
+  TextField,
+  fontFamily,
+  minTouchTarget,
+  radii,
+  space,
+  useTheme,
+} from '@/ui';
 
 import { SHELF_TITLES } from '../shelves';
 
@@ -30,17 +40,20 @@ function ResultRow({ title, subtitle, onPress, testID }: ResultRowProps) {
       accessibilityHint={subtitle}
       pressedScale={0.99}
       onPress={onPress}
-      style={[styles.result, { borderColor: theme.colors.border }]}
+      style={[
+        styles.result,
+        { backgroundColor: theme.colors.surfaceSunken, borderColor: theme.colors.border },
+      ]}
     >
       <View style={styles.resultText}>
-        <Text variant="body" numberOfLines={1}>
+        <Text variant="headline" numberOfLines={1} style={styles.resultTitle}>
           {title}
         </Text>
-        <Text variant="footnote" tone="muted" numberOfLines={1}>
+        <Text variant="caption" tone="muted" numberOfLines={1}>
           {subtitle}
         </Text>
       </View>
-      <Icon name="plus.circle.fill" size={22} color="primary" />
+      <Icon name="plus" size={20} color="text" />
     </PressableScale>
   );
 }
@@ -62,7 +75,7 @@ export function PantryAddBar({ onAdd }: PantryAddBarProps) {
     <View style={styles.container}>
       <TextField
         testID="pantry-search"
-        label="Add to your pantry"
+        label="Ingredient to add"
         placeholder="Search, e.g. chickpeas"
         icon="magnifyingglass"
         clearable
@@ -74,7 +87,7 @@ export function PantryAddBar({ onAdd }: PantryAddBarProps) {
         maxLength={80}
       />
       {trimmed ? (
-        <View accessibilityRole="list">
+        <View accessibilityRole="list" style={styles.results}>
           {results.map((ingredient) => (
             <ResultRow
               key={ingredient.id}
@@ -105,14 +118,18 @@ export function PantryAddBar({ onAdd }: PantryAddBarProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { gap: space.xs },
+  container: { gap: space.sm },
+  results: { gap: space.xs },
   result: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    minHeight: 48,
+    minHeight: minTouchTarget,
+    paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   resultText: { flex: 1, gap: 2 },
+  resultTitle: { fontFamily: fontFamily.textBold },
 });

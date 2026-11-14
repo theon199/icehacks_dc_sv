@@ -2,11 +2,13 @@ import { FlashList } from '@shopify/flash-list';
 import { router } from 'expo-router';
 import { useCallback, useMemo } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ErrorState, gutter, Skeleton, SkeletonGroup, space, Text, useTheme } from '@/ui';
+import { ErrorState, Skeleton, SkeletonGroup, space, Text, fontFamily, useTheme } from '@/ui';
 
 import { InviteSection } from '../components/InviteSection';
 import { PersonRow } from '../components/PersonRow';
+import { ProfileTopBar, TOP_BAR_CLEARANCE } from '../components/ProfileTopBar';
 import { SectionTitle } from '../components/SectionTitle';
 import {
   useConnections,
@@ -21,6 +23,7 @@ import { buildFriendRows, type FriendRow } from '../model/friendRows';
 /** Friends (mutual follows), one-way follows, suggestions and invites. */
 export function FriendsScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const connections = useConnections();
   const suggestions = useSuggestions();
   const follow = useFollowToggle();
@@ -48,24 +51,26 @@ export function FriendsScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: FriendRow }) => {
+    ({ item, index }: { item: FriendRow; index: number }) => {
       switch (item.type) {
         case 'section':
           return (
-            <SectionTitle
-              title={item.title}
-              trailing={
-                item.count != null ? (
-                  <Text variant="subhead" tone="subtle">
-                    {item.count}
-                  </Text>
-                ) : null
-              }
-            />
+            <View style={styles.section}>
+              <SectionTitle
+                title={item.title}
+                trailing={
+                  item.count != null ? (
+                    <Text variant="caption" tone="muted" style={styles.count}>
+                      {item.count}
+                    </Text>
+                  ) : null
+                }
+              />
+            </View>
           );
         case 'note':
           return (
-            <Text variant="callout" tone="muted" style={styles.note}>
+            <Text variant="subhead" tone="muted" style={styles.note}>
               {item.message}
             </Text>
           );
@@ -78,11 +83,13 @@ export function FriendsScreen() {
               busy={pendingIds.has(item.person.id)}
               onOpen={openPerson}
               onFollowChange={changeFollow}
+              first={rows[index - 1]?.type !== 'person'}
+              last={rows[index + 1]?.type !== 'person'}
             />
           );
       }
     },
-    [pendingIds, openPerson, changeFollow],
+    [pendingIds, openPerson, changeFollow, rows],
   );
 
   const header = (
@@ -94,7 +101,7 @@ export function FriendsScreen() {
   const empty = connections.isPending ? (
     <SkeletonGroup label="Loading friends">
       {Array.from({ length: 4 }, (_, index) => (
-        <Skeleton key={index} height={52} radius="md" />
+        <Skeleton key={index} height={60} radius="tile" />
       ))}
     </SkeletonGroup>
   ) : (
@@ -107,7 +114,7 @@ export function FriendsScreen() {
 
   return (
     <View
-      style={[styles.flex, { backgroundColor: theme.colors.background }]}
+      style={[styles.flex, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}
       testID="friends-screen"
     >
       <FlashList
@@ -117,10 +124,10 @@ export function FriendsScreen() {
         getItemType={(row) => row.type}
         renderItem={renderItem}
         extraData={pendingIds}
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior="never"
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={{ ...styles.content, paddingBottom: insets.bottom + space.xl }}
         refreshControl={
           <RefreshControl
             refreshing={pull.refreshing}
@@ -129,13 +136,16 @@ export function FriendsScreen() {
           />
         }
       />
+      <ProfileTopBar title="Friends" fallbackHref="/profile" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  header: { paddingTop: space.lg, paddingBottom: space.sm },
-  content: { paddingHorizontal: gutter, paddingBottom: space.xxxl },
-  note: { paddingVertical: space.sm },
+  header: { paddingBottom: space.xs },
+  content: { paddingHorizontal: space.xl, paddingTop: TOP_BAR_CLEARANCE },
+  section: { paddingTop: space.xl, paddingBottom: space.sm },
+  count: { fontFamily: fontFamily.textBold },
+  note: { paddingBottom: space.sm },
 });

@@ -12,7 +12,10 @@ import { accountUserQueryKey, signOutLocally } from '../account/accountApi';
 jest.mock('expo-linking', () => ({ createURL: (path: string) => `famara://${path}` }));
 jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn(), shareAsync: jest.fn() }));
 jest.mock('expo-file-system', () => ({ File: class {}, Paths: { cache: {} } }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock('expo-router', () => ({
+  Stack: { Screen: () => null },
+  useRouter: () => ({ push: jest.fn(), back: jest.fn(), canGoBack: () => true }),
+}));
 
 const mockAuth = {
   getUser: jest.fn(),

@@ -1,7 +1,10 @@
 import { Stack } from 'expo-router';
 
-import { ageBandFor, useSessionStore } from '@/features/auth';
+import { ageBandFor, night, useSessionStore } from '@/features/auth';
 import { useStackScreenOptions } from '@/ui/navigation';
+
+/** The age gate keeps the welcome flow's black canvas. */
+const nightCanvas = { contentStyle: { backgroundColor: night.black } };
 
 /**
  * Age gate and onboarding, shown while the session store reports `needsSetup`. Exactly one screen
@@ -13,10 +16,10 @@ export default function SetupLayout() {
   return (
     <Stack screenOptions={{ ...screenOptions, gestureEnabled: false }}>
       <Stack.Protected guard={band === 'unknown'}>
-        <Stack.Screen name="birth-year" />
+        <Stack.Screen name="birth-year" options={nightCanvas} />
       </Stack.Protected>
       <Stack.Protected guard={band === 'underMinimum' || band === 'notYetEligible'}>
-        <Stack.Screen name="not-eligible" />
+        <Stack.Screen name="not-eligible" options={nightCanvas} />
       </Stack.Protected>
       <Stack.Protected guard={band === 'teen' || band === 'adult'}>
         <Stack.Screen name="onboarding" />

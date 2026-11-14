@@ -6,6 +6,7 @@ import { Modal, StyleSheet, View } from 'react-native';
 import { describeError, logger } from '@/lib/logger';
 import {
   Button,
+  fontFamily,
   Icon,
   minTouchTarget,
   PressableScale,
@@ -18,6 +19,7 @@ import {
 
 import { REASON_LABEL } from './copy';
 import { formatCents, formatCheckedDate, formatPackage } from './format';
+import { PILL_HEIGHT } from './metrics';
 import type { MissingItem, SourceRow } from './pricing';
 
 export interface SourcesSheetProps {
@@ -55,19 +57,21 @@ const SourceRowView = memo(function SourceRowView({
   const body = (
     <>
       <View style={styles.rowText}>
-        <Text variant="bodyStrong" numberOfLines={2}>
+        <Text variant="headline" numberOfLines={2} style={styles.bold}>
           {row.name}
         </Text>
-        <Text variant="footnote" tone="muted">
+        <Text variant="caption" tone="muted">
           {sourceDetail(row)}
         </Text>
-        <Text variant="caption" tone="subtle">
+        <Text variant="caption" tone="muted">
           {sourceMeta(row)}
         </Text>
       </View>
       <View style={styles.rowTrail}>
-        <Text variant="subhead">{share}</Text>
-        {row.url ? <Icon name="arrow.up.right.square" size={16} color="primary" /> : null}
+        <Text variant="label" style={styles.bold}>
+          {share}
+        </Text>
+        {row.url ? <Icon name="chevron.right" size={18} color="textMuted" /> : null}
       </View>
     </>
   );
@@ -101,15 +105,15 @@ function ExcludedSection({ excluded }: { excluded: readonly MissingItem[] }) {
   if (excluded.length === 0) return null;
   return (
     <View style={styles.excluded}>
-      <Text variant="label" tone="muted">
+      <Text variant="sectionLabel" tone="muted" accessibilityRole="header">
         Not in the estimate
       </Text>
       {excluded.map((item) => (
         <View key={item.key} style={styles.excludedRow}>
-          <Text variant="body" numberOfLines={2}>
+          <Text variant="headline" numberOfLines={2}>
             {item.name}
           </Text>
-          <Text variant="footnote" tone="muted">
+          <Text variant="caption" tone="muted">
             {REASON_LABEL[item.reason]}
           </Text>
         </View>
@@ -155,7 +159,15 @@ export function SourcesSheet({
         title="Price sources"
         description="Each item counts the share of the package the food uses. Store prices change, so check before you buy."
         scroll={false}
-        footer={<Button label="Done" variant="secondary" onPress={onClose} fullWidth />}
+        footer={
+          <Button
+            label="Done"
+            variant="secondary"
+            onPress={onClose}
+            fullWidth
+            style={styles.done}
+          />
+        }
       >
         <View style={styles.list} testID="grocery-sources-sheet">
           <FlashList
@@ -186,7 +198,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   rowText: { flex: 1, gap: space.xxs },
-  rowTrail: { alignItems: 'flex-end', gap: space.xs },
+  bold: { fontFamily: fontFamily.textBold },
+  done: { height: PILL_HEIGHT },
+  rowTrail: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   excluded: { paddingTop: space.lg, gap: space.sm },
   excludedRow: { gap: space.xxs },
 });

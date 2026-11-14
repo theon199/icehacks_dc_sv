@@ -3,14 +3,19 @@ import { router } from 'expo-router';
 import { useCallback, type ReactElement } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, Card, EmptyState, ErrorState, Screen, space, Text } from '@/ui';
+import { EmptyState, ErrorState, space, Text, useTheme } from '@/ui';
 
 import { LoadingRows } from './LoadingRows';
 import { RecipeRow } from './RecipeRow';
+import { ResultSheet } from './ResultSheet';
+import { SnapPill } from './SnapPill';
 import { usePantryMeals } from '../hooks/usePantryMeals';
 import type { PantryMeal } from '../logic/pantryMeals';
 
 export interface PantryMealsProps {
+  photoUri: string;
+  /** Back to the camera. */
+  onClose: () => void;
   addedCount: number;
   snappedIds: readonly string[];
 }
@@ -23,7 +28,8 @@ function detailFor(meal: PantryMeal): string {
 }
 
 /** After adding: confirmation, then recipes the pantry now covers best. */
-export function PantryMeals({ addedCount, snappedIds }: PantryMealsProps) {
+export function PantryMeals({ photoUri, onClose, addedCount, snappedIds }: PantryMealsProps) {
+  const theme = useTheme();
   const meals = usePantryMeals(snappedIds, true);
 
   const renderItem = useCallback(
@@ -40,23 +46,22 @@ export function PantryMeals({ addedCount, snappedIds }: PantryMealsProps) {
 
   const header = (
     <View style={styles.header}>
-      <Card variant="sunken" testID="pantry-added">
-        <View style={styles.added}>
-          <Text variant="headline">
-            {addedCount === 1
-              ? 'Added 1 item to your pantry'
-              : `Added ${addedCount} items to your pantry`}
-          </Text>
-          <Button
-            label="View pantry"
-            variant="ghost"
-            size="sm"
-            icon="refrigerator"
-            onPress={() => router.push('/pantry')}
-          />
-        </View>
-      </Card>
-      <Text variant="title3">Meals you can make</Text>
+      <View
+        style={[
+          styles.added,
+          { backgroundColor: theme.colors.highlightSoft, borderRadius: theme.radii.lg },
+        ]}
+        testID="pantry-added"
+      >
+        <Text variant="headline" color="onHighlightSoft">
+          {addedCount === 1
+            ? 'Added 1 item to your pantry'
+            : `Added ${addedCount} items to your pantry`}
+        </Text>
+      </View>
+      <Text variant="title2" accessibilityRole="header">
+        Meals you can make
+      </Text>
     </View>
   );
 
@@ -86,7 +91,21 @@ export function PantryMeals({ addedCount, snappedIds }: PantryMealsProps) {
   }
 
   return (
-    <Screen scroll={false} testID="pantry-meals">
+    <ResultSheet
+      photoUri={photoUri}
+      onClose={onClose}
+      peek={0.24}
+      testID="pantry-meals"
+      footer={
+        <SnapPill
+          label="View pantry"
+          icon="refrigerator"
+          tone="ink"
+          onPress={() => router.push('/pantry')}
+          testID="pantry-view"
+        />
+      }
+    >
       <FlashList
         data={meals.answered ? (meals.data ?? []) : []}
         renderItem={renderItem}
@@ -94,14 +113,13 @@ export function PantryMeals({ addedCount, snappedIds }: PantryMealsProps) {
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
         contentContainerStyle={styles.content}
-        contentInsetAdjustmentBehavior="automatic"
       />
-    </Screen>
+    </ResultSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { gap: space.lg, paddingBottom: space.sm },
-  added: { gap: space.sm, alignItems: 'flex-start' },
-  content: { paddingTop: space.lg, paddingBottom: space.xxxl },
+  header: { gap: space.md, paddingBottom: space.sm },
+  added: { padding: space.md },
+  content: { paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xl },
 });

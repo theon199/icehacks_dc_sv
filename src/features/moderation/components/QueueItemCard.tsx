@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { formatRelativeTime } from '@/lib/format';
 import type { ReportReason } from '@/lib/supabase/database.types';
-import { Chip, PressableScale, Text } from '@/ui';
+import { Chip, PressableScale, Text, fontFamily, useTheme } from '@/ui';
 import { space } from '@/ui/tokens';
 
 import type { QueueItem } from '../model';
@@ -29,6 +29,7 @@ export function topReasons(item: QueueItem, max = 3): ReportReason[] {
 }
 
 function QueueItemCardView({ item, now, onOpen }: QueueItemCardProps) {
+  const theme = useTheme();
   const reasons = topReasons(item);
   const summary = `${item.report_count} report${item.report_count === 1 ? '' : 's'} on a ${targetNoun(item.target_kind)}`;
   return (
@@ -38,12 +39,21 @@ function QueueItemCardView({ item, now, onOpen }: QueueItemCardProps) {
       accessibilityHint="Opens the review"
       onPress={() => onOpen(item)}
       pressedScale={0.99}
-      style={styles.card}
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radii.tile,
+        },
+      ]}
       testID={`queue-${item.target_kind}-${item.target_id}`}
     >
       <View style={styles.meta}>
-        <Text variant="subhead">{summary}</Text>
-        <Text variant="footnote" tone="subtle">
+        <Text variant="label" style={styles.summary}>
+          {summary}
+        </Text>
+        <Text variant="caption" tone="muted">
           {formatRelativeTime(item.first_reported_at, now)}
         </Text>
       </View>
@@ -61,7 +71,8 @@ function QueueItemCardView({ item, now, onOpen }: QueueItemCardProps) {
 export const QueueItemCard = memo(QueueItemCardView);
 
 const styles = StyleSheet.create({
-  card: { gap: space.sm, paddingVertical: space.md },
+  card: { gap: space.sm, padding: space.lg, borderWidth: StyleSheet.hairlineWidth },
+  summary: { fontFamily: fontFamily.textBold },
   meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
 });

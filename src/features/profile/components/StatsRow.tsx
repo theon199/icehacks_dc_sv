@@ -1,30 +1,36 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { MyStats } from '@/lib/supabase/database.types';
-import { Chip, Skeleton, space, Text, useTheme } from '@/ui';
+import { Chip, Skeleton, space, Text, fontFamily, useTheme } from '@/ui';
 
-import { isFreshStart, statTiles, topCuisines } from '../model/stats';
+import { statTiles, topCuisines, type StatKey } from '../model/stats';
 
 export interface StatsRowProps {
   stats: MyStats | undefined;
   loading: boolean;
 }
 
-/** Cooking and community numbers, plus the cuisines cooked most. */
+/** The streak has its own card above, so the row carries the other totals. */
+const ROW_KEYS: readonly StatKey[] = ['posts', 'likes', 'cooked', 'cuisines'];
+
+/** Posts, likes, dishes cooked and cuisines explored, plus the cuisines cooked most. */
 export function StatsRow({ stats, loading }: StatsRowProps) {
   const theme = useTheme();
 
   if (!stats) {
     return loading ? (
       <View style={styles.tiles} testID="stats-loading">
-        {Array.from({ length: 5 }, (_, index) => (
-          <Skeleton key={index} width="30%" height={64} radius="md" />
+        {ROW_KEYS.map((key) => (
+          <View key={key} style={styles.flex}>
+            <Skeleton height={62} radius="md" />
+          </View>
         ))}
       </View>
     ) : null;
   }
 
-  const tiles = statTiles(stats);
+  const all = statTiles(stats);
+  const tiles = ROW_KEYS.flatMap((key) => all.filter((tile) => tile.key === key));
   const cuisines = topCuisines(stats);
   return (
     <View style={styles.container} testID="stats">
@@ -34,30 +40,23 @@ export function StatsRow({ stats, loading }: StatsRowProps) {
             key={tile.key}
             accessible
             accessibilityLabel={tile.accessibilityLabel}
-            style={[
-              styles.tile,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-            ]}
+            style={[styles.tile, { backgroundColor: theme.colors.surface }]}
           >
-            <Text variant="title2" accessible={false}>
+            <Text variant="title2" accessible={false} numberOfLines={1} style={styles.value}>
               {tile.value}
             </Text>
-            <Text variant="caption" tone="muted" accessible={false}>
-              {tile.label}
+            <Text
+              variant="caption"
+              tone="muted"
+              accessible={false}
+              numberOfLines={1}
+              style={styles.label}
+            >
+              {tile.label.toLowerCase()}
             </Text>
-            {tile.caption ? (
-              <Text variant="caption" tone="primary" accessible={false}>
-                {tile.caption}
-              </Text>
-            ) : null}
           </View>
         ))}
       </View>
-      {isFreshStart(stats) ? (
-        <Text variant="footnote" tone="muted">
-          Cook a recipe and mark it done to start your streak and earn your first badge.
-        </Text>
-      ) : null}
       {cuisines.length > 0 ? (
         <View
           style={styles.cuisines}
@@ -77,16 +76,10 @@ export function StatsRow({ stats, loading }: StatsRowProps) {
 
 const styles = StyleSheet.create({
   container: { gap: space.md },
-  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  tile: {
-    flexGrow: 1,
-    flexBasis: '30%',
-    minWidth: 96,
-    paddingVertical: space.md,
-    paddingHorizontal: space.md,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: space.xxs,
-  },
+  flex: { flex: 1 },
+  tiles: { flexDirection: 'row', gap: space.sm },
+  tile: { flex: 1, borderRadius: 16, paddingVertical: 10, paddingHorizontal: space.md },
+  value: { fontFamily: fontFamily.displayBold },
+  label: { fontFamily: fontFamily.textSemiBold },
   cuisines: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
 });

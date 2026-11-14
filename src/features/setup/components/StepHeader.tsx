@@ -7,13 +7,15 @@ export interface StepHeaderProps {
   description?: string;
 }
 
-/** Question title for one onboarding screen. */
+/** Question title for one onboarding screen, with an optional line under it. */
 export function StepHeader({ title, description }: StepHeaderProps) {
   return (
-    <View style={styles.stack}>
-      <Text variant="title1">{title}</Text>
+    <View>
+      <Text variant="title1" style={styles.title}>
+        {title}
+      </Text>
       {description ? (
-        <Text variant="callout" tone="muted">
+        <Text variant="body" tone="muted" style={styles.lede}>
           {description}
         </Text>
       ) : null}
@@ -22,5 +24,6 @@ export function StepHeader({ title, description }: StepHeaderProps) {
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 6 },
+  title: { letterSpacing: -0.4 },
+  lede: { marginTop: 6 },
 });

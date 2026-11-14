@@ -1,14 +1,15 @@
 import type { FlashMode } from 'expo-camera';
 import { StyleSheet, View } from 'react-native';
 
-import { haptics } from '@/lib/haptics';
-import { Icon, IconButton, PressableScale, space, useTheme, type IconName } from '@/ui';
+import { GlassIconButton, Icon, PressableScale, space, useTheme, type IconName } from '@/ui';
+
+import { camera } from './cameraTheme';
 
 export type SnapFlash = Extract<FlashMode, 'off' | 'auto' | 'on'>;
 
 const FLASH_ORDER: readonly SnapFlash[] = ['off', 'auto', 'on'];
 
-const FLASH: Readonly<Record<SnapFlash, { icon: IconName; label: string }>> = {
+export const FLASH: Readonly<Record<SnapFlash, { icon: IconName; label: string }>> = {
   off: { icon: 'bolt.slash', label: 'Flash off' },
   auto: { icon: 'bolt.badge.automatic', label: 'Flash auto' },
   on: { icon: 'bolt.fill', label: 'Flash on' },
@@ -19,88 +20,65 @@ export function nextFlash(flash: SnapFlash): SnapFlash {
 }
 
 export interface CaptureControlsProps {
-  flash: SnapFlash;
-  onFlashChange: (flash: SnapFlash) => void;
   onShutter: () => void;
   onPickPhoto: () => void;
+  /** Switch between the back and front cameras; omitted while there is no live camera. */
+  onFlip?: (() => void) | undefined;
   /** The camera is ready and nothing is in progress. */
   canShoot: boolean;
-  /** Flash only applies to the live camera. */
-  showFlash: boolean;
   busy: boolean;
 }
 
 const SHUTTER = 76;
-/** Size of the round buttons either side of the shutter. */
+/** Size of the controls either side of the shutter. */
 const SIDE = 52;
 
+/** The library square, the white shutter ring and the flip circle along the bottom. */
 export function CaptureControls({
-  flash,
-  onFlashChange,
   onShutter,
   onPickPhoto,
+  onFlip,
   canShoot,
-  showFlash,
   busy,
 }: CaptureControlsProps) {
   const theme = useTheme();
-  const flashInfo = FLASH[flash];
   return (
     <View style={styles.row}>
-      <IconButton
-        icon="photo.on.rectangle"
-        accessibilityLabel="Choose a photo from your library"
-        onPress={onPickPhoto}
-        variant="glass"
-        size={SIDE}
-        disabled={busy}
-        testID="snap-library"
-      />
       <PressableScale
-        onPress={onShutter}
-        disabled={!canShoot}
+        accessibilityRole="button"
+        accessibilityLabel="Choose a photo from your library"
+        accessibilityState={{ disabled: busy }}
+        disabled={busy}
+        onPress={onPickPhoto}
+        style={[styles.library, { borderRadius: theme.radii.md + 2, opacity: busy ? 0.4 : 1 }]}
+        testID="snap-library"
+      >
+        <Icon name="photo.on.rectangle" size={24} color="onImage" />
+      </PressableScale>
+      <PressableScale
         accessibilityRole="button"
         accessibilityLabel="Take photo"
         accessibilityState={{ disabled: !canShoot }}
+        disabled={!canShoot}
+        onPress={onShutter}
+        style={[styles.shutter, { opacity: canShoot ? 1 : 0.4 }]}
         testID="snap-shutter"
-        style={[
-          styles.shutter,
-          {
-            borderColor: theme.colors.primary,
-            opacity: canShoot ? 1 : 0.4,
-          },
-        ]}
       >
-        <View style={[styles.shutterCore, { backgroundColor: theme.colors.primary }]} />
+        <View style={styles.core} />
       </PressableScale>
-      {showFlash ? (
-        <PressableScale
-          onPress={() => {
-            haptics.selection();
-            onFlashChange(nextFlash(flash));
-          }}
-          disabled={busy}
-          accessibilityRole="button"
-          accessibilityLabel={flashInfo.label}
-          accessibilityHint="Switches between flash off, auto and on."
-          accessibilityState={{ disabled: busy, selected: flash !== 'off' }}
-          testID="snap-flash"
-          style={[
-            styles.side,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              shadowColor: theme.colors.shadow,
-              ...theme.elevation.low,
-              opacity: busy ? 0.4 : 1,
-            },
-          ]}
-        >
-          <Icon name={flashInfo.icon} size={Math.round(SIDE * 0.45)} color="text" />
-        </PressableScale>
-      ) : (
-        <View style={styles.placeholder} />
-      )}
+      <View style={styles.side}>
+        {onFlip ? (
+          <GlassIconButton
+            icon="arrow.triangle.2.circlepath.camera"
+            accessibilityLabel="Flip camera"
+            onPress={onFlip}
+            scheme="dark"
+            iconColor="onImage"
+            disabled={busy}
+            testID="snap-flip"
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -110,28 +88,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: space.xxl,
+    paddingHorizontal: space.xl,
+  },
+  library: {
+    width: SIDE,
+    height: SIDE,
+    borderWidth: 2,
+    borderColor: camera.ink,
+    backgroundColor: camera.capsule,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   shutter: {
     width: SHUTTER,
     height: SHUTTER,
     borderRadius: SHUTTER / 2,
     borderWidth: 4,
+    borderColor: camera.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shutterCore: {
+  core: {
     width: SHUTTER - space.lg,
     height: SHUTTER - space.lg,
     borderRadius: (SHUTTER - space.lg) / 2,
+    backgroundColor: camera.ink,
   },
-  side: {
-    width: SIDE,
-    height: SIDE,
-    borderRadius: SIDE / 2,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholder: { width: SIDE, height: SIDE },
+  side: { width: SIDE, height: SIDE, alignItems: 'center', justifyContent: 'center' },
 });

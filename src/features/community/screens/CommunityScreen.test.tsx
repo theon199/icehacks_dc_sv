@@ -75,7 +75,8 @@ describe('CommunityScreen', () => {
     feedMock.mockResolvedValue(makePage([]));
     await renderWithClient(<CommunityScreen />);
 
-    await fireEvent.press(screen.getByRole('tab', { name: 'Following' }));
+    await fireEvent.press(screen.getByTestId('feed-mode'));
+    await fireEvent.press(await screen.findByTestId('feed-mode-following'));
 
     expect(await screen.findByText('Nothing from your people yet')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Find friends' })).toBeTruthy();
@@ -89,7 +90,7 @@ describe('CommunityScreen', () => {
 
     await fireEvent.press(screen.getByTestId('community-notifications'));
     await fireEvent.press(screen.getByRole('button', { name: 'Share a dish' }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Profile' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Open your profile' }));
 
     expect(router.push).toHaveBeenCalledWith('/notifications');
     expect(router.push).toHaveBeenCalledWith('/compose');

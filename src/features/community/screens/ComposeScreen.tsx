@@ -5,7 +5,20 @@ import { Alert, StyleSheet, View } from 'react-native';
 import { useSessionStore } from '@/features/auth';
 import { formatPercent } from '@/lib/format';
 import { haptics } from '@/lib/haptics';
-import { Button, IconButton, Screen, SegmentedControl, Text, TextField, toast } from '@/ui';
+import {
+  Button,
+  GlassIconButton,
+  IconButton,
+  Screen,
+  SegmentedControl,
+  Text,
+  TextField,
+  fontFamily,
+  gutter,
+  space,
+  toast,
+  useTheme,
+} from '@/ui';
 
 import type { PostKind } from '../api/schemas';
 import { RatingInput } from '../components/RatingStars';
@@ -48,6 +61,7 @@ function goBack() {
 
 /** Share a dish: recipe, photos, rating, note (with dictation) and kind. The draft is kept. */
 export function ComposeScreen({ recipeId, remixOf, cookShare = null }: ComposeScreenProps) {
+  const theme = useTheme();
   const userId = useSessionStore((state) => state.userId);
   // Until the stored draft is claimed for this account, show a blank one rather than someone else's.
   const draft = useComposeDraftStore((state) =>
@@ -170,134 +184,156 @@ export function ComposeScreen({ recipeId, remixOf, cookShare = null }: ComposeSc
         : 'Post';
 
   return (
-    <Screen
-      footer={
-        <>
-          <Button
-            label={publishLabel}
-            onPress={() => void submit()}
-            loading={phase === 'publishing'}
-            disabled={busy}
-            fullWidth
-            testID="compose-publish"
-          />
-          {!busy && !isDraftEmpty(draft) ? (
-            <Button label="Discard draft" variant="ghost" onPress={discard} fullWidth />
-          ) : null}
-        </>
-      }
-    >
+    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
       <Stack.Screen
         options={{
+          headerShown: false,
           // No swiping the sheet away while photos upload or the post is being sent.
           gestureEnabled: !busy,
-          headerLeft: () => (
-            <Button label="Close" variant="ghost" size="sm" onPress={close} disabled={busy} />
-          ),
         }}
       />
-      <SegmentedControl<PostKind>
-        segments={KINDS}
-        value={draft.kind}
-        onChange={(kind) => edit({ kind })}
-        accessibilityLabel="Kind of post"
-        testID="compose-kind"
-      />
-      <Text variant="footnote" tone="muted">
-        {KIND_COPY[draft.kind].hint}
-        {draft.kind === 'remix' && draft.parentTitle ? ` Based on “${draft.parentTitle}”.` : ''}
-      </Text>
-      {parentUnavailable ? (
-        <Text variant="footnote" tone="danger" accessibilityLiveRegion="polite">
-          We couldn&rsquo;t open the post you wanted to remix; it may have been removed. You can
-          still share your own version of a recipe.
+      <View style={styles.header}>
+        <GlassIconButton
+          icon="xmark"
+          accessibilityLabel="Close"
+          onPress={close}
+          disabled={busy}
+          style={styles.close}
+          testID="compose-close"
+        />
+        <Text variant="title2" accessibilityRole="header" style={styles.headerTitle}>
+          Share a dish
         </Text>
-      ) : null}
-
-      <RecipePicker
-        selectedTitle={draft.recipeTitle}
-        optional={draft.kind === 'tip'}
-        error={errors.recipe}
-        disabled={busy}
-        onPick={(recipe) =>
-          edit({
-            recipeId: recipe.id,
-            recipeTitle: recipe.title,
-            title:
-              draft.title.trim() === '' || draft.title === draft.recipeTitle
-                ? recipe.title
-                : draft.title,
-          })
-        }
-        onClear={() => edit({ recipeId: null, recipeTitle: null })}
-      />
-
-      <PhotoPicker
-        photos={draft.photos}
-        onChange={(photos) => edit({ photos })}
-        error={errors.photos}
-        disabled={busy}
-      />
-
-      <TextField
-        label="Title"
-        value={draft.title}
-        onChangeText={(title) => edit({ title })}
-        placeholder={
-          draft.kind === 'tip' ? 'e.g. Toast spices before grinding' : 'What did you make?'
-        }
-        maxLength={COMPOSE_LIMITS.title + 20}
-        error={errors.title ?? null}
-        disabled={busy}
-        testID="compose-title"
-      />
-
-      <View style={styles.noteRow}>
-        <View style={styles.flex}>
-          <TextField
-            label={draft.kind === 'tip' ? 'Your tip' : 'Notes'}
-            value={draft.body}
-            onChangeText={(body) => edit({ body })}
-            placeholder={
-              draft.kind === 'remix'
-                ? 'What did you change, and how did it turn out?'
-                : 'How did it go? Any tweaks?'
-            }
-            multiline
-            maxLength={COMPOSE_LIMITS.body + 50}
-            hint={`${draft.body.trim().length}/${COMPOSE_LIMITS.body}`}
-            error={errors.body ?? null}
-            disabled={busy}
-            testID="compose-body"
-          />
-        </View>
-        {dictation.available ? (
-          <IconButton
-            icon={dictation.listening ? 'stop.circle.fill' : 'mic'}
-            accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate notes'}
-            variant={dictation.listening ? 'filled' : 'tinted'}
-            selected={dictation.listening}
-            disabled={busy}
-            onPress={dictation.toggle}
-            style={styles.mic}
-          />
-        ) : null}
       </View>
-
-      {draft.kind === 'tip' ? null : (
-        <RatingInput value={draft.rating} onChange={(rating) => edit({ rating })} />
-      )}
-      {errors.rating ? (
-        <Text variant="footnote" tone="danger">
-          {errors.rating}
+      <Screen
+        footer={
+          <>
+            <Button
+              label={publishLabel}
+              onPress={() => void submit()}
+              loading={phase === 'publishing'}
+              disabled={busy}
+              fullWidth
+              testID="compose-publish"
+            />
+            {!busy && !isDraftEmpty(draft) ? (
+              <Button label="Discard draft" variant="ghost" onPress={discard} fullWidth />
+            ) : null}
+          </>
+        }
+      >
+        <SegmentedControl<PostKind>
+          segments={KINDS}
+          value={draft.kind}
+          onChange={(kind) => edit({ kind })}
+          accessibilityLabel="Kind of post"
+          testID="compose-kind"
+        />
+        <Text variant="footnote" tone="muted">
+          {KIND_COPY[draft.kind].hint}
+          {draft.kind === 'remix' && draft.parentTitle ? ` Based on “${draft.parentTitle}”.` : ''}
         </Text>
-      ) : null}
-    </Screen>
+        {parentUnavailable ? (
+          <Text variant="footnote" tone="danger" accessibilityLiveRegion="polite">
+            We couldn&rsquo;t open the post you wanted to remix; it may have been removed. You can
+            still share your own version of a recipe.
+          </Text>
+        ) : null}
+
+        <RecipePicker
+          selectedTitle={draft.recipeTitle}
+          optional={draft.kind === 'tip'}
+          error={errors.recipe}
+          disabled={busy}
+          onPick={(recipe) =>
+            edit({
+              recipeId: recipe.id,
+              recipeTitle: recipe.title,
+              title:
+                draft.title.trim() === '' || draft.title === draft.recipeTitle
+                  ? recipe.title
+                  : draft.title,
+            })
+          }
+          onClear={() => edit({ recipeId: null, recipeTitle: null })}
+        />
+
+        <PhotoPicker
+          photos={draft.photos}
+          onChange={(photos) => edit({ photos })}
+          error={errors.photos}
+          disabled={busy}
+        />
+
+        <TextField
+          label="Title"
+          value={draft.title}
+          onChangeText={(title) => edit({ title })}
+          placeholder={
+            draft.kind === 'tip' ? 'e.g. Toast spices before grinding' : 'What did you make?'
+          }
+          maxLength={COMPOSE_LIMITS.title + 20}
+          error={errors.title ?? null}
+          disabled={busy}
+          testID="compose-title"
+        />
+
+        <View style={styles.noteRow}>
+          <View style={styles.flex}>
+            <TextField
+              label={draft.kind === 'tip' ? 'Your tip' : 'Notes'}
+              value={draft.body}
+              onChangeText={(body) => edit({ body })}
+              placeholder={
+                draft.kind === 'remix'
+                  ? 'What did you change, and how did it turn out?'
+                  : 'How did it go? Any tweaks?'
+              }
+              multiline
+              maxLength={COMPOSE_LIMITS.body + 50}
+              hint={`${draft.body.trim().length}/${COMPOSE_LIMITS.body}`}
+              error={errors.body ?? null}
+              disabled={busy}
+              testID="compose-body"
+            />
+          </View>
+          {dictation.available ? (
+            <IconButton
+              icon={dictation.listening ? 'stop.circle.fill' : 'mic'}
+              accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate notes'}
+              variant={dictation.listening ? 'filled' : 'tinted'}
+              selected={dictation.listening}
+              disabled={busy}
+              onPress={dictation.toggle}
+              style={styles.mic}
+            />
+          ) : null}
+        </View>
+
+        {draft.kind === 'tip' ? null : (
+          <RatingInput value={draft.rating} onChange={(rating) => edit({ rating })} />
+        )}
+        {errors.rating ? (
+          <Text variant="footnote" tone="danger">
+            {errors.rating}
+          </Text>
+        ) : null}
+      </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  header: {
+    height: 52,
+    marginTop: space.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: gutter,
+  },
+  close: { position: 'absolute', left: gutter },
+  headerTitle: { fontFamily: fontFamily.textBold, letterSpacing: -0.3 },
   noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   mic: { marginTop: 28 },
 });

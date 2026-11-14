@@ -1,6 +1,10 @@
 /**
  * The flat row model the shopping screen's list renders: aisle headings, items (unticked first in
  * each aisle), the hand-added extras, and the collapsible "already in your pantry" section.
+ *
+ * Each section is drawn as one card made of consecutive rows, so every row says whether it is the
+ * one that closes its card (`closes`): the list stays flat for recycling while the cards keep
+ * their rounded foot.
  */
 import {
   itemText,
@@ -27,9 +31,20 @@ export type ShoppingRow =
       readonly title: string;
       readonly subtitle: string | null;
       readonly checked: boolean;
+      readonly closes: boolean;
     }
-  | { readonly type: 'pantryToggle'; readonly key: string; readonly count: number }
-  | { readonly type: 'pantryItem'; readonly key: string; readonly title: string };
+  | {
+      readonly type: 'pantryToggle';
+      readonly key: string;
+      readonly count: number;
+      readonly closes: boolean;
+    }
+  | {
+      readonly type: 'pantryItem';
+      readonly key: string;
+      readonly title: string;
+      readonly closes: boolean;
+    };
 
 export interface RowsInput {
   readonly groups: readonly AisleGroup[];
@@ -60,15 +75,16 @@ export function shoppingRows(input: RowsInput): ShoppingRow[] {
       title: group.title,
       count: group.items.length,
     });
-    for (const item of group.items) {
+    group.items.forEach((item, index) => {
       rows.push({
         type: 'check',
         key: item.key,
         title: itemText(item, fmt),
         subtitle: itemSubtitle(item),
         checked: isChecked(item.key),
+        closes: index === group.items.length - 1,
       });
-    }
+    });
   }
 
   if (input.extras.length > 0) {
@@ -83,17 +99,34 @@ export function shoppingRows(input: RowsInput): ShoppingRow[] {
       ...extras.filter(({ key }) => !isChecked(key)),
       ...extras.filter(({ key }) => isChecked(key)),
     ];
-    for (const { extra, key } of ordered) {
-      rows.push({ type: 'check', key, title: extra.name, subtitle: null, checked: isChecked(key) });
-    }
+    ordered.forEach(({ extra, key }, index) => {
+      rows.push({
+        type: 'check',
+        key,
+        title: extra.name,
+        subtitle: null,
+        checked: isChecked(key),
+        closes: index === ordered.length - 1,
+      });
+    });
   }
 
   if (input.inPantry.length > 0) {
-    rows.push({ type: 'pantryToggle', key: 'pantry:toggle', count: input.inPantry.length });
+    rows.push({
+      type: 'pantryToggle',
+      key: 'pantry:toggle',
+      count: input.inPantry.length,
+      closes: !input.showPantry,
+    });
     if (input.showPantry) {
-      for (const item of input.inPantry) {
-        rows.push({ type: 'pantryItem', key: `pantry:${item.key}`, title: itemText(item, fmt) });
-      }
+      input.inPantry.forEach((item, index) => {
+        rows.push({
+          type: 'pantryItem',
+          key: `pantry:${item.key}`,
+          title: itemText(item, fmt),
+          closes: index === input.inPantry.length - 1,
+        });
+      });
     }
   }
   return rows;

@@ -56,8 +56,8 @@ export function RatingInput({ value, onChange }: RatingInputProps) {
           >
             <Icon
               name={filled ? 'star.fill' : 'star'}
-              size={36}
-              color={filled ? 'highlight' : 'borderStrong'}
+              size={30}
+              color={filled ? 'text' : 'borderStrong'}
             />
           </PressableScale>
         );
@@ -66,10 +66,10 @@ export function RatingInput({ value, onChange }: RatingInputProps) {
   );
 }
 
-/** Each star keeps a full 48pt touch target. */
-const STAR_BOX = 48;
+/** Each star keeps a full 44 pt touch target. */
+const STAR_BOX = 44;
 
 const styles = StyleSheet.create({
-  row: { gap: 4, flexDirection: 'row' },
+  row: { flexDirection: 'row', alignItems: 'center' },
   star: { height: STAR_BOX, width: STAR_BOX, justifyContent: 'center', alignItems: 'center' },
 });

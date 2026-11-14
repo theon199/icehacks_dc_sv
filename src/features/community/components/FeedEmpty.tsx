@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 
-import { Button, EmptyState } from '@/ui';
+import { errorMessageFor } from '@/ui';
 
+import { CommunityStateCard } from './CommunityStateCard';
 import type { FeedMode } from '../api/schemas';
 
 const COPY: Record<FeedMode, { title: string; message: string }> = {
@@ -20,20 +21,35 @@ const COPY: Record<FeedMode, { title: string; message: string }> = {
   },
 };
 
+const goToDiscover = () => router.navigate('/');
+
 /** Empty feed with a way forward: friends for Following, Discover for the rest. */
 export function FeedEmpty({ mode }: { mode: FeedMode }) {
   const copy = COPY[mode];
+  const discover = { label: 'Go to Discover', onPress: goToDiscover };
   return (
-    <EmptyState
-      icon={mode === 'following' ? 'person.2' : 'fork.knife'}
+    <CommunityStateCard
+      testID="feed-empty"
       title={copy.title}
       message={copy.message}
-      actionLabel={mode === 'following' ? 'Find friends' : 'Go to Discover'}
-      onAction={() => (mode === 'following' ? router.push('/friends') : router.navigate('/'))}
-    >
-      {mode === 'following' ? (
-        <Button label="Go to Discover" variant="ghost" onPress={() => router.navigate('/')} />
-      ) : null}
-    </EmptyState>
+      actions={
+        mode === 'following'
+          ? [{ label: 'Find friends', onPress: () => router.push('/friends') }, discover]
+          : [discover]
+      }
+    />
+  );
+}
+
+/** The feed could not load: what failed, in the danger colour, with a retry. */
+export function FeedError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <CommunityStateCard
+      testID="feed-error"
+      title="The community feed could not be loaded"
+      message={errorMessageFor(error)}
+      alert
+      actions={[{ label: 'Try again', onPress: onRetry }]}
+    />
   );
 }

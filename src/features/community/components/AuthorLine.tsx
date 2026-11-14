@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { formatRelativeTime } from '@/lib/format';
-import { Avatar, PressableScale, Text } from '@/ui';
+import { Avatar, PressableScale, Text, fontFamily, space } from '@/ui';
 
 import { TeamBadge } from './TeamBadge';
 
@@ -42,7 +42,7 @@ export const AuthorLine = memo(function AuthorLine({
           {isTeam ? <TeamBadge compact /> : null}
         </View>
         {second ? (
-          <Text variant="caption" tone="subtle" numberOfLines={1}>
+          <Text variant="caption" tone="muted" numberOfLines={1}>
             {second}
           </Text>
         ) : null}
@@ -66,8 +66,8 @@ export const AuthorLine = memo(function AuthorLine({
 });
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, flexShrink: 1 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44, flexShrink: 1 },
   text: { flexShrink: 1, gap: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  name: { flexShrink: 1 },
+  name: { flexShrink: 1, fontFamily: fontFamily.textBold },
 });

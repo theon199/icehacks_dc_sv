@@ -15,6 +15,16 @@ import { renderWithTheme } from '@/test/render';
 
 import { PreferencesScreen } from './PreferencesScreen';
 
+jest.mock('expo-router', () => ({
+  Stack: { Screen: () => null },
+  useRouter: () => ({
+    push: jest.fn(),
+    back: jest.fn(),
+    replace: jest.fn(),
+    canGoBack: () => true,
+  }),
+}));
+
 const updatePreferences = (patch: Partial<Preferences>) =>
   usePreferencesStore.getState().update(patch);
 const setAllergens = (allergens: Preferences['allergens']) =>

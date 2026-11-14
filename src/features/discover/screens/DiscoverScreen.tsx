@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { DeckCard, DeckMode, NotForMeReason } from '@/domain';
-import { useTheme } from '@/ui';
+import { Icon, Text, useTheme } from '@/ui';
+import { gutter, space } from '@/ui/tokens';
 
 import { DeckStatusView } from '../components/DeckStatusView';
 import { DiscoverHeader } from '../components/DiscoverHeader';
@@ -18,10 +19,14 @@ export interface DiscoverScreenProps {
   deckOptions?: DiscoverDeckOptions;
 }
 
-/** The Discover tab: a personalised swipe deck of recipes. */
+/**
+ * The Discover tab: a personalised swipe deck of recipes. A fixed layout, never a scroll view: the
+ * header takes its row and the deck flexes into whatever is left above the tab bar.
+ */
 export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
   const theme = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [requestedMode, setRequestedMode] = useState<DeckMode>('forYou');
   const deck = useDiscoverDeck(requestedMode, deckOptions);
   const [declining, setDeclining] = useState<DeckCard | null>(null);
@@ -32,7 +37,6 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
     [router],
   );
   const openPreferences = useCallback(() => router.push('/preferences'), [router]);
-  const openProfile = useCallback(() => router.push('/profile'), [router]);
   const closeSheet = useCallback(() => setDeclining(null), []);
   const { notForMe } = deck;
   const decline = useCallback(
@@ -43,24 +47,30 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
     [notForMe],
   );
   const showAll = useCallback(() => setRequestedMode('forYou'), []);
+  const canUndo = deck.lastDecision !== null;
 
   return (
-    <SafeAreaView
-      edges={['top', 'bottom']}
-      style={[styles.flex, { backgroundColor: theme.colors.background }]}
-    >
+    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
       <DiscoverHeader
-        onProfile={openProfile}
         modes={modes}
         mode={deck.mode}
         onModeChange={setRequestedMode}
-        note={deck.dayNote}
+        canUndo={canUndo}
+        onUndo={deck.undo}
       />
-      <View style={styles.flex}>
+      <View style={[styles.body, { paddingBottom: insets.bottom }]}>
+        {deck.dayNote ? (
+          <View style={styles.note} testID="discover-day-note">
+            <Icon name="heart.text.square" android="monitor_heart" size={16} color="textMuted" />
+            <Text variant="footnote" tone="muted" numberOfLines={2} style={styles.flex}>
+              {deck.dayNote}
+            </Text>
+          </View>
+        ) : null}
         {deck.status === 'ready' ? (
           <SwipeDeck
             cards={deck.cards}
-            canUndo={deck.lastDecision !== null}
+            canUndo={canUndo}
             onLike={deck.like}
             onPass={deck.pass}
             onSave={deck.save}
@@ -73,7 +83,7 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
             status={deck.status}
             mode={deck.mode}
             wide={deck.wide}
-            canUndo={deck.lastDecision !== null}
+            canUndo={canUndo}
             onEditPreferences={openPreferences}
             onShowAll={showAll}
             onWiden={deck.widen}
@@ -84,10 +94,17 @@ export function DiscoverScreen({ deckOptions }: DiscoverScreenProps) {
         )}
       </View>
       <NotForMeSheet card={declining} onClose={closeSheet} onPick={decline} />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  body: { flex: 1, paddingHorizontal: gutter },
+  note: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginBottom: space.sm,
+  },
 });

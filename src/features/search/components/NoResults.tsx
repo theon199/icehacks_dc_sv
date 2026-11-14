@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, EmptyState } from '@/ui';
+import { Button, Text, fontFamily, useTheme } from '@/ui';
 import { space } from '@/ui/tokens';
 
 import { SuggestionChips } from './SuggestionChips';
@@ -24,6 +24,7 @@ export function NoResults({
   onClearFilters,
   onAskChef,
 }: NoResultsProps) {
+  const theme = useTheme();
   const broader = broaderTerm(query);
   const trimmed = query.trim();
   const ideas = useMemo(
@@ -38,33 +39,43 @@ export function NoResults({
     : 'Check the spelling or try a simpler word, like a main ingredient.';
   return (
     <View testID="search-no-results" style={styles.container}>
-      <EmptyState
-        icon="magnifyingglass"
-        title={trimmed ? `No recipes for “${trimmed}”` : 'No recipes match these filters'}
-        message={message}
+      <View
+        style={[
+          styles.notice,
+          { backgroundColor: theme.colors.warningSoft, borderRadius: theme.radii.lg },
+        ]}
       >
+        <Text variant="headline" accessibilityRole="header" style={styles.title}>
+          {trimmed ? `No recipes for “${trimmed}”` : 'No recipes match these filters'}
+        </Text>
+        <Text variant="subhead" tone="muted">
+          {message}
+        </Text>
         <View style={styles.actions}>
           {hasFilters ? (
-            <Button label="Clear filters" variant="secondary" onPress={onClearFilters} />
+            <Button label="Clear filters" variant="secondary" size="sm" onPress={onClearFilters} />
           ) : null}
           {broader ? (
             <Button
               label={`Search “${broader}”`}
               variant="secondary"
+              size="sm"
               onPress={() => onSearch(broader)}
             />
           ) : null}
           {onAskChef && trimmed ? (
-            <Button label="Ask Chef instead" variant="ghost" icon="sparkles" onPress={onAskChef} />
+            <Button label="Ask Chef instead" variant="ghost" size="sm" onPress={onAskChef} />
           ) : null}
         </View>
-      </EmptyState>
+      </View>
       <SuggestionChips title="Ideas to try" items={ideas} onPick={onSearch} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { gap: space.lg, paddingBottom: space.xxl },
-  actions: { gap: space.sm, alignItems: 'center' },
+  container: { gap: space.xl, paddingBottom: space.xxl },
+  notice: { gap: space.sm, padding: space.md },
+  title: { fontFamily: fontFamily.textBold },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, paddingTop: space.xs },
 });

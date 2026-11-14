@@ -1,20 +1,22 @@
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import {
-  Button,
   EmptyState,
   ErrorState,
+  GlassIconButton,
   Skeleton,
   SkeletonGroup,
   Text,
+  fontFamily,
   toast,
   useTheme,
 } from '@/ui';
 import { gutter, space } from '@/ui/tokens';
 
+import { InboxHeader } from '../components/InboxHeader';
 import { NotificationRow } from '../components/NotificationRow';
 import { PushOptInCard } from '../components/PushOptInCard';
 import { notificationTarget, targetInputOf } from '../describe';
@@ -68,7 +70,7 @@ export function NotificationsScreen() {
   const renderItem: ListRenderItem<InboxRow> = useCallback(
     ({ item: row }) =>
       row.type === 'header' ? (
-        <Text variant="label" tone="muted" style={styles.sectionTitle}>
+        <Text variant="label" accessibilityRole="header" style={styles.sectionTitle}>
           {row.title}
         </Text>
       ) : (
@@ -79,17 +81,15 @@ export function NotificationsScreen() {
 
   const markAllButton =
     unread > 0 || hasUnreadLoaded ? (
-      <Button
-        label="Mark all read"
-        size="sm"
-        variant="ghost"
-        haptic={false}
+      <GlassIconButton
+        icon="envelope.open"
+        accessibilityLabel="Mark all read"
         onPress={() => markRead.mutate(undefined)}
         testID="mark-all-read"
       />
     ) : null;
 
-  const header = <Stack.Screen options={{ headerRight: () => markAllButton }} />;
+  const header = <InboxHeader title="Notifications" action={markAllButton} />;
 
   if (inbox.isPending) {
     return (
@@ -118,6 +118,7 @@ export function NotificationsScreen() {
         keyExtractor={(row) => row.key}
         getItemType={(row) => row.type}
         contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.list}
         ListHeaderComponent={
           items.length > 0 ? (
             <View style={styles.listHeader}>
@@ -160,7 +161,13 @@ const styles = StyleSheet.create({
   skeleton: { padding: gutter, gap: space.lg },
   skeletonRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   skeletonText: { flex: 1, gap: space.sm },
-  sectionTitle: { paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.xs },
+  sectionTitle: {
+    fontFamily: fontFamily.textBold,
+    paddingHorizontal: gutter,
+    paddingTop: space.md,
+    paddingBottom: space.xs,
+  },
+  list: { paddingTop: space.xs },
   listHeader: { paddingHorizontal: gutter, paddingTop: space.md },
   footer: { padding: gutter },
 });

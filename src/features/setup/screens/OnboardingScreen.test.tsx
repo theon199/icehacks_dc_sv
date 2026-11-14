@@ -110,7 +110,7 @@ describe('OnboardingScreen', () => {
     await user.press(continueButton());
 
     // Diet.
-    await user.press(await screen.findByRole('checkbox', { name: 'Vegetarian' }));
+    await user.press(await screen.findByRole('radio', { name: 'Vegetarian' }));
     await user.press(continueButton());
 
     // Allergens need an explicit answer.

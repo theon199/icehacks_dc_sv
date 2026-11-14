@@ -24,6 +24,7 @@ import { selectCookEntries, selectSavedIds, useCookLogStore, useSavedStore } fro
 import type { PostKind, PublishedComment, PublishedPost } from './api/schemas';
 import { recentCookedRecipeIds } from './logic/myRecipes';
 export { NotificationBell } from '@/features/notifications';
+export { ProfileButton } from '@/features/shell';
 
 // -------------------------------------------------------------------------------------------------
 // Recipes (catalog)

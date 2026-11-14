@@ -1,34 +1,28 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { memo, useCallback } from 'react';
-import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { formatNumber } from '@/lib/format';
-import {
-  Icon,
-  PressableScale,
-  Text,
-  fontFamily,
-  gutter,
-  space,
-  useTheme,
-  type Palette,
-} from '@/ui';
+import { Icon, Text, fontFamily, gutter, palettes, space, useTheme } from '@/ui';
+import { withAlpha } from '@/ui/color';
 
+import { CookedCountChip } from './CookedCountChip';
 import { useWeeklyTopDishes, type WeeklyTopDish } from '../hooks/useRecipes';
 
 /** About three and a half tiles fit across, so the cut-off one says "more this way". */
 const VISIBLE_TILES = 3.5;
 const TILE_GAP = space.sm;
-const MIN_TILE = 96;
+const MIN_TILE = 88;
 const MAX_TILE = 128;
-const TILE_ASPECT = 1.25;
-const RING = 3;
+/** Story-shaped: a little taller than wide. */
+const TILE_ASPECT = 1.3;
+const NUMERAL_SHADOW = withAlpha(palettes.light.text, 0.55);
 
-function tileWidth(windowWidth: number): number {
+export function railTileWidth(windowWidth: number): number {
   const visibleGaps = Math.floor(VISIBLE_TILES);
   const fit = (windowWidth - gutter - visibleGaps * TILE_GAP) / VISIBLE_TILES;
-  return Math.round(Math.min(MAX_TILE, Math.max(MIN_TILE, fit)));
+  return Math.floor(Math.min(MAX_TILE, Math.max(MIN_TILE, fit)));
 }
 
 interface DishTileProps {
@@ -42,70 +36,52 @@ const DishTile = memo(function DishTile({ dish, rank, width }: DishTileProps) {
   const cooks = `${formatNumber(dish.cooks, 0)} cook${dish.cooks === 1 ? '' : 's'}`;
   const id = dish.recipe.id;
   const open = useCallback(() => router.push({ pathname: '/recipe/[id]', params: { id } }), [id]);
-  const height = Math.round(width * TILE_ASPECT);
-  // Marks on photos stay light in both appearances.
-  const onPhoto: keyof Palette = 'onImage';
   return (
-    <PressableScale
+    <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Number ${rank}: ${dish.recipe.title}, cooked by ${cooks} this week`}
+      accessibilityHint="Opens this recipe"
       onPress={open}
-      style={[styles.tile, { width }]}
+      style={({ pressed }) => [styles.tile, { width }, pressed && styles.pressed]}
     >
       <View
         style={[
-          styles.ring,
+          styles.art,
           {
-            width,
-            height,
-            borderRadius: theme.radii.lg + RING,
-            borderColor: theme.colors.highlight,
+            height: Math.round(width * TILE_ASPECT),
+            borderRadius: theme.radii.lg,
+            backgroundColor: theme.colors.surface,
           },
         ]}
       >
-        <View
-          style={[
-            styles.art,
-            { borderRadius: theme.radii.lg, backgroundColor: theme.colors.surfaceSunken },
-          ]}
+        {dish.recipe.imageUrl ? (
+          <Image
+            source={{ uri: dish.recipe.imageUrl }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            recyclingKey={dish.recipe.id}
+            transition={150}
+            accessible={false}
+          />
+        ) : (
+          <Icon name="fork.knife" android="restaurant" size={28} color="textSubtle" />
+        )}
+        <Text
+          color="onImage"
+          style={[styles.rank, { textShadowColor: NUMERAL_SHADOW }]}
+          accessible={false}
+          maxFontSizeMultiplier={1}
         >
-          {dish.recipe.imageUrl ? (
-            <Image
-              source={{ uri: dish.recipe.imageUrl }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              recyclingKey={dish.recipe.id}
-              accessible={false}
-            />
-          ) : (
-            <Icon name="fork.knife" android="restaurant" size={28} color="textSubtle" />
-          )}
-          <View
-            style={[
-              styles.count,
-              { backgroundColor: theme.colors.scrim, borderRadius: theme.radii.pill },
-            ]}
-            accessible={false}
-          >
-            <Icon name="checkmark.circle" android="check_circle" size={14} color={onPhoto} />
-            <Text variant="label" color={onPhoto} accessible={false}>
-              {`${formatNumber(dish.cooks, 0)}×`}
-            </Text>
-          </View>
-          <Text
-            color={onPhoto}
-            style={[styles.rank, { textShadowColor: theme.colors.shadow }]}
-            accessible={false}
-            maxFontSizeMultiplier={1}
-          >
-            {rank}
-          </Text>
+          {rank}
+        </Text>
+        <View style={styles.countSlot}>
+          <CookedCountChip count={dish.cooks} />
         </View>
       </View>
-      <Text variant="footnote" numberOfLines={1} accessible={false} style={styles.title}>
+      <Text variant="caption" numberOfLines={1} accessible={false} style={styles.title}>
         {dish.recipe.title}
       </Text>
-    </PressableScale>
+    </Pressable>
   );
 });
 
@@ -114,10 +90,12 @@ export function WeeklyTopDishes() {
   const dishes = useWeeklyTopDishes();
   const { width: windowWidth } = useWindowDimensions();
   if (dishes.length === 0) return null;
-  const width = tileWidth(windowWidth);
+  const width = railTileWidth(windowWidth);
   return (
-    <View style={styles.block}>
-      <Text variant="title3">Most cooked this week</Text>
+    <View style={styles.block} testID="most-cooked">
+      <Text variant="headline" accessibilityRole="header" style={styles.heading}>
+        Most cooked this week
+      </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -133,27 +111,19 @@ export function WeeklyTopDishes() {
 }
 
 const styles = StyleSheet.create({
-  block: { gap: space.md },
+  block: { gap: space.sm },
+  heading: { fontFamily: fontFamily.textBold },
   // The rail runs to the screen's right edge instead of stopping at the gutter.
   bleed: { marginRight: -gutter },
   strip: { gap: TILE_GAP, paddingRight: gutter },
-  tile: { gap: space.xs + 2 },
-  ring: { borderWidth: RING, padding: 0 },
-  art: { flex: 1, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  count: {
-    position: 'absolute',
-    top: space.sm,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    paddingHorizontal: space.sm + 2,
-    paddingVertical: space.xs,
-  },
+  tile: { gap: space.xs },
+  pressed: { opacity: 0.78 },
+  art: { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  countSlot: { position: 'absolute', top: space.xs, right: space.xs },
   rank: {
     position: 'absolute',
     left: space.sm,
-    bottom: -2,
+    bottom: 0,
     fontFamily: fontFamily.displayBold,
     fontSize: 40,
     lineHeight: 46,

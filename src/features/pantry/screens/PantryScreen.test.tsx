@@ -23,7 +23,15 @@ jest.mock(
   () => jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').expoSqliteFake as unknown,
 );
 jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  Stack: { Screen: () => null },
+  router: {
+    push: jest.fn(),
+    back: jest.fn(),
+    replace: jest.fn(),
+    canGoBack: jest.fn(() => true),
+  },
+}));
 jest.mock('expo-crypto', () => ({
   randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
 }));
@@ -58,7 +66,7 @@ beforeEach(() => {
   useSettingsStore.getState().reset();
   useToastStore.getState().clear();
   useSessionStore.setState({ birthYear: null, aiConsent: false });
-  jest.mocked(router.push).mockClear();
+  jest.clearAllMocks();
 });
 
 afterEach(() => client.clear());
@@ -80,8 +88,11 @@ describeDb('PantryScreen', () => {
     );
     useSettingsStore.getState().setUnits('metric');
     await renderPantry();
-    expect(await screen.findByText('Fruit & veg')).toBeOnTheScreen();
-    expect(screen.getByText('Grains, bread & pasta')).toBeOnTheScreen();
+    expect(await screen.findByText('Fruit & veg · 1')).toBeOnTheScreen();
+    expect(screen.getByText('Grains, bread & pasta · 1')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Your 2 on hand are left off your shopping list and its cost.'),
+    ).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Rice, 1 kg' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Onion, 3' })).toBeOnTheScreen();
   });
@@ -117,13 +128,32 @@ describeDb('PantryScreen', () => {
     expect(itemNamed('Rice')).toEqual(before);
   });
 
+  it('flags items to use soon on their tile', async () => {
+    usePantryStore.getState().add(
+      {
+        ingredientId: 'milk',
+        name: 'Milk',
+        category: 'dairy',
+        expiresAt: new Date().toISOString(),
+      },
+      at,
+    );
+    await renderPantry();
+    expect(await screen.findByText('Use today')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Milk, Some on hand, Use today' })).toBeOnTheScreen();
+  });
+
   it('adds a catalog ingredient from search, or free text as written', async () => {
     const user = userEvent.setup();
     await renderPantry();
+    await user.press(screen.getByTestId('pantry-add'));
     await fireEvent.changeText(screen.getByTestId('pantry-search'), 'chickpea');
     await user.press(await screen.findByTestId('pantry-result-chickpea'));
     expect(itemNamed('chickpea')).toMatchObject({ ingredientId: 'chickpea', category: 'legume' });
+    // A search result closes the sheet, so the confirmation shows over the pantry.
+    await waitFor(() => expect(screen.queryByTestId('pantry-search')).toBeNull());
 
+    await user.press(screen.getByTestId('pantry-add'));
     await fireEvent.changeText(screen.getByTestId('pantry-search'), 'grandma’s chutney');
     await user.press(await screen.findByTestId('pantry-result-custom'));
     expect(itemNamed('grandma’s chutney')).toMatchObject({
@@ -135,11 +165,28 @@ describeDb('PantryScreen', () => {
   it('adds a staple in one tap and stops offering it', async () => {
     const user = userEvent.setup();
     await renderPantry();
+    await user.press(screen.getByTestId('pantry-add'));
     await user.press(await screen.findByTestId('staple-salt'));
     expect(Object.values(usePantryStore.getState().items)).toEqual([
       expect.objectContaining({ ingredientId: 'salt', category: 'spice', qty: null }),
     ]);
     await waitFor(() => expect(screen.queryByTestId('staple-salt')).toBeNull());
+    // Staples keep the sheet open for the next one.
+    expect(screen.getByTestId('pantry-search')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('pantry-add-done'));
+    await waitFor(() => expect(screen.queryByTestId('pantry-search')).toBeNull());
+  });
+
+  it('goes back from the glass back circle and links to the shopping list', async () => {
+    const user = userEvent.setup();
+    await renderPantry();
+    await user.press(screen.getByRole('button', { name: 'Back' }));
+    expect(router.back).toHaveBeenCalledTimes(1);
+    jest.mocked(router.canGoBack).mockReturnValueOnce(false);
+    await user.press(screen.getByRole('button', { name: 'Back' }));
+    expect(router.replace).toHaveBeenCalledWith('/cookbook');
+    await user.press(screen.getByTestId('pantry-open-shopping'));
+    expect(router.push).toHaveBeenCalledWith('/shopping');
   });
 
   it('opens the Snap camera, not its results screen, to add from a photo', async () => {

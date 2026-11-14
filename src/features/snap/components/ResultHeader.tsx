@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { fontFamily, radii, space, Text, useTheme } from '@/ui';
+import { radii, space, Text, useTheme } from '@/ui';
 
 export interface ResultHeaderProps {
   photoUri: string;
@@ -13,9 +13,9 @@ export interface ResultHeaderProps {
   children?: ReactNode;
 }
 
-const THUMB = 64;
+const THUMB = 56;
 
-/** The photo that was read, with what Famara made of it. */
+/** The head of a result sheet: the photo that was read beside what Famara made of it. */
 export function ResultHeader({
   photoUri,
   title,
@@ -33,9 +33,7 @@ export function ResultHeader({
         accessibilityLabel="Your photo"
       />
       <View style={styles.text}>
-        <Text variant="title2" style={styles.title}>
-          {title}
-        </Text>
+        <Text variant="title2">{title}</Text>
         {subtitle ? (
           <Text variant="subhead" tone="muted">
             {subtitle}
@@ -43,7 +41,7 @@ export function ResultHeader({
         ) : null}
         {children}
         {remaining != null ? (
-          <Text variant="caption" tone="subtle">
+          <Text variant="caption" tone="muted">
             {remaining === 1 ? '1 snap left today' : `${remaining} snaps left today`}
           </Text>
         ) : null}
@@ -53,8 +51,7 @@ export function ResultHeader({
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: space.lg, alignItems: 'flex-start' },
-  thumb: { width: THUMB, height: THUMB, borderRadius: radii.lg },
-  title: { fontFamily: fontFamily.textBold },
+  row: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
+  thumb: { width: THUMB, height: THUMB, borderRadius: radii.md + 2 },
   text: { flex: 1, gap: space.xxs },
 });

@@ -1,44 +1,44 @@
+import { useIsFocused, useRouter } from 'expo-router';
+import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Header, SegmentedControl, useTheme, type Segment } from '@/ui';
-import { gutter, space } from '@/ui/tokens';
+import { useTheme } from '@/ui';
 
 import { ChefPane } from '../components/ChefPane';
+import { SearchModeSwitch } from '../components/SearchModeSwitch';
 import { SearchPane } from '../components/SearchPane';
-import { useSearchStore, type SearchMode } from '../searchStore';
+import { useHideTabBar } from '../deps';
+import { useReturnTarget } from '../returnTab';
+import { useSearchStore } from '../searchStore';
 
-const SEGMENTS: readonly Segment<SearchMode>[] = [
-  { value: 'search', label: 'Search' },
-  { value: 'chef', label: 'Chef' },
-];
-
-/** The Search tab: instant recipe search, with Chef one segment away. */
+/**
+ * The Search tab, drawn as the Ask page: instant recipe search with Chef one switch away. It owns
+ * the bottom edge (its own glass bar sits where the tab bar would), so the tab bar hides while it
+ * is on screen, and its back circles return to the tab the person came from.
+ */
 export function SearchScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  useHideTabBar('search', useIsFocused());
   const mode = useSearchStore((state) => state.mode);
   const setMode = useSearchStore((state) => state.setMode);
+  const target = useReturnTarget();
+  const goBack = useCallback(() => router.navigate(target.href), [router, target.href]);
+  const modeSwitch = <SearchModeSwitch mode={mode} onChange={setMode} />;
   return (
     <View
       style={[styles.flex, { backgroundColor: theme.colors.background }]}
       testID="search-screen"
     >
-      <View style={[styles.top, { paddingTop: insets.top + space.sm }]}>
-        <Header size="tab" title="Search" />
-        <SegmentedControl
-          segments={SEGMENTS}
-          value={mode}
-          onChange={setMode}
-          accessibilityLabel="Search or ask Chef"
-        />
-      </View>
-      {mode === 'search' ? <SearchPane /> : <ChefPane />}
+      {mode === 'search' ? (
+        <SearchPane accessory={modeSwitch} returnTarget={target} onReturn={goBack} />
+      ) : (
+        <ChefPane accessory={modeSwitch} onBack={goBack} backLabel={`Back to ${target.label}`} />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  top: { gap: space.md, paddingHorizontal: gutter, paddingBottom: space.md },
 });

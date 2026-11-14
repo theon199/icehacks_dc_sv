@@ -1,71 +1,32 @@
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
-import { router } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { localIsoDate } from '@/domain/plan';
 import { selectUnits, useSettingsStore } from '@/stores/settings';
 import { useShoppingStore } from '@/stores/shopping';
 import {
-  EmptyState,
-  ErrorState,
-  Icon,
-  PressableScale,
-  SkeletonGroup,
+  HEADER_TOP_OFFSET,
   Skeleton,
-  Text,
+  SkeletonGroup,
+  errorMessageFor,
   gutter,
   space,
   useTheme,
 } from '@/ui';
 
 import { CheckRow } from '../components/CheckRow';
+import { NoticeCard } from '../components/NoticeCard';
+import { PantryLine, PantryToggle, SectionHeading } from '../components/SectionRows';
+import { ShoppingFooter } from '../components/ShoppingFooter';
 import { ShoppingHeader } from '../components/ShoppingHeader';
 import { rangeFor, rangeLabel, type RangePreset } from '../planRange';
 import { shoppingRows, type ShoppingRow } from '../rows';
 import { toCheckState } from '../shareText';
 import { useShoppingActions } from '../useShoppingActions';
 import { useShoppingList } from '../useShoppingList';
-
-function Heading({ title, count }: { title: string; count: number }) {
-  return (
-    <View style={styles.heading} accessibilityRole="header">
-      <Text variant="headline">{title}</Text>
-      <Text variant="footnote" tone="subtle">
-        {count}
-      </Text>
-    </View>
-  );
-}
-
-function PantryToggle({
-  count,
-  open,
-  onPress,
-}: {
-  count: number;
-  open: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <PressableScale
-      testID="shopping-pantry-toggle"
-      accessibilityRole="button"
-      accessibilityState={{ expanded: open }}
-      accessibilityLabel={`Already in your pantry, ${count} items`}
-      onPress={onPress}
-      style={styles.heading}
-    >
-      <Text variant="headline">Already in your pantry</Text>
-      <View style={styles.toggleEnd}>
-        <Text variant="footnote" tone="subtle">
-          {count}
-        </Text>
-        <Icon name={open ? 'chevron.up' : 'chevron.down'} size={14} color="textSubtle" />
-      </View>
-    </PressableScale>
-  );
-}
 
 function summaryFor(meals: number, toBuy: number, missing: number): string {
   const parts = [
@@ -76,9 +37,18 @@ function summaryFor(meals: number, toBuy: number, missing: number): string {
   return parts.join(' · ');
 }
 
-/** The shopping list for the planned meals in a chosen range of days. */
+function goBack() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/cookbook');
+}
+
+const openPlan = () => router.push('/cookbook');
+const openPantry = () => router.push('/pantry');
+
+/** The shopping list for the planned meals in a chosen range of days, one card per aisle. */
 export function ShoppingScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [today] = useState(() => localIsoDate(new Date()));
   const [preset, setPreset] = useState<RangePreset>('thisWeek');
   const [showPantry, setShowPantry] = useState(false);
@@ -88,6 +58,7 @@ export function ShoppingScreen() {
   const checked = useShoppingStore((state) => state.checked);
   const toggle = useShoppingStore((state) => state.toggle);
   const actions = useShoppingActions({ list, title: `Shopping list · ${rangeLabel(range)}` });
+  const togglePantry = useCallback(() => setShowPantry((open) => !open), []);
 
   const rows = useMemo(
     () =>
@@ -107,7 +78,7 @@ export function ShoppingScreen() {
     ({ item: row }: ListRenderItemInfo<ShoppingRow>) => {
       switch (row.type) {
         case 'heading':
-          return <Heading title={row.title} count={row.count} />;
+          return <SectionHeading title={row.title} count={row.count} />;
         case 'check':
           return (
             <CheckRow
@@ -115,48 +86,46 @@ export function ShoppingScreen() {
               title={row.title}
               subtitle={row.subtitle}
               checked={row.checked}
+              closes={row.closes}
               onToggle={toggle}
             />
           );
         case 'pantryToggle':
-          return (
-            <PantryToggle
-              count={row.count}
-              open={showPantry}
-              onPress={() => setShowPantry((open) => !open)}
-            />
-          );
+          return <PantryToggle count={row.count} open={showPantry} onPress={togglePantry} />;
         case 'pantryItem':
-          return (
-            <Text variant="callout" tone="muted" style={styles.pantryItem}>
-              {row.title}
-            </Text>
-          );
+          return <PantryLine title={row.title} closes={row.closes} />;
       }
     },
-    [toggle, showPantry],
+    [toggle, showPantry, togglePantry],
   );
 
-  let empty;
+  let empty = null;
   if (status === 'loading') {
     empty = (
       <SkeletonGroup label="Building your list">
-        <Skeleton height={20} width="40%" />
-        <Skeleton height={44} />
-        <Skeleton height={44} />
-        <Skeleton height={44} />
+        <View style={styles.skeleton}>
+          <Skeleton height={180} radius="card" />
+          <Skeleton height={120} radius="card" />
+        </View>
       </SkeletonGroup>
     );
   } else if (status === 'error') {
-    empty = <ErrorState error={error} onRetry={retry} />;
+    empty = (
+      <NoticeCard
+        alert
+        title="Something didn’t load"
+        message={errorMessageFor(error)}
+        actionLabel="Try again"
+        onAction={retry}
+      />
+    );
   } else if (status === 'empty' && actions.extras.length === 0) {
     empty = (
-      <EmptyState
-        icon="calendar"
+      <NoticeCard
         title="Nothing planned for these days"
         message="Plan a few meals and everything they need will show up here, minus what’s in your pantry."
         actionLabel="Plan meals"
-        onAction={() => router.push('/cookbook')}
+        onAction={openPlan}
       />
     );
   }
@@ -167,26 +136,26 @@ export function ShoppingScreen() {
   if (status === 'ready' && list && list.items.length === 0 && actions.extras.length === 0) {
     nothingToBuy =
       list.mealCount === 0 ? (
-        <EmptyState
-          icon="calendar"
+        <NoticeCard
           title="These recipes aren’t available"
           message="The meals planned for these days are no longer in the recipe collection. Swap them in your plan to build a list."
           actionLabel="Open plan"
-          onAction={() => router.push('/cookbook')}
+          onAction={openPlan}
         />
       ) : (
-        <EmptyState
-          icon="checkmark.seal"
-          title="You have everything"
-          message="Your pantry covers every planned meal."
-        />
+        <NoticeCard title="You have everything" message="Your pantry covers every planned meal." />
       );
   }
 
+  const settled = status === 'ready' || status === 'empty';
+
   return (
-    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+    <View
+      style={[styles.flex, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}
+    >
+      <Stack.Screen options={{ headerShown: false }} />
       <FlashList
-        data={status === 'loading' || status === 'error' ? [] : rows}
+        data={settled ? rows : []}
         renderItem={renderItem}
         keyExtractor={(row) => row.key}
         getItemType={(row) => row.type}
@@ -202,6 +171,15 @@ export function ShoppingScreen() {
                   ? summaryFor(plannedMeals, list.items.length, list.missingRecipeIds.length)
                   : null
               }
+              onBack={goBack}
+            />
+            {nothingToBuy}
+          </>
+        }
+        ListEmptyComponent={empty}
+        ListFooterComponent={
+          settled ? (
+            <ShoppingFooter
               toBuy={list?.items ?? []}
               checkedCount={tickedOnList}
               canShare={actions.canShare}
@@ -209,15 +187,19 @@ export function ShoppingScreen() {
               onMarkBought={actions.markBought}
               onClearTicks={actions.clearTicks}
               onAddExtra={actions.addExtra}
+              onOpenPantry={openPantry}
             />
-            {nothingToBuy}
-          </>
+          ) : null
         }
-        ListEmptyComponent={empty}
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior="never"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={{
+          paddingHorizontal: gutter,
+          paddingTop: HEADER_TOP_OFFSET,
+          paddingBottom: insets.bottom + space.xl,
+        }}
       />
     </View>
   );
@@ -225,15 +207,5 @@ export function ShoppingScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { paddingHorizontal: gutter, paddingBottom: space.xxxl },
-  heading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 44,
-    paddingTop: space.lg,
-    paddingBottom: space.xs,
-  },
-  toggleEnd: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  pantryItem: { paddingVertical: space.xs, paddingLeft: space.xxxl },
+  skeleton: { gap: space.md, marginTop: space.md },
 });

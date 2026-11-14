@@ -1,7 +1,8 @@
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
-import { router, type Href } from 'expo-router';
+import { Stack, router, type Href } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { snapCameraHref } from '@/features/snap';
 import {
@@ -9,19 +10,19 @@ import {
   selectPantryShelves,
   usePantryStore,
   type NewPantryItem,
-  type PantryItem,
 } from '@/stores/pantry';
 import { selectUnits, useSettingsStore } from '@/stores/settings';
-import { Button, EmptyState, Text, gutter, space, toast, useTheme } from '@/ui';
+import { Button, HEADER_TOP_OFFSET, Text, gutter, radii, space, toast, useTheme } from '@/ui';
 
-import { PantryAddBar } from '../components/PantryAddBar';
+import { PANTRY_ACTION_HEIGHT } from '../components/metrics';
+import { PantryAddSheet } from '../components/PantryAddSheet';
+import { PantryHeader } from '../components/PantryHeader';
 import { PantryItemEditor } from '../components/PantryItemEditor';
-import { PantryItemRow } from '../components/PantryItemRow';
 import { PantryMealsSection } from '../components/PantryMealsSection';
-import { QuickStaples } from '../components/QuickStaples';
+import { ShelfHeading, ShelfTiles } from '../components/ShelfCard';
 import { restorePantryItem, useSnapAccess } from '../deps';
 import type { PantryPatch } from '../editForm';
-import { SHELF_TITLES } from '../shelves';
+import { shelfRows, type ShelfRow } from '../shelfRows';
 
 /**
  * The Snap camera (the Snap tab), opened on its pantry mode. Its pantry results screen reads the
@@ -29,24 +30,17 @@ import { SHELF_TITLES } from '../shelves';
  */
 const SNAP_CAMERA_HREF: Href = snapCameraHref({ mode: 'pantry' });
 
-type Row =
-  | { type: 'shelf'; key: string; title: string; count: number }
-  | { type: 'item'; key: string; item: PantryItem };
-
-function ShelfHeader({ title, count }: { title: string; count: number }) {
-  return (
-    <View style={styles.shelf} accessibilityRole="header">
-      <Text variant="headline">{title}</Text>
-      <Text variant="footnote" tone="subtle">
-        {count}
-      </Text>
-    </View>
-  );
+function goBack() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/cookbook');
 }
 
-/** Pantry: what is at home, shelf by shelf, with ways to add more and what it can become. */
+const openShopping = () => router.push('/shopping');
+
+/** Pantry: what is at home, one card per shelf, with ways to add more and what it can become. */
 export function PantryScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const shelves = usePantryStore(selectPantryShelves);
   const onHand = usePantryStore(selectPantryIngredientIds);
   const add = usePantryStore((state) => state.add);
@@ -54,22 +48,15 @@ export function PantryScreen() {
   const remove = usePantryStore((state) => state.remove);
   const system = useSettingsStore(selectUnits);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const editing = usePantryStore((state) => (editingId ? (state.items[editingId] ?? null) : null));
   // One "now" per visit keeps use-by hints stable while scrolling.
   const [now] = useState(() => new Date());
   const snap = useSnapAccess();
 
-  const rows = useMemo<Row[]>(
-    () =>
-      shelves.flatMap(({ category, items }) => [
-        {
-          type: 'shelf' as const,
-          key: `shelf:${category}`,
-          title: SHELF_TITLES[category],
-          count: items.length,
-        },
-        ...items.map((item) => ({ type: 'item' as const, key: item.id, item })),
-      ]),
+  const rows = useMemo(() => shelfRows(shelves), [shelves]);
+  const count = useMemo(
+    () => shelves.reduce((total, shelf) => total + shelf.items.length, 0),
     [shelves],
   );
 
@@ -97,60 +84,84 @@ export function PantryScreen() {
     },
     [remove],
   );
+  const onSnap = useCallback(
+    () => router.push(snap === 'open' ? SNAP_CAMERA_HREF : '/ai-consent'),
+    [snap],
+  );
+  const openAdd = useCallback(() => setAdding(true), []);
+  const closeAdd = useCallback(() => setAdding(false), []);
 
   const renderItem = useCallback(
-    ({ item: row }: ListRenderItemInfo<Row>) =>
+    ({ item: row }: ListRenderItemInfo<ShelfRow>) =>
       row.type === 'shelf' ? (
-        <ShelfHeader title={row.title} count={row.count} />
+        <ShelfHeading category={row.category} title={row.title} count={row.count} />
       ) : (
-        <PantryItemRow item={row.item} system={system} now={now} onEdit={setEditingId} />
+        <ShelfTiles
+          items={row.items}
+          closes={row.closes}
+          system={system}
+          now={now}
+          onEdit={setEditingId}
+        />
       ),
     [system, now],
   );
 
-  const header = (
-    <View style={styles.header}>
-      <PantryAddBar onAdd={onAdd} />
-      <QuickStaples onHand={onHand} onAdd={onAdd} />
-      {snap === 'unavailable' ? null : (
-        <Button
-          testID="pantry-snap"
-          label="Scan your shelves with Snap"
-          icon="camera"
-          variant="secondary"
-          onPress={() => router.push(snap === 'open' ? SNAP_CAMERA_HREF : '/ai-consent')}
-          accessibilityHint={
-            snap === 'open'
-              ? 'Opens the Snap camera to photograph your shelves'
-              : 'Snap uses AI. Opens the AI agreement first'
-          }
-        />
-      )}
-      <PantryMealsSection />
-      {rows.length > 0 ? <Text variant="title3">On your shelves</Text> : null}
-    </View>
-  );
-
   return (
-    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+    <View
+      style={[styles.flex, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}
+    >
+      <Stack.Screen options={{ headerShown: false }} />
       <FlashList
         data={rows}
         renderItem={renderItem}
         keyExtractor={(row) => row.key}
         getItemType={(row) => row.type}
-        ListHeaderComponent={header}
-        ListEmptyComponent={
-          <EmptyState
-            icon="cabinet"
-            title="Your pantry is empty"
-            message="Add what you have at home and we’ll suggest meals and trim your shopping list."
-          />
+        ListHeaderComponent={
+          <PantryHeader onBack={goBack} snap={snap} onSnap={onSnap} count={count} />
         }
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentContainerStyle={styles.content}
+        ListEmptyComponent={
+          <View
+            testID="pantry-empty"
+            style={[styles.empty, { backgroundColor: theme.colors.surface }]}
+          >
+            <Text variant="headline" accessibilityRole="header">
+              Your pantry is empty
+            </Text>
+            <Text variant="body" tone="muted">
+              Add what you have at home and we’ll suggest meals and trim your shopping list.
+            </Text>
+          </View>
+        }
+        ListFooterComponent={
+          <View style={styles.footer}>
+            <PantryMealsSection />
+            <Button
+              testID="pantry-add"
+              label="Add an ingredient"
+              variant="secondary"
+              onPress={openAdd}
+              fullWidth
+              style={styles.action}
+            />
+            <Button
+              testID="pantry-open-shopping"
+              label="Open shopping list"
+              variant="ghost"
+              onPress={openShopping}
+              fullWidth
+              style={styles.action}
+            />
+          </View>
+        }
+        contentInsetAdjustmentBehavior="never"
+        contentContainerStyle={{
+          paddingHorizontal: gutter,
+          paddingTop: HEADER_TOP_OFFSET,
+          paddingBottom: insets.bottom + space.xl,
+        }}
       />
+      <PantryAddSheet visible={adding} onHand={onHand} onAdd={onAdd} onClose={closeAdd} />
       <PantryItemEditor
         item={editing}
         now={now}
@@ -164,13 +175,7 @@ export function PantryScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { paddingHorizontal: gutter, paddingBottom: space.xxxl },
-  header: { gap: space.xl, paddingTop: space.lg, paddingBottom: space.sm },
-  shelf: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    paddingTop: space.lg,
-    paddingBottom: space.xs,
-  },
+  empty: { gap: space.sm, padding: space.xl, marginTop: space.md, borderRadius: radii.card },
+  footer: { gap: space.md, marginTop: space.md },
+  action: { height: PANTRY_ACTION_HEIGHT },
 });

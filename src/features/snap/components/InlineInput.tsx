@@ -26,7 +26,7 @@ export function InlineInput({ width, pill = false, ...rest }: InlineInputProps) 
         theme.typography.callout,
         {
           color: theme.colors.text,
-          backgroundColor: theme.colors.surfaceSunken,
+          backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
         },
         width != null ? { width } : styles.grow,

@@ -1,10 +1,9 @@
 import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { formatRelativeTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase/client';
-import { Avatar, Icon, PressableScale, Text, useTheme } from '@/ui';
-import { space } from '@/ui/tokens';
+import { Avatar, Icon, Text, fontFamily, gutter, useTheme, type Palette } from '@/ui';
 
 import { iconFor, notificationText, type BadgeNames } from '../describe';
 import type { NotificationItem } from '../model';
@@ -26,7 +25,21 @@ function avatarUrl(path: string | null): string | null {
   }
 }
 
-const AVATAR_SIZE = 44;
+const AVATAR_SIZE = 42;
+const KIND_SIZE = 19;
+
+/** The small disc on the avatar's corner: what kind of activity this is. */
+const KIND_COLORS: Record<NotificationItem['kind'], { fill: keyof Palette; glyph: keyof Palette }> =
+  {
+    like: { fill: 'danger', glyph: 'onDanger' },
+    comment: { fill: 'accent', glyph: 'onAccent' },
+    reply: { fill: 'accent', glyph: 'onAccent' },
+    follow: { fill: 'primary', glyph: 'onPrimary' },
+    friend_accept: { fill: 'primary', glyph: 'onPrimary' },
+    moderation: { fill: 'primary', glyph: 'onPrimary' },
+    appeal_decision: { fill: 'primary', glyph: 'onPrimary' },
+    badge: { fill: 'highlight', glyph: 'onHighlight' },
+  };
 
 function NotificationRowView({ item, onPress, now, badgeNames }: NotificationRowProps) {
   const theme = useTheme();
@@ -34,52 +47,62 @@ function NotificationRowView({ item, onPress, now, badgeNames }: NotificationRow
   const text = notificationText(item, badgeNames);
   const when = formatRelativeTime(item.created_at, now);
   const actorName = item.actor_display_name?.trim();
+  // The sentence leads with the actor's name when there is one; that name reads in bold.
+  const lead = actorName && text.startsWith(actorName) ? actorName : null;
+  const rest = lead ? text.slice(lead.length) : text;
+  const kind = KIND_COLORS[item.kind];
 
   return (
-    <PressableScale
+    <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${unread ? 'Unread. ' : ''}${text} ${when}`}
       accessibilityHint="Opens what this notification is about"
-      pressedScale={0.99}
-      pressedOpacity={0.7}
       onPress={() => onPress(item)}
-      style={[styles.row, unread && { backgroundColor: theme.colors.primarySoft }]}
+      style={({ pressed }) => [
+        styles.row,
+        unread && { backgroundColor: theme.colors.highlightSoft },
+        pressed && styles.pressed,
+      ]}
       testID={`notification-${item.id}`}
     >
-      <View>
+      {unread ? (
+        <View
+          style={[styles.newDot, { backgroundColor: theme.colors.success }]}
+          accessible={false}
+        />
+      ) : null}
+      <View style={styles.who}>
         {actorName ? (
           <Avatar name={actorName} uri={avatarUrl(item.actor_avatar_path)} size={AVATAR_SIZE} />
         ) : (
           <View
-            style={[styles.iconWell, { backgroundColor: theme.colors.surfaceSunken }]}
+            style={[styles.iconWell, { backgroundColor: theme.colors.primarySoft }]}
             accessible={false}
           >
-            <Icon name={iconFor(item.kind)} size={20} color="primary" />
+            <Icon name={iconFor(item.kind)} size={20} color="text" />
           </View>
         )}
-        {actorName ? (
-          <View
-            style={[
-              styles.kindBadge,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.background },
-            ]}
-          >
-            <Icon name={iconFor(item.kind)} size={11} color="accent" />
-          </View>
-        ) : null}
+        <View
+          style={[
+            styles.kind,
+            { backgroundColor: theme.colors[kind.fill], borderColor: theme.colors.background },
+          ]}
+        >
+          <Icon name={iconFor(item.kind)} size={10} color={kind.glyph} />
+        </View>
       </View>
       <View style={styles.text}>
-        <Text variant={unread ? 'bodyStrong' : 'body'} numberOfLines={3}>
-          {text}
-        </Text>
-        <Text variant="footnote" tone="subtle">
-          {when}
+        <Text variant="subhead" tone="muted" numberOfLines={3}>
+          {lead ? (
+            <Text variant="subhead" style={styles.strong}>
+              {lead}
+            </Text>
+          ) : null}
+          {rest}
+          <Text variant="caption" tone="muted">{`  ${when}`}</Text>
         </Text>
       </View>
-      {unread ? (
-        <View style={[styles.dot, { backgroundColor: theme.colors.accent }]} accessible={false} />
-      ) : null}
-    </PressableScale>
+    </Pressable>
   );
 }
 
@@ -89,11 +112,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
-    minHeight: 64,
-    paddingVertical: space.md,
-    paddingHorizontal: space.lg,
+    gap: 11,
+    paddingHorizontal: gutter,
+    paddingVertical: 10,
   },
+  pressed: { opacity: 0.7 },
+  newDot: { position: 'absolute', left: 6, width: 6, height: 6, borderRadius: 3 },
+  who: { width: AVATAR_SIZE, height: AVATAR_SIZE },
   iconWell: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
@@ -101,17 +126,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  kindBadge: {
+  kind: {
     position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    right: -3,
+    bottom: -3,
+    width: KIND_SIZE,
+    height: KIND_SIZE,
+    borderRadius: KIND_SIZE / 2,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: { flex: 1, gap: space.xxs },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+  text: { flex: 1, minWidth: 0 },
+  strong: { fontFamily: fontFamily.textBold },
 });

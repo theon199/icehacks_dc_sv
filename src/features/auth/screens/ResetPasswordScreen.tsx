@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Keyboard, StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Button, EmptyState, Screen, Text, toast, useTheme } from '@/ui';
+import { Button, toast, useTheme } from '@/ui';
 
 import { hasSession, updatePassword } from '../authActions';
-import { FormMessage } from '../components/FormMessage';
+import { AccountPage, PageNotice } from '../components/AccountPage';
 import { PasswordField } from '../components/PasswordField';
 import { useField } from '../useField';
 import { useSubmission } from '../useSubmission';
@@ -59,48 +59,36 @@ export function ResetPasswordScreen() {
 
   if (linkState === 'checking') {
     return (
-      <Screen scroll={false} contentContainerStyle={styles.centre}>
+      <View style={[styles.centre, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator color={theme.colors.primary} accessibilityLabel="Loading" />
-      </Screen>
+      </View>
     );
   }
 
   if (linkState === 'expired') {
     return (
-      <Screen>
-        <EmptyState
-          icon="key.fill"
-          title="This link has expired"
-          message="Password links work once and only for a short time. Ask for a new one."
-          actionLabel="Get a new link"
-          onAction={() => router.replace('/forgot-password')}
+      <AccountPage
+        title="This link has expired."
+        subtitle="Password links work once and only for a short time. Ask for a new one."
+      >
+        <Button
+          label="Get a new link"
+          size="lg"
+          fullWidth
+          onPress={() => router.replace('/forgot-password')}
         />
-      </Screen>
+      </AccountPage>
     );
   }
 
   return (
-    <Screen
-      footer={
-        <Button
-          testID="new-password-submit"
-          label="Save new password"
-          size="lg"
-          fullWidth
-          loading={change.busy}
-          onPress={saveNewPassword}
-        />
-      }
+    <AccountPage
+      title="Choose a new password."
+      subtitle="You’ll use it the next time you log in with your email."
     >
-      <View style={styles.heading}>
-        <Text variant="title1">Choose a new password</Text>
-        <Text variant="callout" tone="muted">
-          You’ll use it the next time you sign in with your email.
-        </Text>
-      </View>
-      {change.failure ? <FormMessage message={change.failure} /> : null}
       <PasswordField
         testID="new-password"
+        look="page"
         label="New password"
         purpose="new"
         value={password.value}
@@ -110,11 +98,19 @@ export function ResetPasswordScreen() {
         hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
         onSubmitEditing={saveNewPassword}
       />
-    </Screen>
+      <PageNotice message={change.failure} />
+      <Button
+        testID="new-password-submit"
+        label="Save new password"
+        size="lg"
+        fullWidth
+        loading={change.busy}
+        onPress={saveNewPassword}
+      />
+    </AccountPage>
   );
 }
 
 const styles = StyleSheet.create({
-  heading: { gap: 6 },
-  centre: { alignItems: 'center', justifyContent: 'center' },
+  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

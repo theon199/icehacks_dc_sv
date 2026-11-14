@@ -1,10 +1,12 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { StyleSheet } from 'react-native';
 
 import { MIN_AI_AGE, selectIsAdult, useSessionStore } from '@/features/auth';
-import { ListRow, Text, toast, Toggle } from '@/ui';
+import { Text, space, toast } from '@/ui';
 
 import { setAiConsent } from '../aiConsent';
+import { SettingsRow, SettingsToggleRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
 
 export const AI_SUMMARY =
@@ -37,8 +39,9 @@ export function AiConsentSection() {
   return (
     <SettingsSection title="AI features">
       {adult ? (
-        <Toggle
+        <SettingsToggleRow
           testID="settings-ai-consent"
+          icon="sparkles"
           label="Use AI features"
           description={AI_SUMMARY}
           value={consent}
@@ -46,15 +49,19 @@ export function AiConsentSection() {
           onValueChange={(next) => void change(next)}
         />
       ) : (
-        <Text variant="footnote" tone="muted" testID="settings-ai-age">
+        <Text variant="caption" tone="muted" testID="settings-ai-age" style={styles.note}>
           {`AI features are available from age ${MIN_AI_AGE}. Everything else in Famara works without them.`}
         </Text>
       )}
-      <ListRow
-        title="How Famara uses AI"
-        icon="sparkles"
+      <SettingsRow
+        label="How Famara uses AI"
+        icon="info.circle"
         onPress={() => router.push('/about/ai-use')}
       />
     </SettingsSection>
   );
 }
+
+const styles = StyleSheet.create({
+  note: { paddingHorizontal: space.md, paddingVertical: space.md },
+});

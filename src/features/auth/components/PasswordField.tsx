@@ -1,8 +1,10 @@
 import { useState, type Ref } from 'react';
-import { StyleSheet, View, type TextInput, type TextInputProps } from 'react-native';
+import { StyleSheet, type TextInput, type TextInputProps } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Icon, PressableScale, Text, TextField } from '@/ui';
+import { Icon, PressableScale } from '@/ui';
+
+import { AccountField, type FieldLook } from './AccountField';
 
 export interface PasswordFieldProps {
   label: string;
@@ -12,6 +14,9 @@ export interface PasswordFieldProps {
   purpose: 'current' | 'new';
   error?: string | null;
   hint?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  look?: FieldLook;
   onBlur?: () => void;
   onSubmitEditing?: () => void;
   returnKeyType?: TextInputProps['returnKeyType'];
@@ -19,7 +24,7 @@ export interface PasswordFieldProps {
   testID?: string;
 }
 
-/** Password input with a show/hide switch underneath. */
+/** Password input with an eye switch inside its trailing edge. */
 export function PasswordField({
   label,
   value,
@@ -27,6 +32,9 @@ export function PasswordField({
   purpose,
   error,
   hint,
+  placeholder,
+  disabled = false,
+  look = 'night',
   onBlur,
   onSubmitEditing,
   returnKeyType = 'go',
@@ -36,54 +44,45 @@ export function PasswordField({
   const [visible, setVisible] = useState(false);
   const isNew = purpose === 'new';
   return (
-    <View style={styles.wrapper}>
-      <TextField
-        {...(ref ? { ref } : {})}
-        {...(testID ? { testID } : {})}
-        label={label}
-        value={value}
-        onChangeText={onChangeText}
-        error={error ?? null}
-        {...(hint ? { hint } : {})}
-        icon="lock.fill"
-        secureTextEntry={!visible}
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
-        textContentType={isNew ? 'newPassword' : 'password'}
-        autoComplete={isNew ? 'new-password' : 'current-password'}
-        {...(isNew ? { passwordRules: 'minlength: 8;' } : {})}
-        returnKeyType={returnKeyType}
-        {...(onBlur ? { onBlur } : {})}
-        {...(onSubmitEditing ? { onSubmitEditing } : {})}
-      />
-      <PressableScale
-        accessibilityRole="switch"
-        accessibilityLabel="Show password"
-        accessibilityState={{ checked: visible }}
-        hitSlop={8}
-        onPress={() => {
-          haptics.selection();
-          setVisible((current) => !current);
-        }}
-        style={styles.toggle}
-      >
-        <Icon name={visible ? 'eye.slash' : 'eye'} size={16} color="primary" />
-        <Text variant="subhead" tone="primary" accessible={false}>
-          {visible ? 'Hide password' : 'Show password'}
-        </Text>
-      </PressableScale>
-    </View>
+    <AccountField
+      {...(ref ? { ref } : {})}
+      {...(testID ? { testID } : {})}
+      label={label}
+      value={value}
+      onChangeText={onChangeText}
+      error={error ?? null}
+      {...(hint ? { hint } : {})}
+      {...(placeholder ? { placeholder } : {})}
+      disabled={disabled}
+      look={look}
+      secureTextEntry={!visible}
+      spellCheck={false}
+      textContentType={isNew ? 'newPassword' : 'password'}
+      autoComplete={isNew ? 'new-password' : 'current-password'}
+      {...(isNew ? { passwordRules: 'minlength: 8;' } : {})}
+      returnKeyType={returnKeyType}
+      {...(onBlur ? { onBlur } : {})}
+      {...(onSubmitEditing ? { onSubmitEditing } : {})}
+      accessory={
+        <PressableScale
+          accessibilityRole="switch"
+          accessibilityLabel="Show password"
+          accessibilityState={{ checked: visible }}
+          pressedOpacity={0.6}
+          pressedScale={1}
+          onPress={() => {
+            haptics.selection();
+            setVisible((current) => !current);
+          }}
+          style={styles.toggle}
+        >
+          <Icon name={visible ? 'eye.slash' : 'eye'} size={20} color="textMuted" />
+        </PressableScale>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: 4 },
-  toggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    minHeight: 36,
-  },
+  toggle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });

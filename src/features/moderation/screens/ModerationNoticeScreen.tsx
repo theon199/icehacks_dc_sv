@@ -4,11 +4,10 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import {
   Button,
-  Card,
   EmptyState,
   ErrorState,
   errorMessageFor,
-  Screen,
+  fontFamily,
   Skeleton,
   SkeletonGroup,
   Text,
@@ -19,6 +18,8 @@ import {
 import { space } from '@/ui/tokens';
 
 import { APPEAL_MAX, appealStatusText, noticeCopy } from '../actions';
+import { ModerationPage } from '../components/ModerationPage';
+import { SectionCard } from '../components/SectionCard';
 import type { Decision } from '../model';
 import { useAppeal, useMyDecisions } from '../queries';
 
@@ -36,10 +37,12 @@ function AppealForm({ decision }: { decision: Decision }) {
   const appeal = useAppeal();
   const trimmed = message.trim();
   return (
-    <Card variant="outlined">
+    <SectionCard>
       <View style={styles.section}>
-        <Text variant="title3">Ask for another look</Text>
-        <Text variant="callout" tone="muted">
+        <Text variant="body" accessibilityRole="header" style={styles.heading}>
+          Ask for another look
+        </Text>
+        <Text variant="body" tone="muted">
           If you think this was a mistake, tell us why. A moderator looks at the decision again and
           replies here. You can appeal each decision once within 30 days.
         </Text>
@@ -69,7 +72,7 @@ function AppealForm({ decision }: { decision: Decision }) {
           testID="appeal-submit"
         />
       </View>
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -88,27 +91,37 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
 
   if (decisions.isPending) {
     return (
-      <Screen>
+      <ModerationPage eyebrow="Moderation" title="Content notice" fallbackHref="/notifications">
         <SkeletonGroup label="Loading notice">
           <Skeleton height={28} width="70%" />
           <Skeleton height={80} />
           <Skeleton height={120} />
         </SkeletonGroup>
-      </Screen>
+      </ModerationPage>
     );
   }
   if (decisions.isError) {
     return (
-      <Screen scroll={false}>
+      <ModerationPage
+        eyebrow="Moderation"
+        title="Content notice"
+        fallbackHref="/notifications"
+        scroll={false}
+      >
         <ErrorState error={decisions.error} onRetry={() => void decisions.refetch()} />
-      </Screen>
+      </ModerationPage>
     );
   }
 
   const decision = decisions.data.find((d) => d.action_id === noticeId);
   if (!decision) {
     return (
-      <Screen scroll={false}>
+      <ModerationPage
+        eyebrow="Moderation"
+        title="Content notice"
+        fallbackHref="/notifications"
+        scroll={false}
+      >
         <EmptyState
           icon="checkmark.shield"
           title="Notice not found"
@@ -116,7 +129,7 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
           actionLabel="Back"
           onAction={() => router.back()}
         />
-      </Screen>
+      </ModerationPage>
     );
   }
 
@@ -125,7 +138,10 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
   const link = targetLinkFor(decision);
 
   return (
-    <Screen
+    <ModerationPage
+      eyebrow="Moderation"
+      title={copy.title}
+      fallbackHref="/notifications"
       refreshControl={
         <RefreshControl
           refreshing={decisions.isRefetching}
@@ -134,25 +150,24 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
         />
       }
     >
-      <View style={styles.section}>
-        <Text variant="title2">{copy.title}</Text>
-        <Text variant="callout" tone="muted">
-          {copy.body}
-        </Text>
-      </View>
+      <Text variant="body" tone="muted">
+        {copy.body}
+      </Text>
 
-      <Card variant="sunken">
+      <SectionCard>
         <View style={styles.section}>
-          <Text variant="label" tone="muted">
+          <Text variant="body" accessibilityRole="header" style={styles.heading}>
             Reason
           </Text>
-          <Text variant="body">{decision.reason}</Text>
-          <Text variant="footnote" tone="subtle">
+          <Text variant="body" tone="muted">
+            {decision.reason}
+          </Text>
+          <Text variant="label" tone="muted">
             {formatDate(decision.created_at)}
             {decision.suspended_until ? ` · until ${formatDate(decision.suspended_until)}` : ''}
           </Text>
         </View>
-      </Card>
+      </SectionCard>
 
       {link ? (
         <Button
@@ -164,17 +179,21 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
       ) : null}
 
       {status ? (
-        <Card variant="outlined">
+        <SectionCard>
           <View style={styles.section}>
-            <Text variant="headline">Appeal</Text>
-            <Text variant="callout">{status}</Text>
+            <Text variant="body" accessibilityRole="header" style={styles.heading}>
+              Appeal
+            </Text>
+            <Text variant="body" tone="muted">
+              {status}
+            </Text>
             {decision.appeal_note ? (
-              <Text variant="callout" tone="muted">
+              <Text variant="label" tone="muted">
                 {`Moderator's note: ${decision.appeal_note}`}
               </Text>
             ) : null}
           </View>
-        </Card>
+        </SectionCard>
       ) : decision.appealable ? (
         <AppealForm decision={decision} />
       ) : null}
@@ -184,10 +203,11 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
         variant="ghost"
         onPress={() => router.push('/about/terms')}
       />
-    </Screen>
+    </ModerationPage>
   );
 }
 
 const styles = StyleSheet.create({
   section: { gap: space.sm },
+  heading: { fontFamily: fontFamily.textSemiBold },
 });

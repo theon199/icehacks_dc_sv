@@ -10,7 +10,7 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
-import { PressableScale, useTheme } from '@/ui';
+import { PressableScale, space, useTheme } from '@/ui';
 
 import type { PostPhoto } from '../api/types';
 
@@ -58,6 +58,7 @@ const Thumb = memo(function Thumb({ photo, index, count, label, selected, onSele
           borderRadius: theme.radii.md + 2,
           borderColor: selected ? theme.colors.primary : 'transparent',
         },
+        !selected && styles.thumbIdle,
       ]}
     >
       <Image
@@ -171,9 +172,9 @@ export const PhotoCarousel = memo(function PhotoCarousel({
 });
 
 const styles = StyleSheet.create({
-  wrap: { gap: 12 },
+  wrap: { gap: space.sm },
   frame: { width: '100%', overflow: 'hidden' },
-  strip: { flexDirection: 'row', gap: 10 },
+  strip: { flexDirection: 'row', gap: 6 },
   thumb: {
     width: THUMB + 6,
     height: THUMB + 6,
@@ -181,4 +182,5 @@ const styles = StyleSheet.create({
     padding: 1,
   },
   thumbImage: { width: THUMB, height: THUMB },
+  thumbIdle: { opacity: 0.55 },
 });

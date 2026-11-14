@@ -1,10 +1,5 @@
-import { StyleSheet, View } from 'react-native';
-
 import {
   SegmentedControl,
-  Text,
-  Toggle,
-  space,
   useAppearanceStore,
   type AppearancePreference,
   type Segment,
@@ -17,6 +12,7 @@ import {
   type Appearance,
   type Units,
 } from '../deps';
+import { SettingsControlRow, SettingsToggleRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
 
 const unitSegments: readonly Segment<Units>[] = [
@@ -48,15 +44,15 @@ export function GeneralSettings() {
 
   return (
     <SettingsSection title="Cooking and display">
-      <Toggle
+      <SettingsToggleRow
         testID="settings-small-appetite"
+        icon="leaf"
         label="Small appetite mode"
         description="Gentler dishes, half portions and smaller planned meals with snacks."
         value={smallAppetite}
         onValueChange={(next) => updatePreferences({ smallAppetite: next })}
       />
-      <View style={styles.control}>
-        <Text variant="body">Units</Text>
+      <SettingsControlRow label="Units" icon="scalemass">
         <SegmentedControl
           testID="settings-units"
           accessibilityLabel="Units"
@@ -64,9 +60,8 @@ export function GeneralSettings() {
           value={units}
           onChange={setUnits}
         />
-      </View>
-      <View style={styles.control}>
-        <Text variant="body">Appearance</Text>
+      </SettingsControlRow>
+      <SettingsControlRow label="Appearance" icon="eye">
         <SegmentedControl
           testID="settings-appearance"
           accessibilityLabel="Appearance"
@@ -74,11 +69,7 @@ export function GeneralSettings() {
           value={appearance}
           onChange={setAppearance}
         />
-      </View>
+      </SettingsControlRow>
     </SettingsSection>
   );
 }
-
-const styles = StyleSheet.create({
-  control: { gap: space.sm, paddingVertical: space.sm },
-});

@@ -12,10 +12,11 @@ import {
   useTheme,
   type Segment,
 } from '@/ui';
-import { gutter, space } from '@/ui/tokens';
+import { space } from '@/ui/tokens';
 
 import { AppealReviewCard } from '../components/AppealReviewCard';
 import { AuditRow } from '../components/AuditRow';
+import { ModerationPage } from '../components/ModerationPage';
 import { ModeratorGate } from '../components/ModeratorGate';
 import { QueueItemCard } from '../components/QueueItemCard';
 import { reviewHref } from '../links';
@@ -57,7 +58,11 @@ function ReportsTab() {
     <FlashList
       data={items}
       keyExtractor={(item) => `${item.target_kind}:${item.target_id}`}
-      renderItem={({ item }) => <QueueItemCard item={item} now={now} onOpen={open} />}
+      renderItem={({ item }) => (
+        <View style={styles.cardGap}>
+          <QueueItemCard item={item} now={now} onOpen={open} />
+        </View>
+      )}
       contentContainerStyle={styles.padded}
       ListEmptyComponent={
         <EmptyState icon="checkmark.seal" title="Queue is clear" message="No open reports." />
@@ -143,10 +148,9 @@ function HistoryTab() {
 }
 
 function QueueTabs() {
-  const theme = useTheme();
   const [tab, setTab] = useState<Tab>('reports');
   return (
-    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+    <View style={styles.flex}>
       <View style={styles.tabs}>
         <SegmentedControl
           segments={TABS}
@@ -165,15 +169,17 @@ function QueueTabs() {
 /** Moderators: open reports grouped by target, pending appeals and the decision history. */
 export function ModerationQueueScreen() {
   return (
-    <ModeratorGate>
-      <QueueTabs />
-    </ModeratorGate>
+    <ModerationPage eyebrow="Moderation" title="Review queue" scroll={false}>
+      <ModeratorGate>
+        <QueueTabs />
+      </ModeratorGate>
+    </ModerationPage>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  tabs: { paddingHorizontal: gutter, paddingVertical: space.md },
-  padded: { paddingHorizontal: gutter, paddingBottom: space.xxxl },
+  tabs: { paddingHorizontal: space.xl, paddingBottom: space.md },
+  padded: { paddingHorizontal: space.xl, paddingBottom: space.xxxl },
   cardGap: { paddingBottom: space.md },
 });

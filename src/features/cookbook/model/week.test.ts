@@ -6,6 +6,10 @@ import {
   locateDate,
   mealsForDay,
   mealsPerDay,
+  pagerIndexOf,
+  pagerWeeks,
+  plannedSummary,
+  relativeWeekTitle,
   remainingDays,
   resolveWeekParam,
   storedPortion,
@@ -196,5 +200,39 @@ describe('route and slot defaults', () => {
     expect(defaultSlotFor('snack')).toBe('snack');
     expect(defaultSlotFor('dessert')).toBe('snack');
     expect(defaultSlotFor('soup')).toBe('dinner');
+  });
+});
+
+describe('week pager', () => {
+  it('pages from two weeks back to three weeks ahead', () => {
+    expect(pagerWeeks(TODAY)).toEqual([
+      '2026-10-26',
+      '2026-11-02',
+      '2026-11-09',
+      '2026-11-16',
+      '2026-11-23',
+      '2026-11-30',
+    ]);
+  });
+
+  it('finds a week’s page, keeping weeks outside the window on its edges', () => {
+    expect(pagerIndexOf(WEEK, TODAY)).toBe(2);
+    expect(pagerIndexOf('2026-11-30', TODAY)).toBe(5);
+    expect(pagerIndexOf('2026-10-05', TODAY)).toBe(0);
+    expect(pagerIndexOf('2027-01-04', TODAY)).toBe(5);
+  });
+
+  it('names weeks relative to this one', () => {
+    expect(relativeWeekTitle(-2)).toBe('2 weeks ago');
+    expect(relativeWeekTitle(-1)).toBe('Last week');
+    expect(relativeWeekTitle(0)).toBe('This week');
+    expect(relativeWeekTitle(1)).toBe('Next week');
+    expect(relativeWeekTitle(3)).toBe('In 3 weeks');
+  });
+
+  it('summarises a day’s plan', () => {
+    expect(plannedSummary(0)).toBe('Nothing planned');
+    expect(plannedSummary(1)).toBe('1 meal planned');
+    expect(plannedSummary(3)).toBe('3 meals planned');
   });
 });

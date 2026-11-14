@@ -1,10 +1,13 @@
-import { memo, useCallback, useEffect, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, type AccessibilityActionEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  Easing,
   FadeIn,
   FadeOut,
+  interpolate,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withSpring,
   withTiming,
@@ -15,10 +18,11 @@ import { scheduleOnRN } from 'react-native-worklets';
 import type { DeckCard } from '@/domain';
 import { haptics } from '@/lib/haptics';
 import { useTheme } from '@/ui';
-import { motion } from '@/ui/tokens';
+import { motion, radii } from '@/ui/tokens';
 
 import { flyOut } from './flyOut';
 import { RecipeCard } from './RecipeCard';
+import { RecipeCardBack } from './RecipeCardBack';
 import { SwipeStamps } from './SwipeStamps';
 import { cardAccessibilityLabel } from '../cardText';
 import {
@@ -31,7 +35,7 @@ import {
   type SwipeDirection,
 } from '../swipe';
 
-export type CardCommand = 'like' | 'pass' | 'save' | 'notForMe' | 'open';
+export type CardCommand = 'like' | 'pass' | 'save' | 'notForMe' | 'open' | 'flip' | 'unflip';
 
 export interface SwipeableCardProps {
   card: DeckCard;
@@ -43,18 +47,35 @@ export interface SwipeableCardProps {
   /** Where the leaving card flies: -1 left, 1 right, 0 up and out. Set before each decision. */
   exitDirection: SharedValue<number>;
   reduceMotion: boolean;
+  /** The top card shows its back (details). Gestures pause until it turns back. */
+  flipped: boolean;
+  /** Undo is offered as a card action while the last swipe can still be taken back. */
+  canUndo: boolean;
+  onUndo: () => void;
   onCommand: (card: DeckCard, command: CardCommand) => void;
 }
 
-const ACCESSIBILITY_ACTIONS = [
-  { name: 'activate', label: 'Open recipe' },
+/** Depth of the flip; lower values exaggerate the perspective. */
+const FLIP_PERSPECTIVE = 1200;
+const FLIP_MS = 360;
+/** Drag in points below which the card still counts as at rest. */
+const AT_REST = 0.5;
+
+const CARD_ACTIONS = [
+  { name: 'activate', label: 'Show details' },
+  { name: 'open', label: 'Open recipe' },
   { name: 'like', label: 'Like' },
   { name: 'pass', label: 'Pass' },
   { name: 'save', label: 'Save to cookbook' },
   { name: 'notForMe', label: 'Not for me' },
 ] as const;
+const UNDO_ACTION = { name: 'undo', label: 'Undo last swipe' } as const;
+const ACTIONS_WITH_UNDO = [...CARD_ACTIONS, UNDO_ACTION];
 
-/** One card in the stack. Only the top card takes gestures and is visible to VoiceOver. */
+/**
+ * One card in the stack. Only the top card takes gestures and is visible to VoiceOver. A tap turns
+ * it over to its details; there, a tap or the close circle turns it back.
+ */
 export const SwipeableCard = memo(function SwipeableCard({
   card,
   depth,
@@ -62,15 +83,44 @@ export const SwipeableCard = memo(function SwipeableCard({
   progress,
   exitDirection,
   reduceMotion,
+  flipped,
+  canUndo,
+  onUndo,
   onCommand,
 }: SwipeableCardProps) {
   const theme = useTheme();
   const isTop = depth === 0;
+  const interactive = isTop && !flipped;
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const armed = useSharedValue(false);
   const level = useSharedValue(depth);
+  const turn = useSharedValue(flipped ? 1 : 0);
+  const [backMounted, setBackMounted] = useState(flipped);
   const distance = swipeDistance(width);
+
+  // The back mounts as the flip starts and stays until the turn back has finished, so neither
+  // direction plays against an empty face.
+  useEffect(() => {
+    if (flipped) setBackMounted(true);
+    const done = (finished?: boolean) => {
+      'worklet';
+      if (finished && !flipped) scheduleOnRN(setBackMounted, false);
+    };
+    if (reduceMotion) {
+      turn.set(flipped ? 1 : 0);
+      if (!flipped) setBackMounted(false);
+      return;
+    }
+    turn.set(
+      withTiming(flipped ? 1 : 0, { duration: FLIP_MS, easing: Easing.inOut(Easing.cubic) }, done),
+    );
+  }, [flipped, reduceMotion, turn]);
+
+  /** The melt drops its blur while the card is dragged, flying or turning. */
+  const moving = useDerivedValue(
+    () => Math.abs(x.get()) + Math.abs(y.get()) > AT_REST || turn.get() > 0,
+  );
 
   // Moving up the stack: start from where the card visibly is, then settle at its new depth.
   useEffect(() => {
@@ -91,7 +141,7 @@ export const SwipeableCard = memo(function SwipeableCard({
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
-      .enabled(isTop)
+      .enabled(interactive)
       .activeOffsetX([-12, 12])
       .activeOffsetY([-12, 12])
       .onUpdate((event) => {
@@ -118,18 +168,18 @@ export const SwipeableCard = memo(function SwipeableCard({
         progress.set(withSpring(0, motion.spring.snappy));
       });
     const tap = Gesture.Tap()
-      .enabled(isTop)
+      .enabled(interactive)
       .onEnd((_event, success) => {
-        if (success) scheduleOnRN(command, 'open');
+        if (success) scheduleOnRN(command, 'flip');
       });
     const hold = Gesture.LongPress()
-      .enabled(isTop)
+      .enabled(interactive)
       .minDuration(450)
       .onStart(() => {
         scheduleOnRN(command, 'notForMe');
       });
     return Gesture.Race(pan, Gesture.Exclusive(hold, tap));
-  }, [isTop, distance, x, y, progress, armed, exitDirection, crossed, swiped, command]);
+  }, [interactive, distance, x, y, progress, armed, exitDirection, crossed, swiped, command]);
 
   const cardStyle = useAnimatedStyle(() => {
     const lift = stackLift(level.get(), isTop ? 0 : progress.get());
@@ -151,10 +201,25 @@ export const SwipeableCard = memo(function SwipeableCard({
     [reduceMotion, theme.motion.duration.fast, x, y, exitDirection, width],
   );
 
+  const frontStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: FLIP_PERSPECTIVE },
+      { rotateY: `${interpolate(turn.get(), [0, 1], [0, 180])}deg` },
+    ],
+  }));
+  const backStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: FLIP_PERSPECTIVE },
+      { rotateY: `${interpolate(turn.get(), [0, 1], [180, 360])}deg` },
+    ],
+  }));
+
   const onAccessibilityAction = useCallback(
     (event: AccessibilityActionEvent) => {
       const name = event.nativeEvent.actionName;
-      if (name === 'activate') command('open');
+      if (name === 'activate') command('flip');
+      else if (name === 'open') command('open');
+      else if (name === 'undo') onUndo();
       else if (name === 'like' || name === 'pass') {
         exitDirection.set(name === 'like' ? 1 : -1);
         command(name);
@@ -163,8 +228,10 @@ export const SwipeableCard = memo(function SwipeableCard({
         command(name);
       }
     },
-    [command, exitDirection],
+    [command, exitDirection, onUndo],
   );
+  const openRecipe = useCallback(() => command('open'), [command]);
+  const turnBack = useCallback(() => command('unflip'), [command]);
 
   return (
     <GestureDetector gesture={gesture}>
@@ -172,22 +239,51 @@ export const SwipeableCard = memo(function SwipeableCard({
         testID={isTop ? 'discover-top-card' : undefined}
         entering={FadeIn.duration(theme.motion.duration.fast)}
         exiting={exiting}
-        style={[StyleSheet.absoluteFill, { zIndex: 10 - depth }, cardStyle]}
-        accessible={isTop}
-        accessibilityRole={isTop ? 'button' : undefined}
-        accessibilityLabel={isTop ? cardAccessibilityLabel(card) : undefined}
+        style={[
+          StyleSheet.absoluteFill,
+          styles.shadow,
+          { zIndex: 10 - depth, ...theme.elevation.medium, shadowColor: theme.colors.shadow },
+          cardStyle,
+        ]}
+        accessible={interactive}
+        accessibilityRole={interactive ? 'button' : undefined}
+        accessibilityLabel={interactive ? cardAccessibilityLabel(card) : undefined}
         accessibilityHint={
-          isTop ? 'Opens the recipe. Use actions to like, pass or save.' : undefined
+          interactive ? 'Shows why it fits. Use actions to open, like, pass or save.' : undefined
         }
-        accessibilityActions={isTop ? ACCESSIBILITY_ACTIONS : undefined}
-        onAccessibilityAction={isTop ? onAccessibilityAction : undefined}
+        accessibilityActions={
+          interactive ? (canUndo ? ACTIONS_WITH_UNDO : CARD_ACTIONS) : undefined
+        }
+        onAccessibilityAction={interactive ? onAccessibilityAction : undefined}
         accessibilityElementsHidden={!isTop}
         importantForAccessibility={isTop ? 'yes' : 'no-hide-descendants'}
         pointerEvents={isTop ? 'auto' : 'none'}
       >
-        <RecipeCard card={card} isTop={isTop} />
-        {isTop ? <SwipeStamps x={x} distance={distance} /> : null}
+        <Animated.View
+          style={[styles.face, frontStyle]}
+          pointerEvents={flipped ? 'none' : 'auto'}
+          accessibilityElementsHidden={flipped}
+          importantForAccessibility={flipped ? 'no-hide-descendants' : 'auto'}
+        >
+          <RecipeCard card={card} isTop={isTop} moving={moving} />
+          {isTop ? <SwipeStamps x={x} distance={distance} /> : null}
+        </Animated.View>
+        {isTop && backMounted ? (
+          <Animated.View
+            style={[styles.face, backStyle]}
+            pointerEvents={flipped ? 'auto' : 'none'}
+            accessibilityElementsHidden={!flipped}
+            importantForAccessibility={flipped ? 'auto' : 'no-hide-descendants'}
+          >
+            <RecipeCardBack card={card} onClose={turnBack} onOpen={openRecipe} />
+          </Animated.View>
+        ) : null}
       </Animated.View>
     </GestureDetector>
   );
+});
+
+const styles = StyleSheet.create({
+  shadow: { borderRadius: radii.card },
+  face: { ...StyleSheet.absoluteFill, backfaceVisibility: 'hidden' },
 });

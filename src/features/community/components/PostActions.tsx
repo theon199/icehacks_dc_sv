@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { formatNumber } from '@/lib/format';
 import { haptics } from '@/lib/haptics';
-import { Icon, PressableScale, Text, type IconName } from '@/ui';
+import { Icon, PressableScale, Text, space, type IconName } from '@/ui';
 import type { Palette } from '@/ui/tokens';
 
 import type { Post } from '../api/types';
@@ -45,12 +45,12 @@ function Action({
       <Icon
         name={icon}
         android={android}
-        size={22}
-        color={active && activeColor ? activeColor : 'textMuted'}
+        size={20}
+        color={active && activeColor ? activeColor : 'text'}
         weight="semibold"
       />
       {count != null ? (
-        <Text variant="footnote" tone="muted" accessible={false}>
+        <Text variant="label" tone="muted" accessible={false} style={styles.count}>
           {formatNumber(count, 0)}
         </Text>
       ) : null}
@@ -108,14 +108,16 @@ export const PostActions = memo(function PostActions({ post, onComment }: PostAc
 });
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   action: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     minHeight: 44,
     minWidth: 44,
-    paddingHorizontal: 6,
+    paddingHorizontal: space.xs,
   },
+  count: { fontVariant: ['tabular-nums'] },
   spacer: { flex: 1 },
 });

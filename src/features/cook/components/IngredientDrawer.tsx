@@ -5,7 +5,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { RecipeIngredientLine } from '@/lib/catalog';
 import { haptics } from '@/lib/haptics';
-import { Icon, IconButton, PressableScale, Text, useTheme } from '@/ui';
+import {
+  GlassIconButton,
+  GlassSurface,
+  Icon,
+  PressableScale,
+  Text,
+  radii,
+  space,
+  useTheme,
+} from '@/ui';
 
 export interface IngredientDrawerProps {
   visible: boolean;
@@ -94,42 +103,35 @@ export function IngredientDrawer({
           accessibilityLabel="Close ingredients"
           onPress={onClose}
         />
-        <View
-          accessibilityViewIsModal
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: theme.colors.surface,
-              borderTopLeftRadius: theme.radii.sheet,
-              borderTopRightRadius: theme.radii.sheet,
-              paddingBottom: insets.bottom,
-            },
-          ]}
-          testID="cook-ingredient-drawer"
-        >
-          <View style={styles.header}>
-            <View style={styles.headerText}>
-              <Text variant="title2">Ingredients</Text>
-              <Text variant="subhead" tone="muted">
-                {checked.size} of {ingredients.length} ready
-              </Text>
+        <View accessibilityViewIsModal style={styles.sheet} testID="cook-ingredient-drawer">
+          <GlassSurface radius="sheet" fallbackColor="surface" style={styles.surface}>
+            <View style={[styles.grabber, { backgroundColor: theme.colors.borderStrong }]} />
+            <View style={styles.header}>
+              <View style={styles.headerText}>
+                <Text variant="title2">Ingredients</Text>
+                <Text variant="subhead" tone="muted">
+                  {checked.size} of {ingredients.length} ready
+                </Text>
+              </View>
+              <GlassIconButton
+                icon="xmark"
+                accessibilityLabel="Close ingredients"
+                onPress={onClose}
+              />
             </View>
-            <IconButton
-              icon="xmark"
-              accessibilityLabel="Close ingredients"
-              variant="tinted"
-              onPress={onClose}
-            />
-          </View>
-          <View style={styles.listFrame}>
-            <FlashList
-              data={ingredients}
-              renderItem={renderItem}
-              keyExtractor={(line) => String(line.position)}
-              extraData={checked}
-              contentContainerStyle={styles.list}
-            />
-          </View>
+            <View style={styles.listFrame}>
+              <FlashList
+                data={ingredients}
+                renderItem={renderItem}
+                keyExtractor={(line) => String(line.position)}
+                extraData={checked}
+                contentContainerStyle={{
+                  ...styles.list,
+                  paddingBottom: insets.bottom + theme.radii.sheet + space.lg,
+                }}
+              />
+            </View>
+          </GlassSurface>
         </View>
       </View>
     </Modal>
@@ -138,22 +140,25 @@ export function IngredientDrawer({
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'flex-end' },
-  sheet: { height: '72%' },
+  // The foot hangs below the screen edge so only the top corners show rounded.
+  sheet: { height: '74%', marginBottom: -radii.sheet },
+  surface: { flex: 1 },
+  grabber: { width: 44, height: 5, borderRadius: 3, alignSelf: 'center', marginTop: space.sm },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 8,
+    gap: space.sm,
+    paddingHorizontal: space.xl,
+    paddingTop: space.md,
+    paddingBottom: space.sm,
   },
-  headerText: { flex: 1, gap: 2 },
+  headerText: { flex: 1, gap: space.xxs },
   listFrame: { flex: 1 },
-  list: { paddingHorizontal: 16, paddingBottom: 24 },
+  list: { paddingHorizontal: space.xl },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: space.md,
     minHeight: 56,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,

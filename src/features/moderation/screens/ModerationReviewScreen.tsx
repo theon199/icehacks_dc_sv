@@ -1,15 +1,16 @@
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import { formatRelativeTime } from '@/lib/format';
-import { Button, Card, Chip, EmptyState, ErrorState, Screen, Text, toast } from '@/ui';
-import { space } from '@/ui/tokens';
+import { Button, Card, Chip, EmptyState, ErrorState, Text, fontFamily, toast } from '@/ui';
+import { radii, space } from '@/ui/tokens';
 
 import { availableActions } from '../actions';
 import { AuditRow } from '../components/AuditRow';
 import { ModerateForm } from '../components/ModerateForm';
+import { ModerationPage } from '../components/ModerationPage';
 import { ModeratorGate } from '../components/ModeratorGate';
 import { TargetPreview } from '../components/TargetPreview';
 import { reviewQueueHref } from '../links';
@@ -80,9 +81,11 @@ function ReportList({
 }) {
   return (
     <View style={styles.section}>
-      <Text variant="title3">{reportHeading(reports, openCount)}</Text>
+      <Text variant="headline" accessibilityRole="header" style={styles.heading}>
+        {reportHeading(reports, openCount)}
+      </Text>
       {reports.map((report) => (
-        <Card key={report.id} variant="outlined" padding="md">
+        <Card key={report.id} variant="outlined" padding="lg" style={styles.reportCard}>
           <View style={styles.report}>
             <View style={styles.reportTop}>
               <Text variant="subhead" style={styles.flex}>
@@ -141,8 +144,11 @@ function Review({ target }: { target: TargetRef }) {
     : [];
 
   return (
-    <Screen>
-      <Stack.Screen options={{ title: `Review ${targetNoun(target.kind)}` }} />
+    <ModerationPage
+      eyebrow="Review"
+      title={`Review ${targetNoun(target.kind)}`}
+      fallbackHref={reviewQueueHref}
+    >
       {review.isPending ? (
         <Card variant="sunken">
           <Text variant="callout" tone="muted">
@@ -211,7 +217,9 @@ function Review({ target }: { target: TargetRef }) {
       ) : null}
 
       <View style={styles.section}>
-        <Text variant="title3">History</Text>
+        <Text variant="headline" accessibilityRole="header" style={styles.heading}>
+          History
+        </Text>
         {history.length === 0 ? (
           <Text variant="callout" tone="muted">
             {audit.isPending
@@ -233,7 +241,7 @@ function Review({ target }: { target: TargetRef }) {
           label="Show older"
         />
       </View>
-    </Screen>
+    </ModerationPage>
   );
 }
 
@@ -241,18 +249,23 @@ function Review({ target }: { target: TargetRef }) {
 export function ModerationReviewScreen({ kind, targetId }: ModerationReviewScreenProps) {
   const target = useMemo(() => parseTargetRef(kind, targetId), [kind, targetId]);
   return (
-    <ModeratorGate>
+    <ModeratorGate frame={{ eyebrow: 'Review', title: 'Review', fallbackHref: reviewQueueHref }}>
       {target ? (
         <Review target={target} />
       ) : (
-        <Screen scroll={false}>
+        <ModerationPage
+          eyebrow="Review"
+          title="Nothing to review"
+          scroll={false}
+          fallbackHref={reviewQueueHref}
+        >
           <EmptyState
             tone="danger"
             icon="exclamationmark.triangle"
             title="Nothing to review"
             message="This link does not point at a post, comment, member or recipe."
           />
-        </Screen>
+        </ModerationPage>
       )}
     </ModeratorGate>
   );
@@ -260,6 +273,8 @@ export function ModerationReviewScreen({ kind, targetId }: ModerationReviewScree
 
 const styles = StyleSheet.create({
   section: { gap: space.sm },
+  heading: { fontFamily: fontFamily.textBold },
+  reportCard: { borderRadius: radii.tile },
   report: { gap: space.xs },
   reportTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   flex: { flex: 1 },

@@ -1,13 +1,13 @@
 import * as Linking from 'expo-linking';
-import { useRouter } from 'expo-router';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Button, EmptyState, Screen, toast } from '@/ui';
+import { Button, toast } from '@/ui';
 
 import { resendConfirmation } from '../authActions';
-import { FormMessage } from '../components/FormMessage';
+import { AccountPage, PageLink, PageNotice } from '../components/AccountPage';
 import { usePendingEmail } from '../pendingEmail';
+import { useBackToLogIn } from '../useBackToLogIn';
 import { RESEND_COOLDOWN_SECONDS, useCooldown } from '../useCooldown';
 import { useSubmission } from '../useSubmission';
 
@@ -25,7 +25,7 @@ function openMailApp() {
 
 /** Waiting for the confirmation link, with a rate-limited "send again". */
 export function CheckEmailScreen() {
-  const router = useRouter();
+  const backToLogIn = useBackToLogIn();
   const pending = usePendingEmail((s) => s.email);
   const sentAt = usePendingEmail((s) => s.sentAt);
   const cooldown = useCooldown(cooldownLeft(sentAt));
@@ -54,46 +54,28 @@ export function CheckEmailScreen() {
     : 'Open the confirmation link we sent you on this phone to finish creating your account.';
 
   return (
-    <Screen
-      footer={
-        <View style={styles.footer}>
-          {Platform.OS === 'ios' ? (
-            <Button
-              label="Open Mail"
-              icon="envelope.open"
-              size="lg"
-              fullWidth
-              onPress={openMailApp}
-            />
-          ) : null}
-          <Button
-            label="Back to sign in"
-            variant="ghost"
-            fullWidth
-            onPress={() => router.replace('/sign-in')}
-          />
-        </View>
-      }
+    <AccountPage
+      title="Confirm your email."
+      subtitle={explanation}
+      footer={<PageLink label="Back to log in" onPress={backToLogIn} />}
     >
-      <EmptyState icon="envelope.badge" title="Check your email" message={explanation} />
-      {resend.failure ? <FormMessage message={resend.failure} testID="resend-error" /> : null}
+      <PageNotice message={resend.failure} testID="resend-error" />
+      {Platform.OS === 'ios' ? (
+        <Button label="Open Mail" icon="envelope.open" size="lg" fullWidth onPress={openMailApp} />
+      ) : null}
       {pending ? (
         <Button
           testID="resend-confirmation"
           label={waiting ? `Send again in ${cooldown.remaining}s` : 'Send the link again'}
           variant="secondary"
+          size="lg"
           icon="arrow.clockwise"
+          fullWidth
           loading={resend.busy}
           disabled={waiting}
           onPress={sendAgain}
-          style={styles.resend}
         />
       ) : null}
-    </Screen>
+    </AccountPage>
   );
 }
-
-const styles = StyleSheet.create({
-  footer: { gap: 4 },
-  resend: { alignSelf: 'center' },
-});

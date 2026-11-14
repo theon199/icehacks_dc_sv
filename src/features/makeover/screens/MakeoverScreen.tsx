@@ -7,7 +7,6 @@ import { newId } from '@/lib/id';
 import { selectPreferences, usePreferencesStore, type HealthGoal } from '@/stores';
 import {
   Button,
-  Card,
   EmptyState,
   ErrorState,
   Icon,
@@ -22,6 +21,8 @@ import {
 
 import { conflictNotice } from './conflictNotice';
 import { GoalPicker } from '../components/GoalPicker';
+import { MakeoverCard, MakeoverItem } from '../components/MakeoverCard';
+import { MakeoverHeader } from '../components/MakeoverHeader';
 import { MakeoverResult } from '../components/MakeoverResult';
 import { AiGate, useRecipe, useSaveVariant } from '../deps';
 import { excusedNoteMentions, makeoverRequestFrom, noteMentionWarning } from '../logic/request';
@@ -37,13 +38,19 @@ export interface MakeoverScreenProps {
  * explained, re-check it for the person's allergens and keep it as their own variant.
  */
 export function MakeoverScreen({ recipeId }: MakeoverScreenProps) {
+  const theme = useTheme();
+  const router = useRouter();
+  const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
   return (
-    <AiGate
-      feature="Make it healthier"
-      purpose="Make it healthier adapts a recipe to your goals and explains every swap."
-    >
-      <MakeoverLoader recipeId={recipeId ?? null} />
-    </AiGate>
+    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+      <MakeoverHeader onClose={close} />
+      <AiGate
+        feature="Make it healthier"
+        purpose="Make it healthier adapts a recipe to your goals and explains every swap."
+      >
+        <MakeoverLoader recipeId={recipeId ?? null} />
+      </AiGate>
+    </View>
   );
 }
 
@@ -150,17 +157,20 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
   if (state.status === 'working') {
     return (
       <Screen>
-        <Card style={styles.working} testID="makeover-working">
-          <ActivityIndicator color={theme.colors.primary} size="large" />
-          <Text variant="headline" align="center" accessibilityLiveRegion="polite">
-            {`Reworking ${recipe.title}…`}
-          </Text>
-          <Text variant="callout" tone="muted" align="center">
-            Swapping ingredients for your goals and checking your allergens. This can take up to two
-            minutes.
-          </Text>
+        <MakeoverCard status="Step 2 of 2 · Reworking the recipe" testID="makeover-working">
+          <View style={styles.working}>
+            <ActivityIndicator color={theme.colors.primary} size="large" />
+            <Text variant="headline" align="center" accessibilityLiveRegion="polite">
+              {`Reworking ${recipe.title}…`}
+            </Text>
+            <Text variant="subhead" tone="muted" align="center">
+              Swapping ingredients for your goals and checking your allergens. This can take up to
+              two minutes.
+            </Text>
+          </View>
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           <Button label="Cancel" variant="ghost" onPress={startOver} />
-        </Card>
+        </MakeoverCard>
       </Screen>
     );
   }
@@ -200,20 +210,24 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
           </>
         }
       >
-        <MakeoverResult
-          originalTitle={recipe.title}
-          makeover={state.makeover}
-          hits={state.hits}
-          checked={state.checked}
-        />
-        {noteWarning ? (
-          <Card variant="sunken" testID="makeover-note-warning" style={styles.noteWarning}>
-            <Icon name="exclamationmark.circle" size={18} color="warning" />
-            <Text variant="footnote" tone="muted" style={styles.flex}>
-              {noteWarning}
-            </Text>
-          </Card>
-        ) : null}
+        <MakeoverCard status={savedId ? 'Saved as your version' : 'Step 2 of 2 · Review the swaps'}>
+          <MakeoverResult
+            originalTitle={recipe.title}
+            makeover={state.makeover}
+            hits={state.hits}
+            checked={state.checked}
+          />
+          {noteWarning ? (
+            <MakeoverItem testID="makeover-note-warning">
+              <View style={styles.noteWarning}>
+                <Icon name="exclamationmark.circle" size={18} color="warning" />
+                <Text variant="footnote" tone="muted" style={styles.flex}>
+                  {noteWarning}
+                </Text>
+              </View>
+            </MakeoverItem>
+          ) : null}
+        </MakeoverCard>
       </Screen>
     );
   }
@@ -228,39 +242,38 @@ function Makeover({ recipe }: { recipe: RecipeDetail }) {
 
   return (
     <Screen>
-      <View style={styles.heading}>
-        <Text variant="label" tone="muted">
-          Make it healthier
-        </Text>
-        <Text variant="title2">{recipe.title}</Text>
-        <Text variant="callout" tone="muted">
-          Choose what matters and Famara will suggest swaps, keeping the dish you know.
-        </Text>
-      </View>
-      {failure ? (
-        <Card variant="sunken" testID="makeover-problem" style={styles.problem}>
-          <Text variant="headline">{failure.title}</Text>
-          <Text variant="callout" tone="muted">
-            {failure.message}
+      <MakeoverCard status="Step 1 of 2 · Choose your goals">
+        <View style={styles.heading}>
+          <Text variant="title3">{recipe.title}</Text>
+          <Text variant="subhead" tone="muted">
+            Choose what matters and Famara will suggest swaps, keeping the dish you know.
           </Text>
-        </Card>
-      ) : null}
-      <GoalPicker
-        goals={goals}
-        wish={wish}
-        onToggleGoal={toggleGoal}
-        onChangeWish={setWish}
-        onStart={start}
-        disabled={state.status === 'failed' && state.problem.kind === 'daily_limit'}
-      />
+        </View>
+        {failure ? (
+          <MakeoverItem tone="caution" testID="makeover-problem">
+            <Text variant="headline">{failure.title}</Text>
+            <Text variant="subhead" tone="muted">
+              {failure.message}
+            </Text>
+          </MakeoverItem>
+        ) : null}
+        <GoalPicker
+          goals={goals}
+          wish={wish}
+          onToggleGoal={toggleGoal}
+          onChangeWish={setWish}
+          onStart={start}
+          disabled={state.status === 'failed' && state.problem.kind === 'daily_limit'}
+        />
+      </MakeoverCard>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   heading: { gap: space.xs },
-  working: { alignItems: 'center', gap: space.md, paddingVertical: space.xxxl },
-  problem: { gap: space.xs },
+  working: { alignItems: 'center', gap: space.md, paddingVertical: space.xl },
+  divider: { height: 1, alignSelf: 'stretch' },
   noteWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   flex: { flex: 1 },
 });

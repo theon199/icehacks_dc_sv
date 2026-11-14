@@ -1,6 +1,6 @@
 import { Linking, Modal, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Button, IconButton, Text, gutter, toast, useTheme } from '@/ui';
+import { Button, GlassIconButton, Text, gutter, toast, useTheme } from '@/ui';
 
 import { ConfirmPrompt } from './ConfirmPrompt';
 import { OrderingTips } from './OrderingTips';
@@ -48,7 +48,7 @@ export function PlaceSheet({ dish, place, places, bucket, onClose }: PlaceSheetP
                 </Text>
               ) : null}
             </View>
-            <IconButton icon="xmark" accessibilityLabel="Close" onPress={onClose} />
+            <GlassIconButton icon="xmark" accessibilityLabel="Close" onPress={onClose} />
           </View>
           <ScrollView contentContainerStyle={styles.content} testID="nearby-sheet">
             <View style={styles.section}>

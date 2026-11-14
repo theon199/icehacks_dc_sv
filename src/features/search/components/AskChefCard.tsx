@@ -1,14 +1,18 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Icon, PressableScale, Text, useTheme } from '@/ui';
-import { space } from '@/ui/tokens';
+import { Icon, PressableScale, Text, fontFamily, space, useTheme } from '@/ui';
+
+import { ChefHat } from '../deps';
 
 export interface AskChefCardProps {
   onPress: () => void;
 }
 
-/** A dark card above the browse grid that switches the tab to the Chef segment. */
+/**
+ * The way into Chef from Search: an ink card with Chef's toque on a lime disc and a lime chevron.
+ * Callers leave it out when Chef is not available to the account.
+ */
 export const AskChefCard = memo(function AskChefCard({ onPress }: AskChefCardProps) {
   const theme = useTheme();
   return (
@@ -16,29 +20,38 @@ export const AskChefCard = memo(function AskChefCard({ onPress }: AskChefCardPro
       testID="ask-chef-card"
       accessibilityRole="button"
       accessibilityLabel="Ask Chef"
-      accessibilityHint="Opens the Chef chat"
+      accessibilityHint="Recipes, techniques, whatever's in the fridge"
       onPress={onPress}
-      style={[styles.card, { backgroundColor: theme.colors.primary, borderRadius: theme.radii.xl }]}
+      style={[
+        styles.card,
+        { backgroundColor: theme.colors.primary, borderRadius: theme.radii.tile },
+      ]}
     >
-      <View style={[styles.disc, styles.big, { backgroundColor: theme.colors.highlight }]}>
-        <Icon name="sparkles" android="auto_awesome" size={24} color="onHighlight" />
+      <View style={[styles.disc, { backgroundColor: theme.colors.highlight }]}>
+        <ChefHat size={26} color="onHighlight" />
       </View>
-      <View style={styles.text}>
-        <Text variant="title3" color="onPrimary" accessible={false}>
+      <View style={styles.copy}>
+        <Text
+          variant="headline"
+          color="onPrimary"
+          numberOfLines={1}
+          accessible={false}
+          style={styles.title}
+        >
           Ask Chef
         </Text>
-        <Text variant="subhead" color="onPrimary" style={styles.muted} accessible={false}>
-          Swaps, techniques, or what to make with what you have
+        <Text
+          variant="subhead"
+          color="onPrimary"
+          numberOfLines={2}
+          accessible={false}
+          style={styles.muted}
+        >
+          Recipes, techniques, whatever&rsquo;s in the fridge
         </Text>
       </View>
-      <View style={[styles.disc, styles.small, { backgroundColor: theme.colors.highlight }]}>
-        <Icon
-          name="chevron.right"
-          android="chevron_right"
-          size={14}
-          color="onHighlight"
-          weight="bold"
-        />
+      <View style={[styles.chevron, { backgroundColor: theme.colors.highlight }]}>
+        <Icon name="chevron.right" size={18} color="onHighlight" />
       </View>
     </PressableScale>
   );
@@ -48,14 +61,20 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.lg,
-    paddingVertical: space.lg,
-    paddingLeft: space.lg,
-    paddingRight: space.xl,
+    gap: space.md + 2,
+    minHeight: 88,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
   },
-  disc: { alignItems: 'center', justifyContent: 'center' },
-  big: { width: 52, height: 52, borderRadius: 26 },
-  small: { width: 36, height: 36, borderRadius: 18 },
-  text: { flex: 1, gap: space.xxs },
-  muted: { opacity: 0.72 },
+  disc: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
+  copy: { flex: 1, minWidth: 0, gap: 2 },
+  title: { fontFamily: fontFamily.textBold },
+  muted: { opacity: 0.7 },
+  chevron: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

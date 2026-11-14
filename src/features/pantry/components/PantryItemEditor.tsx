@@ -3,8 +3,9 @@ import { Modal, StyleSheet, View } from 'react-native';
 
 import { INGREDIENT_CATEGORIES } from '@/lib/catalog';
 import type { PantryItem } from '@/stores/pantry';
-import { Button, ChoiceChip, IconButton, SheetContent, Text, TextField, space } from '@/ui';
+import { Button, ChoiceChip, GlassIconButton, SheetContent, Text, TextField, space } from '@/ui';
 
+import { PANTRY_ACTION_HEIGHT } from './metrics';
 import { formFromItem, parsePantryForm, type PantryForm, type PantryPatch } from '../editForm';
 import { expiryHint, SHELF_TITLES, dueInDays } from '../shelves';
 
@@ -52,7 +53,13 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
       title="Edit item"
       footer={
         <>
-          <Button testID="pantry-editor-save" label="Save" onPress={save} fullWidth />
+          <Button
+            testID="pantry-editor-save"
+            label="Save"
+            onPress={save}
+            fullWidth
+            style={styles.action}
+          />
           <Button
             testID="pantry-editor-remove"
             label="Remove from pantry"
@@ -62,12 +69,13 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
               onClose();
             }}
             fullWidth
+            style={styles.action}
           />
         </>
       }
     >
       <View style={styles.close}>
-        <IconButton icon="xmark" accessibilityLabel="Close without saving" onPress={onClose} />
+        <GlassIconButton icon="xmark" accessibilityLabel="Close without saving" onPress={onClose} />
       </View>
       <TextField
         testID="pantry-editor-name"
@@ -105,7 +113,7 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
         </View>
       </View>
       <View style={styles.group}>
-        <Text variant="subhead" tone="muted">
+        <Text variant="sectionLabel" tone="muted">
           Use by{expiry ? ` · ${expiry.label}` : ''}
         </Text>
         <View style={styles.chips} accessibilityRole="radiogroup">
@@ -127,7 +135,7 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
         </View>
       </View>
       <View style={styles.group}>
-        <Text variant="subhead" tone="muted">
+        <Text variant="sectionLabel" tone="muted">
           Shelf
         </Text>
         <View style={styles.chips} accessibilityRole="radiogroup">
@@ -162,7 +170,8 @@ export function PantryItemEditor({ item, ...rest }: PantryItemEditorProps) {
 }
 
 const styles = StyleSheet.create({
-  close: { position: 'absolute', top: space.sm, right: space.sm, zIndex: 1 },
+  close: { position: 'absolute', top: space.md, right: space.md, zIndex: 1 },
+  action: { height: PANTRY_ACTION_HEIGHT },
   pair: { flexDirection: 'row', gap: space.md },
   half: { flex: 1 },
   group: { gap: space.sm },

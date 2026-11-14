@@ -107,6 +107,11 @@ async function renderScreen(plannedPortion?: PlannedPortion) {
   await screen.findByText('Chickpea curry', {}, SLOW);
 }
 
+/** Switches the page to one of its four panes. */
+async function openTab(tab: 'overview' | 'ingredients' | 'nutrition' | 'why') {
+  await userEvent.setup().press(screen.getByTestId(`recipe-tab-${tab}`));
+}
+
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   mockPush.mockReset();
@@ -133,24 +138,33 @@ beforeEach(() => {
 afterEach(() => client.clear());
 
 describe('RecipeDetailScreen', () => {
-  it('shows the recipe with its fit, ingredients and source', async () => {
+  it('opens on the overview with the source, and keeps fit and ingredients on their tabs', async () => {
     await renderScreen();
     expect(screen.getByText('Test kitchen')).toBeTruthy();
-    expect(screen.getByTestId('recipe-fit')).toBeTruthy();
-    expect(screen.getByText('Chickpeas')).toBeTruthy();
+    expect(screen.getByTestId('recipe-tab-overview').props.accessibilityState).toMatchObject({
+      selected: true,
+    });
+    expect(screen.queryByText('Chickpeas')).toBeNull();
+    await openTab('why');
+    expect(await screen.findByTestId('recipe-fit', {}, SLOW)).toBeTruthy();
+    await openTab('ingredients');
+    expect(await screen.findByText('Chickpeas', {}, SLOW)).toBeTruthy();
     expect(screen.getByText('2 cups')).toBeTruthy();
   });
 
   it('is honest that a declared allergen could not be verified', async () => {
     await renderScreen();
-    expect(await screen.findByText('Milk: not verified', {}, SLOW)).toBeTruthy();
-    expect(screen.getByText('Check before you cook')).toBeTruthy();
+    // The warning sits above the tabs, so it shows whichever pane is open.
+    expect(await screen.findByText('Check before you cook', {}, SLOW)).toBeTruthy();
     expect(screen.getByText('May contain milk: ingredient data incomplete')).toBeTruthy();
+    await openTab('ingredients');
+    expect(await screen.findByText('Milk: not verified', {}, SLOW)).toBeTruthy();
   });
 
   it('estimates the cost of what the person will cook, half portions included', async () => {
     usePreferencesStore.setState({ prefs: prefs({ allergens: ['milk'], smallAppetite: true }) });
     await renderScreen();
+    await openTab('ingredients');
     expect(
       await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings / 2}`, {}, SLOW),
     ).toBeTruthy();
@@ -158,26 +172,29 @@ describe('RecipeDetailScreen', () => {
 
   it('sizes a planned half portion as planned, whatever the setting says', async () => {
     await renderScreen(0.5);
-    expect(
-      await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings / 2}`, {}, SLOW),
-    ).toBeTruthy();
     expect(screen.getByTestId('recipe-planned-portion')).toHaveTextContent(
       'Half portion, as planned',
     );
-    expect(screen.getByText('Per serving (half portion)')).toBeTruthy();
+    await openTab('ingredients');
+    expect(
+      await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings / 2}`, {}, SLOW),
+    ).toBeTruthy();
     // Two cups for four standard servings is one cup at half size.
     expect(screen.getByText('1 cup')).toBeTruthy();
+    await openTab('nutrition');
+    expect(await screen.findByText('Per serving (half portion)', {}, SLOW)).toBeTruthy();
   });
 
   it('keeps a meal planned at full size whole in small appetite mode', async () => {
     usePreferencesStore.setState({ prefs: prefs({ allergens: ['milk'], smallAppetite: true }) });
     await renderScreen(1);
-    expect(
-      await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings}`, {}, SLOW),
-    ).toBeTruthy();
     expect(screen.getByTestId('recipe-planned-portion')).toHaveTextContent(
       'Full portion, as planned',
     );
+    await openTab('ingredients');
+    expect(
+      await screen.findByText(`Cost of ${recipe.id} for ${recipe.servings}`, {}, SLOW),
+    ).toBeTruthy();
     expect(screen.getByText('2 cups')).toBeTruthy();
   });
 
@@ -189,12 +206,14 @@ describe('RecipeDetailScreen', () => {
   it('marks ingredient lines that contain a declared allergen', async () => {
     usePreferencesStore.setState({ prefs: prefs({ allergens: ['egg'] }) });
     await renderScreen();
+    await openTab('ingredients');
     // The ingredient line itself carries the note (the recipe-level warning says it too).
     expect(await screen.findByLabelText(/Eggs, Contains egg/, {}, SLOW)).toBeTruthy();
   });
 
   it('rescales ingredients when servings change', async () => {
     await renderScreen();
+    await openTab('ingredients');
     const user = userEvent.setup();
     await user.press(screen.getByRole('button', { name: 'Fewer servings' }));
     await user.press(screen.getByRole('button', { name: 'Fewer servings' }));
@@ -204,6 +223,7 @@ describe('RecipeDetailScreen', () => {
 
   it('switches to metric amounts', async () => {
     await renderScreen();
+    await openTab('ingredients');
     await userEvent.setup().press(screen.getByRole('tab', { name: 'Metric' }));
     expect(await screen.findByText('475 ml', {}, SLOW)).toBeTruthy();
   });
@@ -216,14 +236,27 @@ describe('RecipeDetailScreen', () => {
     expect(kinds).toEqual(['save']);
   });
 
-  it('opens cook mode and the why sheet', async () => {
+  it('opens cook mode from the photo and the score breakdown from why it fits', async () => {
     await renderScreen();
     const user = userEvent.setup();
     await user.press(screen.getByTestId('recipe-cook'));
-    await user.press(screen.getByTestId('recipe-fit'));
+    await openTab('why');
+    await user.press(await screen.findByTestId('recipe-fit', {}, SLOW));
     expect(mockPush.mock.calls.map(([href]) => href)).toEqual([
       { pathname: '/cook/[id]', params: { id: recipe.id } },
       { pathname: '/recipe/[id]/why', params: { id: recipe.id } },
     ]);
+  });
+
+  it('opens nearby from its tile and compare from the header menu', async () => {
+    await renderScreen();
+    const user = userEvent.setup();
+    await user.press(screen.getByTestId('recipe-action-nearby'));
+    await user.press(screen.getByTestId('recipe-more'));
+    await user.press(await screen.findByTestId('recipe-action-compare'));
+    await waitFor(() =>
+      expect(mockPush).toHaveBeenCalledWith({ pathname: '/compare', params: { from: recipe.id } }),
+    );
+    expect(mockPush.mock.calls[0]?.[0]).toBe(`/nearby/${encodeURIComponent(recipe.id)}`);
   });
 });

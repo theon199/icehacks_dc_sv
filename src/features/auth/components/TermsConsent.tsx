@@ -4,19 +4,14 @@ import { StyleSheet, View } from 'react-native';
 import { haptics } from '@/lib/haptics';
 import { Icon, PressableScale, Text, minTouchTarget, useTheme } from '@/ui';
 
-/**
- * Opens the legal pages. From inside a sheet, the sheet closes first: the pages live in the root
- * stack and would otherwise open underneath it.
- */
-function useLegalLinks(fromSheet = false) {
+import { night } from './NightTheme';
+
+/** Opens the legal pages, pushed over whatever is showing (the account sheet stays put). */
+function useLegalLinks() {
   const router = useRouter();
-  const open = (href: '/about/terms' | '/about/privacy') => {
-    if (fromSheet && router.canGoBack()) router.back();
-    router.push(href);
-  };
   return {
-    openTerms: () => open('/about/terms'),
-    openPrivacy: () => open('/about/privacy'),
+    openTerms: () => router.push('/about/terms'),
+    openPrivacy: () => router.push('/about/privacy'),
   };
 }
 
@@ -24,12 +19,12 @@ function useLegalLinks(fromSheet = false) {
  * The two legal pages as separate links, each with a full-size touch target. Inline links inside
  * a sentence would be too small to tap reliably.
  */
-function LegalLinks({ fromSheet = false }: { fromSheet?: boolean }) {
-  const { openTerms, openPrivacy } = useLegalLinks(fromSheet);
+function LegalLinks() {
+  const { openTerms, openPrivacy } = useLegalLinks();
   return (
     <View style={styles.links}>
       <LegalLink testID="legal-terms" label="Terms of Use" onPress={openTerms} />
-      <Text variant="footnote" tone="muted" importantForAccessibility="no">
+      <Text variant="footnote" style={styles.muted} importantForAccessibility="no">
         ·
       </Text>
       <LegalLink testID="legal-privacy" label="Privacy Policy" onPress={openPrivacy} />
@@ -55,7 +50,7 @@ function LegalLink({
       onPress={onPress}
       style={styles.link}
     >
-      <Text variant="footnote" style={styles.underline}>
+      <Text variant="footnote" style={styles.linkText}>
         {label}
       </Text>
     </PressableScale>
@@ -63,13 +58,13 @@ function LegalLink({
 }
 
 /** Footnote under provider buttons: continuing with Apple or Google creates an account on terms. */
-export function LegalNote({ fromSheet = false }: { fromSheet?: boolean }) {
+export function LegalNote() {
   return (
     <View>
-      <Text variant="footnote" tone="muted" align="center">
+      <Text variant="footnote" align="center" style={styles.muted}>
         By continuing you agree to Famara’s Terms of Use and Privacy Policy.
       </Text>
-      <LegalLinks fromSheet={fromSheet} />
+      <LegalLinks />
     </View>
   );
 }
@@ -105,15 +100,18 @@ export function TermsCheckbox({ checked, onChange, error }: TermsCheckboxProps) 
           style={[
             styles.box,
             {
-              borderColor: error ? theme.colors.danger : theme.colors.borderStrong,
-              backgroundColor: checked ? theme.colors.primary : theme.colors.surface,
-              borderRadius: theme.radii.xs,
+              borderColor: error
+                ? theme.colors.danger
+                : checked
+                  ? theme.colors.highlight
+                  : night.inkFaint,
+              backgroundColor: checked ? theme.colors.highlight : night.field,
             },
           ]}
         >
-          {checked ? <Icon name="checkmark" size={16} color="onPrimary" weight="bold" /> : null}
+          {checked ? <Icon name="checkmark" size={16} color="onHighlight" weight="bold" /> : null}
         </View>
-        <Text variant="subhead" style={styles.label}>
+        <Text variant="subhead" style={[styles.label, styles.onNight]}>
           I agree to the Terms and Privacy Policy.
         </Text>
       </PressableScale>
@@ -138,17 +136,20 @@ const styles = StyleSheet.create({
     minHeight: minTouchTarget,
   },
   box: {
-    width: 26,
-    height: 26,
-    borderWidth: 2,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: { flex: 1 },
   links: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   // Lines the links up under the label text: box width plus row gap, less the link padding.
-  checkboxLinks: { alignItems: 'flex-start', marginLeft: 30 },
-  underline: { textDecorationLine: 'underline' },
+  checkboxLinks: { alignItems: 'flex-start', marginLeft: 28 },
+  linkText: { color: night.ink, textDecorationLine: 'underline' },
+  muted: { color: night.inkMuted },
+  onNight: { color: night.ink },
   link: {
     minHeight: minTouchTarget,
     minWidth: minTouchTarget,

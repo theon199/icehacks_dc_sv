@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { Button, ErrorState, Text, useTheme } from '@/ui';
+import { ErrorState, space, useTheme } from '@/ui';
 
-import { ChipGroup } from '../components/ChipGroup';
+import { ChipGroup, SelectChip } from '../components/ChipGroup';
+import { SectionLabel } from '../components/SectionLabel';
 import { StepHeader } from '../components/StepHeader';
 import { sortStaplesForDisplay, usePantryStaples, type PantryStaple } from '../deps';
 import { toggle } from '../onboardingModel';
@@ -39,28 +40,31 @@ export function PantryStep({ draft, onChange }: StepProps) {
         description="Tap the basics you usually keep. You can update your pantry any time."
       />
       {query.isPending ? (
-        <ActivityIndicator color={theme.colors.primary} accessibilityLabel="Loading" />
+        <ActivityIndicator
+          style={styles.state}
+          color={theme.colors.primary}
+          accessibilityLabel="Loading"
+        />
       ) : query.isError ? (
         <ErrorState
+          style={styles.state}
           title="The pantry list didn’t load"
           message="You can try again, or skip this question for now."
           onRetry={() => void query.refetch()}
         />
       ) : (
         <>
-          <Button
-            label={everything ? 'Clear all' : 'I have all of these'}
-            variant="secondary"
-            size="sm"
-            icon={everything ? 'xmark' : 'checkmark'}
-            onPress={() => onChange({ ...draft, pantryStaples: everything ? [] : allIds })}
-            style={styles.all}
-          />
+          <View style={styles.all}>
+            <SelectChip
+              testID="pantry-all"
+              label="I have all of these"
+              on={everything}
+              onToggle={(on) => onChange({ ...draft, pantryStaples: on ? allIds : [] })}
+            />
+          </View>
           {groups.map((group) => (
-            <View key={group.category} style={styles.section}>
-              <Text variant="label" tone="muted" accessibilityRole="header">
-                {group.label}
-              </Text>
+            <View key={group.category}>
+              <SectionLabel>{group.label}</SectionLabel>
               <ChipGroup
                 items={group.items}
                 selected={draft.pantryStaples}
@@ -78,6 +82,6 @@ export function PantryStep({ draft, onChange }: StepProps) {
 }
 
 const styles = StyleSheet.create({
-  section: { gap: 8 },
-  all: { alignSelf: 'flex-start' },
+  state: { marginTop: space.xl },
+  all: { marginTop: 20, alignItems: 'flex-start' },
 });

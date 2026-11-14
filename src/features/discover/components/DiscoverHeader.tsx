@@ -1,72 +1,122 @@
-import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { memo, useCallback, useMemo } from 'react';
+import { View } from 'react-native';
 
 import type { DeckMode } from '@/domain';
-import { Header, IconButton, Text } from '@/ui';
-import { gutter, space } from '@/ui/tokens';
+import { ProfileButton } from '@/features/shell';
+import { haptics } from '@/lib/haptics';
+import {
+  GlassIconButton,
+  GlassMenu,
+  TabHeader,
+  useGlassMenu,
+  type GlassBadge,
+  type GlassMenuItem,
+} from '@/ui';
 
-import { ModeSwitcher } from './ModeSwitcher';
-import { NotificationBell } from '../deps';
+import { DeckModePill } from './DeckModePill';
+import { useUnreadCount } from '../deps';
 import type { ModeOption } from '../modes';
 
 export interface DiscoverHeaderProps {
-  onProfile: () => void;
   modes: readonly ModeOption[];
   mode: DeckMode;
   onModeChange: (mode: DeckMode) => void;
-  /** Today's ranking note from Health, if any. */
-  note: string | null;
+  canUndo: boolean;
+  onUndo: () => void;
 }
 
+/** Counts above this read as "9+" on the options button. */
+const MAX_BADGE = 9;
+
 /**
- * Tab title with the notifications and profile controls, then the mode pill and today's note.
- * The pill sits on its own row so the title never truncates on narrow phones next to three
- * controls.
+ * The Discover tab header: one row with the title, the lime mode pill, the deck options circle and
+ * the profile circle. The options circle opens a glass menu with preferences, the inbox (its
+ * unread count rides on the circle) and, while the last swipe can still be taken back, undo.
  */
 export const DiscoverHeader = memo(function DiscoverHeader({
-  onProfile,
   modes,
   mode,
   onModeChange,
-  note,
+  canUndo,
+  onUndo,
 }: DiscoverHeaderProps) {
+  const router = useRouter();
+  const unread = useUnreadCount();
+  const menu = useGlassMenu();
+  const { show } = menu;
+
+  const open = useCallback(() => {
+    haptics.selection();
+    show();
+  }, [show]);
+
+  const items = useMemo<GlassMenuItem[]>(() => {
+    const list: GlassMenuItem[] = [
+      {
+        key: 'preferences',
+        label: 'Preferences',
+        icon: 'slider.horizontal.3',
+        accessibilityHint: 'Cuisines, time, diet and allergies',
+        testID: 'discover-option-preferences',
+        onPress: () => router.push('/preferences'),
+      },
+      {
+        key: 'notifications',
+        label: unread > 0 ? `Notifications · ${unread} new` : 'Notifications',
+        icon: unread > 0 ? 'bell.badge' : 'bell',
+        testID: 'discover-option-notifications',
+        onPress: () => router.push('/notifications'),
+      },
+    ];
+    if (canUndo) {
+      list.push({
+        key: 'undo',
+        label: 'Undo last swipe',
+        icon: 'arrow.uturn.backward',
+        testID: 'discover-option-undo',
+        onPress: onUndo,
+      });
+    }
+    return list;
+  }, [canUndo, onUndo, router, unread]);
+
+  const badge: GlassBadge | undefined =
+    unread > 0
+      ? {
+          label: unread > MAX_BADGE ? `${MAX_BADGE}+` : String(unread),
+          accessibilityLabel: `${unread} unread ${unread === 1 ? 'notification' : 'notifications'}`,
+        }
+      : undefined;
+
   return (
-    <View style={styles.container}>
-      <Header
-        size="tab"
+    <>
+      <TabHeader
         title="Discover"
+        testID="discover-header"
+        leading={<DeckModePill modes={modes} value={mode} onChange={onModeChange} />}
         trailing={
           <>
-            <NotificationBell variant="glass" testID="discover-notifications" />
-            <IconButton
-              testID="discover-profile"
-              icon="person"
-              accessibilityLabel="Profile"
-              variant="glass"
-              onPress={onProfile}
-            />
+            <View ref={menu.triggerRef} collapsable={false}>
+              <GlassIconButton
+                icon="slider.horizontal.3"
+                accessibilityLabel="Deck options"
+                accessibilityHint="Preferences, notifications and undo"
+                onPress={open}
+                testID="discover-options"
+                {...(badge === undefined ? {} : { badge })}
+              />
+            </View>
+            <ProfileButton testID="discover-profile" />
           </>
         }
       />
-      <View style={styles.modeRow}>
-        <ModeSwitcher modes={modes} value={mode} onChange={onModeChange} />
-        {note ? (
-          <Text variant="footnote" tone="muted" numberOfLines={2} style={styles.note}>
-            {note}
-          </Text>
-        ) : null}
-      </View>
-    </View>
+      <GlassMenu
+        controller={menu}
+        items={items}
+        dismissLabel="Close deck options"
+        testID="discover-options-menu"
+      />
+    </>
   );
-});
-
-const styles = StyleSheet.create({
-  container: {
-    gap: space.md,
-    paddingHorizontal: gutter,
-    paddingTop: space.sm,
-    paddingBottom: space.md,
-  },
-  modeRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  note: { flex: 1 },
 });

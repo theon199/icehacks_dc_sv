@@ -26,7 +26,15 @@ jest.mock(
   () => jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').expoSqliteFake as unknown,
 );
 jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  Stack: { Screen: () => null },
+  router: {
+    push: jest.fn(),
+    back: jest.fn(),
+    replace: jest.fn(),
+    canGoBack: jest.fn(() => true),
+  },
+}));
 jest.mock('expo-crypto', () => ({
   randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
 }));
@@ -56,6 +64,7 @@ function planToday() {
 }
 
 beforeEach(() => {
+  jest.clearAllMocks();
   resetCatalogForTests();
   clearCatalogCaches();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -74,6 +83,45 @@ describeDb('ShoppingScreen', () => {
     await renderShopping();
     await user.press(await screen.findByRole('button', { name: 'Plan meals' }));
     expect(router.push).toHaveBeenCalledWith('/cookbook');
+  });
+
+  it('goes back from the glass back circle, and to the plan when there is no history', async () => {
+    const user = userEvent.setup();
+    await renderShopping();
+    await user.press(screen.getByRole('button', { name: 'Back' }));
+    expect(router.back).toHaveBeenCalledTimes(1);
+
+    jest.mocked(router.canGoBack).mockReturnValueOnce(false);
+    await user.press(screen.getByRole('button', { name: 'Back' }));
+    expect(router.replace).toHaveBeenCalledWith('/cookbook');
+  });
+
+  it('switches the days the list covers from the glass range menu', async () => {
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      await renderShopping();
+      expect(screen.getByText('Rest of week')).toBeOnTheScreen();
+      await user.press(screen.getByTestId('shopping-range'));
+      expect(screen.getByTestId('shopping-range-thisWeek')).toBeSelected();
+      await user.press(screen.getByTestId('shopping-range-nextWeek'));
+      // The pick runs once the menu has closed.
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+      expect(screen.queryByTestId('shopping-range-menu')).not.toBeOnTheScreen();
+      expect(screen.getByLabelText('Days to shop for, Next week')).toBeOnTheScreen();
+      expect(screen.getByText('Next week')).toBeOnTheScreen();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('opens the pantry from under the list', async () => {
+    const user = userEvent.setup();
+    await renderShopping();
+    await user.press(screen.getByTestId('shopping-open-pantry'));
+    expect(router.push).toHaveBeenCalledWith('/pantry');
   });
 
   it('lists what the planned meal needs, ticks lines, and moves them into the pantry', async () => {

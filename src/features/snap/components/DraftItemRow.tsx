@@ -67,7 +67,10 @@ export const DraftItemRow = memo(function DraftItemRow({
 
   return (
     <View
-      style={[styles.row, { backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg }]}
+      style={[
+        styles.row,
+        { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.lg },
+      ]}
       testID={`draft-item-${item.key}`}
     >
       <PressableScale

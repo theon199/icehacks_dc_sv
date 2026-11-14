@@ -3,16 +3,15 @@ import {
   AppleAuthenticationButtonStyle,
   AppleAuthenticationButtonType,
 } from 'expo-apple-authentication';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Button, useTheme } from '@/ui';
+import { space, useTheme } from '@/ui';
 
 import { useAppleSignInOffered } from '../apple';
 import { signInWithApple, signInWithGoogle, type ProviderResult } from '../providers';
-import { FormMessage } from './FormMessage';
-import { nightOutline } from './NightTheme';
+import { NIGHT_BUTTON_HEIGHT, NightNotice, NightSecondaryButton } from './NightControls';
 
 type Provider = 'apple' | 'google';
 
@@ -21,8 +20,15 @@ const startProvider: Record<Provider, () => Promise<ProviderResult>> = {
   google: signInWithGoogle,
 };
 
-/** "Continue with Apple" (where the device supports it) and "Continue with Google". */
-export function ProviderButtons() {
+export interface ProviderButtonsProps {
+  /** Someone logging back in sees "Sign in with Apple"; a newcomer sees "Continue with Apple". */
+  intent: 'log-in' | 'get-started';
+  /** More ways in, drawn under the providers and above any provider failure. */
+  children?: ReactNode;
+}
+
+/** Sign in with Apple (where the device supports it) and "Continue with Google". */
+export function ProviderButtons({ intent, children }: ProviderButtonsProps) {
   const theme = useTheme();
   const appleOffered = useAppleSignInOffered();
   const [active, setActive] = useState<Provider | null>(null);
@@ -48,17 +54,21 @@ export function ProviderButtons() {
     theme.scheme === 'dark'
       ? AppleAuthenticationButtonStyle.WHITE
       : AppleAuthenticationButtonStyle.BLACK;
+  const appleKind =
+    intent === 'log-in'
+      ? AppleAuthenticationButtonType.SIGN_IN
+      : AppleAuthenticationButtonType.CONTINUE;
 
   return (
     <View style={styles.stack}>
-      {problem ? <FormMessage message={problem} testID="provider-error" /> : null}
       {appleOffered ? (
         <View
           pointerEvents={active ? 'none' : 'auto'}
           style={active === 'google' ? styles.dimmed : null}
         >
           <AppleAuthenticationButton
-            buttonType={AppleAuthenticationButtonType.CONTINUE}
+            key={appleKind}
+            buttonType={appleKind}
             buttonStyle={appleLook}
             cornerRadius={theme.radii.pill}
             style={styles.apple}
@@ -66,24 +76,22 @@ export function ProviderButtons() {
           />
         </View>
       ) : null}
-      <Button
+      <NightSecondaryButton
         testID="google-sign-in"
         label="Continue with Google"
         icon="globe"
-        variant="secondary"
-        size="lg"
-        fullWidth
-        style={nightOutline}
         loading={active === 'google'}
         disabled={active === 'apple'}
         onPress={() => void continueWith('google')}
       />
+      {children}
+      <NightNotice message={problem} testID="provider-error" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 12 },
-  apple: { height: 56, width: '100%' },
+  stack: { gap: space.sm },
+  apple: { height: NIGHT_BUTTON_HEIGHT, width: '100%' },
   dimmed: { opacity: 0.45 },
 });

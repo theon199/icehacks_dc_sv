@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { memo, useCallback } from 'react';
 import { StyleSheet } from 'react-native';
 
-import { PressableScale, Text } from '@/ui';
+import { PressableScale, Text, fontFamily } from '@/ui';
 
 import { useRecipeSummary } from '../hooks/useRecipes';
 import { dishFacts } from '../logic/dishLine';
@@ -31,10 +31,10 @@ export const DishLine = memo(function DishLine({ recipeId }: { recipeId: string 
       onPress={open}
       style={styles.row}
     >
-      <Text variant="title3" numberOfLines={1} accessible={false}>
+      <Text variant="headline" numberOfLines={2} accessible={false} style={styles.title}>
         {recipe.title}
         {facts ? (
-          <Text variant="subhead" tone="muted">
+          <Text variant="subhead" tone="muted" style={styles.facts}>
             {`  ·  ${facts}`}
           </Text>
         ) : null}
@@ -45,4 +45,6 @@ export const DishLine = memo(function DishLine({ recipeId }: { recipeId: string 
 
 const styles = StyleSheet.create({
   row: { minHeight: 44, justifyContent: 'center' },
+  title: { fontFamily: fontFamily.textBold },
+  facts: { fontFamily: fontFamily.textMedium, fontVariant: ['tabular-nums'] },
 });

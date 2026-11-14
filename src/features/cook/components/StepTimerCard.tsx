@@ -2,7 +2,16 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { formatClock } from '@/lib/format';
-import { Button, Icon, IconButton, PressableScale, Text, useTheme } from '@/ui';
+import {
+  Button,
+  Icon,
+  IconButton,
+  PressableScale,
+  Text,
+  minTouchTarget,
+  space,
+  useTheme,
+} from '@/ui';
 
 import { useNow } from '../hooks/useNow';
 import { remainingMs, type CookTimer } from '../logic/timers';
@@ -54,7 +63,7 @@ export const StepTimerCard = memo(function StepTimerCard({
           { backgroundColor: theme.colors.highlightSoft, borderRadius: theme.radii.pill },
         ]}
       >
-        <Icon name="timer" size={22} color="onHighlightSoft" />
+        <Icon name="timer" size={18} color="onHighlightSoft" />
         <Text variant="headline" color="onHighlightSoft" accessible={false}>
           {label}
         </Text>
@@ -70,7 +79,7 @@ export const StepTimerCard = memo(function StepTimerCard({
 
   return (
     <View
-      style={[styles.card, { backgroundColor: background, borderRadius: theme.radii.xl }]}
+      style={[styles.card, { backgroundColor: background, borderRadius: theme.radii.lg }]}
       testID="cook-step-timer"
     >
       <View
@@ -81,8 +90,8 @@ export const StepTimerCard = memo(function StepTimerCard({
           done ? 'Timer done' : `${paused ? 'Paused, ' : ''}${formatClock(left)} left`
         }
       >
-        <Icon name={done ? 'bell.fill' : 'timer'} size={26} color={foreground} />
-        <Text variant="display" color={foreground} style={styles.clock}>
+        <Icon name={done ? 'bell.fill' : 'timer'} size={22} color={foreground} />
+        <Text variant="title1" color={foreground} style={styles.clock}>
           {done ? 'Done' : formatClock(left)}
         </Text>
         {paused ? (
@@ -126,13 +135,13 @@ const styles = StyleSheet.create({
   start: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    minHeight: 56,
-    paddingHorizontal: 20,
+    alignSelf: 'flex-start',
+    gap: space.xs,
+    minHeight: minTouchTarget,
+    paddingHorizontal: space.md,
   },
-  card: { padding: 20, gap: 12 },
-  readout: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  card: { padding: space.md, gap: space.sm },
+  readout: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   clock: { fontVariant: ['tabular-nums'] },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
 });

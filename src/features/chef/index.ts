@@ -1,5 +1,7 @@
 // Chef: the AI assistant, plus the AI gate other AI features reuse.
 export { AiGate, type AiGateProps } from './components/AiGate';
+export { AskHeader, type AskHeaderProps } from './components/AskHeader';
+export { ChefHat, type ChefHatProps } from './components/ChefHat';
 export { ChefScreen, type ChefScreenProps } from './screens/ChefScreen';
 export {
   describeAiProblem,

@@ -4,6 +4,7 @@ import type { MyStats } from '@/lib/supabase/database.types';
 import { renderWithTheme } from '@/test/render';
 
 import { StatsRow } from './StatsRow';
+import { StreakSlab } from './StreakSlab';
 
 const stats: MyStats = {
   cooked_count: 12,
@@ -22,10 +23,10 @@ const stats: MyStats = {
 };
 
 describe('StatsRow', () => {
-  it('shows each stat as one accessible tile', async () => {
+  it('shows each total as one accessible tile, leaving the streak to its own card', async () => {
     await renderWithTheme(<StatsRow stats={stats} loading={false} />);
     expect(screen.getByLabelText('12 dishes cooked, 2 this week')).toBeOnTheScreen();
-    expect(screen.getByLabelText('4 days in a row, best 6')).toBeOnTheScreen();
+    expect(screen.queryByLabelText('4 days in a row, best 6')).toBeNull();
     expect(screen.getByLabelText('3 cuisines explored')).toBeOnTheScreen();
     expect(screen.getByLabelText('1 post shared')).toBeOnTheScreen();
     expect(screen.getByLabelText('9 likes received')).toBeOnTheScreen();
@@ -37,18 +38,26 @@ describe('StatsRow', () => {
     expect(screen.getByLabelText('Indian · 5')).toBeOnTheScreen();
   });
 
-  it('nudges people who have not cooked yet', async () => {
-    await renderWithTheme(
-      <StatsRow
-        stats={{ ...stats, cooked_count: 0, post_count: 0, cuisines: [] }}
-        loading={false}
-      />,
-    );
-    expect(screen.getByText(/start your streak/)).toBeOnTheScreen();
-  });
-
   it('shows placeholders while loading', async () => {
     await renderWithTheme(<StatsRow stats={undefined} loading />);
     expect(screen.getByTestId('stats-loading')).toBeOnTheScreen();
+  });
+});
+
+describe('StreakSlab', () => {
+  it('reads the streak as one sentence, with the best run and this week beside it', async () => {
+    await renderWithTheme(<StreakSlab stats={stats} />);
+    expect(screen.getByLabelText('4 days in a row, best 6')).toBeOnTheScreen();
+    expect(screen.getByText('Best 6 days · 2 cooked this week')).toBeOnTheScreen();
+  });
+
+  it('nudges people who have not cooked yet', async () => {
+    await renderWithTheme(
+      <StreakSlab
+        stats={{ ...stats, cooked_count: 0, current_streak: 0, longest_streak: 0, post_count: 0 }}
+      />,
+    );
+    expect(screen.getByLabelText('0 days in a row')).toBeOnTheScreen();
+    expect(screen.getByText(/start your streak/)).toBeOnTheScreen();
   });
 });

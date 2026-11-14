@@ -89,7 +89,26 @@ describe('screen rows', () => {
     expect(rowsFor([]).filter((row) => row.type === 'pantryItem')).toEqual([]);
     expect(rowsFor([]).find((row) => row.type === 'pantryToggle')).toMatchObject({ count: 1 });
     expect(rowsFor([], true).filter((row) => row.type === 'pantryItem')).toEqual([
-      { type: 'pantryItem', key: 'pantry:i:egg', title: '4 eggs' },
+      { type: 'pantryItem', key: 'pantry:i:egg', title: '4 eggs', closes: true },
     ]);
+  });
+
+  it('marks the last row of each section as the one that closes its card', () => {
+    const rows = rowsFor([]);
+    const closing = rows.filter((row) => row.type !== 'heading' && row.closes);
+    const headings = rows.filter((row) => row.type === 'heading');
+    // One closing row per aisle card, plus the collapsed pantry toggle that is its own card.
+    expect(closing).toHaveLength(headings.length + 1);
+    rows.forEach((row, index) => {
+      const next = rows[index + 1];
+      if (row.type !== 'heading' && row.closes) {
+        expect(next === undefined || next.type === 'heading' || next.type === 'pantryToggle').toBe(
+          true,
+        );
+      }
+    });
+    expect(rowsFor([], true).find((row) => row.type === 'pantryToggle')).toMatchObject({
+      closes: false,
+    });
   });
 });

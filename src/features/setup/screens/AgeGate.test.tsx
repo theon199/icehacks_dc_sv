@@ -55,7 +55,6 @@ const leave = jest.mocked(signOut);
 
 async function pickYear(year: number) {
   const user = userEvent.setup();
-  await user.press(screen.getByTestId(`decade-${Math.floor(year / 10) * 10}`));
   await user.press(screen.getByTestId(`year-${year}`));
   await user.press(screen.getByTestId('birth-year-continue'));
   await user.press(screen.getByTestId('birth-year-confirm'));

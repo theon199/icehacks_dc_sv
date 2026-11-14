@@ -27,7 +27,10 @@ jest.mock('../api/friendsApi', () => ({
 }));
 jest.mock('../api/profileApi', () => ({ avatarUrl: jest.fn(() => null) }));
 jest.mock('../deps', () => ({ fetchActiveCooks: jest.fn() }));
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  Stack: { Screen: () => null },
+  router: { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) },
+}));
 
 const person = (id: string, displayName: string): Person => ({
   id,
@@ -77,7 +80,8 @@ describe('FriendsScreen', () => {
 
     await waitFor(() => expect(screen.queryByRole('header', { name: 'Follows you' })).toBeNull());
     expect(screen.getByLabelText('Cy, @cy')).toBeOnTheScreen();
-    expect(screen.getByRole('header', { name: 'Friends' })).toBeOnTheScreen();
+    // The screen's own title is a header too.
+    expect(screen.getAllByRole('header', { name: 'Friends' })).toHaveLength(2);
   });
 
   it('puts the row back when a follow fails', async () => {

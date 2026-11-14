@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import {
+  NightNotice,
+  NightPrimaryButton,
+  NightTextLink,
   accountErrorMessage,
+  night,
   fetchAccountStatus,
   identityFor,
   isAccountError,
@@ -12,18 +16,16 @@ import {
   useSubmission,
 } from '@/features/auth';
 import { haptics } from '@/lib/haptics';
-import { Button, Card, Screen, Text } from '@/ui';
+import { Text, fontFamily, radii, space } from '@/ui';
 
-import { FormNote } from '../components/FormNote';
-import { YearPicker } from '../components/YearPicker';
+import { GateHeading, NightGate } from '../components/NightGate';
+import { YearWheel, yearsBetween } from '../components/YearWheel';
 
 /** Oldest birth year the server accepts. */
 const MAX_AGE_YEARS = 120;
 
-/** The picker opens on the decade of a typical adult rather than at either end of the range. */
-function openingDecade(latest: number): number {
-  return Math.floor((latest - 30) / 10) * 10;
-}
+/** The wheel rests on a typical adult's year rather than at either end of the range. */
+const RESTING_AGE = 30;
 
 /** A year is already on record for this account: show the screen that record calls for. */
 function adoptRecordedYear(userId: string): void {
@@ -46,7 +48,7 @@ function adoptRecordedYear(userId: string): void {
 export function BirthYearScreen() {
   const latest = new Date().getFullYear();
   const userId = useSessionStore((s) => s.userId);
-  const [decade, setDecade] = useState(() => openingDecade(latest));
+  const years = useMemo(() => yearsBetween(latest - MAX_AGE_YEARS, latest), [latest]);
   const [year, setYear] = useState<number | null>(null);
   // Picking, then a second look before saving: the year can only ever move later.
   const [reviewing, setReviewing] = useState(false);
@@ -77,78 +79,71 @@ export function BirthYearScreen() {
     });
   };
 
-  const footer =
-    chosen != null ? (
-      <>
-        <Button
-          testID="birth-year-confirm"
-          label={`Yes, I was born in ${chosen}`}
-          size="lg"
-          fullWidth
-          loading={saving.busy}
-          onPress={() => confirmYear(chosen)}
-        />
-        <Button
-          label="Change year"
-          variant="ghost"
-          fullWidth
-          disabled={saving.busy}
-          onPress={() => setReviewing(false)}
-        />
-      </>
-    ) : (
-      <>
-        <Button
-          testID="birth-year-continue"
-          label="Continue"
-          size="lg"
-          fullWidth
-          disabled={year == null}
-          onPress={() => setReviewing(true)}
-        />
-        <Button label="Sign out" variant="ghost" fullWidth onPress={() => void signOut()} />
-      </>
-    );
-
   return (
-    <Screen safeTop footer={footer}>
-      <View style={styles.heading}>
-        <Text variant="title1">When were you born?</Text>
-        <Text variant="callout" tone="muted">
-          Famara is for people 13 and older. We only keep the year, never the full date.
-        </Text>
-      </View>
-
-      {saving.failure ? (
-        <FormNote icon="exclamationmark.triangle" message={saving.failure} />
-      ) : null}
-
+    <NightGate>
+      <GateHeading
+        title="When were you born?"
+        subtitle="Famara is for people 13 and older. We only keep the year, never the full date."
+      />
       {chosen != null ? (
-        <Card variant="sunken">
-          <View style={styles.review} accessible accessibilityLiveRegion="polite">
-            <Text variant="display" align="center">
-              {chosen}
-            </Text>
-            <Text variant="callout" tone="muted" align="center">
-              Please check this is right. Once saved, it can’t be changed to an earlier year.
-            </Text>
-          </View>
-        </Card>
+        <View style={styles.review} accessible accessibilityLiveRegion="polite">
+          <Text variant="display" align="center" style={styles.chosen}>
+            {chosen}
+          </Text>
+          <Text variant="subhead" align="center" style={styles.muted}>
+            Please check this is right. Once saved, it can’t be changed to an earlier year.
+          </Text>
+        </View>
       ) : (
-        <YearPicker
-          latest={latest}
-          earliest={latest - MAX_AGE_YEARS}
+        <YearWheel
+          years={years}
           value={year}
-          decade={decade}
-          onDecadeChange={setDecade}
           onChange={setYear}
+          restingYear={latest - RESTING_AGE}
+          disabled={saving.busy}
         />
       )}
-    </Screen>
+      <NightNotice message={saving.failure} />
+      {chosen != null ? (
+        <View style={styles.actions}>
+          <NightPrimaryButton
+            testID="birth-year-confirm"
+            label={`Yes, I was born in ${chosen}`}
+            loading={saving.busy}
+            onPress={() => confirmYear(chosen)}
+          />
+          <NightTextLink
+            label="Change year"
+            disabled={saving.busy}
+            onPress={() => setReviewing(false)}
+          />
+        </View>
+      ) : (
+        <View style={styles.actions}>
+          <NightPrimaryButton
+            testID="birth-year-continue"
+            label="Continue"
+            disabled={year == null}
+            onPress={() => setReviewing(true)}
+          />
+          <NightTextLink label="Sign out" onPress={() => void signOut()} />
+        </View>
+      )}
+    </NightGate>
   );
 }
 
 const styles = StyleSheet.create({
-  heading: { gap: 6 },
-  review: { gap: 8, paddingVertical: 8 },
+  review: {
+    gap: space.sm,
+    paddingVertical: space.xl,
+    paddingHorizontal: space.lg,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: night.hairline,
+    backgroundColor: night.field,
+  },
+  chosen: { color: night.ink, fontFamily: fontFamily.display },
+  muted: { color: night.inkMuted },
+  actions: { gap: space.xs },
 });

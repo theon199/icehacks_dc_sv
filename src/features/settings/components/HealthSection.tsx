@@ -1,9 +1,8 @@
 import { useRouter } from 'expo-router';
 
-import { Card, ListRow } from '@/ui';
-
 import { HealthConnections } from '../deps';
-import { SettingsSection } from './SettingsSection';
+import { SettingsRow } from './SettingsRow';
+import { SettingsCard, SettingsSection } from './SettingsSection';
 
 /**
  * Apple Health: the connection card from the health feature, then a way into the Health screen,
@@ -19,15 +18,15 @@ export function HealthSection() {
       footnote="Health insights are for information only, not medical advice."
     >
       <HealthConnections />
-      <Card padding="md">
-        <ListRow
+      <SettingsCard>
+        <SettingsRow
           testID="settings-health-insights"
-          title="Health insights"
-          subtitle="Today's context and how dishes affected your glucose"
+          label="Health insights"
+          description="Today's context and how dishes affected your glucose"
           icon="chart.bar"
           onPress={() => router.push('/health')}
         />
-      </Card>
+      </SettingsCard>
     </SettingsSection>
   );
 }
