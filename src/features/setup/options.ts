@@ -45,12 +45,12 @@ export const allergenChoices: readonly Choice<AllergenId>[] = ALLERGEN_IDS.map((
 }));
 
 export const goalChoices: readonly Choice<Goal>[] = [
-  { id: 'more_protein', label: 'More protein', icon: 'fish.fill' },
-  { id: 'more_fiber', label: 'More fiber', icon: 'leaf.fill' },
-  { id: 'lower_sodium', label: 'Less salt', icon: 'drop.fill' },
-  { id: 'heart_friendly', label: 'Heart-friendly', icon: 'heart.fill' },
+  { id: 'more_protein', label: 'More protein', icon: 'dumbbell' },
+  { id: 'more_fiber', label: 'More fiber', icon: 'leaf' },
+  { id: 'lower_sodium', label: 'Less salt', icon: 'drop' },
+  { id: 'heart_friendly', label: 'Heart-friendly', icon: 'heart' },
   { id: 'lighter_meals', label: 'Lighter meals', icon: 'scalemass' },
-  { id: 'plant_forward', label: 'More plants', icon: 'carrot.fill' },
+  { id: 'plant_forward', label: 'More plants', icon: 'carrot' },
   { id: 'steady_energy', label: 'Steadier energy', icon: 'bolt.heart' },
 ];
 
