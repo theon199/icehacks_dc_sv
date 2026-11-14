@@ -21,6 +21,8 @@ export interface Palette {
   textMuted: string;
   textSubtle: string;
   textInverse: string;
+  /** Glyphs and copy laid over photography: white in both appearances. */
+  onImage: string;
   primary: string;
   primaryPressed: string;
   onPrimary: string;
@@ -69,6 +71,7 @@ export const palettes: Record<ColorScheme, Palette> = {
     textMuted: '#62676D',
     textSubtle: '#62676D',
     textInverse: '#FFFFFF',
+    onImage: '#FFFFFF',
     primary: '#17191B',
     primaryPressed: '#2E3135',
     onPrimary: '#FFFFFF',
@@ -111,6 +114,7 @@ export const palettes: Record<ColorScheme, Palette> = {
     textMuted: '#A9AEB3',
     textSubtle: '#A9AEB3',
     textInverse: '#17191B',
+    onImage: '#FFFFFF',
     primary: '#F4F4F2',
     primaryPressed: '#D9DAD6',
     onPrimary: '#17191B',

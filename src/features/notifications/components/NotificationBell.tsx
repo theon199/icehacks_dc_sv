@@ -1,16 +1,18 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
-import { Badge, IconButton } from '@/ui';
+import { Badge, IconButton, type IconButtonProps } from '@/ui';
 
 import { useUnreadCount } from '../queries';
 
 export interface NotificationBellProps {
+  /** `glass` when the bell sits beside a tab title. */
+  variant?: IconButtonProps['variant'];
   testID?: string;
 }
 
 /** Header button that opens the inbox, with the unread count on top. */
-export function NotificationBell({ testID }: NotificationBellProps) {
+export function NotificationBell({ variant = 'plain', testID }: NotificationBellProps) {
   const router = useRouter();
   const unread = useUnreadCount();
   const label = unread > 0 ? `Notifications, ${unread} unread` : 'Notifications';
@@ -19,6 +21,7 @@ export function NotificationBell({ testID }: NotificationBellProps) {
       <IconButton
         icon={unread > 0 ? 'bell.badge' : 'bell'}
         accessibilityLabel={label}
+        variant={variant}
         onPress={() => router.push('/notifications')}
         {...(testID ? { testID } : {})}
       />

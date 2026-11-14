@@ -1,169 +1,193 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Chip, Icon, ProgressRing, Text, useTheme, type IconName } from '@/ui';
+import { Chip, Icon, ProgressRing, Text, space, useTheme, type IconName } from '@/ui';
 import { LogoMark } from '@/ui/brand';
+
+import { night } from './NightTheme';
 
 export type WelcomeArtKind = 'bowl' | 'fit' | 'plan';
 
+const GAP = space.sm + 2;
+
 /** Wrapper that keeps the drawings out of VoiceOver: the slide text says it all. */
-function Decorative({ children, size }: { children: ReactNode; size: number }) {
+function Decorative({
+  children,
+  width,
+  height,
+}: {
+  children: ReactNode;
+  width: number;
+  height: number;
+}) {
   return (
     <View
       accessible={false}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[styles.frame, { width: size, height: size }]}
+      style={[styles.mosaic, { width, height }]}
     >
       {children}
     </View>
   );
 }
 
-function Halo({ size }: { size: number }) {
+/** One rounded tile of the mosaic, on the raised night surface. */
+function Tile({ children, flex = 1 }: { children: ReactNode; flex?: number }) {
   const theme = useTheme();
-  return (
-    <LinearGradient
-      colors={[theme.colors.highlight, theme.colors.accentSoft, theme.colors.primarySoft]}
-      start={{ x: 0.15, y: 0.1 }}
-      end={{ x: 0.85, y: 0.95 }}
-      style={[StyleSheet.absoluteFill, { borderRadius: size / 2, opacity: 0.9 }]}
-    />
-  );
-}
-
-function Orbit({ icon, x, y, tone }: { icon: IconName; x: number; y: number; tone: 'a' | 'b' }) {
-  const theme = useTheme();
-  return (
-    <View
-      style={[
-        styles.orbit,
-        {
-          left: x,
-          top: y,
-          backgroundColor: tone === 'a' ? theme.colors.surface : theme.colors.primary,
-          ...theme.elevation.medium,
-          shadowColor: theme.colors.shadow,
-        },
-      ]}
-    >
-      <Icon name={icon} size={22} color={tone === 'a' ? 'primary' : 'onPrimary'} />
-    </View>
-  );
-}
-
-function BowlArt({ size }: { size: number }) {
-  return (
-    <Decorative size={size}>
-      <Halo size={size} />
-      <LogoMark size={size * 0.55} decorative />
-      <Orbit icon="leaf.fill" x={size * 0.06} y={size * 0.14} tone="b" />
-      <Orbit icon="carrot.fill" x={size * 0.74} y={size * 0.08} tone="a" />
-      <Orbit icon="fish.fill" x={size * 0.78} y={size * 0.7} tone="b" />
-      <Orbit icon="drop.fill" x={size * 0.02} y={size * 0.7} tone="a" />
-    </Decorative>
-  );
-}
-
-function FitArt({ size }: { size: number }) {
-  const theme = useTheme();
-  return (
-    <Decorative size={size}>
-      <Halo size={size} />
-      <View
-        style={[
-          styles.card,
-          {
-            width: size * 0.78,
-            backgroundColor: theme.colors.surface,
-            borderRadius: theme.radii.lg,
-            ...theme.elevation.high,
-            shadowColor: theme.colors.shadow,
-          },
-        ]}
-      >
-        <View style={styles.cardRow}>
-          <ProgressRing progress={0.86} size={64} strokeWidth={7} accessibilityLabel="Fit">
-            <Text variant="headline">86</Text>
-          </ProgressRing>
-          <View style={styles.cardLines}>
-            <View style={[styles.line, { backgroundColor: theme.colors.text, width: '85%' }]} />
-            <View style={[styles.line, { backgroundColor: theme.colors.border, width: '60%' }]} />
-          </View>
-        </View>
-        <View style={styles.chips}>
-          <Chip label="More fiber" icon="leaf.fill" tone="primary" />
-          <Chip label="Less salt" icon="heart.fill" tone="primary" />
-          <Chip label="Nut-free" icon="checkmark" tone="accent" />
-        </View>
-      </View>
-    </Decorative>
-  );
-}
-
-function Tile({ icon, offset, tone }: { icon: IconName; offset: number; tone: 0 | 1 | 2 }) {
-  const theme = useTheme();
-  const backgrounds = [theme.colors.primarySoft, theme.colors.accentSoft, theme.colors.warningSoft];
-  const foregrounds = ['onPrimarySoft', 'onAccentSoft', 'onWarningSoft'] as const;
   return (
     <View
       style={[
         styles.tile,
         {
-          marginTop: offset,
-          backgroundColor: backgrounds[tone],
-          borderRadius: theme.radii.lg,
-          borderColor: theme.colors.surface,
+          flex,
+          borderRadius: theme.radii.xl,
+          backgroundColor: night.raised,
+          borderColor: night.hairline,
         },
       ]}
     >
-      <Icon name={icon} size={34} color={foregrounds[tone]} />
+      {children}
     </View>
   );
 }
 
-function PlanArt({ size }: { size: number }) {
+/** The one lime tile on each slide: a small caption over a bold word. */
+function LimeTile({ caption, title, flex = 1 }: { caption: string; title: string; flex?: number }) {
+  const theme = useTheme();
   return (
-    <Decorative size={size}>
-      <Halo size={size} />
-      <View style={styles.tiles}>
-        <Tile icon="calendar" offset={0} tone={0} />
-        <Tile icon="frying.pan" offset={size * 0.16} tone={1} />
-        <Tile icon="cart" offset={size * 0.04} tone={2} />
+    <View
+      style={[
+        styles.tile,
+        styles.lime,
+        { flex, borderRadius: theme.radii.xl, backgroundColor: theme.colors.highlight },
+      ]}
+    >
+      <Text variant="footnote" color="onHighlight" style={styles.limeCaption}>
+        {caption}
+      </Text>
+      <Text variant="title1" color="onHighlight">
+        {title}
+      </Text>
+    </View>
+  );
+}
+
+function IconRow({ icons }: { icons: readonly IconName[] }) {
+  return (
+    <View style={styles.iconRow}>
+      {icons.map((icon) => (
+        <View key={icon} style={[styles.iconDisc, { backgroundColor: night.control }]}>
+          <Icon name={icon} size={22} color="text" />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function BowlArt({ width, height }: { width: number; height: number }) {
+  return (
+    <Decorative width={width} height={height}>
+      <View style={styles.column}>
+        <Tile flex={1.6}>
+          <LogoMark size={Math.min(width * 0.32, height * 0.42)} decorative />
+        </Tile>
+        <Tile>
+          <IconRow icons={['leaf.fill', 'carrot.fill']} />
+        </Tile>
+      </View>
+      <View style={styles.column}>
+        <LimeTile caption="Today" title="For you" />
+        <Tile flex={1.6}>
+          <IconRow icons={['fish.fill', 'drop.fill']} />
+        </Tile>
       </View>
     </Decorative>
   );
 }
 
-/** Original brand drawings for the welcome slides, built only from shapes, gradients and icons. */
-export function WelcomeArt({ kind, size }: { kind: WelcomeArtKind; size: number }) {
-  if (kind === 'bowl') return <BowlArt size={size} />;
-  if (kind === 'fit') return <FitArt size={size} />;
-  return <PlanArt size={size} />;
+function FitArt({ width, height }: { width: number; height: number }) {
+  return (
+    <Decorative width={width} height={height}>
+      <View style={[styles.column, styles.wide]}>
+        <Tile flex={1.5}>
+          <ProgressRing progress={0.86} size={72} strokeWidth={8} accessibilityLabel="Fit">
+            <Text variant="title2">86</Text>
+          </ProgressRing>
+        </Tile>
+        <Tile>
+          <View style={styles.chips}>
+            <Chip label="More fiber" icon="leaf.fill" tone="primary" />
+            <Chip label="Less salt" icon="heart.fill" tone="primary" />
+          </View>
+        </Tile>
+      </View>
+      <View style={styles.column}>
+        <Tile>
+          <Icon name="checkmark.shield.fill" size={34} color="text" />
+        </Tile>
+        <LimeTile caption="Made to fit" title="You" flex={1.4} />
+      </View>
+    </Decorative>
+  );
+}
+
+function PlanArt({ width, height }: { width: number; height: number }) {
+  return (
+    <Decorative width={width} height={height}>
+      <View style={styles.column}>
+        <LimeTile caption="This week" title="Planned" flex={1.2} />
+        <Tile>
+          <Icon name="cart" size={34} color="text" />
+        </Tile>
+      </View>
+      <View style={styles.column}>
+        <Tile>
+          <Icon name="calendar" size={34} color="text" />
+        </Tile>
+        <Tile flex={1.3}>
+          <Icon name="frying.pan" size={40} color="text" />
+        </Tile>
+      </View>
+    </Decorative>
+  );
+}
+
+/** Original brand drawings for the welcome slides: a mosaic of rounded night tiles and icons. */
+export function WelcomeArt({
+  kind,
+  width,
+  height,
+}: {
+  kind: WelcomeArtKind;
+  width: number;
+  height: number;
+}) {
+  if (kind === 'bowl') return <BowlArt width={width} height={height} />;
+  if (kind === 'fit') return <FitArt width={width} height={height} />;
+  return <PlanArt width={width} height={height} />;
 }
 
 const styles = StyleSheet.create({
-  frame: { alignItems: 'center', justifyContent: 'center' },
-  orbit: {
-    position: 'absolute',
+  mosaic: { flexDirection: 'row', gap: GAP },
+  column: { flex: 1, gap: GAP },
+  wide: { flex: 1.3 },
+  tile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: space.md,
+  },
+  lime: { alignItems: 'flex-start', justifyContent: 'flex-end', padding: space.lg },
+  limeCaption: { opacity: 0.75 },
+  iconRow: { flexDirection: 'row', gap: space.sm },
+  iconDisc: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  card: { padding: 16, gap: 14 },
-  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  cardLines: { flex: 1, gap: 8 },
-  line: { height: 10, borderRadius: 5 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  tiles: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
-  tile: {
-    width: 76,
-    height: 96,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-  },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs + 2, justifyContent: 'center' },
 });

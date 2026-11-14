@@ -28,7 +28,7 @@ function LegalLinks({ fromSheet = false }: { fromSheet?: boolean }) {
   const { openTerms, openPrivacy } = useLegalLinks(fromSheet);
   return (
     <View style={styles.links}>
-      <LegalLink testID="legal-terms" label="Terms" onPress={openTerms} />
+      <LegalLink testID="legal-terms" label="Terms of Use" onPress={openTerms} />
       <Text variant="footnote" tone="muted" importantForAccessibility="no">
         ·
       </Text>
@@ -55,7 +55,7 @@ function LegalLink({
       onPress={onPress}
       style={styles.link}
     >
-      <Text variant="footnote" tone="primary">
+      <Text variant="footnote" style={styles.underline}>
         {label}
       </Text>
     </PressableScale>
@@ -67,7 +67,7 @@ export function LegalNote({ fromSheet = false }: { fromSheet?: boolean }) {
   return (
     <View>
       <Text variant="footnote" tone="muted" align="center">
-        By continuing, you agree to Famara’s Terms and Privacy Policy.
+        By continuing you agree to Famara’s Terms of Use and Privacy Policy.
       </Text>
       <LegalLinks fromSheet={fromSheet} />
     </View>
@@ -148,6 +148,7 @@ const styles = StyleSheet.create({
   links: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   // Lines the links up under the label text: box width plus row gap, less the link padding.
   checkboxLinks: { alignItems: 'flex-start', marginLeft: 30 },
+  underline: { textDecorationLine: 'underline' },
   link: {
     minHeight: minTouchTarget,
     minWidth: minTouchTarget,

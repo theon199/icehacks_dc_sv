@@ -143,7 +143,7 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
 
       <Card variant="sunken">
         <View style={styles.section}>
-          <Text variant="overline" tone="muted">
+          <Text variant="label" tone="muted">
             Reason
           </Text>
           <Text variant="body">{decision.reason}</Text>

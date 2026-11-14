@@ -67,7 +67,7 @@ export function CuisineStep({ draft, onChange }: StepProps) {
       ) : (
         sections.map((section) => (
           <View key={section.region} style={styles.section}>
-            <Text variant="overline" tone="muted" accessibilityRole="header">
+            <Text variant="label" tone="muted" accessibilityRole="header">
               {section.label}
             </Text>
             <ChipGroup

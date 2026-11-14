@@ -1,9 +1,9 @@
 import { StyleSheet, View } from 'react-native';
 
+import type { StepProps } from './types';
 import { OptionCard } from '../components/OptionCard';
 import { StepHeader } from '../components/StepHeader';
 import { effortChoices } from '../options';
-import type { StepProps } from './types';
 
 export function EffortStep({ draft, onChange }: StepProps) {
   return (

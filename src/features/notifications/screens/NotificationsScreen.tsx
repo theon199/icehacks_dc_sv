@@ -68,7 +68,7 @@ export function NotificationsScreen() {
   const renderItem: ListRenderItem<InboxRow> = useCallback(
     ({ item: row }) =>
       row.type === 'header' ? (
-        <Text variant="overline" tone="muted" style={styles.sectionTitle}>
+        <Text variant="label" tone="muted" style={styles.sectionTitle}>
           {row.title}
         </Text>
       ) : (

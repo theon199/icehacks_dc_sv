@@ -12,6 +12,7 @@ import { Button, useTheme } from '@/ui';
 import { useAppleSignInOffered } from '../apple';
 import { signInWithApple, signInWithGoogle, type ProviderResult } from '../providers';
 import { FormMessage } from './FormMessage';
+import { nightOutline } from './NightTheme';
 
 type Provider = 'apple' | 'google';
 
@@ -72,6 +73,7 @@ export function ProviderButtons() {
         variant="secondary"
         size="lg"
         fullWidth
+        style={nightOutline}
         loading={active === 'google'}
         disabled={active === 'apple'}
         onPress={() => void continueWith('google')}

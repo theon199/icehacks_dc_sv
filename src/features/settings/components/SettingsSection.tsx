@@ -23,7 +23,7 @@ export function SettingsSection({
 }: SettingsSectionProps) {
   return (
     <View style={styles.section} testID={testID}>
-      <Text variant="overline" tone="muted" accessibilityRole="header" style={styles.title}>
+      <Text variant="label" tone="muted" accessibilityRole="header" style={styles.title}>
         {title}
       </Text>
       {bare ? (

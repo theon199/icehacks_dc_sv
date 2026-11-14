@@ -72,6 +72,7 @@ export function TextField({
           accessibilityState={{ disabled }}
           placeholderTextColor={theme.colors.textSubtle}
           selectionColor={theme.colors.primary}
+          keyboardAppearance={theme.scheme}
           maxFontSizeMultiplier={maxFontSizeMultiplier}
           onChangeText={onChangeText}
           onFocus={(event) => {

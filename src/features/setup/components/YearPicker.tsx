@@ -44,7 +44,7 @@ export function YearPicker({
 }: YearPickerProps) {
   return (
     <View style={styles.stack}>
-      <Text variant="overline" tone="muted">
+      <Text variant="label" tone="muted">
         Decade
       </Text>
       <View style={styles.wrap} accessibilityRole="radiogroup">
@@ -59,7 +59,7 @@ export function YearPicker({
           />
         ))}
       </View>
-      <Text variant="overline" tone="muted">
+      <Text variant="label" tone="muted">
         Year
       </Text>
       <View style={styles.wrap} accessibilityRole="radiogroup">

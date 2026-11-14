@@ -135,6 +135,7 @@ export function OnboardingScreen() {
               testID="onboarding-back"
               icon="chevron.left"
               accessibilityLabel="Previous question"
+              variant="glass"
               onPress={back}
             />
           ) : null}

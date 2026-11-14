@@ -37,17 +37,24 @@ export function OptionCard({
       style={[
         styles.card,
         {
-          borderRadius: theme.radii.lg,
-          backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+          borderRadius: theme.radii.xl,
+          backgroundColor: theme.colors.surface,
           borderColor: selected ? theme.colors.primary : theme.colors.border,
         },
       ]}
     >
       {icon ? (
-        <Icon name={icon} size={24} color={selected ? 'onPrimarySoft' : 'textMuted'} />
+        <View
+          style={[
+            styles.well,
+            { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.md },
+          ]}
+        >
+          <Icon name={icon} size={20} color="text" />
+        </View>
       ) : null}
       <View style={styles.text}>
-        <Text variant="headline" color={selected ? 'onPrimarySoft' : 'text'} accessible={false}>
+        <Text variant="headline" accessible={false}>
           {label}
         </Text>
         {description ? (
@@ -70,10 +77,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    minHeight: 60,
+    minHeight: 64,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1.5,
   },
+  well: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: 2 },
 });

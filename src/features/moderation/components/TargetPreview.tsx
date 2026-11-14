@@ -8,6 +8,9 @@ import type { QueueItem } from '../model';
 import { targetNoun } from '../reasons';
 import type { ReviewPhoto } from '../reviewTarget';
 
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 export interface TargetPreviewProps {
   item: Pick<QueueItem, 'target_kind' | 'target_id' | 'target' | 'owner_handle'>;
   /** Cut long text in lists; show everything on the review screen. */
@@ -79,8 +82,8 @@ export function TargetPreview({ item, compact = false, photos, missingText }: Ta
   return (
     <Card variant="outlined" padding="md">
       <View style={styles.header}>
-        <Text variant="overline" tone="muted">
-          {targetNoun(item.target_kind)}
+        <Text variant="label" tone="muted">
+          {sentenceCase(targetNoun(item.target_kind))}
           {owner ? ` · ${owner}` : ''}
         </Text>
         {statusChip(target?.status)}

@@ -14,6 +14,8 @@ export interface AuthorLineProps {
   createdAt: string;
   onPress?: () => void;
   avatarSize?: number;
+  /** Leave the time off the second line (the post header shows it at the far end instead). */
+  hideTime?: boolean;
 }
 
 /** Avatar, name, team badge and "2 hours ago" at the top of a post or comment. */
@@ -25,21 +27,25 @@ export const AuthorLine = memo(function AuthorLine({
   createdAt,
   onPress,
   avatarSize = 36,
+  hideTime = false,
 }: AuthorLineProps) {
   const when = formatRelativeTime(createdAt);
+  const second = hideTime ? (handle ? `@${handle}` : '') : handle ? `@${handle} · ${when}` : when;
   const content = (
     <>
       <Avatar name={name} uri={avatarUrl} size={avatarSize} />
       <View style={styles.text}>
         <View style={styles.nameRow}>
-          <Text variant="subhead" numberOfLines={1} style={styles.name}>
+          <Text variant="label" numberOfLines={1} style={styles.name}>
             {name}
           </Text>
           {isTeam ? <TeamBadge compact /> : null}
         </View>
-        <Text variant="caption" tone="subtle" numberOfLines={1}>
-          {handle ? `@${handle} · ${when}` : when}
-        </Text>
+        {second ? (
+          <Text variant="caption" tone="subtle" numberOfLines={1}>
+            {second}
+          </Text>
+        ) : null}
       </View>
     </>
   );

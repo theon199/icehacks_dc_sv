@@ -13,6 +13,8 @@ const soup: RecipeSummary = {
   cuisine: 'Turkish',
   imageUrl: null,
   totalMinutes: 35,
+  nutrition: null,
+  nutritionConfidence: 'none',
 };
 
 const draft = () => useComposeDraftStore.getState().draft;

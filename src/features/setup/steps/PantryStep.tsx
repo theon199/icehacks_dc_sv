@@ -58,7 +58,7 @@ export function PantryStep({ draft, onChange }: StepProps) {
           />
           {groups.map((group) => (
             <View key={group.category} style={styles.section}>
-              <Text variant="overline" tone="muted" accessibilityRole="header">
+              <Text variant="label" tone="muted" accessibilityRole="header">
                 {group.label}
               </Text>
               <ChipGroup

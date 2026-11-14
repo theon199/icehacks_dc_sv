@@ -63,7 +63,7 @@ export function ProfileHeader({
         <IconButton
           icon="gearshape"
           accessibilityLabel="Settings"
-          variant="tinted"
+          variant="glass"
           onPress={onSettings}
           testID="profile-settings"
         />

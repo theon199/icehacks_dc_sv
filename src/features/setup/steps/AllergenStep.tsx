@@ -1,11 +1,11 @@
 import { ChoiceChip } from '@/ui';
 
+import type { StepProps } from './types';
 import { ChipGroup } from '../components/ChipGroup';
 import { FormNote } from '../components/FormNote';
 import { StepHeader } from '../components/StepHeader';
 import { setNoAllergens, toggleAllergen } from '../onboardingModel';
 import { allergenChoices } from '../options';
-import type { StepProps } from './types';
 
 export function AllergenStep({ draft, onChange }: StepProps) {
   return (

@@ -23,7 +23,7 @@ export function ProgressBar({ step, total }: ProgressBarProps) {
       accessibilityRole="progressbar"
       accessibilityLabel={`Step ${step} of ${total}`}
       accessibilityValue={{ min: 1, max: total, now: step }}
-      style={[styles.track, { backgroundColor: theme.colors.surfaceSunken }]}
+      style={[styles.track, { backgroundColor: theme.colors.border }]}
     >
       <Animated.View style={[styles.fill, { backgroundColor: theme.colors.primary }, fill]} />
     </View>
@@ -31,6 +31,6 @@ export function ProgressBar({ step, total }: ProgressBarProps) {
 }
 
 const styles = StyleSheet.create({
-  track: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
-  fill: { width: '100%', height: '100%', borderRadius: 3, transformOrigin: 'left' },
+  track: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
+  fill: { width: '100%', height: '100%', borderRadius: 2, transformOrigin: 'left' },
 });

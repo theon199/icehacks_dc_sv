@@ -2,13 +2,14 @@ import { router } from 'expo-router';
 import { memo, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Card, IconButton, PressableScale, Text, useTheme } from '@/ui';
+import { formatRelativeTime } from '@/lib/format';
+import { Card, IconButton, PressableScale, Text, space, useTheme } from '@/ui';
 
 import { AuthorLine } from './AuthorLine';
+import { DishLine } from './DishLine';
 import { PhotoCarousel } from './PhotoCarousel';
 import { PostActions } from './PostActions';
 import { RatingStars } from './RatingStars';
-import { RecipeChip } from './RecipeChip';
 import type { Post } from '../api/types';
 import { useViewer } from '../hooks/queryKeys';
 
@@ -64,13 +65,20 @@ export const PostCard = memo(function PostCard({
   const body = (
     <View style={styles.body}>
       {tag ? (
-        <Text variant="overline" tone="accent">
-          {tag}
-        </Text>
+        <View
+          style={[
+            styles.tag,
+            { backgroundColor: theme.colors.highlightSoft, borderRadius: theme.radii.pill },
+          ]}
+        >
+          <Text variant="caption" color="onHighlightSoft">
+            {tag}
+          </Text>
+        </View>
       ) : null}
       <Text variant="headline">{post.title}</Text>
       {post.body ? (
-        <Text variant="callout" tone="muted" numberOfLines={full ? undefined : 4}>
+        <Text variant="callout" tone="muted" numberOfLines={full ? undefined : 3}>
           {post.body}
         </Text>
       ) : null}
@@ -78,16 +86,22 @@ export const PostCard = memo(function PostCard({
   );
 
   return (
-    <Card padding="md" style={styles.card} testID={`post-card-${post.id}`}>
+    <Card padding="none" style={styles.card} testID={`post-card-${post.id}`}>
       <View style={styles.header}>
-        <AuthorLine
-          name={post.author_display_name}
-          handle={post.author_handle}
-          avatarUrl={post.authorAvatarUrl}
-          isTeam={post.author_is_team}
-          createdAt={post.created_at}
-          onPress={() => openAuthor(post.author_id)}
-        />
+        <View style={styles.author}>
+          <AuthorLine
+            name={post.author_display_name}
+            handle={post.author_handle}
+            avatarUrl={post.authorAvatarUrl}
+            isTeam={post.author_is_team}
+            createdAt={post.created_at}
+            hideTime
+            onPress={() => openAuthor(post.author_id)}
+          />
+        </View>
+        <Text variant="footnote" tone="muted" accessible={false}>
+          {formatRelativeTime(post.created_at)}
+        </Text>
         <IconButton
           icon="ellipsis"
           accessibilityLabel="More options for this post"
@@ -101,6 +115,7 @@ export const PostCard = memo(function PostCard({
         <View
           style={[
             styles.notice,
+            styles.inset,
             { backgroundColor: theme.colors.warningSoft, borderRadius: theme.radii.sm },
           ]}
         >
@@ -113,40 +128,64 @@ export const PostCard = memo(function PostCard({
       ) : null}
 
       {post.media.length > 0 ? (
-        <PhotoCarousel photos={post.media} label={post.title} priority={priority} />
+        <PhotoCarousel
+          photos={post.media}
+          label={post.title}
+          priority={priority}
+          inset={CARD_PADDING}
+        />
       ) : null}
 
-      {full ? (
-        body
-      ) : (
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={post.title}
-          accessibilityHint="Opens the post"
-          pressedScale={0.995}
-          pressedOpacity={0.8}
-          onPress={openDetail}
-        >
-          {body}
-        </PressableScale>
-      )}
+      <View style={[styles.content, styles.inset]}>
+        {full ? (
+          body
+        ) : (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={post.title}
+            accessibilityHint="Opens the post"
+            pressedScale={0.995}
+            pressedOpacity={0.8}
+            onPress={openDetail}
+          >
+            {body}
+          </PressableScale>
+        )}
 
-      {post.recipe_ref || post.rating != null ? (
-        <View style={styles.meta}>
-          {post.recipe_ref ? <RecipeChip recipeId={post.recipe_ref} /> : null}
-          {post.rating != null ? <RatingStars rating={post.rating} /> : null}
-        </View>
-      ) : null}
+        {post.recipe_ref || post.rating != null ? (
+          <View style={styles.meta}>
+            {post.recipe_ref ? (
+              <View style={styles.dish}>
+                <DishLine recipeId={post.recipe_ref} />
+              </View>
+            ) : null}
+            {post.rating != null ? <RatingStars rating={post.rating} /> : null}
+          </View>
+        ) : null}
 
-      <PostActions post={post} onComment={commentAction} />
+        <PostActions post={post} onComment={commentAction} />
+      </View>
     </Card>
   );
 });
 
+const CARD_PADDING = space.lg;
+
 const styles = StyleSheet.create({
-  card: { gap: 12 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  body: { gap: 4 },
-  meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  card: { gap: space.md, paddingTop: space.md, paddingBottom: space.xs },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    paddingLeft: CARD_PADDING,
+    paddingRight: space.sm,
+  },
+  author: { flex: 1, flexShrink: 1 },
+  inset: { marginHorizontal: CARD_PADDING },
+  content: { gap: space.sm },
+  body: { gap: space.xs, alignItems: 'flex-start' },
+  tag: { paddingHorizontal: space.sm, paddingVertical: space.xxs },
+  meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.md },
+  dish: { flexShrink: 1 },
   notice: { paddingHorizontal: 10, paddingVertical: 6 },
 });

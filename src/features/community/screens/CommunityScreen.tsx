@@ -1,10 +1,11 @@
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
-import { router, Stack } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useState, type ReactElement } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { defineKvKey } from '@/lib/storage/kv';
-import { ErrorState, IconButton, SegmentedControl, gutter, space, useTheme } from '@/ui';
+import { ErrorState, Header, IconButton, SegmentedControl, gutter, space, useTheme } from '@/ui';
 
 import { feedModeSchema, type FeedMode } from '../api/schemas';
 import type { Post } from '../api/types';
@@ -13,6 +14,7 @@ import { PostCard } from '../components/PostCard';
 import { PostSkeletonList } from '../components/PostSkeleton';
 import { usePostMenu } from '../components/usePostMenu';
 import { WeeklyTopDishes } from '../components/WeeklyTopDishes';
+import { NotificationBell } from '../deps';
 import { useForgetOtherViewers, useViewer } from '../hooks/queryKeys';
 import { useFeed } from '../hooks/useFeed';
 
@@ -33,10 +35,13 @@ function readLastMode(): FeedMode {
 }
 
 const keyExtractor = (post: Post) => post.id;
+const openCompose = () => router.push('/compose');
+const openProfile = () => router.push('/profile');
 
 /** The Community tab: Following, Popular and New feeds with this week's most-cooked dishes. */
 export function CommunityScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   useForgetOtherViewers(useViewer());
   const [mode, setMode] = useState<FeedMode>(readLastMode);
   const feed = useFeed(mode);
@@ -73,6 +78,7 @@ export function CommunityScreen() {
 
   const header = (
     <View style={styles.header}>
+      <WeeklyTopDishes />
       <SegmentedControl
         segments={SEGMENTS}
         value={mode}
@@ -80,7 +86,6 @@ export function CommunityScreen() {
         accessibilityLabel="Feed"
         testID="feed-mode"
       />
-      <WeeklyTopDishes />
     </View>
   );
 
@@ -92,18 +97,29 @@ export function CommunityScreen() {
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
+      <Header
+        size="tab"
+        title="Community"
+        style={[styles.title, { paddingTop: insets.top + space.sm }]}
+        trailing={
+          <>
+            <NotificationBell variant="glass" testID="community-notifications" />
             <IconButton
-              icon="square.and.pencil"
+              variant="glass"
+              icon="plus"
               accessibilityLabel="Share a dish"
-              color="primary"
-              onPress={() => router.push('/compose')}
+              onPress={openCompose}
               testID="compose-button"
             />
-          ),
-        }}
+            <IconButton
+              variant="glass"
+              icon="person"
+              accessibilityLabel="Profile"
+              onPress={openProfile}
+              testID="community-profile"
+            />
+          </>
+        }
       />
       <FlashList
         key={mode}
@@ -140,8 +156,9 @@ function Gap() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  title: { paddingHorizontal: gutter, paddingBottom: space.md },
   content: { paddingHorizontal: gutter, paddingBottom: space.huge },
-  header: { gap: space.lg, paddingTop: space.sm, paddingBottom: space.lg },
+  header: { gap: space.xl, paddingTop: space.xs, paddingBottom: space.lg },
   gap: { height: space.lg },
   footer: { paddingVertical: space.xl },
 });
