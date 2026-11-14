@@ -23,8 +23,7 @@
     "bundle:export": "expo export --platform ios --output-dir dist"
   },
   "dependencies": {
-    "@expo-google-fonts/figtree": "^0.4.1",
-    "@expo-google-fonts/fraunces": "^0.4.1",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@kingstinct/react-native-healthkit": "^16.2.0",
     "@shopify/flash-list": "2.0.2",
     "@supabase/supabase-js": "^2.119.0",
