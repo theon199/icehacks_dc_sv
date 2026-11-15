@@ -4,10 +4,11 @@
  * never a stream; nothing is stored here.
  *
  * The answer is short enough to be read aloud, carries a verdict (yes, not yet, unsure, not
- * visible) and optionally the spot in the photo it is about. Two guards run after the model:
- * a "yes" about whether meat, poultry, fish or eggs are cooked becomes a thermometer reminder,
- * and an answer that names one of the person's allergens (beyond what the step itself already
- * uses) is withheld.
+ * visible) and optionally the spot in the photo it is about. Two guards run in code after the
+ * model, so nothing the model was told (by the person, the recipe or text in the photo) can get
+ * past them: a question about whether meat, poultry, fish or eggs are cooked always gets the
+ * fixed thermometer reading, and an answer that names one of the person's allergens (beyond what
+ * the recipe being cooked already uses) is replaced with a fixed reminder of that allergen.
  */
 
 import { z } from "zod";
@@ -23,7 +24,12 @@ import { denoEnv, type EnvReader, readEnv } from "../_shared/env.ts";
 import { createHandler, type Handler, HttpError, json } from "../_shared/http.ts";
 import { AI_QUOTAS, enforceQuota, type QuotaPolicy } from "../_shared/quota.ts";
 import { parseBody } from "../_shared/validate.ts";
-import { ALLERGEN_IDS, type AllergenId, findAllergenConflicts } from "../makeover/allergens.ts";
+import {
+  ALLERGEN_IDS,
+  type AllergenId,
+  allergenLabel,
+  findAllergenConflicts,
+} from "../makeover/allergens.ts";
 import { decodeSnapImage, readStructured, SNAP_LIMITS } from "../snap/handler.ts";
 import { buildCoachPrompt, COACH_SYSTEM_PROMPT } from "./prompt.ts";
 
@@ -172,56 +178,89 @@ const SAFE_ANSWERS: Readonly<Record<SafetyKind, string>> = {
     "63°C (145°F) for whole cuts of beef, pork or lamb and for fish.",
 };
 
-/** Which kind of meat, poultry, fish or egg the words are about, if any. */
+/** Safe internal temperature per kind, used to pick the strictest when several match. */
+const SAFE_CELSIUS: Readonly<Record<SafetyKind, number>> = {
+  poultry: 74,
+  minced: 71,
+  egg: 71,
+  whole: 63,
+};
+
+/**
+ * The kind of meat, poultry, fish or egg the words are about, if any. When several match
+ * ("chicken sausages" is poultry and minced) the one with the highest safe temperature wins.
+ */
 export function safetyKind(text: string): SafetyKind | null {
   const lower = text.toLowerCase();
-  for (const [kind, pattern] of SAFETY_TERMS) if (pattern.test(lower)) return kind;
-  return null;
+  let strictest: SafetyKind | null = null;
+  for (const [kind, pattern] of SAFETY_TERMS) {
+    if (!pattern.test(lower)) continue;
+    if (strictest === null || SAFE_CELSIUS[kind] > SAFE_CELSIUS[strictest]) strictest = kind;
+  }
+  return strictest;
 }
 
 /**
- * A photo can't show that meat, poultry, fish or eggs are safe to eat. A "yes" to a doneness
- * question about them becomes "unsure", with the thermometer reading to look for.
+ * The fixed answer to a doneness question about meat, poultry, fish or eggs, or null when the
+ * question is about something else. The question says it is a doneness check; the recipe title,
+ * the step and the question together say what is being cooked.
  */
-export function applyFoodSafety(answer: CoachAnswer, input: CoachInput): CoachAnswer {
-  if (answer.verdict !== "yes") return answer;
-  const question = input.question.toLowerCase();
-  if (!DONENESS.test(question)) return answer;
-  const kind = safetyKind(question) ?? safetyKind(input.recipe.step);
-  if (kind === null) return answer;
-  const mentionsThermometer = /thermometer/i.test(answer.answer);
-  return {
-    verdict: "unsure",
-    answer: mentionsThermometer ? answer.answer : SAFE_ANSWERS[kind],
-    focus: answer.focus,
-  };
+export function foodSafetyAnswer(input: CoachInput): string | null {
+  if (!DONENESS.test(input.question.toLowerCase())) return null;
+  const kind = safetyKind([input.recipe.title, input.recipe.step, input.question].join("\n"));
+  return kind === null ? null : SAFE_ANSWERS[kind];
+}
+
+/** How an allergen is said aloud: its prompt label without the bracketed detail. */
+const spokenAllergen = (id: AllergenId) => allergenLabel(id).replace(/\s*\(.*\)$/, "");
+
+/** The fixed reply when an answer would have named one of the person's allergens. */
+export function allergenNotice(allergens: readonly AllergenId[]): string {
+  const names = allergens.map(spokenAllergen);
+  const last = names.pop() ?? "";
+  const list = names.length > 0 ? `${names.join(", ")} and ${last}` : last;
+  return `That contains ${list}, which you've said you avoid.`;
 }
 
 /**
- * Defence in depth: refuses an answer that names one of the person's allergens when the recipe
- * text on screen does not already use it (that would be the coach suggesting it).
+ * Defence in depth: an answer that names one of the person's allergens is replaced with a fixed
+ * reminder, unless the recipe being cooked (its title, this step or the next) already uses it.
+ * The question never counts: asking "can I add peanut butter?" must not make a "yes" safe.
  */
-export function assertNoNewAllergens(answer: CoachAnswer, input: CoachInput): void {
+export function screenAllergens(answer: CoachAnswer, input: CoachInput): CoachAnswer {
   const allergens: readonly AllergenId[] = input.allergens;
-  if (allergens.length === 0) return;
+  if (allergens.length === 0) return answer;
   const known = new Set(
     findAllergenConflicts(
-      [input.recipe.title, input.recipe.step, input.recipe.next_step ?? "", input.question],
+      [input.recipe.title, input.recipe.step, input.recipe.next_step ?? ""],
       allergens,
     ).map((conflict) => conflict.allergen),
   );
   const fresh = findAllergenConflicts([answer.answer], allergens)
-    .filter((conflict) => !known.has(conflict.allergen));
-  if (fresh.length === 0) return;
-  console.warn(JSON.stringify({
-    event: "coach_allergen_conflict",
-    allergens: fresh.map((conflict) => conflict.allergen),
-  }));
-  throw new HttpError(
-    "ai_refused",
-    "That answer mentioned something you're allergic to, so we didn't say it. Ask again.",
-    { details: { reason: "allergen_conflict", allergens: fresh.map((c) => c.allergen) } },
-  );
+    .map((conflict) => conflict.allergen)
+    .filter((allergen) => !known.has(allergen));
+  if (fresh.length === 0) return answer;
+  console.warn(JSON.stringify({ event: "coach_allergen_conflict", allergens: fresh }));
+  return { verdict: "unsure", answer: allergenNotice(fresh), focus: null };
+}
+
+/**
+ * The model's reply as the person hears it. A photo can't show that meat, poultry, fish or eggs
+ * are safe to eat, so a doneness question about them is always answered "unsure" with the fixed
+ * thermometer reading, whatever the model's verdict or wording (a reading it quoted could be
+ * wrong), with or without a photo. Every other answer is clamped, then screened for allergens.
+ */
+export function coachAnswer(
+  raw: CoachModelReply,
+  input: CoachInput,
+  hasPhoto: boolean,
+): CoachAnswer {
+  const safe = foodSafetyAnswer(input);
+  if (safe !== null) {
+    const focus = hasPhoto && raw.verdict !== "not_visible" ? clampFocus(raw.focus) : null;
+    return { verdict: "unsure", answer: safe, focus };
+  }
+  return screenAllergens(finalizeAnswer(raw, hasPhoto), input);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -290,11 +329,7 @@ export function createCoachHandler(deps: CoachDeps = {}): Handler {
         userId: ctx.user.id,
       });
       logUsage(message, hasPhoto);
-      const answer = applyFoodSafety(
-        finalizeAnswer(readStructured(message, CoachModelSchema), hasPhoto),
-        input,
-      );
-      assertNoNewAllergens(answer, input);
+      const answer = coachAnswer(readStructured(message, CoachModelSchema), input, hasPhoto);
       return json({
         ...answer,
         quota: { remaining: quota.remaining, reset_at: quota.resetAt.toISOString() },

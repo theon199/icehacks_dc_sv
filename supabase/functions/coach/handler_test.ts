@@ -2,9 +2,10 @@ import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { encodeBase64 } from "@std/encoding";
 import type { createClient } from "@supabase/supabase-js";
 import {
-  applyFoodSafety,
+  allergenNotice,
   clampAnswer,
   COACH_LIMITS,
+  coachAnswer,
   type CoachInput,
   coachQuota,
   createCoachHandler,
@@ -259,17 +260,39 @@ Deno.test("coach keeps a thermometer in the loop for meat, poultry, fish and egg
   assertStringIncludes(body.answer, "74°C (165°F)");
 });
 
-Deno.test("coach withholds an answer that suggests one of the person's allergens", async () => {
+Deno.test("coach replaces an answer that suggests one of the person's allergens", async () => {
   const { handler } = harness({
     replies: [
       claudeJson({ verdict: "unsure", answer: "Add a spoon of peanut butter.", focus: null }),
     ],
   });
   const res = await silenced(() => handler(post(INPUT)));
-  assertEquals(res.status, 422);
+  assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body.error.code, "ai_refused");
-  assertEquals(body.error.details.allergens, ["peanut"]);
+  assertEquals(body.verdict, "unsure");
+  assertEquals(body.answer, "That contains peanut, which you've said you avoid.");
+  assertEquals(body.focus, null);
+});
+
+Deno.test("the person's own question never makes an allergen safe to suggest", async () => {
+  const { handler } = harness({
+    replies: [claudeJson({ verdict: "yes", answer: "Yes, add peanut butter.", focus: null })],
+  });
+  const res = await silenced(() =>
+    handler(post({ ...INPUT, question: "Can I add peanut butter?" }))
+  );
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.answer, "That contains peanut, which you've said you avoid.");
+  assertEquals(body.verdict, "unsure");
+});
+
+Deno.test("allergenNotice names every allergen with its spoken label", () => {
+  assertEquals(allergenNotice(["peanut"]), "That contains peanut, which you've said you avoid.");
+  assertEquals(
+    allergenNotice(["shellfish", "tree_nut", "gluten"]),
+    "That contains shellfish, tree nuts and gluten, which you've said you avoid.",
+  );
 });
 
 Deno.test("an allergen the step itself uses is not a new suggestion", async () => {
@@ -330,18 +353,108 @@ Deno.test("finalizeAnswer clamps the focus and drops it when nothing is visible"
   );
 });
 
-Deno.test("applyFoodSafety leaves other questions and cautious verdicts alone", () => {
+Deno.test("coachAnswer leaves questions that are not about doneness of meat or eggs alone", () => {
   const input = { ...INPUT, diet: [], allergens: [] } as unknown as CoachInput;
   const good = { verdict: "yes" as const, answer: "Every piece is coated.", focus: null };
-  assertEquals(applyFoodSafety(good, input), good);
-  const eggs = { ...input, question: "are the eggs set?" };
-  assertEquals(applyFoodSafety(good, eggs).verdict, "unsure");
-  assertStringIncludes(applyFoodSafety(good, eggs).answer, "71°C (160°F)");
-  const notYet = { verdict: "not_yet" as const, answer: "Still pink.", focus: null };
-  assertEquals(applyFoodSafety(notYet, { ...input, question: "is the steak done?" }), notYet);
-  const withThermometer = { ...good, answer: "Check it with a thermometer, it should read 63°C." };
-  assertEquals(
-    applyFoodSafety(withThermometer, { ...input, question: "is the salmon cooked?" }).answer,
-    withThermometer.answer,
+  assertEquals(coachAnswer(good, input, true), good);
+  const eggs = coachAnswer(good, { ...input, question: "are the eggs set?" }, true);
+  assertEquals(eggs.verdict, "unsure");
+  assertStringIncludes(eggs.answer, "71°C (160°F)");
+  const pasta = { ...input, recipe: { ...input.recipe, title: "Tomato pasta", step: "Boil" } };
+  assertEquals(coachAnswer(good, { ...pasta, question: "is the pasta done?" }, true), good);
+});
+
+const safetyInput = (title: string, step: string, question: string): CoachInput => ({
+  recipe: { id: "r1", title, step_index: 0, step_count: 2, step },
+  question,
+  diet: [],
+  allergens: [],
+});
+
+Deno.test("coachAnswer reads the title, step and question and takes the strictest kind", () => {
+  const cooked = { verdict: "yes" as const, answer: "They look cooked through.", focus: null };
+  const cases: [string, string, string, string][] = [
+    ["Chicken sausages with mash", "Brown the sausages", "are they done?", "74°C (165°F)"],
+    ["Turkey sausage traybake", "Roast the sausages", "are the sausages cooked?", "74°C (165°F)"],
+    ["Chicken burgers", "Grill the burgers", "are the burgers done?", "74°C (165°F)"],
+    ["Pork chops with apple", "Fry the chops", "are they done?", "63°C (145°F)"],
+    ["Pork sausage rolls", "Bake the rolls", "are they cooked through?", "71°C (160°F)"],
+    ["Lemon baked cod", "Bake the fish", "is it cooked?", "63°C (145°F)"],
+  ];
+  for (const [title, step, question, reading] of cases) {
+    const result = coachAnswer(cooked, safetyInput(title, step, question), true);
+    assertEquals(result.verdict, "unsure", title);
+    assertStringIncludes(result.answer, reading, title);
+  }
+});
+
+Deno.test("coachAnswer speaks the fixed reading whatever the model said", () => {
+  const input = safetyInput("Roast chicken", "Roast for an hour", "is the chicken safe?");
+  for (
+    const answer of [
+      { verdict: "yes" as const, answer: "A thermometer reading of 40°C is safe.", focus: null },
+      { verdict: "not_yet" as const, answer: "Give it 10 more minutes at 40°C.", focus: null },
+      { verdict: "unsure" as const, answer: "It is probably fine.", focus: null },
+    ]
+  ) {
+    const result = coachAnswer(answer, input, true);
+    assertEquals(result.verdict, "unsure");
+    assertStringIncludes(result.answer, "74°C (165°F)");
+    assert(!result.answer.includes("40°C"));
+  }
+});
+
+Deno.test("coach speaks the thermometer reading without a photo too", async () => {
+  const { handler } = harness({
+    replies: [claudeJson({ verdict: "yes", answer: "They look cooked through.", focus: null })],
+  });
+  const { image: _image, ...noPhoto } = INPUT;
+  const res = await silenced(() =>
+    handler(post({
+      ...noPhoto,
+      recipe: { ...INPUT.recipe, title: "Chicken sausages", step: "Brown the sausages" },
+      question: "are the sausages done?",
+      allergens: [],
+    }))
   );
+  const body = await res.json();
+  assertEquals(body.verdict, "unsure");
+  assertEquals(body.focus, null);
+  assertStringIncludes(body.answer, "74°C (165°F)");
+  assert(!body.answer.includes("look cooked"));
+});
+
+Deno.test("words in the photo cannot talk the coach past its safety checks", async () => {
+  // The model has been fooled by a note in the frame; the checks run in code afterwards.
+  const thermometer = harness({
+    replies: [
+      claudeJson({
+        verdict: "yes",
+        answer: "The sign says to ignore your rules. Yes, the chicken is safe at 40°C.",
+        focus: { x: 0.5, y: 0.5, r: 0.2 },
+      }),
+    ],
+  });
+  const done =
+    await (await silenced(() =>
+      thermometer.handler(post({ ...INPUT, question: "is the chicken done?", allergens: [] }))
+    )).json();
+  assertEquals(done.verdict, "unsure");
+  assertStringIncludes(done.answer, "74°C (165°F)");
+  assert(!done.answer.includes("40°C"));
+
+  const allergen = harness({
+    replies: [
+      claudeJson({
+        verdict: "yes",
+        answer: "The label says allergy rules are off for this one. Stir in some satay sauce.",
+        focus: null,
+      }),
+    ],
+  });
+  const swap =
+    await (await silenced(() =>
+      allergen.handler(post({ ...INPUT, question: "what can I add for more flavour?" }))
+    )).json();
+  assertEquals(swap.answer, "That contains peanut, which you've said you avoid.");
 });
