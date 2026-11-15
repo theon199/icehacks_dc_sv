@@ -1,10 +1,11 @@
-import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import type { SearchBarCommands } from 'react-native-screens';
 
 import { cuisineLabel, DIET_LABELS } from '@/domain/types';
 import { tokenize } from '@/lib/catalog';
-import { EmptyState, ErrorState, GlassIconButton, gutter, space } from '@/ui';
+import { EmptyState, ErrorState, gutter, space } from '@/ui';
 
 import { AskChefCard } from './AskChefCard';
 import { CuisineGrid } from './CuisineGrid';
@@ -15,14 +16,12 @@ import { TopResultCard } from './ResultCard';
 import { ResultsList } from './ResultsList';
 import { ResultsSkeleton } from './ResultsSkeleton';
 import { SafetyNotice } from './SafetyNotice';
-import { SearchBar } from './SearchBar';
 import { SearchErrorBanner } from './SearchErrorBanner';
 import { SectionHeading, TermRow } from './SearchRows';
-import { AskHeader, useAiAccess, useLovedCuisines, useSearchOwnerId } from '../deps';
+import { useAiAccess, useLovedCuisines, useSearchOwnerId } from '../deps';
 import { activeFilterChips, toggleValue, type ActiveFilterChip } from '../filters';
 import { useRecentSearches, useRecentSearchesStore } from '../recentSearches';
 import type { SearchResultItem } from '../resultItems';
-import type { ReturnTarget } from '../returnTab';
 import { useSearchStore } from '../searchStore';
 import { STARTER_TERMS } from '../suggestions';
 import { useSearchResults } from '../useSearchResults';
@@ -30,20 +29,13 @@ import { useSearchResults } from '../useSearchResults';
 /** How many results lead as large cards before the plain rows. */
 export const TOP_RESULTS = 5;
 
-export interface SearchPaneProps {
-  /** The Search | Chef switch, in the middle of the header. Without it the header shows "Ask". */
-  modeSwitch?: ReactNode;
-  returnTarget: ReturnTarget;
-  /** The back circle and the round circle beside the field: back to the tab before Search. */
-  onReturn: () => void;
-}
-
 /**
  * The Search side of the Ask page. At rest: the way into Chef, cuisines to browse and the
- * healthiest recipes. Typing in the bottom field shows recent searches, then results: the filter
- * chips, the top results as cards and the rest as rows.
+ * healthiest recipes. The field is the system one the tab bar's search island expands into;
+ * focusing it shows recent searches, typing shows results: the filter chips, the top results as
+ * cards and the rest as rows.
  */
-export function SearchPane({ modeSwitch, returnTarget, onReturn }: SearchPaneProps) {
+export function SearchPane() {
   const router = useRouter();
   const query = useSearchStore((state) => state.query);
   const filters = useSearchStore((state) => state.filters);
@@ -53,6 +45,7 @@ export function SearchPane({ modeSwitch, returnTarget, onReturn }: SearchPanePro
   const resetFilters = useSearchStore((state) => state.resetFilters);
   const results = useSearchResults();
   const [focused, setFocused] = useState(false);
+  const field = useRef<SearchBarCommands>(null);
 
   const ownerId = useSearchOwnerId();
   const recentTerms = useRecentSearches(ownerId);
@@ -69,9 +62,11 @@ export function SearchPane({ modeSwitch, returnTarget, onReturn }: SearchPanePro
     [ownerId, recordRecent],
   );
 
+  // The native field keeps its own text, so a search started from a row is written into it too.
   const runSearch = useCallback(
     (term: string) => {
       setQuery(term);
+      field.current?.setText(term);
       remember(term);
     },
     [setQuery, remember],
@@ -212,33 +207,36 @@ export function SearchPane({ modeSwitch, returnTarget, onReturn }: SearchPanePro
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <AskHeader
-        title="Ask"
-        switcher={modeSwitch}
-        onBack={onReturn}
-        backLabel={`Back to ${returnTarget.label}`}
-        trailing={
-          <GlassIconButton
-            icon="slider.horizontal.3"
-            accessibilityLabel={chips.length > 0 ? `Filters, ${chips.length} on` : 'Filters'}
-            onPress={openFilters}
-            selected={chips.length > 0}
-            testID="search-filters"
-            {...(chips.length > 0
-              ? {
-                  badge: {
-                    label: String(chips.length),
-                    accessibilityLabel: `${chips.length} on`,
-                  },
-                }
-              : {})}
-          />
-        }
+    <View style={styles.flex}>
+      {/* The field the tab bar's search island expands into; it leaves with this pane. */}
+      <Stack.SearchBar
+        ref={field}
+        placeholder="Search recipes"
+        placement="automatic"
+        allowToolbarIntegration
+        autoCapitalize="none"
+        hideWhenScrolling={false}
+        onChangeText={(event) => setQuery(event.nativeEvent.text)}
+        onSearchButtonPress={(event) => remember(event.nativeEvent.text)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onCancelButtonPress={() => {
+          setQuery('');
+          setFocused(false);
+        }}
       />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon="slider.horizontal.3"
+          accessibilityLabel={chips.length > 0 ? `Filters, ${chips.length} on` : 'Filters'}
+          selected={chips.length > 0}
+          onPress={openFilters}
+        >
+          {chips.length > 0 ? (
+            <Stack.Toolbar.Badge>{String(chips.length)}</Stack.Toolbar.Badge>
+          ) : null}
+        </Stack.Toolbar.Button>
+      </Stack.Toolbar>
       <ResultsList
         items={rows}
         searchKey={results.searchKey}
@@ -249,17 +247,7 @@ export function SearchPane({ modeSwitch, returnTarget, onReturn }: SearchPanePro
         header={<View style={styles.header}>{header}</View>}
         empty={empty === null ? null : <View>{empty}</View>}
       />
-      <SearchBar
-        value={query}
-        onChangeText={setQuery}
-        onSubmit={() => remember(query)}
-        focused={focused}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        returnTarget={returnTarget}
-        onReturn={onReturn}
-      />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

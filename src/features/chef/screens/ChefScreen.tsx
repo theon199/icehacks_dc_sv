@@ -1,6 +1,12 @@
-import { useRouter } from 'expo-router';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { selectThreadList, useChefStore } from '@/stores';
 import { GlassIconButton, useTheme } from '@/ui';
@@ -24,8 +30,11 @@ export interface ChefScreenProps {
   onBack?: () => void;
   /** Spoken name of the back circle. */
   backLabel?: string;
-  /** Takes the middle of the header in place of the title, e.g. the Search | Chef switch. */
-  switcher?: ReactNode;
+  /**
+   * Puts Chef's buttons in the screen's native header instead of drawing its own header, as on the
+   * Search tab, whose native header carries the Search | Chef switch.
+   */
+  nativeHeader?: boolean;
 }
 
 const PURPOSE =
@@ -34,9 +43,14 @@ const PURPOSE =
 /**
  * Chef, the AI cooking assistant, on the Ask page: used as the `chef` route and embedded in the
  * Search tab. Only people who are 18+ and have turned AI features on get past the gate; everyone
- * else keeps the header and its switch, so they can always get back.
+ * else keeps the header, so they can always get back.
  */
-export function ChefScreen({ threadId, onBack, backLabel = 'Back', switcher }: ChefScreenProps) {
+export function ChefScreen({
+  threadId,
+  onBack,
+  backLabel = 'Back',
+  nativeHeader = false,
+}: ChefScreenProps) {
   const theme = useTheme();
   const router = useRouter();
   const canUse = useSessionStore((state) => selectCanUseAi(state));
@@ -50,14 +64,14 @@ export function ChefScreen({ threadId, onBack, backLabel = 'Back', switcher }: C
         initialThreadId={threadId ?? null}
         onBack={back}
         backLabel={backLabel}
-        switcher={switcher}
+        nativeHeader={nativeHeader}
       />
     );
   }
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-      <AskHeader title="Ask" switcher={switcher} onBack={back} backLabel={backLabel} />
+      {nativeHeader ? null : <AskHeader title="Ask" onBack={back} backLabel={backLabel} />}
       <AiGate feature="Chef" purpose={PURPOSE}>
         {null}
       </AiGate>
@@ -75,10 +89,10 @@ interface ChefChatProps {
   initialThreadId: string | null;
   onBack: () => void;
   backLabel: string;
-  switcher: ReactNode;
+  nativeHeader: boolean;
 }
 
-function ChefChat({ initialThreadId, onBack, backLabel, switcher }: ChefChatProps) {
+function ChefChat({ initialThreadId, onBack, backLabel, nativeHeader }: ChefChatProps) {
   const theme = useTheme();
   const composer = useRef<ComposerHandle>(null);
   const [threadId, setThreadId] = useState<string | null>(() => initialThread(initialThreadId));
@@ -106,61 +120,89 @@ function ChefChat({ initialThreadId, onBack, backLabel, switcher }: ChefChatProp
     [limited, send],
   );
 
+  // The thread and its question box rise with the keyboard on the UI thread, frame for frame with
+  // the keyboard's own animation. The box already keeps the bottom safe area clear (the home
+  // indicator, and on the Search tab the tab bar too), so only the rest of the keyboard lifts it.
+  const insets = useSafeAreaInsets();
+  const bottomInset = useSharedValue(insets.bottom);
+  useEffect(() => {
+    bottomInset.set(insets.bottom);
+  }, [bottomInset, insets.bottom]);
+  const keyboard = useAnimatedKeyboard();
+  const lift = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(0, keyboard.height.get() - bottomInset.get()) }],
+  }));
+
   const empty = messages.length === 0 && !sending;
+  const newDisabled = empty && threadId == null;
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      testID="chef-screen"
-    >
-      <AskHeader
-        title="Ask"
-        switcher={switcher}
-        onBack={onBack}
-        backLabel={backLabel}
-        trailing={
-          <>
-            <GlassIconButton
-              icon="square.and.pencil"
-              accessibilityLabel="New chat"
-              disabled={empty && threadId == null}
-              onPress={newThread}
-              testID="chef-new"
-            />
-            <GlassIconButton
-              icon="clock"
-              accessibilityLabel="Your chats"
-              onPress={() => setDrawerOpen(true)}
-              testID="chef-threads"
-            />
-          </>
-        }
-      />
-      <View style={styles.flex}>
-        {empty ? (
-          <ChefWelcome onAsk={ask} onPhoto={() => composer.current?.choosePhoto()} />
-        ) : (
-          <MessageList
-            messages={messages}
-            footer={
-              <ConversationFooter
-                sending={sending}
-                problem={problem}
-                unanswered={awaitsReply(messages) && !sending}
-                blocked={busy}
-                limited={limited}
-                followUps={followUps}
-                quotaNote={quotaNote}
-                onRetry={retry}
-                onDismissProblem={conversation.dismissProblem}
-                onFollowUp={ask}
-              />
-            }
+    <View style={[styles.flex, { backgroundColor: theme.colors.background }]} testID="chef-screen">
+      {nativeHeader ? (
+        // System glass buttons, grouped into one capsule by the native header.
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="square.and.pencil"
+            accessibilityLabel="New chat"
+            disabled={newDisabled}
+            onPress={newThread}
           />
-        )}
-      </View>
-      <Composer ref={composer} busy={busy} limitedUntil={limitedUntil} onSend={send} />
+          <Stack.Toolbar.Button
+            icon="clock"
+            accessibilityLabel="Your chats"
+            onPress={() => setDrawerOpen(true)}
+          />
+        </Stack.Toolbar>
+      ) : (
+        <AskHeader
+          title="Ask"
+          onBack={onBack}
+          backLabel={backLabel}
+          trailing={
+            <>
+              <GlassIconButton
+                icon="square.and.pencil"
+                accessibilityLabel="New chat"
+                disabled={newDisabled}
+                onPress={newThread}
+                testID="chef-new"
+              />
+              <GlassIconButton
+                icon="clock"
+                accessibilityLabel="Your chats"
+                onPress={() => setDrawerOpen(true)}
+                testID="chef-threads"
+              />
+            </>
+          }
+        />
+      )}
+      <Animated.View style={[styles.flex, lift]}>
+        <View style={styles.flex}>
+          {empty ? (
+            <ChefWelcome onAsk={ask} onPhoto={() => composer.current?.choosePhoto()} />
+          ) : (
+            <MessageList
+              messages={messages}
+              footer={
+                <ConversationFooter
+                  sending={sending}
+                  problem={problem}
+                  unanswered={awaitsReply(messages) && !sending}
+                  blocked={busy}
+                  limited={limited}
+                  followUps={followUps}
+                  quotaNote={quotaNote}
+                  onRetry={retry}
+                  onDismissProblem={conversation.dismissProblem}
+                  onFollowUp={ask}
+                />
+              }
+            />
+          )}
+        </View>
+        <Composer ref={composer} busy={busy} limitedUntil={limitedUntil} onSend={send} />
+      </Animated.View>
       <ThreadDrawer
         visible={drawerOpen}
         activeThreadId={threadId}
@@ -168,7 +210,7 @@ function ChefChat({ initialThreadId, onBack, backLabel, switcher }: ChefChatProp
         onNewThread={newThread}
         onClose={() => setDrawerOpen(false)}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

@@ -13,12 +13,12 @@ import { useSessionStore } from '@/features/auth';
 import type { RecipeSummary, SearchPage } from '@/lib/catalog';
 import { getCuisines, searchRecipes } from '@/lib/catalog/queries';
 import { defaultPreferences, usePreferencesStore } from '@/stores/preferences';
+import type * as NativeStack from '@/test/nativeStack';
 import { renderWithTheme } from '@/test/render';
 
 import { SearchPane } from './SearchPane';
 import { searchRecipe } from '../__fixtures__/recipes';
 import { useRecentSearchesStore } from '../recentSearches';
-import { DEFAULT_RETURN_TARGET } from '../returnTab';
 import { useSearchStore } from '../searchStore';
 
 jest.mock('@/lib/catalog/queries', () => ({
@@ -61,6 +61,7 @@ jest.mock('expo-router', () => ({
   }),
   useNavigation: () => ({ getParent: () => undefined }),
   useIsFocused: () => true,
+  Stack: jest.requireActual<typeof NativeStack>('@/test/nativeStack').mockStack,
 }));
 
 const soup = searchRecipe('mealdb:1', { title: 'Lentil soup' });
@@ -101,7 +102,7 @@ async function renderPane() {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await renderWithTheme(
     <QueryClientProvider client={client}>
-      <SearchPane returnTarget={DEFAULT_RETURN_TARGET} onReturn={jest.fn()} />
+      <SearchPane />
     </QueryClientProvider>,
   );
 }

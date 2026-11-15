@@ -1,6 +1,5 @@
 import { GlassContainer } from 'expo-glass-effect';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
   useCallback,
   useEffect,
@@ -36,7 +35,6 @@ import {
   useTheme,
   type Palette,
 } from '@/ui';
-import { withAlpha } from '@/ui/color';
 
 import { useDictation } from '../hooks/useDictation';
 import { MAX_MESSAGE_LENGTH } from '../logic/conversation';
@@ -132,7 +130,10 @@ function joinDictation(base: string, spoken: string): string {
   return head ? `${head} ${spoken}` : spoken;
 }
 
-/** Question box with dictation and an optional photo. */
+/**
+ * Question box with dictation and an optional photo: a Liquid Glass photo circle and field that
+ * float over the thread. The screen keeps it above the keyboard.
+ */
 export function Composer({ busy, limitedUntil = null, onSend, ref }: ComposerProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -198,20 +199,13 @@ export function Composer({ busy, limitedUntil = null, onSend, ref }: ComposerPro
       pointerEvents="box-none"
       style={[styles.bar, { paddingBottom: insets.bottom + space.sm }]}
     >
-      {/* Messages dissolve into the canvas above the bar instead of running under it. */}
-      <LinearGradient
-        pointerEvents="none"
-        colors={[withAlpha(theme.colors.background, 0), theme.colors.background]}
-        style={styles.fade}
-      />
-      <View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.background }]}
-      />
+      {/* No backing: the bar floats, and the thread scrolls on under its glass. */}
       {limited ? (
-        <Text testID="chef-limit-note" variant="footnote" tone="muted" align="center">
-          {limitResetNote(limitedUntil, dayStart)}
-        </Text>
+        <GlassSurface radius="md" style={styles.note}>
+          <Text testID="chef-limit-note" variant="footnote" tone="muted" align="center">
+            {limitResetNote(limitedUntil, dayStart)}
+          </Text>
+        </GlassSurface>
       ) : null}
       {photo || preparing ? (
         <View style={styles.preview}>
@@ -332,12 +326,11 @@ function ControlStack({ children }: { children: ReactNode }) {
 /** Height of the field and of the round attach control beside it. */
 const BAR_HEIGHT = 48;
 const INNER_BUTTON = 36;
-const FADE_HEIGHT = 44;
 
 const styles = StyleSheet.create({
   bar: { paddingHorizontal: space.md, paddingTop: space.xs, gap: space.sm + 2 },
   stack: { gap: space.sm + 2 },
-  fade: { position: 'absolute', left: 0, right: 0, top: -FADE_HEIGHT, height: FADE_HEIGHT },
+  note: { paddingHorizontal: space.md, paddingVertical: space.sm },
   preview: { flexDirection: 'row', alignItems: 'flex-start', gap: space.xs },
   thumb: { width: 54, height: 54 },
   center: { alignItems: 'center', justifyContent: 'center' },

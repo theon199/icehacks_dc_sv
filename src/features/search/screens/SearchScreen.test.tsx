@@ -13,6 +13,7 @@ import { useSessionStore } from '@/features/auth';
 import { DietFlag, type RecipeSummary, type SearchPage } from '@/lib/catalog';
 import { getCuisines, searchRecipes } from '@/lib/catalog/queries';
 import { defaultPreferences, usePreferencesStore } from '@/stores/preferences';
+import type * as NativeStack from '@/test/nativeStack';
 import { renderWithTheme } from '@/test/render';
 
 import { SearchScreen } from './SearchScreen';
@@ -52,6 +53,7 @@ jest.mock('expo-router', () => ({
   }),
   useNavigation: () => ({ getParent: () => undefined }),
   useIsFocused: () => true,
+  Stack: jest.requireActual<typeof NativeStack>('@/test/nativeStack').mockStack,
 }));
 
 const fits = searchRecipe('mealdb:1', { title: 'Lentil soup' });

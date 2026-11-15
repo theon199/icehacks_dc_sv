@@ -19,9 +19,10 @@ const screenListeners: NonNullable<NativeTabsProps['screenListeners']> = ({ rout
 });
 
 /**
- * The system tab bar (Liquid Glass on iOS 26): five items in one bar, minimised while content
- * scrolls down. Search and Snap hide it while they own the bottom edge (`useHideTabBar`). The tint
- * is ink, not lime: lime on light glass all but disappears.
+ * The system tab bar (Liquid Glass on iOS 26): four tabs in one bar plus Search as the separate
+ * search island, minimised while content scrolls down. It stays on screen on the Ask page; Snap
+ * hides it while the camera owns the bottom edge (`useHideTabBar`). The tint is ink, not lime:
+ * lime on light glass all but disappears.
  */
 export default function TabsLayout() {
   const theme = useTheme();
@@ -34,7 +35,12 @@ export default function TabsLayout() {
       screenListeners={screenListeners}
     >
       {tabs.map((tab) => (
-        <NativeTabs.Trigger key={tab.name} name={tab.name} accessibilityLabel={tab.label}>
+        <NativeTabs.Trigger
+          key={tab.name}
+          name={tab.name}
+          accessibilityLabel={tab.label}
+          {...(tab.role ? { role: tab.role } : {})}
+        >
           <NativeTabs.Trigger.Icon sf={tab.sf} md={tab.md} />
           <NativeTabs.Trigger.Label>{tab.label}</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>

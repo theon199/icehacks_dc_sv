@@ -7,11 +7,15 @@ export interface TabSpec {
   label: string;
   sf: SFSymbol | { default: SFSymbol; selected: SFSymbol };
   md: AndroidSymbol;
+  /** iOS system role. `search` lifts the tab out into the Liquid Glass search island. */
+  role?: 'search';
 }
 
 /**
- * All five share one bar. Search is an ordinary item inside it rather than the iOS `search` role,
- * which iOS 26 lifts out into a separate circle beside the bar.
+ * Four tabs share the bar and Search is the iOS `search` role, which iOS 26 draws as a separate
+ * Liquid Glass island beside it. Selecting the island folds the other tabs into one circle and
+ * expands the island into the search field, as in Apple Music. Keep the group at four: a fifth
+ * pushes the island into "More".
  */
 export const tabs: readonly TabSpec[] = [
   {
@@ -43,5 +47,6 @@ export const tabs: readonly TabSpec[] = [
     label: 'Search',
     sf: 'magnifyingglass',
     md: 'search',
+    role: 'search',
   },
 ];

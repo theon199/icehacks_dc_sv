@@ -29,7 +29,8 @@ const MODES: readonly { value: SearchMode; label: string }[] = [
   { value: 'chef', label: 'Chef' },
 ];
 
-const SEGMENT_HEIGHT = 34;
+/** With the 3 pt rim, 44 pt tall: the height of the native header buttons beside it. */
+const SEGMENT_HEIGHT = 38;
 const PAD = 3;
 const SLIDE_MS = 260;
 const SLIDE_EASE = Easing.bezier(0.32, 0.72, 0, 1);
@@ -40,7 +41,7 @@ export interface SearchModeSwitchProps {
 }
 
 /**
- * The "Search | Chef" switch in the middle of the Ask header, on both sides of the page. The selected side is a pill that
+ * The "Search | Chef" switch leading the Ask page's native header, on both sides of the page. The selected side is a pill that
  * slides under the labels on the UI thread: paper under Search, ink under Chef. Reduce Motion
  * turns the slide into a cut.
  */
@@ -136,7 +137,7 @@ export function SearchModeSwitch({ mode, onChange }: SearchModeSwitchProps) {
 }
 
 const styles = StyleSheet.create({
-  shell: { alignSelf: 'center', padding: PAD },
+  shell: { alignSelf: 'flex-start', padding: PAD },
   row: { flexDirection: 'row', alignItems: 'center' },
   indicator: {
     position: 'absolute',

@@ -56,7 +56,7 @@ describe('tab bar visibility', () => {
 });
 
 describe('tabs', () => {
-  it('keeps all five in one bar, Search included, in order', () => {
+  it('puts four tabs in the bar and Search last as the system search island', () => {
     expect(tabs.map((t) => t.label)).toEqual([
       'Discover',
       'Cookbook',
@@ -64,6 +64,9 @@ describe('tabs', () => {
       'Snap',
       'Search',
     ]);
-    expect(tabs.some((t) => 'role' in t)).toBe(false);
+    // A fifth item in the group would push the island into "More", so only Search has a role.
+    expect(tabs.filter((t) => t.role !== undefined).map((t) => [t.label, t.role])).toEqual([
+      ['Search', 'search'],
+    ]);
   });
 });
