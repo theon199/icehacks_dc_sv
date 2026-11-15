@@ -39,6 +39,20 @@ describe('lineWording', () => {
 });
 
 describe('ingredientName', () => {
+  it('drops a stored unit word that follows the amount', () => {
+    expect(ingredientName('1 knob Butter', 'knob')).toBe('Butter');
+    expect(ingredientName('3 rashers (100g) chopped Bacon', 'rasher')).toBe('Chopped Bacon (100g)');
+    expect(lineWording(scaled('1 knob Butter', 1, 'knob'), 'us')).toEqual({
+      amount: '1 knob',
+      name: 'Butter',
+    });
+  });
+
+  it('only drops the stored unit as a whole word', () => {
+    expect(ingredientName('2 Candied cherries', 'can')).toBe('Candied cherries');
+    expect(ingredientName('Candied cherries', 'can')).toBe('Candied cherries');
+  });
+
   it('still keeps a leading word that is not the line unit', () => {
     expect(ingredientName('Baby Pak Koi', 'knob')).toBe('Baby Pak Koi');
   });

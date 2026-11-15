@@ -9,10 +9,14 @@ import type { ScaledLine } from './scale';
 const LEADING_WORD = /^\s*([A-Za-z]+\.?)(?![-'’\w])\s*/;
 /** A package-size note right after the leading number: the "(400g)" in "1 (400g) tin tomatoes". */
 const PACKAGE_NOTE = /^[^A-Za-z(]*(\([^)]*\))/;
+const LEADING_NOTE = /^\s*(\([^)]*\))/;
 
 function sameWord(word: string | undefined, other: string | null | undefined): boolean {
   if (!word || !other) return false;
-  return word.replace(/\.$/, '').toLowerCase() === other.trim().toLowerCase();
+  const w = word.replace(/\.$/, '').toLowerCase();
+  const o = other.trim().toLowerCase();
+  // The catalog stores the singular; the line may say "2 knobs" or "3 rashers".
+  return w === o || w === `${o}s` || w === `${o}es`;
 }
 
 function capitalise(text: string): string {
@@ -25,13 +29,19 @@ function capitalise(text: string): string {
  * is the only place an amount appears. A package size given with the amount is kept with the name
  * ("1 (400g) tin tomatoes" → "Tomatoes (400g)"), since it says how big each tin or pack is and does
  * not change with servings. `unitWord` is the unit the catalog stored for the line; it counts as a
- * unit word here even when it is not one we can convert ("knob Ginger" stored as 1 knob).
+ * unit word here even when it is not one we can convert ("knob Ginger" or "1 knob Butter", both
+ * stored as 1 knob).
  */
 export function ingredientName(text: string, unitWord?: string | null): string {
   const parsed = parseAmount(text);
   let rest = parsed.rest;
   if (parsed.quantity !== null) {
-    const note = PACKAGE_NOTE.exec(text)?.[1];
+    // The amount parser only consumes units it knows; a stored unit it does not ("1 knob Butter")
+    // is still at the front. Only a whole word counts, so a "can" never eats "Candied".
+    const word = LEADING_WORD.exec(rest);
+    if (word && sameWord(word[1], unitWord)) rest = rest.slice(word[0].length);
+    // The size may also follow that unit: the "(100g)" in "3 rashers (100g) bacon".
+    const note = PACKAGE_NOTE.exec(text)?.[1] ?? LEADING_NOTE.exec(rest)?.[1];
     if (note) {
       const name = rest.trim();
       rest = `${name.startsWith(note) ? name.slice(note.length).trim() : name} ${note}`;
