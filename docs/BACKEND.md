@@ -185,7 +185,7 @@ limit. Ledger rows are purged after two days.
 | `set_birth_year(p_birth_year int)` | same as above | First set, or move later (younger). Moving earlier raises `birth_year_locked` (PT409) |
 | `age_years()` | int \| null | Minimum possible age |
 | `is_adult()` | boolean | `age_years() >= 18`; false when unknown |
-| `export_my_data()` | jsonb | Everything stored about the caller (`format_version` 1): account, profile, birth year, roles, documents, posts (+media), comments, likes, saves, following, followers, blocks, invites, notifications, cook events, badges, reports filed, moderation decisions, appeals, dish confirmations, AI usage, storage object list |
+| `export_my_data()` | jsonb | Everything stored about the caller (`format_version` 1): account, profile, birth year, roles, documents, posts (+media), comments, likes, saves, following, followers, blocks, invites, notifications, cook events, badges, reports filed, moderation decisions, appeals, dish confirmations, AI usage, food map check-ins (place name only while it may still be cached) and claims, storage object list |
 | `delete_my_account()` | jsonb `{deleted, storage_objects_queued}` | Queues all of the caller's storage objects for purge, then deletes the auth user; foreign keys cascade to every owned row. Counters on other people's posts are corrected by triggers. The client signs out afterwards |
 
 ### Sync
@@ -290,6 +290,7 @@ Created by the last migration when `pg_cron` is available (idempotent by job nam
 | `famara-prune-purge-queue` | weekly | purge-queue rows that exhausted their retries |
 | `famara-purge-rate-events` | hourly :27 | rate-limit ledger rows older than two days |
 | `famara-compact-sync-tombstones` | daily 04:23 | sync tombstones older than 90 days (devices behind them are told to resync) |
+| `famara-purge-food-map` | hourly :43 | food map spots past 30 days; clears the place name and position of check-ins past 30 days (the check-ins stay) |
 
 ## Edge-function shared modules (`supabase/functions/_shared`)
 
@@ -664,3 +665,153 @@ function (`{ action: "categories", social?, follows? }`, member session required
 `private.push_batch` now leaves out notifications whose category (`private.push_category(kind)`)
 the recipient has turned off, so they never reach the push service. Tests:
 `supabase/tests/14_push_categories.test.sql` and `supabase/functions/push/handler_test.ts`.
+
+## Food map
+
+Migration `20261114180000_food_map` and the `food-map`, `food-check-in` and `place-photo` edge
+functions. Product decisions are in `docs/FOOD_MAP.md`; the app calls the functions through
+`src/lib/api/foodMap.ts`.
+
+### Tables
+
+| Table | Key columns | Access |
+| --- | --- | --- |
+| `food_regions` | `id`, `source` osm\|grid, `source_ref` (unique: `osm:relation:<id>`, `osm:way:<id>`, `grid:<geohash6>`), `name`, `geohash5` (cell of the centroid), `polygon` (jsonb rings `[[[lng, lat], …]]`, outline first, closed, at most 200 points, checked by a constraint), `bbox_*`, `area_m2`, `expires_at` (90 days), `retired_at`, `spots_fetched_at`, `spots_expires_at` | members read; service role writes |
+| `food_region_spots` | (`region_id`, `place_id`), `name`, `lat`, `lng`, `primary_type`, `rank` 1–5 (unique per region), `photos` (≤ 3 `{name, width, height, attributions}`), `expires_at` (30 days) | members read unexpired rows; service role writes |
+| `food_check_ins` | `id`, `user_id`, `place_id`, `place_name`, `place_lat`, `place_lng` (the place's position, never the device's), `place_cached_until` (30 days), `region_id`, `healthy`, `created_at` | owner reads and deletes; inserts only through `record_food_check_in` |
+| `food_region_claims` | (`user_id`, `region_id`), `claimed_at` | owner reads; inserts only through `record_food_check_in` |
+| `private.food_map_cells` | `geohash5`, `fetched_at`, `expires_at` | RPCs only: which cells have had their regions filled |
+
+- Regions are retired, never deleted, so claims and check-ins always keep their region. A refresh
+  upserts on `source_ref`, so a region keeps its id across refreshes.
+- A claim is permanent: a later change to the region's spot list never removes it.
+- `place_name`, `place_lat` and `place_lng` are Google place content. They are cleared by the purge
+  job once `place_cached_until` passes. The check-in itself is kept, so visits, progress and claims
+  never change.
+- Account deletion cascades to check-ins and claims; `export_my_data` includes both.
+
+### RPCs
+
+All are `security definer` with `search_path = ''`.
+
+| Signature | Who | Semantics |
+| --- | --- | --- |
+| `food_map_area(p_cells text[])` | service role | For 1–9 geohash-5 cells: `{cells: [{geohash5, expires_at}], regions: [... , spots]}`. Only live regions, and only unexpired spots, best first |
+| `store_food_regions(p_cells, p_regions jsonb, p_ttl_seconds)` | service role | Upserts the regions found for the cells (each must be centred in one of them), retires live regions of those cells that the fill no longer returned, and marks the cells filled. A changed outline clears the spot fill. Returns `{stored, retired}` |
+| `store_food_region_spots(p_region_id, p_spots jsonb, p_ttl_seconds)` | service role | Replaces a region's spot list (≤ 5, ranked in order) and records the fill. An empty list is a valid result |
+| `resolve_food_place(p_place_id)` | service role | `{source: spot\|places_cache, name, lat, lng, primary_type, types, spot_region_ids}` from a current spot, else a fresh `places_cache` result, else null |
+| `food_regions_containing(p_cells, p_lat, p_lng)` | service role | Live regions whose box contains the point, smallest first; the function runs point-in-polygon |
+| `record_food_check_in(p_user_id, p_place_id, p_place_name, p_place_lat, p_place_lng, p_region_id, p_healthy)` | service role | Locks per member. Cooldown of 4 hours per place (from `food_check_ins`). 12 check-ins per 24 hours, counted in `private.rate_events` so deleting check-ins never frees allowance. A refusal returns `{status: "rate_limited", reason: "cooldown"\|"daily", retry_at}` (the later of the two when both apply) and records nothing. Otherwise it stores the check-in with fresh place content, claims the region when it has current spots and the member has checked in at every one, and returns `{status: "ok", check_in_id, visits_here, total_check_ins, healthy, region: {id, name, done, total, claimed}\|null, claimed_now}` |
+| `food_map_mine(p_region_ids, p_place_ids, p_min_lng, p_min_lat, p_max_lng, p_max_lat)` | members (own rows only) | The caller's check-ins per place (latest region and healthy flag, visits, ≤ 20 times newest first) for places in the box, in `p_place_ids` or in `p_region_ids`; their claims on `p_region_ids`; totals over all their data. Name and position come from a current spot, else a fresh `places_cache` result, else the caller's own copy while it is younger than 30 days, else null. It is security definer because members cannot read `places_cache` |
+
+Tests: `supabase/tests/10_food_map.test.sql`.
+
+### `food-map`
+
+`POST { lat, lng }` returns `{ configured, notice, attribution: {osm, google}, regions, check_ins,
+totals }` for the regions centred in the caller's geohash-5 cell and its eight neighbours.
+
+- **Regions** come from Overpass on a miss.
+  - One query covers the box of all stale cells, behind a lease per cell, with a 90-day cache.
+  - The query asks for `boundary=administrative` relations with `admin_level` 9 or 10, and
+    `place=neighbourhood|quarter|suburb` relations or closed ways, all named.
+  - Multipolygon ways are joined into rings. The largest outline is kept, with the holes inside it.
+  - Polygons are simplified with Douglas-Peucker to ≤ 200 points.
+  - Slivers are dropped: under 2 ha, or 4πA/P² < 0.05.
+  - Overlaps resolve to the smaller area: an area more than 25% covered by smaller kept areas is
+    dropped.
+- **Grid fallback.** A cell no kept outline reaches into gets one grid region per geohash-6 cell.
+  - The name is "Near <nearest OSM region within 10 km of the cell centre> <CODE>", else
+    "Area <CODE>".
+  - CODE is the last three characters of the geohash-6 cell in capitals.
+- **Fill failures.** A failed or refused fill keeps what is stored. Only a never-filled own cell
+  fails the request: 503 with `Retry-After: 5` while another request fills it, or the Overpass
+  error.
+- **Spots** come from Places Nearby Search (New) per region, behind a lease per region, with a
+  30-day cache.
+  - The search is restricted to the circle covering the region's box.
+  - `includedTypes` are the healthy-leaning types and `excludedTypes` the excluded ones
+    (`food-map/healthy.ts`), with 20 results.
+  - Places outside the polygon are dropped.
+  - Ranking is rating × ln(1 + rating count), ties to more ratings, then place id. The top 5 are
+    kept, with up to 3 photos each.
+  - At most `FAMARA_FOOD_MAP_FILLS_PER_REQUEST` regions are filled per request, nearest first.
+- **`spots_status`** on each region:
+  - `ready`: filled, possibly with no spots.
+  - `pending`: not filled yet; a later view fills it.
+  - `unavailable`: no key, or an allowance held it back.
+- **Notices and attribution.**
+  - `notice: "budget"` when an allowance stopped a region or spot fill.
+  - Without `GOOGLE_PLACES_API_KEY` regions still come back, with `configured: false`, no spots
+    and `spots_status: "unavailable"`.
+  - `attribution.osm` and `attribution.google` say which credits the screen must show:
+    "© OpenStreetMap contributors", and Google with the photo authors.
+- **Caller data.** The caller's progress, visits, `check_ins` and `totals` come from
+  `food_map_mine`, called as the caller. The request position chooses cells and fill order only.
+  It is never stored or logged.
+
+**Cost.** The Nearby Search field mask is `places.id, displayName, location, primaryType, types,
+photos, rating, userRatingCount`. That is billed as Nearby Search **Enterprise**: `rating` and
+`userRatingCount` are Enterprise fields, and the rest are Pro. This was chosen on purpose, because
+the rating ranking is worth it at one search per region per 30 days. The cheaper alternative is Pro
+with Google's popularity order.
+
+**Overpass.** Requests send an identifying User-Agent (`FAMARA_OVERPASS_USER_AGENT`, default
+`Famara-FoodMap/1.0 (Supabase edge function)`), as the Overpass usage policy asks. Set it to
+include a contact URL or email before launch. Calls happen only on a cache miss and time out after
+40 s (the query asks for 30 s).
+
+### `food-check-in`
+
+`POST { place_id, lat, lng, accuracy_m }` returns `{ visits_here, total_check_ins, healthy,
+region, claimed_now }`. `lat` and `lng` are the device position, used only for the distance check
+and never stored or logged.
+
+1. **Place position.** It comes from `resolve_food_place`, else one Place Details call. That call:
+   - uses the field mask `id, displayName, location, primaryType, types`, billed as Place Details
+     Pro;
+   - is behind a member daily and a global monthly allowance;
+   - is cached 30 days in `places_cache` as `food_place:v1:<id>`.
+
+   Unknown ids return 404 `not_found`. Without the key, a place that is not already known also
+   returns 404. A spent allowance returns 503 with `details.reason: "budget"`.
+2. **Distance.** The device must be within 200 m + min(accuracy, 100 m) of the place, inclusive,
+   using haversine with R = 6,371,008.8 m. Otherwise 422 `too_far` with
+   `details: {distance_m, allowed_m}`.
+3. **Region.** The smallest live region containing the place, preferring one that lists it as a
+   spot.
+4. **Healthy.** Spots count as healthy-leaning. Other places are classified with the types rule.
+5. **Record.** `record_food_check_in` runs, and a refusal returns 429 `rate_limited` with
+   `details: {retry_at, reason}` and `Retry-After`.
+
+### `place-photo`
+
+`POST { photo_name, max_width 200–1600 }` returns `{ url, expires_at }`.
+
+- It calls the Place Photos media endpoint with `skipHttpRedirect=true`. The key goes in a header,
+  never in a URL.
+- `expires_at` is a conservative one hour, and the URL is never persisted.
+- Each member has a daily quota (`AI_QUOTAS.place_photo`, 429 `quota_exceeded`).
+- Without the key the answer is 503 `upstream_unavailable`.
+
+### Environment variables (food map)
+
+Invalid numbers are logged and replaced by the default.
+
+| Name | Default | Purpose |
+| --- | --- | --- |
+| `GOOGLE_PLACES_API_KEY` | none | Places API (New) key, shared with `places` |
+| `FAMARA_OVERPASS_URL` | `https://overpass-api.de/api/interpreter` | Overpass endpoint |
+| `FAMARA_OVERPASS_USER_AGENT` | `Famara-FoodMap/1.0 (Supabase edge function)` | Identifying User-Agent for Overpass; add a contact before launch |
+| `FAMARA_FOOD_MAP_USER_DAILY_AREA_FILLS` | `20` | Overpass fills one member can start per UTC day (0–10000) |
+| `FAMARA_FOOD_MAP_DAILY_AREA_FILLS` | `500` | Overpass fills across all members per UTC day (0–100000) |
+| `FAMARA_FOOD_MAP_FILLS_PER_REQUEST` | `6` | Region spot fills started by one `food-map` request (1–20) |
+| `FAMARA_FOOD_MAP_USER_DAILY_FILLS` | `60` | Nearby Searches one member can start per UTC day (0–10000) |
+| `FAMARA_FOOD_MAP_MONTHLY_FILLS` | `2000` | Nearby Searches across all members per UTC month (0–1000000) |
+| `FAMARA_FOOD_CHECKIN_USER_DAILY_LOOKUPS` | `20` | Place Details lookups one member can start per UTC day (0–10000) |
+| `FAMARA_FOOD_CHECKIN_MONTHLY_LOOKUPS` | `1000` | Place Details lookups across all members per UTC month (0–1000000) |
+| `FAMARA_PLACE_PHOTO_USER_DAILY_LIMIT` | `200` | `place-photo` calls per member per day (1–10000) |
+
+Tests: `cd supabase/functions && deno test --allow-env food-map food-check-in place-photo`.
+Google and Overpass are mocked through an injected `fetch`, and the database through injected
+services.

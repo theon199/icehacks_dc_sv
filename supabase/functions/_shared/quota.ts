@@ -34,6 +34,7 @@ export const AI_QUOTAS = {
   prices: { feature: "prices", limit: 100, windowSeconds: DAY },
   nearby_chat: { feature: "nearby_chat", limit: 30, windowSeconds: DAY },
   text_review: { feature: "text_review", limit: 200, windowSeconds: DAY },
+  place_photo: { feature: "place_photo", limit: 200, windowSeconds: DAY },
 } as const satisfies Record<string, QuotaPolicy>;
 
 const quotaRows = z
