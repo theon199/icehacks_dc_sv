@@ -74,7 +74,6 @@ restart the bundler with a clean cache: `npx expo start -c`.
 | `npm run format`       | Prettier write (`format:check` verifies)                                  |
 | `npm test`             | Jest with `jest-expo` and React Native Testing Library                    |
 | `npm run verify`       | All of the above, as CI runs it                                           |
-| `npm run bundle:check` | Exports the iOS bundle and fails if it exceeds `tools/bundle-budget.json` |
 | `npm run brand:assets` | Re-renders the app icon, splash and favicon from the vector logo          |
 
 ### Project layout
@@ -84,12 +83,6 @@ src/app/        routes only (expo-router): thin files that mount feature screens
 src/features/   one folder per product area: screens, components, hooks, stores
 src/lib/        adapters: env, Supabase client, API client, query client, storage, catalog DB
 src/ui/         design system: tokens, theme, primitives, brand mark
-tools/          brand asset generator, bundle budget check (data pipeline in tools/data)
+tools/          brand asset generator (data pipeline in tools/data)
 assets/         icons, splash, fonts and the bundled recipe catalog
 ```
-
-### Bundle budget
-
-CI fails when the main iOS JS bundle grows past `ios.maxBytes` in
-[`tools/bundle-budget.json`](tools/bundle-budget.json). The budget is the baseline measured in CI plus the
-`headroom` fraction stored next to it; raising it requires a PR that explains the growth.
