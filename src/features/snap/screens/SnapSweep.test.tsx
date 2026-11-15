@@ -75,6 +75,9 @@ jest.mock('@/lib/api/ai', () => ({
   aiApi: { readSnap: jest.fn() },
 }));
 
+// Each test films through several timed stills; under a busy machine 5 s is too tight.
+jest.setTimeout(20_000);
+
 const SWEEP_ID = '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b';
 const quota = (remaining: number) => ({ remaining, reset_at: '2026-11-15T00:00:00Z' });
 
@@ -138,13 +141,18 @@ async function startFilming() {
 }
 
 describe('Fridge sweep', () => {
-  it('films a pass, lists what it sees, adds what was said, then opens the review', async () => {
+  /** The AI: words find paneer, the first batch milk and eggs, later batches eggs and feta. */
+  function answerSweep() {
     jest.mocked(aiApi.readSnap).mockImplementation(async (input: AiModule.SnapInput) => {
       if ('text' in input) return found(['paneer']);
       if ('images' in input && input.images[0] === 'b64-1') return found(['milk', 'eggs'], 17);
       return found(['eggs', 'feta']);
     });
-    const user = await startFilming();
+  }
+
+  it('films in batches and lists each item once, tagging new finds for a moment', async () => {
+    answerSweep();
+    await startFilming();
 
     const sheet = await screen.findByTestId('sweep-sheet');
     expect(within(sheet).getByText('Filming')).toBeOnTheScreen();
@@ -171,6 +179,12 @@ describe('Fridge sweep', () => {
     // The "New" tag comes off after a moment.
     await act(() => jest.advanceTimersByTimeAsync(3000));
     expect(within(screen.getByTestId('sweep-item-milk')).queryByText('New')).toBeNull();
+  });
+
+  it('adds what was said, then opens the review with the whole list', async () => {
+    answerSweep();
+    const user = await startFilming();
+    await frames(3);
 
     // The mic stops filming and shows what it hears.
     await user.press(screen.getByRole('button', { name: 'Say what it missed' }));
@@ -193,6 +207,7 @@ describe('Fridge sweep', () => {
       expect.anything(),
     );
     expect(within(screen.getByTestId('sweep-item-paneer')).getByText('You said')).toBeOnTheScreen();
+    // Stopping for the mic sent the still taken since the first batch, which found feta.
     expect(screen.getByTestId('sweep-title')).toHaveTextContent('3 from video');
 
     await user.press(screen.getByRole('button', { name: 'Done' }));
