@@ -107,6 +107,46 @@ Deno.test("grid names are deterministic", () => {
   assertEquals(nearestName(CELL, places.slice(2)), null, "nothing within 10 km");
 });
 
+Deno.test("a cell is left without a grid only when a region that will be served covers it", () => {
+  // A large area that reaches into CELL but whose centre is in the cell to the east.
+  const east = geohashEncode(C.lat, C.lng + 0.044, 5);
+  const wide = area("osm:relation:7", "Wide Park", square(C.lng + 0.06, C.lat, 0.05));
+  assertEquals(geohashEncode(C.lat, C.lng + 0.06, 5), east, "fixture: centred in the east cell");
+  assert(cellHasPolygons(CELL, [wide.polygon]), "fixture: the area reaches into CELL");
+
+  const alone = buildRegions([CELL], [wide], []).get(CELL)!;
+  assertEquals(alone.length, 32, "not stored with this fill, so CELL falls back to the grid");
+  assert(alone.every((r) => r.source === "grid"));
+
+  const together = buildRegions([CELL, east], [wide], []);
+  assertEquals(together.get(CELL), [], "stored in the adjacent cell, so CELL is covered");
+  assertEquals(together.get(east)!.map((r) => r.source_ref), ["osm:relation:7"]);
+
+  const stored = {
+    source_ref: "osm:relation:7",
+    name: "Wide Park",
+    geohash5: east,
+    polygon: wide.polygon,
+    bbox: [C.lng + 0.01, C.lat - 0.05, C.lng + 0.11, C.lat + 0.05] as [
+      number,
+      number,
+      number,
+      number,
+    ],
+  };
+  assertEquals(
+    buildRegions([CELL], [wide], [stored]).get(CELL),
+    [],
+    "already stored in the adjacent cell, so CELL is covered",
+  );
+  const farCell = geohashEncode(C.lat, C.lng + 0.2, 5);
+  assertEquals(
+    buildRegions([CELL], [wide], [{ ...stored, geohash5: farCell }]).get(CELL)!.length,
+    32,
+    "a stored region centred beyond the neighbours is not served with CELL",
+  );
+});
+
 Deno.test("coverage is judged by geohash-6 centres", () => {
   assert(cellHasPolygons(CELL, [[square(C.lng, C.lat, 0.004)]]));
   assert(!cellHasPolygons(CELL, [[square(C.lng + 1, C.lat, 0.004)]]));

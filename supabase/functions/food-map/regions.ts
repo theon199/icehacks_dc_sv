@@ -9,8 +9,12 @@
  *      area: going from smallest to largest, an area is dropped when more than a quarter of it
  *      is already covered by kept areas.
  *
- * A geohash-5 cell that no kept area reaches into (no outline point inside it, and no geohash-6
- * child centre covered) is covered by grid regions instead: one per geohash-6 child. Grid names are deterministic:
+ * A geohash-5 cell keeps no grid only when an OSM region that will be served with it reaches into
+ * it (an outline point inside it, or a geohash-6 child centre covered). Served means stored and
+ * centred in the cell or one of its eight neighbours, the cells the map and check-ins read: a
+ * region from this fill (centred in one of the filled cells, the only ones it can be stored for)
+ * or one already stored for a neighbour that this fill does not refresh. Any other cell gets grid
+ * regions instead: one per geohash-6 child. Grid names are deterministic:
  * "Near <name> <CODE>" where <name> is the OSM region nearest to the geohash-5 cell's centre
  * (by distance to the region's box centre, within 10 km; ties by source ref), otherwise
  * "Area <CODE>". <CODE> is the last three characters of the geohash-6 cell in capitals.
@@ -20,6 +24,7 @@ import {
   type BBox,
   bboxCenter,
   cellRing,
+  cellWithNeighbours,
   distanceMeters,
   geohashBounds,
   geohashCenter,
@@ -248,6 +253,18 @@ export function nearestName(cell: string, named: readonly NamedPlace[]): string 
   return best?.name ?? null;
 }
 
+/** An OSM region already stored, as read back for the cells being filled. */
+export interface StoredOsmRegion extends NamedPlace {
+  geohash5: string;
+  polygon: Polygon;
+}
+
+/** The cell and its eight neighbours: the cells read together with it. */
+function servedWith(cell: string): Set<string> {
+  const center = geohashCenter(cell);
+  return new Set(cellWithNeighbours(center.lat, center.lng, cell.length));
+}
+
 export function gridName(child: string, base: string | null): string {
   const code = child.slice(-3).toUpperCase();
   if (!base) return `Area ${code}`;
@@ -274,26 +291,36 @@ export function gridRegions(cell: string, base: string | null): RegionDraft[] {
 
 /**
  * The regions to store for `cells`: cleaned OSM regions centred in them, plus grid regions for
- * cells no OSM area covers. `knownOsm` names regions already stored nearby, for grid names.
+ * cells no served OSM region covers. `knownOsm` are OSM regions already stored nearby: they name
+ * grid regions, and those centred outside `cells` (which this fill leaves alone) count as cover.
  */
 export function buildRegions(
   cells: readonly string[],
   areas: readonly OsmArea[],
-  knownOsm: readonly NamedPlace[],
+  knownOsm: readonly StoredOsmRegion[],
 ): Map<string, RegionDraft[]> {
-  const kept = cleanOsmAreas(areas);
-  const drafts = kept.map(toDraft);
+  const drafts = cleanOsmAreas(areas).map(toDraft);
   const named: NamedPlace[] = [
     ...drafts.map((d) => ({ source_ref: d.source_ref, name: d.name, bbox: d.bbox })),
     ...knownOsm.filter((k) => !drafts.some((d) => d.source_ref === k.source_ref)),
   ];
-  const polygons = kept.map((k) => k.polygon);
+  // Drafts centred outside `cells` cannot be stored by this fill, so they cover nothing.
+  const stored = drafts.filter((d) => cells.includes(d.geohash5));
+  const cover = [
+    ...stored,
+    ...knownOsm.filter((k) =>
+      !cells.includes(k.geohash5) && !stored.some((d) => d.source_ref === k.source_ref)
+    ),
+  ];
   const byCell = new Map<string, RegionDraft[]>();
   for (const cell of cells) {
-    const own = drafts.filter((d) => d.geohash5 === cell);
+    const served = servedWith(cell);
+    const polygons = cover.filter((c) => served.has(c.geohash5)).map((c) => c.polygon);
     byCell.set(
       cell,
-      cellHasPolygons(cell, polygons) ? own : gridRegions(cell, nearestName(cell, named)),
+      cellHasPolygons(cell, polygons)
+        ? stored.filter((d) => d.geohash5 === cell)
+        : gridRegions(cell, nearestName(cell, named)),
     );
   }
   return byCell;

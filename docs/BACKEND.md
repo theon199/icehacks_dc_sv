@@ -720,7 +720,11 @@ totals }` for the regions centred in the caller's geohash-5 cell and its eight n
   - Slivers are dropped: under 2 ha, or 4πA/P² < 0.05.
   - Overlaps resolve to the smaller area: an area more than 25% covered by smaller kept areas is
     dropped.
-- **Grid fallback.** A cell no kept outline reaches into gets one grid region per geohash-6 cell.
+- **Grid fallback.** A cell gets one grid region per geohash-6 cell unless a served OSM region
+  reaches into it. Served means centred in the cell or one of its eight neighbours (the cells the
+  map and check-ins read) and either stored by this fill or already stored for a cell this fill
+  does not refresh. An outline centred outside the filled cells cannot be stored, so it never
+  stands in for a grid.
   - The name is "Near <nearest OSM region within 10 km of the cell centre> <CODE>", else
     "Area <CODE>".
   - CODE is the last three characters of the geohash-6 cell in capitals.

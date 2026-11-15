@@ -347,7 +347,13 @@ export function createFoodMapHandler(deps: FoodMapDeps): Handler {
               });
               const knownOsm = latest.regions
                 .filter((r) => r.source === "osm")
-                .map((r) => ({ source_ref: r.source_ref, name: r.name, bbox: r.bbox }));
+                .map((r) => ({
+                  source_ref: r.source_ref,
+                  name: r.name,
+                  bbox: r.bbox,
+                  geohash5: r.geohash5,
+                  polygon: r.polygon,
+                }));
               const built = buildRegions(todo, areas, knownOsm);
               await service.storeRegions(todo, [...built.values()].flat(), REGION_TTL_SECONDS);
             } catch (error) {
