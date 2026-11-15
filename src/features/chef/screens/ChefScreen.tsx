@@ -120,17 +120,19 @@ function ChefChat({ initialThreadId, onBack, backLabel, nativeHeader }: ChefChat
     [limited, send],
   );
 
-  // The thread and its question box rise with the keyboard on the UI thread, frame for frame with
-  // the keyboard's own animation. The box already keeps the bottom safe area clear (the home
-  // indicator, and on the Search tab the tab bar too), so only the rest of the keyboard lifts it.
+  // The keyboard takes its room from the bottom of the chat on the UI thread, frame for frame with
+  // its own animation: the thread's viewport shrinks and the question box rides on top, so the
+  // oldest messages still stop under the header. The box already keeps the bottom safe area clear
+  // (the home indicator, and on the Search tab the tab bar too), so only the rest of the keyboard
+  // is taken, and nothing is taken while the keyboard is down.
   const insets = useSafeAreaInsets();
   const bottomInset = useSharedValue(insets.bottom);
   useEffect(() => {
     bottomInset.set(insets.bottom);
   }, [bottomInset, insets.bottom]);
   const keyboard = useAnimatedKeyboard();
-  const lift = useAnimatedStyle(() => ({
-    transform: [{ translateY: -Math.max(0, keyboard.height.get() - bottomInset.get()) }],
+  const keyboardRoom = useAnimatedStyle(() => ({
+    paddingBottom: Math.max(0, keyboard.height.get() - bottomInset.get()),
   }));
 
   const empty = messages.length === 0 && !sending;
@@ -177,7 +179,7 @@ function ChefChat({ initialThreadId, onBack, backLabel, nativeHeader }: ChefChat
           }
         />
       )}
-      <Animated.View style={[styles.flex, lift]}>
+      <Animated.View style={[styles.flex, keyboardRoom]} testID="chef-body">
         <View style={styles.flex}>
           {empty ? (
             <ChefWelcome onAsk={ask} onPhoto={() => composer.current?.choosePhoto()} />
