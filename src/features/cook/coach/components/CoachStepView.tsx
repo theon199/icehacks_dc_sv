@@ -14,16 +14,29 @@ export interface CoachStepViewProps {
 /** Text scales with Dynamic Type, but only so far: past this the step no longer fits the screen. */
 const STEP_MAX_SCALE = 1.4;
 
-/** The step, sized to be read from across the room: a huge number, "of N", then the words. */
+/**
+ * Type size for the step's words. Catalog steps run from a short line to a whole paragraph, and
+ * the screen is read from across the room without scrolling, so longer steps step down in size.
+ */
+export function stepTextSize(text: string): { fontSize: number; lineHeight: number } {
+  if (text.length <= 90) return { fontSize: 30, lineHeight: 36 };
+  if (text.length <= 180) return { fontSize: 24, lineHeight: 30 };
+  return { fontSize: 20, lineHeight: 26 };
+}
+
+/**
+ * The step, sized to be read from across the room: a huge number and "of N" beside the live
+ * camera tile, then the words across the full width.
+ */
 export function CoachStepView({ index, count, text, tile }: CoachStepViewProps) {
   return (
-    <View style={styles.row}>
-      <View
-        style={styles.words}
-        accessible
-        accessibilityLabel={`Step ${index + 1} of ${count}. ${text}`}
-        testID="coach-step"
-      >
+    <View
+      style={styles.words}
+      accessible
+      accessibilityLabel={`Step ${index + 1} of ${count}. ${text}`}
+      testID="coach-step"
+    >
+      <View style={styles.row}>
         <View style={styles.counter}>
           <Text
             variant="displayLarge"
@@ -37,24 +50,24 @@ export function CoachStepView({ index, count, text, tile }: CoachStepViewProps) 
             of {count}
           </Text>
         </View>
-        <Text
-          variant="title1"
-          maxFontSizeMultiplier={STEP_MAX_SCALE}
-          style={styles.text}
-          accessible={false}
-        >
-          {text}
-        </Text>
+        {tile}
       </View>
-      {tile}
+      <Text
+        variant="title1"
+        maxFontSizeMultiplier={STEP_MAX_SCALE}
+        style={[styles.text, stepTextSize(text)]}
+        accessible={false}
+      >
+        {text}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  words: { gap: space.sm },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  words: { flex: 1, minWidth: 0 },
-  counter: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
+  counter: { flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
   number: {
     fontFamily: fontFamily.displayBold,
     fontSize: 88,
@@ -62,5 +75,5 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
     fontVariant: ['tabular-nums'],
   },
-  text: { fontSize: 30, lineHeight: 36, marginTop: space.sm },
+  text: { marginTop: space.xs },
 });
