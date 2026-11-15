@@ -11,7 +11,7 @@ export const sourcesPage: AboutPage = {
   blocks: [
     {
       kind: 'paragraph',
-      text: 'Every recipe, nutrient value and link in Famara comes from a public source. When a value cannot be traced to one, Famara leaves it empty instead of making it up. Each recipe page names the source it came from.',
+      text: 'Famara uses published recipes and recipe data from the earlier Aptiva catalog. Each recipe page names its source. Nutrition is calculated from ingredient data when enough is available.',
     },
     { kind: 'heading', text: 'Recipes and photos' },
     {
@@ -25,6 +25,15 @@ export const sourcesPage: AboutPage = {
       text: 'Courtesy of MedlinePlus from the National Library of Medicine. These recipes were first published by FoodHero.org (Oregon State University Extension Service) and the National Heart, Lung, and Blood Institute, and appear on MedlinePlus as public-domain content.',
     },
     { kind: 'link', label: 'MedlinePlus healthy recipes', url: 'https://medlineplus.gov/recipes/' },
+    {
+      kind: 'paragraph',
+      text: 'Quick household recipes are adapted from USDA sources. Some recipes and AI-generated dish illustrations come from the pre-existing Aptiva catalog.',
+    },
+    {
+      kind: 'link',
+      label: 'USDA household recipes',
+      url: 'https://www.fna.usda.gov/americasharvest',
+    },
     { kind: 'heading', text: 'Nutrition data' },
     {
       kind: 'paragraph',

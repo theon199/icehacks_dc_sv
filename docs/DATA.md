@@ -1,24 +1,30 @@
 # Famara — Catalog data contract
 
-The catalog ships as `assets/catalog/famara-catalog.db`, a read-only SQLite database built by
-`tools/data`. The app opens it with `expo-sqlite` and queries it through `src/lib/catalog`.
-Bump `meta.schema_version` whenever this contract changes.
+Famara reads recipes from Supabase via the read-only catalog RPCs in `src/lib/catalog`.
+Recipe search uses PostgreSQL full-text search, with server-side filtering for diet, allergens,
+and other recipe constraints. Existing recipe IDs and slugs carry over from the build snapshot.
 
-## Sources (public, re-fetchable)
+The builder in `tools/data` writes the versioned snapshot at `assets/catalog/famara-catalog.db`.
+This file is an import and test artifact outside the mobile bundle. The import verifies the
+snapshot and loads its data into the private Postgres catalog tables in one transaction.
+Bump `meta.schema_version` whenever the snapshot contract changes.
+
+## Sources
 
 | Data | Source | License / terms |
 | --- | --- | --- |
 | Recipes, photos, YouTube + source links | TheMealDB API (`/api/json/v1/1/`) | free API; credit TheMealDB |
 | Recipes | MedlinePlus "Healthy Recipes" (NIH/NLM) | U.S. government work, public domain |
+| Quick household recipes | USDA Team Nutrition and America's Harvest | Credited recipe facts with Famara directions |
+| Recipes and dish illustrations | Aptiva shipped catalog | Prior-project reuse with publisher and media credit |
 | Nutrients per ingredient | USDA FoodData Central (Foundation + SR Legacy bulk CSV) | public domain (CC0) |
 | Added sugars | USDA FPED | public domain |
 | Daily targets | Dietary Guidelines for Americans / NASEM DRI tables | public |
 | Community starter photos | Wikimedia Commons | per-file license + attribution |
 
-Anything that cannot be traced to a public source is **not fabricated**. It is listed in
-`docs/data/HELD.md` with the reason.
+The builder checks the provenance and ingredient coverage of supplemental recipes. Sources and the Aptiva import audit are documented in [catalog credits](data/SOURCES.md).
 
-## Schema (v2)
+## Snapshot schema (v2)
 
 ```sql
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);

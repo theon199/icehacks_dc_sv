@@ -1,12 +1,6 @@
 import { LruCache } from './lru';
 import { parseAllergenMap, parseGoalTags } from './rows';
-import {
-  buildFtsQuery,
-  escapeLike,
-  expandQuery,
-  phraseAlternatives,
-  tokenize,
-} from './searchQuery';
+import { buildFtsQuery, expandQuery, phraseAlternatives, tokenize } from './searchQuery';
 
 describe('tokenize', () => {
   it('lowercases, strips accents and drops punctuation', () => {
@@ -39,33 +33,29 @@ describe('expandQuery', () => {
 
 describe('buildFtsQuery', () => {
   it('quotes and prefix-matches every token with explicit AND', () => {
-    expect(buildFtsQuery('chicken curry')).toBe('"chicken"* AND "curry"*');
+    expect(buildFtsQuery('chicken curry')).toBe(`'chicken':* & 'curry':*`);
   });
 
   it('wraps synonym alternatives in OR groups', () => {
-    expect(buildFtsQuery('aubergine')).toBe('("aubergine"* OR "eggplant"*)');
+    expect(buildFtsQuery('aubergine')).toBe(`('aubergine':* | 'eggplant':*)`);
     expect(buildFtsQuery('courgette pak choi')).toBe(
-      '("courgette"* OR "zucchini"*) AND (("pak"* AND "choi"*) OR ("bok"* AND "choy"*))',
+      `('courgette':* | 'zucchini':*) & (('pak':* & 'choi':*) | ('bok':* & 'choy':*))`,
     );
   });
 
-  it('neutralises FTS5 syntax typed by the user', () => {
+  it('neutralises query syntax typed by the user', () => {
     expect(buildFtsQuery('title:"x" OR NEAR(y*)')).toBe(
-      '"title"* AND "x"* AND "or"* AND "near"* AND "y"*',
+      `'title':* & 'x':* & 'or':* & 'near':* & 'y':*`,
     );
     expect(buildFtsQuery('" * ( ) ^ -')).toBeNull();
   });
 });
 
-describe('phraseAlternatives / escapeLike', () => {
+describe('phraseAlternatives', () => {
   it('expands whole phrases only', () => {
     expect(phraseAlternatives('Coriander')).toEqual(['coriander', 'cilantro']);
     expect(phraseAlternatives('coriander seed')).toEqual(['coriander seed']);
     expect(phraseAlternatives('')).toEqual([]);
-  });
-
-  it('escapes LIKE wildcards', () => {
-    expect(escapeLike('50%_off\\')).toBe('50\\%\\_off\\\\');
   });
 });
 

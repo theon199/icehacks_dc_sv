@@ -2,6 +2,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 
+import { usesFirebase } from '@/lib/firebase/config';
 import { Button, ListRow, Screen, Text, space, toast } from '@/ui';
 
 import { ABOUT_PAGE_LIST } from '../about/pages';
@@ -114,14 +115,16 @@ export function SettingsScreen() {
         loading={signingOut}
         onPress={() => void signOutHere()}
       />
-      <Button
-        testID="settings-sign-out-everywhere"
-        label="Sign out of all devices"
-        variant="ghost"
-        fullWidth
-        disabled={signingOut}
-        onPress={confirmSignOutAll}
-      />
+      {!usesFirebase && (
+        <Button
+          testID="settings-sign-out-everywhere"
+          label="Sign out of all devices"
+          variant="ghost"
+          fullWidth
+          disabled={signingOut}
+          onPress={confirmSignOutAll}
+        />
+      )}
       <Text variant="footnote" tone="subtle" align="center" style={styles.version} selectable>
         {version}
       </Text>

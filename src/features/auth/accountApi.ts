@@ -4,6 +4,10 @@
  */
 import { z } from 'zod';
 
+import { firebaseDeleteAccount, getFirebaseSession } from '@/lib/firebase/auth';
+import { usesFirebase } from '@/lib/firebase/config';
+import { firestoreRead, firestoreRemove, firestoreWrite } from '@/lib/firebase/firestore';
+import { FirebaseRequestError } from '@/lib/firebase/http';
 import { getSupabase } from '@/lib/supabase/client';
 
 import { accountDeletedCleanup } from './deps';
@@ -98,6 +102,13 @@ export interface AccountIdentity {
 
 /** The current session's identity, provided it still belongs to `userId`. */
 export async function identityFor(userId: string): Promise<AccountIdentity> {
+  if (usesFirebase) {
+    const session = await firebaseAccountRequest(getFirebaseSession);
+    if (!session) throw new AccountError('signed_out', accountMessages.signed_out);
+    if (session.userId !== userId)
+      throw new AccountError('account_changed', accountMessages.account_changed);
+    return { userId, accessToken: session.accessToken };
+  }
   let session;
   try {
     ({
@@ -163,8 +174,46 @@ function toStatus(raw: z.infer<typeof accountStatusSchema>): AccountStatus {
   };
 }
 
+const firebaseBirthYear = z.object({
+  fields: z.object({ birthYear: z.object({ integerValue: z.coerce.number().int() }) }),
+});
+const firebaseAccountPath = (userId: string) => `catalogAccounts/${encodeURIComponent(userId)}`;
+
+async function firebaseAccountRequest<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (cause) {
+    if (cause instanceof FirebaseRequestError) {
+      throw toAccountError({ status: cause.status }, cause);
+    }
+    throw toAccountError({ message: String(cause) }, cause);
+  }
+}
+
+function firebaseStatus(userId: string, birthYear: number | null): AccountStatus {
+  const ageYears =
+    birthYear === null ? null : Math.max(0, new Date().getUTCFullYear() - birthYear - 1);
+  return {
+    userId,
+    hasBirthYear: birthYear !== null,
+    ageYears,
+    isAdult: ageYears !== null && ageYears >= 18,
+    isUnderage: ageYears !== null && ageYears < 13,
+  };
+}
+
 /** Reads the gate data for the signed-in person, or for `as` when given. */
 export async function fetchAccountStatus(as?: AccountIdentity): Promise<AccountStatus> {
+  if (usesFirebase) {
+    const identity = as ?? (await identityFor(useSessionStore.getState().userId ?? ''));
+    const doc = await firebaseAccountRequest(() =>
+      firestoreRead(firebaseAccountPath(identity.userId), identity.accessToken),
+    );
+    return firebaseStatus(
+      identity.userId,
+      doc ? firebaseBirthYear.parse(doc).fields.birthYear.integerValue : null,
+    );
+  }
   return toStatus(await callRpc({ name: 'my_account_status', as }, accountStatusSchema));
 }
 
@@ -177,6 +226,21 @@ export async function saveBirthYear(
   birthYear: number,
   as: AccountIdentity,
 ): Promise<AccountStatus> {
+  if (usesFirebase) {
+    try {
+      await firestoreWrite(
+        firebaseAccountPath(as.userId),
+        { birthYear: { integerValue: String(birthYear) } },
+        as.accessToken,
+      );
+      return firebaseStatus(as.userId, birthYear);
+    } catch (cause) {
+      if (cause instanceof FirebaseRequestError && cause.status === 403) {
+        throw new AccountError('birth_year_locked', accountMessages.birth_year_locked, { cause });
+      }
+      return firebaseAccountRequest(() => Promise.reject(cause));
+    }
+  }
   const call: RpcCall = { name: 'set_birth_year', args: { p_birth_year: birthYear }, as };
   const status = toStatus(await callRpc(call, accountStatusSchema));
   if (status.userId !== as.userId) {
@@ -192,7 +256,13 @@ export async function saveBirthYear(
  * caller signs out afterwards.
  */
 export async function deleteMyAccount(as: AccountIdentity): Promise<void> {
-  await callRpc({ name: 'delete_my_account', as }, deletionSchema);
+  if (usesFirebase) {
+    await firebaseAccountRequest(async () => {
+      await firestoreRemove(firebaseAccountPath(as.userId), as.accessToken);
+      await firestoreRemove(`catalogTerms/${encodeURIComponent(as.userId)}`, as.accessToken);
+      await firebaseDeleteAccount(as.userId, as.accessToken);
+    });
+  } else await callRpc({ name: 'delete_my_account', as }, deletionSchema);
   forgetCachedSetup(as.userId);
   // If someone else has signed in meanwhile, the local data is theirs: that switch already wiped
   // the deleted account's copy.
@@ -202,7 +272,7 @@ export async function deleteMyAccount(as: AccountIdentity): Promise<void> {
 /** Sets the public display name on the person's profile (1–50 characters). */
 export async function updateDisplayName(userId: string, name: string): Promise<void> {
   const displayName = name.trim().slice(0, 50);
-  if (!displayName) return;
+  if (!displayName || usesFirebase) return;
   const { error } = await getSupabase()
     .from('profiles')
     .update({ display_name: displayName })
@@ -212,6 +282,7 @@ export async function updateDisplayName(userId: string, name: string): Promise<v
 
 /** A first name from what the sign-in provider shared, to prefill onboarding. */
 export async function suggestedFirstName(): Promise<string | null> {
+  if (usesFirebase) return null;
   try {
     const { data } = await getSupabase().auth.getSession();
     const meta: Record<string, unknown> = data.session?.user.user_metadata ?? {};

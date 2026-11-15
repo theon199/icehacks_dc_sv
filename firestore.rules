@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function owner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+    function validYear() {
+      return request.resource.data.keys().hasOnly(['birthYear'])
+        && request.resource.data.birthYear is int
+        && request.resource.data.birthYear >= 1900
+        && request.resource.data.birthYear <= request.time.year();
+    }
+    match /catalog/{document} { allow get: if verified(); }
+    match /catalogPages/{document} { allow get: if verified(); }
+    match /catalogIndex/{document} { allow get: if verified(); }
+    match /catalogRecipes/{document} { allow get: if verified(); }
+
+    match /catalogAccounts/{userId} {
+      allow get, delete: if owner(userId);
+      allow create: if verified() && owner(userId) && validYear();
+      allow update: if verified() && owner(userId) && validYear()
+        && request.resource.data.birthYear >= resource.data.birthYear;
+    }
+    match /catalogTerms/{userId} {
+      allow get, delete: if owner(userId);
+      allow create: if owner(userId)
+        && request.resource.data.keys().hasOnly(['version', 'acceptedAt'])
+        && request.resource.data.version is string
+        && request.resource.data.version.size() <= 32
+        && request.resource.data.acceptedAt is timestamp;
+    }
+  }
+}

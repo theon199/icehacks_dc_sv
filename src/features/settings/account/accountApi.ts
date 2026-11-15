@@ -9,8 +9,10 @@ import {
   AUTH_CALLBACK_URL,
   accountErrorMessage,
   isAccountError,
+  signOut,
   useSessionStore,
 } from '@/features/auth';
+import { usesFirebase } from '@/lib/firebase/config';
 import { describeError, logger } from '@/lib/logger';
 import { queryClient } from '@/lib/query/client';
 import { getSupabase } from '@/lib/supabase/client';
@@ -275,6 +277,7 @@ export interface SignOutOutcome {
  * Throws an `AccountError` when the stored session could not be removed.
  */
 export async function signOutOfAccount(scope: SignOutScope): Promise<SignOutOutcome> {
+  if (usesFirebase) return signOut();
   const userId = useSessionStore.getState().userId;
   await bestEffort(unregisterPushDevice, PUSH_UNREGISTER_TIMEOUT_MS);
   // Old answers this account still has on the device are moved now, while sync can send them.

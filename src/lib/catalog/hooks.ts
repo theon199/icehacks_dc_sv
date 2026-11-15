@@ -1,7 +1,3 @@
-/**
- * React Query hooks over the catalog. The catalog ships inside the build and never changes while
- * it runs, so results never go stale and queries run offline (`networkMode: 'always'`).
- */
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -9,6 +5,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 
+import { CATALOG_STALE_TIME, CatalogError } from './api';
 import {
   getCatalogMeta,
   getCuisines,
@@ -25,21 +22,20 @@ import {
 } from './queries';
 import { tokenize } from './searchQuery';
 import type { CandidateFilters, SearchFilters, SubstitutionGoal } from './types';
-import { isCatalogError } from '../db/catalog';
 
-/** Retries a failed read once, unless the catalog is missing or from another schema. */
+/** Retries a failed read once, unless the response cannot be parsed. */
 function retryCatalog(failureCount: number, error: unknown): boolean {
-  if (isCatalogError(error) && error.kind !== 'query_failed') return false;
+  if (error instanceof CatalogError && error.kind !== 'query_failed') return false;
   return failureCount < 1;
 }
 
 const catalogQueryOptions = {
-  staleTime: Infinity,
+  staleTime: CATALOG_STALE_TIME,
   gcTime: 30 * 60_000,
-  networkMode: 'always',
+  networkMode: 'online',
   retry: retryCatalog,
   refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
+  refetchOnReconnect: true,
 } as const;
 
 const allergenKey = (allergens: SearchFilters['avoidAllergens']): string =>

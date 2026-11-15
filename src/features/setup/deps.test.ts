@@ -2,7 +2,6 @@ import Storage from 'expo-sqlite/kv-store';
 
 import { clearCatalogCaches, getPantryStaples } from '@/lib/catalog';
 import { describeCatalogDb } from '@/lib/catalog/__fixtures__/nodeCatalogDb';
-import { resetCatalogForTests } from '@/lib/db/catalog';
 import { storageKey } from '@/lib/storage/kv';
 import type * as StoresModule from '@/stores';
 import {
@@ -17,11 +16,9 @@ import {
 import * as setupDeps from './deps';
 import type { OnboardingAnswers } from './onboardingModel';
 
-jest.mock(
-  'expo-sqlite',
-  () => jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').expoSqliteFake as unknown,
-);
-jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
+jest.mock('@/lib/supabase/client', () => ({
+  supabase: jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').catalogSupabaseFake,
+}));
 jest.mock('expo-crypto', () => ({
   randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
 }));
@@ -116,7 +113,6 @@ describe('saveOnboarding', () => {
 
 describeCatalogDb('catalog reads', () => {
   beforeEach(() => {
-    resetCatalogForTests();
     clearCatalogCaches();
   });
 

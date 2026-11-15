@@ -2,6 +2,7 @@ import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { Platform, StyleSheet, View } from 'react-native';
 
+import { usesFirebase } from '@/lib/firebase/config';
 import { haptics } from '@/lib/haptics';
 import { Button, EmptyState, Screen, toast } from '@/ui';
 
@@ -49,9 +50,11 @@ export function CheckEmailScreen() {
     });
   };
 
-  const explanation = pending
-    ? `We sent a confirmation link to ${pending}. Open it on this phone to finish creating your account.`
-    : 'Open the confirmation link we sent you on this phone to finish creating your account.';
+  const explanation = usesFirebase
+    ? `Open the confirmation link${pending ? ` sent to ${pending}` : ''}, then return to Famara to sign in.`
+    : pending
+      ? `We sent a confirmation link to ${pending}. Open it on this phone to finish creating your account.`
+      : 'Open the confirmation link we sent you on this phone to finish creating your account.';
 
   return (
     <Screen

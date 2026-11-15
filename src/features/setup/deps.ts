@@ -1,5 +1,5 @@
 /**
- * The shared modules onboarding reads and writes: the bundled catalog (`@/lib/catalog`) for the
+ * The shared modules onboarding reads and writes: the Supabase catalog (`@/lib/catalog`) for the
  * cuisine and pantry questions, and the per-account user stores (`@/stores`) the answers land in.
  * The rest of the app reads those same stores, so the answers are what it sees.
  */

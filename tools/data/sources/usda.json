@@ -1,0 +1,1092 @@
+[
+  {
+    "id": "usda:berries-bananacream",
+    "source": "usda",
+    "sourceId": "berries-bananacream",
+    "title": "Berries with Banana Cream",
+    "area": "American",
+    "course": "dessert",
+    "lines": [
+      {
+        "text": "⅓ cup plain yogurt"
+      },
+      {
+        "text": "½ ripe banana, diced"
+      },
+      {
+        "text": "½ fluid ounce orange juice"
+      },
+      {
+        "text": "2 cups chopped strawberries"
+      },
+      {
+        "text": "1 teaspoon honey"
+      },
+      {
+        "text": "⅛ teaspoon cinnamon"
+      }
+    ],
+    "instructions": [
+      "Mash the banana into the yogurt and orange juice until mostly smooth.",
+      "Divide the strawberries into serving dishes. Spoon the banana cream over them, then finish with honey and cinnamon."
+    ],
+    "servings": 4,
+    "totalMinutes": 10,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/family/snacks/berries-bananacream",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:berry-parfait",
+    "source": "usda",
+    "sourceId": "berry-parfait",
+    "title": "Crunchy Berry Parfait",
+    "area": "American",
+    "course": "breakfast",
+    "lines": [
+      {
+        "text": "½ cup yogurt"
+      },
+      {
+        "text": "1 cup thawed blueberries"
+      },
+      {
+        "text": "½ cup low-sugar granola"
+      }
+    ],
+    "instructions": [
+      "Spoon the yogurt into a glass or bowl.",
+      "Layer the berries over the yogurt and sprinkle with granola."
+    ],
+    "servings": 1,
+    "totalMinutes": 5,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/family/breakfast/berry-parfait",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:burrito-bowl",
+    "source": "usda",
+    "sourceId": "burrito-bowl",
+    "title": "Bean Burrito Bowl",
+    "area": "American",
+    "course": "main",
+    "lines": [
+      {
+        "text": "2 cans low-sodium pinto beans, drained and rinsed"
+      },
+      {
+        "text": "¼ cup chopped onions"
+      },
+      {
+        "text": "1 teaspoon garlic powder"
+      },
+      {
+        "text": "black pepper to taste"
+      },
+      {
+        "text": "1 teaspoon chili powder"
+      },
+      {
+        "text": "1 teaspoon cumin"
+      },
+      {
+        "text": "1 teaspoon paprika"
+      },
+      {
+        "text": "1 teaspoon onion powder"
+      },
+      {
+        "text": "½ teaspoon salt"
+      },
+      {
+        "text": "3 cups water"
+      },
+      {
+        "text": "¼ cup tomato paste"
+      },
+      {
+        "text": "1 cup cooked long-grain brown rice"
+      },
+      {
+        "text": "¼ cup cilantro, finely chopped"
+      },
+      {
+        "text": "½ cup shredded cheddar cheese"
+      },
+      {
+        "text": "Salsa for topping"
+      }
+    ],
+    "instructions": [
+      "Add the beans, onion, spices, water and tomato paste to a saucepan. Simmer uncovered over medium heat for 15 minutes, stirring now and then.",
+      "Stir cilantro into the cooked rice. Spoon rice into bowls, then add the seasoned beans, cheese and salsa."
+    ],
+    "servings": 6,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/main/burrito-bowl",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:cabbage",
+    "source": "usda",
+    "sourceId": "cabbage",
+    "title": "Sauteed Cabbage and Onion",
+    "area": "American",
+    "course": "side",
+    "lines": [
+      {
+        "text": "1 teaspoon oil"
+      },
+      {
+        "text": "1 onion, sliced"
+      },
+      {
+        "text": "4 ½ cups cabbage, sliced"
+      },
+      {
+        "text": "¼ teaspoon salt"
+      },
+      {
+        "text": "¼ teaspoon black pepper"
+      },
+      {
+        "text": "1 teaspoon caraway seeds"
+      }
+    ],
+    "instructions": [
+      "Warm the oil in a wide pan and cook the sliced onion over medium heat for 5–6 minutes, until light golden.",
+      "Add the cabbage, salt, black pepper and caraway. Toss and cook 3–5 more minutes."
+    ],
+    "servings": 4,
+    "totalMinutes": 15,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/sides/cabbage",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:carrots",
+    "source": "usda",
+    "sourceId": "carrots",
+    "title": "Zesty Orange Carrots",
+    "area": "American",
+    "course": "side",
+    "lines": [
+      {
+        "text": "16 ounces carrots, cut into ¼ inch strips"
+      },
+      {
+        "text": "¼ teaspoon ground cinnamon"
+      },
+      {
+        "text": "½ orange"
+      },
+      {
+        "text": "1 tablespoon honey"
+      },
+      {
+        "text": "1 tablespoon butter"
+      },
+      {
+        "text": "1 tablespoon fresh parsley (optional)"
+      }
+    ],
+    "instructions": [
+      "Simmer the carrot strips and cinnamon in about 2 cups of water for 10 minutes, until just tender.",
+      "While the carrots cook, grate the orange zest and squeeze the juice. Drain the carrots and toss them with the juice, zest, honey and butter. Sprinkle with parsley if using."
+    ],
+    "servings": 4,
+    "totalMinutes": 20,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/seasonal/winter/carrots",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:chicken-alfredo-with-a-twist",
+    "source": "usda",
+    "sourceId": "chicken-alfredo-with-a-twist",
+    "title": "Chicken Alfredo With a Twist",
+    "area": "American",
+    "course": "main",
+    "lines": [
+      {
+        "text": "2 ½ cups dry whole-wheat rotini pasta (10 ounces)"
+      },
+      {
+        "text": "2 cans low-fat, reduced-sodium cream of chicken soup (10¾ ounces each)"
+      },
+      {
+        "text": "1 ⅓ cups fat-free half and half"
+      },
+      {
+        "text": "¼ teaspoon ground white pepper"
+      },
+      {
+        "text": "⅛ teaspoon garlic powder"
+      },
+      {
+        "text": "⅓ cup grated Parmesan cheese"
+      },
+      {
+        "text": "3 cups cooked diced chicken (12 ounces)"
+      }
+    ],
+    "instructions": [
+      "Bring 2 quarts of water to a boil. Stir in the rotini and cook uncovered for 8–10 minutes, until tender. Drain.",
+      "In a separate pot, stir together the soup, half-and-half, white pepper, garlic powder, Parmesan and cooked chicken. Stir over medium heat for about 5 minutes, until the sauce reaches 165°F for 15 seconds.",
+      "Toss the pasta and sauce together just before serving."
+    ],
+    "servings": 6,
+    "totalMinutes": 30,
+    "sourceName": "USDA Team Nutrition",
+    "sourceUrl": "https://www.fna.usda.gov/sites/default/files/resource-files/ChickenAlfredoWithaTwistCACFPhomerecipe.pdf#page=2",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:chowder",
+    "source": "usda",
+    "sourceId": "chowder",
+    "title": "Cheese and Corn Chowder",
+    "area": "American",
+    "course": "soup",
+    "lines": [
+      {
+        "text": "2 cups diced potatoes"
+      },
+      {
+        "text": "1 cup sliced carrots"
+      },
+      {
+        "text": "1 cup chopped celery"
+      },
+      {
+        "text": "½ cup chopped onion"
+      },
+      {
+        "text": "¼ teaspoon black pepper"
+      },
+      {
+        "text": "1 cup water"
+      },
+      {
+        "text": "1 can low-sodium cream-style corn (14.75 ounces)"
+      },
+      {
+        "text": "1 ½ cups milk"
+      },
+      {
+        "text": "½ cup shredded cheddar cheese"
+      }
+    ],
+    "instructions": [
+      "Cover the potatoes, carrots, celery, onion and pepper with the listed water in a pot. Cover the pot and simmer for 10 minutes.",
+      "Stir in the corn and simmer for another 5 minutes, until the vegetables are tender.",
+      "Lower the heat before adding milk and cheddar. Stir gently until the cheese melts and the soup is hot."
+    ],
+    "servings": 6,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/soups/chowder",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:curried-potatoes",
+    "source": "usda",
+    "sourceId": "curried-potatoes",
+    "title": "Curried Potatoes",
+    "area": "American",
+    "course": "side",
+    "lines": [
+      {
+        "text": "1 small onion, finely chopped"
+      },
+      {
+        "text": "3 cups potatoes, peeled and chopped into 1 inch cubes"
+      },
+      {
+        "text": "¼ cup butter"
+      },
+      {
+        "text": "¾ cup low-sodium chicken broth"
+      },
+      {
+        "text": "½ tablespoon curry powder"
+      },
+      {
+        "text": "½ tablespoon lemon juice"
+      }
+    ],
+    "instructions": [
+      "Boil the potatoes until tender, 10–15 minutes, then drain and briefly cool in cold water.",
+      "Soften the onion in butter over medium heat. Drain the potatoes again, add to the skillet and toss to coat.",
+      "Add broth, curry powder and lemon juice. Cook until most of the broth is absorbed."
+    ],
+    "servings": 6,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/sides/curried-potatoes",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:fish",
+    "source": "usda",
+    "sourceId": "fish",
+    "title": "Oven Fried Fish",
+    "area": "American",
+    "course": "main",
+    "lines": [
+      {
+        "text": "1 large egg, slightly beaten"
+      },
+      {
+        "text": "½ teaspoon salt"
+      },
+      {
+        "text": "½ teaspoon ground black pepper"
+      },
+      {
+        "text": "½ cup breadcrumbs"
+      },
+      {
+        "text": "1 pound tilapia fillets, fresh or frozen and thawed (4 fillets)"
+      },
+      {
+        "text": "1 tablespoon butter, melted"
+      },
+      {
+        "text": "Lemon slices (optional)"
+      }
+    ],
+    "instructions": [
+      "Heat the oven to 350°F. Beat the salt and pepper into the egg and put the breadcrumbs in a separate dish.",
+      "Dip the tilapia into the egg, followed by the bread crumbs. Coat a shallow baking pan with the melted butter and arrange the fish in one layer.",
+      "Bake uncovered for 15–20 minutes, until the fish flakes and reaches 145°F in the center. Serve with lemon if using."
+    ],
+    "servings": 4,
+    "totalMinutes": 30,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/main/fish",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:fried-rice",
+    "source": "usda",
+    "sourceId": "fried-rice",
+    "title": "Vegetable Fried Rice",
+    "area": "American",
+    "course": "main",
+    "lines": [
+      {
+        "text": "2 tablespoons oil"
+      },
+      {
+        "text": "½ cup chopped celery"
+      },
+      {
+        "text": "¼ cup chopped onion"
+      },
+      {
+        "text": "1 package frozen mixed vegetables (10 ounces)"
+      },
+      {
+        "text": "2 cups cooked brown rice"
+      },
+      {
+        "text": "1 tablespoon reduced-sodium soy sauce"
+      },
+      {
+        "text": "1 dash black pepper"
+      }
+    ],
+    "instructions": [
+      "Heat the oil in a large skillet and cook the celery and onion for 2 minutes.",
+      "Stir in the frozen vegetables and cook until heated through and crisp-tender. Add the cooked rice, soy sauce and pepper, and stir for 2 minutes more."
+    ],
+    "servings": 4,
+    "totalMinutes": 15,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/sides/fried-rice",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:fries",
+    "source": "usda",
+    "sourceId": "fries",
+    "title": "Oven Baked Sweet Potato Fries",
+    "area": "American",
+    "course": "side",
+    "lines": [
+      {
+        "text": "3 medium sweet potatoes, about 5 inches long"
+      },
+      {
+        "text": "3 tablespoons olive oil"
+      },
+      {
+        "text": "salt and black pepper to taste"
+      },
+      {
+        "text": "½ teaspoon paprika (optional)"
+      },
+      {
+        "text": "½ teaspoon garlic powder (optional)"
+      }
+    ],
+    "instructions": [
+      "Heat the oven to 425°F. Peel the sweet potatoes and slice into ¼-inch pieces.",
+      "Coat with olive oil and season with salt and pepper. Add the paprika and garlic powder if using.",
+      "Spread out on a baking sheet and roast for about 20 minutes, turning the pieces so they brown evenly."
+    ],
+    "servings": 6,
+    "totalMinutes": 30,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/sides/fries",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:fruitsalad",
+    "source": "usda",
+    "sourceId": "fruitsalad",
+    "title": "Fruit Salad with Yogurt",
+    "area": "American",
+    "course": "salad",
+    "lines": [
+      {
+        "text": "2 cups strawberries, sliced"
+      },
+      {
+        "text": "1 cup blueberries"
+      },
+      {
+        "text": "1 cup pineapple chunks (canned or fresh)"
+      },
+      {
+        "text": "3 tablespoons pineapple juice"
+      },
+      {
+        "text": "2 cups plain yogurt"
+      },
+      {
+        "text": "⅛ cup almonds (sliced or slivered)"
+      }
+    ],
+    "instructions": [
+      "Toss the fruit with pineapple juice and let stand for 15 minutes.",
+      "Spoon into four dishes, add yogurt to each and finish with the almonds."
+    ],
+    "servings": 4,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/garden/breakfast/fruitsalad",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:griddle-cakes",
+    "source": "usda",
+    "sourceId": "griddle-cakes",
+    "title": "Oatmeal Griddle Cakes",
+    "area": "American",
+    "course": "breakfast",
+    "lines": [
+      {
+        "text": "2 cups milk"
+      },
+      {
+        "text": "2 cups quick-cooking oats"
+      },
+      {
+        "text": "⅓ cup sifted flour"
+      },
+      {
+        "text": "2 ½ teaspoons baking powder"
+      },
+      {
+        "text": "1 teaspoon salt"
+      },
+      {
+        "text": "2 eggs"
+      },
+      {
+        "text": "⅓ cup melted butter"
+      }
+    ],
+    "instructions": [
+      "Heat the milk, pour it over the oats and allow the mix to cool.",
+      "Whisk together flour, baking powder and salt. Separate the eggs. Stir the yolks and melted butter into the oats, followed by the dry ingredients.",
+      "Beat the egg whites until stiff and fold them into the batter. Spoon onto a hot greased griddle. Flip when the tops bubble and brown on the other side."
+    ],
+    "servings": 6,
+    "totalMinutes": 30,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/founding/breakfast/griddle-cakes",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:harvest-vegetable",
+    "source": "usda",
+    "sourceId": "harvest-vegetable",
+    "title": "Harvest Vegetable Salad",
+    "area": "American",
+    "course": "salad",
+    "lines": [
+      {
+        "text": "2 cups arugula"
+      },
+      {
+        "text": "1 cup cilantro leaves"
+      },
+      {
+        "text": "1 parsnip, peeled and cut into 1 inch pieces"
+      },
+      {
+        "text": "1 carrot, peeled and cut into 1 inch pieces"
+      },
+      {
+        "text": "1 turnip, peeled and chopped"
+      },
+      {
+        "text": "¼ cup walnuts, chopped (optional)"
+      },
+      {
+        "text": "¼ cup blue cheese, crumbled (optional)"
+      },
+      {
+        "text": "¼ cup lime juice"
+      },
+      {
+        "text": "½ teaspoon lime, zested"
+      },
+      {
+        "text": "1 teaspoon sugar"
+      },
+      {
+        "text": "¼ teaspoon chili powder"
+      },
+      {
+        "text": "1 tablespoon olive oil"
+      }
+    ],
+    "instructions": [
+      "Divide the arugula and cilantro among four plates. Bring 1 quart of water to a boil, add the parsnip, carrot and turnip, then simmer for 2 minutes and drain.",
+      "Whisk the lime juice and zest with the sugar, chili powder and olive oil.",
+      "Scatter the warm vegetables over the greens, drizzle with dressing and add walnuts and blue cheese if using."
+    ],
+    "servings": 4,
+    "totalMinutes": 20,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/garden/salads/harvest-vegetable",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:huevos-rancheros",
+    "source": "usda",
+    "sourceId": "huevos-rancheros",
+    "title": "Huevos Rancheros with Salsa",
+    "area": "Mexican",
+    "course": "breakfast",
+    "lines": [
+      {
+        "text": "4 corn tortillas (6 inch)"
+      },
+      {
+        "text": "½ tablespoon oil"
+      },
+      {
+        "text": "8 eggs"
+      },
+      {
+        "text": "black pepper to taste"
+      },
+      {
+        "text": "¼ cup shredded cheddar cheese"
+      },
+      {
+        "text": "1 cup salsa"
+      }
+    ],
+    "instructions": [
+      "Set the oven to 450°F. Brush the tortillas lightly with oil and bake for 3–5 minutes until the edges crisp.",
+      "Scramble the eggs with black pepper in a lightly oiled skillet until set.",
+      "Divide the eggs among the tortillas, top with cheese and broil for about 2 minutes. Spoon salsa over each tortilla."
+    ],
+    "servings": 4,
+    "totalMinutes": 20,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/breakfast/huevos-rancheros",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:lettuce-wraps",
+    "source": "usda",
+    "sourceId": "lettuce-wraps",
+    "title": "Teriyaki Lettuce Wraps",
+    "area": "American",
+    "course": "main",
+    "lines": [
+      {
+        "text": "¼ cup water"
+      },
+      {
+        "text": "1 tablespoon cornstarch"
+      },
+      {
+        "text": "½ cup reduced sodium teriyaki sauce"
+      },
+      {
+        "text": "1 pound ground turkey"
+      },
+      {
+        "text": "1 cup canned water chestnuts, chopped"
+      },
+      {
+        "text": "1 cup frozen peas and carrots, thawed (optional)"
+      },
+      {
+        "text": "1 tablespoon oil"
+      },
+      {
+        "text": "6 iceberg lettuce leaves"
+      }
+    ],
+    "instructions": [
+      "Whisk the water, cornstarch and teriyaki sauce. Mix with the ground turkey, water chestnuts and thawed peas and carrots.",
+      "Heat the oil in a skillet. Add the turkey mixture and stir, breaking up the meat, until the sauce thickens and the turkey reaches 165°F.",
+      "Spoon the hot filling into lettuce leaves."
+    ],
+    "servings": 6,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/main/lettuce-wraps",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:macaroni",
+    "source": "usda",
+    "sourceId": "macaroni",
+    "title": "Macaroni Chickpea Soup",
+    "area": "American",
+    "course": "soup",
+    "lines": [
+      {
+        "text": "3 ½ cups low-sodium chicken broth"
+      },
+      {
+        "text": "1 cup water"
+      },
+      {
+        "text": "1 ¾ cups dry macaroni pasta"
+      },
+      {
+        "text": "½ teaspoon onion powder"
+      },
+      {
+        "text": "½ teaspoon oregano"
+      },
+      {
+        "text": "1 cup low-sodium stewed tomatoes"
+      },
+      {
+        "text": "1 cup green beans"
+      },
+      {
+        "text": "1 can low-sodium chickpeas (garbanzo), drained and rinsed (15 ounces)"
+      },
+      {
+        "text": "¼ teaspoon garlic powder"
+      }
+    ],
+    "instructions": [
+      "Bring the broth and water to a boil. Add the macaroni, onion powder and oregano, then simmer for 4 minutes.",
+      "Stir in the tomatoes, green beans, chickpeas and garlic powder. Simmer about 5 more minutes, until the pasta and beans are tender."
+    ],
+    "servings": 4,
+    "totalMinutes": 20,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/soups/macaroni",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:nuggets",
+    "source": "usda",
+    "sourceId": "nuggets",
+    "title": "Baked Chicken Nuggets",
+    "area": "American",
+    "course": "main",
+    "lines": [
+      {
+        "text": "1 ½ pounds chicken thighs, boneless, skinless"
+      },
+      {
+        "text": "1 cup corn flakes cereal"
+      },
+      {
+        "text": "1 teaspoon paprika"
+      },
+      {
+        "text": "½ teaspoon Italian herb seasoning"
+      },
+      {
+        "text": "¼ teaspoon garlic powder"
+      },
+      {
+        "text": "¼ teaspoon onion powder"
+      }
+    ],
+    "instructions": [
+      "Heat the oven to 400°F and lightly grease a baking sheet.",
+      "Crush the corn flakes and mix them with the paprika, Italian seasoning, garlic powder and onion powder. Cut the chicken into bite-size pieces and coat each piece with the crumbs.",
+      "Arrange the nuggets in one layer. Bake for 12–14 minutes, until golden and the chicken reaches 165°F."
+    ],
+    "servings": 4,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/family/main/nuggets",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:pumpkin",
+    "source": "usda",
+    "sourceId": "pumpkin",
+    "title": "Pumpkin Soup",
+    "area": "American",
+    "course": "soup",
+    "lines": [
+      {
+        "text": "1 can white beans, drained and rinsed (15 ounces)"
+      },
+      {
+        "text": "1 small onion, chopped"
+      },
+      {
+        "text": "1 cup water"
+      },
+      {
+        "text": "1 can pumpkin puree (15 ounces)"
+      },
+      {
+        "text": "1 can low-sodium vegetable broth (14.5 ounces)"
+      },
+      {
+        "text": "½ teaspoon thyme"
+      },
+      {
+        "text": "salt and black pepper to taste"
+      }
+    ],
+    "instructions": [
+      "Blend the white beans, chopped onion and water into a puree.",
+      "Transfer to a pot and stir in the pumpkin, broth, thyme, salt and pepper. Cover and simmer gently for 15–20 minutes."
+    ],
+    "servings": 4,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/soups/pumpkin",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:salsa",
+    "source": "usda",
+    "sourceId": "salsa",
+    "title": "Black Bean Salsa",
+    "area": "American",
+    "course": "side",
+    "lines": [
+      {
+        "text": "1 can low-sodium black beans, drained and rinsed (15.5 ounces)"
+      },
+      {
+        "text": "2 cans low-sodium diced tomatoes, drained (14.5 ounces each)"
+      },
+      {
+        "text": "1 green bell pepper, diced"
+      },
+      {
+        "text": "1 red bell pepper, diced"
+      },
+      {
+        "text": "1 onion, diced"
+      },
+      {
+        "text": "2 cloves garlic, diced"
+      },
+      {
+        "text": "2 teaspoons ground cumin"
+      },
+      {
+        "text": "1 teaspoon dried cilantro"
+      },
+      {
+        "text": "3 tablespoons rice vinegar"
+      }
+    ],
+    "instructions": [
+      "Toss drained beans and tomatoes with the diced peppers, onion and garlic.",
+      "Whisk together the cumin, cilantro and rice vinegar. Pour over the vegetables and mix well."
+    ],
+    "servings": 12,
+    "totalMinutes": 15,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/dips-dressings/salsa",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:spinach-peppers",
+    "source": "usda",
+    "sourceId": "spinach-peppers",
+    "title": "Aromatic Sauteed Spinach and Peppers",
+    "area": "American",
+    "course": "side",
+    "lines": [
+      {
+        "text": "1 tablespoon butter"
+      },
+      {
+        "text": "1 small onion, diced"
+      },
+      {
+        "text": "1 bell pepper, diced"
+      },
+      {
+        "text": "2 cloves garlic, minced"
+      },
+      {
+        "text": "2 teaspoons fresh ginger, peeled and minced (or ½ teaspoon ground ginger)"
+      },
+      {
+        "text": "¼ teaspoon red pepper flakes"
+      },
+      {
+        "text": "12 ounces fresh spinach"
+      },
+      {
+        "text": "¼ cup canned no-salt-added tomato paste"
+      },
+      {
+        "text": "¼ teaspoon salt"
+      }
+    ],
+    "instructions": [
+      "Melt butter over medium heat. Stir in onion, bell pepper, garlic, ginger and pepper flakes for 3 minutes.",
+      "Add the spinach. When the leaves start to collapse, stir in the tomato paste and salt. Cook over medium-high heat for about 1 minute more."
+    ],
+    "servings": 6,
+    "totalMinutes": 15,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/garden/sides/spinach-peppers",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:tomato",
+    "source": "usda",
+    "sourceId": "tomato",
+    "title": "Tomato Basil Soup",
+    "area": "American",
+    "course": "soup",
+    "lines": [
+      {
+        "text": "1 medium onion, chopped"
+      },
+      {
+        "text": "1 tablespoon olive oil"
+      },
+      {
+        "text": "2 cloves garlic, crushed"
+      },
+      {
+        "text": "1 can low-sodium diced tomatoes (14.5 ounces)"
+      },
+      {
+        "text": "⅛ teaspoon red pepper flakes (or to taste)"
+      },
+      {
+        "text": "1 teaspoon dried basil"
+      },
+      {
+        "text": "2 cups milk"
+      },
+      {
+        "text": "salt and black pepper to taste"
+      }
+    ],
+    "instructions": [
+      "Cook the onion in olive oil for about 4 minutes. Add garlic and stir for 1 minute, then add tomatoes and cook uncovered for 10 minutes.",
+      "Blend about three quarters of the tomatoes until smooth. Return the puree to the pan.",
+      "Stir in the milk, basil and pepper flakes. Heat gently without boiling, then season with salt and pepper."
+    ],
+    "servings": 4,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/soups/tomato",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:tuna-melt",
+    "source": "usda",
+    "sourceId": "tuna-melt",
+    "title": "Tuna Melt",
+    "area": "American",
+    "course": "main",
+    "lines": [
+      {
+        "text": "1 can tuna, water packed (5 ounces)"
+      },
+      {
+        "text": "1 medium celery stalks, chopped"
+      },
+      {
+        "text": "2 slices cheddar cheese"
+      },
+      {
+        "text": "2 tablespoons mayonnaise"
+      },
+      {
+        "text": "½ tablespoon dried minced onion"
+      },
+      {
+        "text": "salt and pepper to taste"
+      },
+      {
+        "text": "4 slices whole wheat bread, toasted"
+      }
+    ],
+    "instructions": [
+      "Drain the tuna and flake it into a bowl. Add celery, mayonnaise, dried onion, salt and pepper.",
+      "Divide the mixture between 2 slices of toast and cover with the cheese. Broil until the cheese melts, keeping an eye on the bread.",
+      "Serve open-faced or cover with the remaining toast."
+    ],
+    "servings": 2,
+    "totalMinutes": 15,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/main/tuna-melt",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:turkey-patties",
+    "source": "usda",
+    "sourceId": "turkey-patties",
+    "title": "Turkey Patties",
+    "area": "American",
+    "course": "main",
+    "lines": [
+      {
+        "text": "1 ¼ pounds ground turkey"
+      },
+      {
+        "text": "1 cup breadcrumbs"
+      },
+      {
+        "text": "1 egg"
+      },
+      {
+        "text": "¼ cup chopped green onion"
+      },
+      {
+        "text": "3 teaspoons yellow mustard"
+      },
+      {
+        "text": "1 teaspoon oil"
+      }
+    ],
+    "instructions": [
+      "Combine turkey, breadcrumbs, egg, green onion and mustard. Shape into four patties about ½ inch thick.",
+      "Heat the oil in a skillet. Cook the patties for about 10 minutes, turning once, until the centers reach 165°F."
+    ],
+    "servings": 4,
+    "totalMinutes": 20,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/main/turkey-patties",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  },
+  {
+    "id": "usda:zucchini",
+    "source": "usda",
+    "sourceId": "zucchini",
+    "title": "Zesty Zucchini Skillet",
+    "area": "American",
+    "course": "side",
+    "lines": [
+      {
+        "text": "½ cup low-sodium tomato juice"
+      },
+      {
+        "text": "¼ teaspoon black pepper"
+      },
+      {
+        "text": "1 medium red onion, chopped"
+      },
+      {
+        "text": "1 medium tomato, chopped"
+      },
+      {
+        "text": "4 ounce can mushrooms, drained"
+      },
+      {
+        "text": "1 teaspoon dried basil (optional)"
+      },
+      {
+        "text": "2 medium zucchini, sliced"
+      }
+    ],
+    "instructions": [
+      "Simmer the tomato juice with the black pepper over high heat for 3 minutes.",
+      "Add the red onion, tomato, mushrooms and basil if using. Cover and cook over medium-high heat for 5 minutes.",
+      "Stir in the zucchini, cover again and cook for 5–7 minutes, until tender."
+    ],
+    "servings": 6,
+    "totalMinutes": 25,
+    "sourceName": "USDA Food and Nutrition Administration",
+    "sourceUrl": "https://www.fna.usda.gov/americasharvest/budget/sides/zucchini",
+    "license": "Famara directions adapted from the credited USDA recipe",
+    "imageUrl": null,
+    "imageCredit": null
+  }
+]

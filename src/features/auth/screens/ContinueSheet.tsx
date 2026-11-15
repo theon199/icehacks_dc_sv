@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
+import { usesFirebase } from '@/lib/firebase/config';
 import { Button, SheetContent, Text, useTheme } from '@/ui';
 
 import { ProviderButtons } from '../components/ProviderButtons';
@@ -15,18 +16,22 @@ export function ContinueSheet() {
       title="Join Famara"
       description="Sign in or create a free account to save recipes and plan your week."
     >
-      <ProviderButtons />
-      <View
-        style={styles.divider}
-        accessible={false}
-        importantForAccessibility="no-hide-descendants"
-      >
-        <View style={[styles.rule, { backgroundColor: theme.colors.border }]} />
-        <Text variant="footnote" tone="subtle">
-          or
-        </Text>
-        <View style={[styles.rule, { backgroundColor: theme.colors.border }]} />
-      </View>
+      {!usesFirebase && (
+        <>
+          <ProviderButtons />
+          <View
+            style={styles.divider}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+          >
+            <View style={[styles.rule, { backgroundColor: theme.colors.border }]} />
+            <Text variant="footnote" tone="subtle">
+              or
+            </Text>
+            <View style={[styles.rule, { backgroundColor: theme.colors.border }]} />
+          </View>
+        </>
+      )}
       <Button
         testID="continue-email"
         label="Continue with email"

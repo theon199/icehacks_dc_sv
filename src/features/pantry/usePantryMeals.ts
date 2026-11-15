@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { InteractionManager } from 'react-native';
 
-import { hasSafetyAnswers } from '@/domain';
+import { DEFAULT_RANKING_CONFIG, hasSafetyAnswers } from '@/domain';
 import { useCandidates, type CandidateFilters } from '@/lib/catalog';
 import { createSelector } from '@/stores/memo';
 import { selectPantryIngredientIds, usePantryStore } from '@/stores/pantry';
@@ -17,7 +17,7 @@ import { selectUnits, useSettingsStore } from '@/stores/settings';
 import { toRankPreferences } from './deps';
 import { rankPantryMeals, type PantryMeal, type PantryMealsInput } from './pantryMeals';
 
-/** Enough of the catalog to find pantry matches; SQL only pre-filters diets and allergens. */
+/** Cap the recipes that match the pantry and the person's safety settings. */
 const CANDIDATE_LIMIT = 1200;
 export const PANTRY_MEALS_SHOWN = 8;
 
@@ -61,8 +61,16 @@ export function usePantryMeals(): PantryMealsResult {
   // Both safety answers are needed; the shared bridge decides when they count as given.
   const answered = hasSafetyAnswers(rankPrefs);
   const filters = useMemo<CandidateFilters>(
-    () => ({ dietMask, avoidAllergens: prefs.allergens, limit: CANDIDATE_LIMIT }),
-    [dietMask, prefs.allergens],
+    () => ({
+      dietMask,
+      avoidAllergens: prefs.allergens,
+      pantry: {
+        ingredientIds: [...pantry],
+        minCoverage: DEFAULT_RANKING_CONFIG.feed.pantryMinCoverage,
+      },
+      limit: CANDIDATE_LIMIT,
+    }),
+    [dietMask, pantry, prefs.allergens],
   );
   const enabled = answered && pantry.size > 0;
   const candidates = useCandidates(filters, { enabled });

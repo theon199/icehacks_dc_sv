@@ -96,7 +96,7 @@ export function checkRecipes(gates: GateReport, recipes: readonly RecipeRow[], i
     gates.check(!slugs.has(r.slug), () => `${at}: duplicate slug ${r.slug}`);
     ids.add(r.id);
     slugs.add(r.slug);
-    gates.check(/^(mealdb|medlineplus):[a-z0-9-]+$/.test(r.id), () => `${at}: malformed id`);
+    gates.check(/^(mealdb|medlineplus|aptiva|usda):[a-z0-9-]+$/.test(r.id), () => `${at}: malformed id`);
     gates.check(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(r.slug), () => `${at}: malformed slug ${r.slug}`);
     gates.check(r.title.trim().length > 0, () => `${at}: empty title`);
     gates.check(r.ingredients.length >= 1, () => `${at}: no ingredients`);

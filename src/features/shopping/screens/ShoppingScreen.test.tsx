@@ -1,5 +1,5 @@
 /**
- * The shopping screen against the real bundled catalog (read through Node's SQLite), with a
+ * The shopping screen against the catalog data through the RPC adapter, with a
  * recipe planned for today.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,7 +12,6 @@ import { dayIndexOf, localIsoDate, weekStartOf } from '@/domain/plan';
 import { useSessionStore } from '@/features/auth';
 import { clearCatalogCaches } from '@/lib/catalog';
 import { nodeSqliteAvailable } from '@/lib/catalog/__fixtures__/nodeCatalogDb';
-import { resetCatalogForTests } from '@/lib/db/catalog';
 import { slotKey, useMealPlanStore } from '@/stores/mealPlan';
 import { usePantryStore } from '@/stores/pantry';
 import { useShoppingStore } from '@/stores/shopping';
@@ -21,11 +20,9 @@ import { renderWithTheme } from '@/test/render';
 import { useShoppingExtrasStore } from '../extrasStore';
 import { ShoppingScreen } from './ShoppingScreen';
 
-jest.mock(
-  'expo-sqlite',
-  () => jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').expoSqliteFake as unknown,
-);
-jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
+jest.mock('@/lib/supabase/client', () => ({
+  supabase: jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').catalogSupabaseFake,
+}));
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('expo-crypto', () => ({
   randomUUID: () => (jest.requireActual('crypto') as { randomUUID: () => string }).randomUUID(),
@@ -56,7 +53,6 @@ function planToday() {
 }
 
 beforeEach(() => {
-  resetCatalogForTests();
   clearCatalogCaches();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useMealPlanStore.getState().reset();

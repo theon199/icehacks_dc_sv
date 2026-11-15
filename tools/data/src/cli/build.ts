@@ -6,8 +6,12 @@ import { buildCatalog } from '../pipeline/build.ts';
 import { REPORT_PATH } from '../paths.ts';
 
 const log = (message: string) => console.log(`[build] ${message}`);
+const baseline = process.argv[2];
+if (baseline !== undefined && !baseline.startsWith('--base=')) {
+  throw new Error('Usage: npm run build -- [--base=/path/to/pre-expansion.db]');
+}
 
-buildCatalog(log)
+buildCatalog(log, baseline?.slice('--base='.length))
   .then((result) => {
     log(`quality gates: ${result.checks} checks, ${result.violations.length} violations`);
     if (result.violations.length > 0) {

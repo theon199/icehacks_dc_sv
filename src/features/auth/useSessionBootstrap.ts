@@ -10,14 +10,16 @@
  * over, every user store is wiped through the sync session; when sync starts it also checks which
  * account the data on the device belongs to and wipes it if that is someone else.
  */
-import type { Session } from '@supabase/supabase-js';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
 import { readPublicEnv } from '@/lib/env';
+import { getFirebaseSession, onFirebaseSessionChange } from '@/lib/firebase/auth';
+import { usesFirebase } from '@/lib/firebase/config';
 import { describeError, logger } from '@/lib/logger';
 import { queryClient } from '@/lib/query/client';
 import { getSupabase } from '@/lib/supabase/client';
+import { readDataOwner, writeDataOwner } from '@/lib/sync/owner';
 
 import { fetchAccountStatus, isAccountError } from './accountApi';
 import { sessionRejectedByServer, signOut } from './authActions';
@@ -92,16 +94,19 @@ async function refreshServerAge(userId: string): Promise<void> {
   }
 }
 
-function applySession(session: Session | null): void {
+function applySession(userId: string | null): void {
   const store = useSessionStore.getState();
-  if (!session) {
+  if (!userId) {
     if (store.userId) clearDeviceData();
     if (store.status !== 'signedOut') store.signedOut();
     return;
   }
-  const userId = session.user.id;
   if (store.userId === userId && store.status !== 'loading') return;
-  if (store.userId && store.userId !== userId) clearDeviceData();
+  if (
+    (store.userId && store.userId !== userId) ||
+    (usesFirebase && readDataOwner() && readDataOwner() !== userId)
+  )
+    clearDeviceData();
   usePendingEmail.getState().clear();
 
   const cleanup = pendingCleanup;
@@ -109,9 +114,14 @@ function applySession(session: Session | null): void {
     userId,
     birthYear: readCachedSetup(userId).birthYear,
     onboardingComplete: cleanup == null && onboarding.isComplete(),
-    aiConsent: cleanup == null && aiConsentHint.read(),
+    aiConsent: !usesFirebase && cleanup == null && aiConsentHint.read(),
   });
-  if (cleanup) void cleanup.then(() => applyLocalAnswers(userId));
+  const claimLocalData = () => {
+    if (usesFirebase && isCurrentUser(userId)) writeDataOwner(userId);
+    applyLocalAnswers(userId);
+  };
+  if (cleanup) void cleanup.then(claimLocalData);
+  else if (usesFirebase) claimLocalData();
   void refreshServerAge(userId);
 }
 
@@ -123,7 +133,7 @@ function applyLocalAnswers(userId: string): void {
   if (!isCurrentUser(userId) || pendingCleanup != null) return;
   const session = useSessionStore.getState();
   session.setOnboardingComplete(onboarding.isComplete());
-  const granted = aiConsentHint.read();
+  const granted = !usesFirebase && aiConsentHint.read();
   if (session.aiConsent !== granted) session.setAiConsent(granted);
 }
 
@@ -163,17 +173,19 @@ function rememberBirthYear(state: SessionState, previous: SessionState): void {
 
 export function useSessionBootstrap(): void {
   useEffect(() => {
-    if (!readPublicEnv().ok) return undefined;
-    const client = getSupabase();
+    if (!usesFirebase && !readPublicEnv().ok) return undefined;
     let active = true;
     // Start from a clean slate if the root remounts (development reloads).
     stopSyncing();
     ageCheckPending = null;
 
-    client.auth
-      .getSession()
-      .then(({ data }) => {
-        if (active) applySession(data.session);
+    const auth = usesFirebase ? null : getSupabase().auth;
+    const restored = auth
+      ? auth.getSession().then(({ data }) => data.session?.user.id ?? null)
+      : getFirebaseSession().then((session) => session?.userId ?? null);
+    restored
+      .then((id) => {
+        if (active) applySession(id);
       })
       .catch((error: unknown) => {
         logger.warn('Could not restore session', describeError(error));
@@ -188,16 +200,19 @@ export function useSessionBootstrap(): void {
       }
     }, RESTORE_TIMEOUT_MS);
 
-    const { data } = client.auth.onAuthStateChange((_event, session) => {
-      // Synchronous on purpose: awaiting another auth call inside this callback can deadlock, so
-      // the follow-up server check is started without being awaited.
-      if (active) applySession(session);
-    });
+    const subscription = auth?.onAuthStateChange((_event, session) => {
+      if (active) applySession(session?.user.id ?? null);
+    }).data.subscription;
+    const unsubscribeFirebase = auth
+      ? undefined
+      : onFirebaseSessionChange((session) => {
+          if (active) applySession(session?.userId ?? null);
+        });
 
     const unsubscribeStore = useSessionStore.subscribe((state, previous) => {
       rememberBirthYear(state, previous);
       mirrorAiConsent(state, previous);
-      followSync(state);
+      if (!usesFirebase) followSync(state);
     });
 
     // Finishing onboarding here, or a returning person's answers arriving through sync. A wipe
@@ -216,7 +231,8 @@ export function useSessionBootstrap(): void {
     return () => {
       active = false;
       clearTimeout(fallback);
-      data.subscription.unsubscribe();
+      subscription?.unsubscribe();
+      unsubscribeFirebase?.();
       unsubscribeStore();
       unsubscribeOnboarding();
       appState.remove();
