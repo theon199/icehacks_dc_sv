@@ -16,6 +16,8 @@ module.exports = eslintConfig.defineConfig([
       'expo-env.d.ts',
       'supabase/**',
       'tools/data/**',
+      '.worktrees/**',
+      '.claude/worktrees/**',
     ],
   },
   {

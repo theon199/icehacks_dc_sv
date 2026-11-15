@@ -8,6 +8,8 @@ expo-env.d.ts
 package-lock.json
 supabase
 tools/data
+.worktrees
+.claude/worktrees
 assets
 *.db
 # Docs are prose edited by many contributors and are not machine-formatted.

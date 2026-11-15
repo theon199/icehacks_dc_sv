@@ -21,6 +21,8 @@
     "coverage",
     "supabase",
     "tools/data",
+    ".worktrees",
+    ".claude/worktrees",
     "babel.config.js",
     "metro.config.js",
     "jest.config.js",

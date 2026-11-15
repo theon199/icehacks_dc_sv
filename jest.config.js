@@ -8,7 +8,16 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.db$': '<rootDir>/test/assetStub.js',
   },
-  testPathIgnorePatterns: ['/node_modules/', '/supabase/', '/tools/data/', '/dist/'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/supabase/',
+    '/tools/data/',
+    '/dist/',
+    '<rootDir>/.worktrees/',
+    '<rootDir>/.claude/worktrees/',
+  ],
+  // Other checkouts inside the repo would otherwise collide with this one's modules.
+  modulePathIgnorePatterns: ['<rootDir>/.worktrees/', '<rootDir>/.claude/worktrees/'],
   transformIgnorePatterns: [
     'node_modules/(?!(?:.pnpm/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|@shopify/flash-list|@kingstinct/.*|react-native-nitro-modules|@tanstack/.*|zustand|standard-navigation))',
   ],
