@@ -249,6 +249,8 @@ limit. Ledger rows are purged after two days.
 | --- | --- |
 | `claim_storage_purge(p_limit = 100)` → `(id, bucket_id, object_name)` | First drops queue entries whose object is referenced again (a current avatar, attached post media; account deletions excepted), then claims queued objects (hidden from other workers for 10 min; given up after 10 attempts) |
 | `complete_storage_purge(p_ids bigint[])` → int | Removes purged rows from the queue |
+| `spend_snap_sweep_batch(p_user_id, p_sweep_id, p_daily_limit)` → `(allowed, reason, remaining, reset_at)` | One frame batch of a fridge sweep (see **Fridge sweeps** under `snap`). `reason`: `paid` (first batch; `remaining`/`reset_at` are the daily `snap_pantry` allowance), `batch` (batches left, `reset_at` = the sweep's end), `daily_limit` (nothing written), `expired`, `spent` |
+| `spend_snap_sweep_words(p_user_id, p_sweep_id, p_daily_limit)` → `(allowed, reason, remaining, reset_at)` | One call of words in a sweep, paying one `snap_text` in the same transaction: `words` (`remaining`/`reset_at` are the daily `snap_text` allowance), `daily_limit` (nothing written), `expired`, `spent` |
 
 ## Storage
 
@@ -291,6 +293,7 @@ Created by the last migration when `pg_cron` is available (idempotent by job nam
 | `famara-purge-rate-events` | hourly :27 | rate-limit ledger rows older than two days |
 | `famara-compact-sync-tombstones` | daily 04:23 | sync tombstones older than 90 days (devices behind them are told to resync) |
 | `famara-purge-food-map` | hourly :43 | food map spots past 30 days; clears the place name and position of check-ins past 30 days (the check-ins stay); cooldown entries older than 4 hours |
+| `famara-purge-snap-sweeps` | hourly :53 | fridge sweeps a day past their end |
 
 ## Edge-function shared modules (`supabase/functions/_shared`)
 
@@ -453,6 +456,25 @@ an id the device did not offer can never come back (none when `candidates` is em
   `low ≤ estimate ≤ high`.
 - `{status: "no_food", mode, reason: "not_food" | "unclear", message}` — a 200, so the app can ask
   for another photo. The call still counts against the quota.
+
+**Fridge sweeps** (migration `20261115090000_snap_sweeps`). A sweep is one pass in front of the
+fridge, named by a client-made `sweep_id`, sending batches of 1–3 frames (`{mode: "pantry",
+sweep_id, images}`) and words (`{mode: "pantry", sweep_id, text}`). Its state lives in
+`private.snap_sweeps` (RLS on, no policies), written only by the two service-role RPCs above with
+the user id from the verified session, so nothing the app can call opens, pays or advances a sweep.
+- Every request pays its daily allowance before anything is written, and a refused request writes
+  nothing, so a row exists only once something was paid. The first paid request opens the sweep
+  for one hour from then, whatever the clock hour.
+- The first batch pays one `snap_pantry`. If the allowance is used up it gets 429
+  (`details.feature: "snap_pantry"`) and leaves no sweep, so the next batch of that id is a first
+  batch again and has to pay: a frame is never read unpaid.
+- Words pay one `snap_text` inside the same RPC (429 with `details.feature: "snap_text"` when it
+  is used up, again leaving nothing behind). Words outside a sweep use `consume_ai_quota`.
+- Every request takes a lock on its (user, sweep) before reading the row, so a batch racing the
+  first waits for it to commit and then sees the sweep paid.
+- At most 4 batches (12 frames) and 2 calls of words per sweep; past that, or past the hour, 429
+  `quota_exceeded` with `details.feature: "snap_sweep"`.
+- `famara-purge-snap-sweeps` (hourly, pg_cron) drops sweeps a day past their end.
 
 **`makeover`** — input `{recipe: {title, servings, ingredients, steps}, goals, diet, allergens,
 request?}` (1–60 ingredient lines ≤ 200 chars, 1–40 steps ≤ 1000 chars, servings 1–24, `request`

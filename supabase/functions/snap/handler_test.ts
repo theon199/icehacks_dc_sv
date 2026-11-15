@@ -1,93 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { encodeBase64 } from "@std/encoding/base64";
-import type { createClient } from "@supabase/supabase-js";
-import { createSnapHandler, normalizePantry, normalizeRange, snapQuota } from "./handler.ts";
-
-const ENV: Record<string, string> = {
-  SUPABASE_URL: "http://127.0.0.1:54321",
-  SUPABASE_ANON_KEY: "anon-key",
-  ANTHROPIC_API_KEY: "test-key",
-};
-
-interface HarnessOptions {
-  adult?: boolean;
-  quotaAllowed?: boolean;
-  replies?: Response[];
-}
-
-function harness(options: HarnessOptions = {}) {
-  const { adult = true, quotaAllowed = true } = options;
-  const replies = [...(options.replies ?? [])];
-  const rpcCalls: { fn: string; args: Record<string, unknown> }[] = [];
-  const claudeCalls: Record<string, unknown>[] = [];
-  const fakeCreateClient = () => ({
-    auth: { getUser: () => Promise.resolve({ data: { user: { id: "user-1" } }, error: null }) },
-    rpc: (fn: string, args: Record<string, unknown>) => {
-      rpcCalls.push({ fn, args });
-      if (fn === "is_adult") return Promise.resolve({ data: adult, error: null });
-      return Promise.resolve({
-        data: [{
-          allowed: quotaAllowed,
-          remaining: quotaAllowed ? 9 : 0,
-          reset_at: new Date(Date.now() + 60_000).toISOString(),
-        }],
-        error: null,
-      });
-    },
-  });
-  const fakeFetch = (_input: string | URL | Request, init?: RequestInit) => {
-    claudeCalls.push(JSON.parse(String(init?.body)));
-    const reply = replies.shift();
-    return reply ? Promise.resolve(reply) : Promise.reject(new Error("unexpected Claude call"));
-  };
-  const handler = createSnapHandler({
-    env: (name) => ENV[name],
-    auth: { createClient: fakeCreateClient as unknown as typeof createClient },
-    anthropic: { fetch: fakeFetch as typeof fetch, sleep: () => Promise.resolve(), maxRetries: 0 },
-  });
-  const quotaCalls = () => rpcCalls.filter((call) => call.fn === "consume_ai_quota");
-  return { handler, claudeCalls, quotaCalls };
-}
-
-function claudeJson(value: unknown, stopReason = "end_turn"): Response {
-  return Response.json({
-    id: "msg_1",
-    type: "message",
-    role: "assistant",
-    model: "claude-sonnet-5-5",
-    content: [{ type: "text", text: JSON.stringify(value) }],
-    stop_reason: stopReason,
-    usage: { input_tokens: 1_500, output_tokens: 200 },
-  });
-}
-
-const JPEG = encodeBase64(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]));
-const WEBP = encodeBase64(
-  new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]),
-);
-const HEIC = encodeBase64(
-  new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]),
-);
-
-function post(body: unknown): Request {
-  return new Request("http://localhost/snap", {
-    method: "POST",
-    headers: { authorization: "Bearer user-jwt", "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
-const silenced = async <T>(fn: () => T | Promise<T>): Promise<T> => {
-  const { info, error, warn } = console;
-  console.info = () => {};
-  console.error = () => {};
-  console.warn = () => {};
-  try {
-    return await fn();
-  } finally {
-    Object.assign(console, { info, error, warn });
-  }
-};
+import { normalizePantry, normalizeRange, snapQuota } from "./handler.ts";
+import { claudeJson, harness, HEIC, JPEG, post, silenced, WEBP } from "./testing.ts";
 
 const range = (estimate: number, low: number, high: number) => ({ estimate, low, high });
 
@@ -187,7 +101,7 @@ Deno.test("pantry mode returns cleaned, deduplicated items", async () => {
     { name: "canned chickpeas", quantity: 2, unit: "can", confidence: 0.81 },
     { name: "milk", quantity: null, unit: null, confidence: 0.6 },
   ]);
-  assertEquals(body.quota.remaining, 9);
+  assertEquals(body.quota.remaining, 19);
 
   const request = claudeCalls[0]!;
   const content = (request["messages"] as { content: { type: string; text?: string }[] }[])[0]!

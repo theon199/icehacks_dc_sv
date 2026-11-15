@@ -42,6 +42,16 @@ const SNAP_COPY = { feature: 'Snap', unit: 'snaps' } as const;
 /** Problems no other photo can fix right now. */
 const NO_RETAKE: ReadonlySet<AiProblem['kind']> = new Set(['daily_limit', 'age', 'signed_out']);
 
+/** Checked before a fridge sweep starts: filming with no connection would only waste the pass. */
+export function offlineProblem(): SnapProblem {
+  return {
+    title: "You're offline",
+    message: 'Snap needs a connection to read your fridge. Check yours and try again.',
+    canRetry: true,
+    canRetake: false,
+  };
+}
+
 /** Null for a cancellation the person asked for, which needs no message. */
 export function describeSnapError(error: unknown, now: Date = new Date()): SnapProblem | null {
   if (error instanceof PhotoPrepError) {

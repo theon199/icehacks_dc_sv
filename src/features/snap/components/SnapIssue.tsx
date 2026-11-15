@@ -3,7 +3,8 @@ import { SnapPill } from './SnapPill';
 import { StatusCard } from './StatusCard';
 
 export interface SnapIssueProps {
-  photoUri: string;
+  /** The photo that failed; null for a fridge sweep, which has none. */
+  photoUri: string | null;
   title: string;
   message: string;
   /** Try the same photo again. */

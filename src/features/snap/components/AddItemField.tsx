@@ -7,10 +7,12 @@ import { InlineInput } from './InlineInput';
 
 export interface AddItemFieldProps {
   onAdd: (name: string) => void;
+  /** Shown in the empty field and read as its label. */
+  placeholder?: string;
 }
 
 /** "Add something we missed" at the end of the detected list. */
-export function AddItemField({ onAdd }: AddItemFieldProps) {
+export function AddItemField({ onAdd, placeholder = 'Add an item we missed' }: AddItemFieldProps) {
   const [name, setName] = useState('');
   const submit = () => {
     const trimmed = name.trim();
@@ -24,8 +26,8 @@ export function AddItemField({ onAdd }: AddItemFieldProps) {
         value={name}
         onChangeText={setName}
         onSubmitEditing={submit}
-        accessibilityLabel="Add an item we missed"
-        placeholder="Add an item we missed"
+        accessibilityLabel={placeholder}
+        placeholder={placeholder}
         returnKeyType="done"
         submitBehavior="submit"
         maxLength={80}
