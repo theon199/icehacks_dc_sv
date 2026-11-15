@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import {
@@ -21,6 +22,7 @@ import {
 } from '@/ui';
 
 import { MyRecipesHeader } from '../components/MyRecipesHeader';
+import { OwnRecipeWarning } from '../components/OwnRecipeWarning';
 import { RecipeHeading } from '../components/RecipeHeading';
 import { RecipeIngredients } from '../components/RecipeIngredients';
 import { RecipeSteps } from '../components/RecipeSteps';
@@ -43,6 +45,9 @@ export function MyRecipeScreen({ id }: MyRecipeScreenProps) {
   const update = useMyRecipesStore((state) => state.update);
   const remove = useMyRecipesStore((state) => state.remove);
   const back = () => (router.canGoBack() ? router.back() : router.replace(MY_RECIPES_HREF));
+  // Shown every time the recipe is opened by someone with a declared allergen, before anything
+  // else: every way into one of their own recipes comes through this screen.
+  const [warned, setWarned] = useState(false);
 
   if (!check) {
     return (
@@ -60,6 +65,17 @@ export function MyRecipeScreen({ id }: MyRecipeScreenProps) {
   }
 
   const { recipe } = check;
+  const allergens = prefs.allergens ?? [];
+  if (allergens.length > 0 && !warned) {
+    return (
+      <OwnRecipeWarning
+        title={recipe.title}
+        allergens={allergens}
+        onContinue={() => setWarned(true)}
+        onBack={back}
+      />
+    );
+  }
   // Until the catalog facts are in, the card shows that the check is still running.
   const safety = status === 'loading' ? null : check.safety;
 
@@ -136,7 +152,9 @@ export function MyRecipeScreen({ id }: MyRecipeScreenProps) {
         )}
         {status === 'error' ? (
           <Card variant="sunken">
-            <Text variant="subhead" tone="muted"></Text>
+            <Text variant="subhead" tone="muted">
+              Couldn&apos;t load the ingredient data to check this recipe.
+            </Text>
             <Button
               label="Try again"
               size="sm"

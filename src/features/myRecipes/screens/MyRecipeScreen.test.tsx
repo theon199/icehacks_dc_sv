@@ -69,11 +69,70 @@ describe('MyRecipeScreen', () => {
   });
 
   it('offers no check for a line that may hold a declared allergen', async () => {
+    const user = userEvent.setup();
     await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
+    await user.press(screen.getByTestId('own-recipe-warning-continue'));
     expect(await screen.findByText("1 ingredient Famara can't check")).toBeOnTheScreen();
     expect(screen.queryByTestId('safety-confirm-single')).toBeNull();
     expect(screen.queryByText('I checked this')).toBeNull();
     expect(useMyRecipesStore.getState().recipes.ube?.safety.status).toBe('needs_check');
+  });
+
+  describe('warning before use for someone with a declared allergen', () => {
+    it('shows the warning first, then the recipe once they continue', async () => {
+      const user = userEvent.setup();
+      await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
+      expect(screen.getByText('Check the labels first')).toBeOnTheScreen();
+      expect(
+        screen.getByText(/checked each line against your allergies \(milk\)/),
+      ).toBeOnTheScreen();
+      expect(screen.queryByTestId('recipe-safety')).toBeNull();
+      await user.press(screen.getByTestId('own-recipe-warning-continue'));
+      expect(await screen.findByTestId('recipe-safety')).toBeOnTheScreen();
+      expect(screen.queryByText('Check the labels first')).toBeNull();
+    });
+
+    it('goes back without opening the recipe', async () => {
+      const user = userEvent.setup();
+      await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
+      await user.press(screen.getByTestId('own-recipe-warning-back'));
+      expect(mockRouter.back).toHaveBeenCalled();
+      expect(screen.queryByTestId('recipe-safety')).toBeNull();
+    });
+
+    it('shows no warning to someone without declared allergens', async () => {
+      usePreferencesStore.setState({
+        prefs: { ...defaultPreferences, allergensAnswered: true, allergens: [], diets: [] },
+      });
+      await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
+      expect(screen.queryByText('Check the labels first')).toBeNull();
+      expect(await screen.findByTestId('recipe-safety')).toBeOnTheScreen();
+    });
+
+    it('shows the warning again each time the recipe is opened', async () => {
+      const user = userEvent.setup();
+      const first = await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
+      await user.press(screen.getByTestId('own-recipe-warning-continue'));
+      await first.unmount();
+      await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
+      expect(screen.getByText('Check the labels first')).toBeOnTheScreen();
+    });
+  });
+
+  it('says plainly when the ingredients could not be checked', async () => {
+    usePreferencesStore.setState({
+      prefs: { ...defaultPreferences, allergensAnswered: true, allergens: [], diets: [] },
+    });
+    jest.mocked(getIngredients).mockRejectedValue(new Error('offline'));
+    await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
+    expect(
+      // The catalog read is retried once before it counts as failed.
+      await screen.findByText(
+        "Couldn't load the ingredient data to check this recipe.",
+        {},
+        { timeout: 5000 },
+      ),
+    ).toBeOnTheScreen();
   });
 
   it('says when the recipe no longer exists', async () => {
