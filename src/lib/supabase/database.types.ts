@@ -321,6 +321,187 @@ export type Database = {
           },
         ];
       };
+      food_check_ins: {
+        Row: {
+          created_at: string;
+          healthy: boolean;
+          id: string;
+          place_cached_until: string;
+          place_id: string;
+          place_lat: number | null;
+          place_lng: number | null;
+          place_name: string | null;
+          region_id: string | null;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          healthy: boolean;
+          id?: string;
+          place_cached_until?: string;
+          place_id: string;
+          place_lat?: number | null;
+          place_lng?: number | null;
+          place_name?: string | null;
+          region_id?: string | null;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          healthy?: boolean;
+          id?: string;
+          place_cached_until?: string;
+          place_id?: string;
+          place_lat?: number | null;
+          place_lng?: number | null;
+          place_name?: string | null;
+          region_id?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "food_check_ins_region_id_fkey";
+            columns: ["region_id"];
+            isOneToOne: false;
+            referencedRelation: "food_regions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      food_region_claims: {
+        Row: {
+          claimed_at: string;
+          region_id: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          claimed_at?: string;
+          region_id: string;
+          user_id: string;
+        };
+        Update: {
+          claimed_at?: string;
+          region_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "food_region_claims_region_id_fkey";
+            columns: ["region_id"];
+            isOneToOne: false;
+            referencedRelation: "food_regions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      food_region_spots: {
+        Row: {
+          expires_at: string;
+          fetched_at: string;
+          lat: number;
+          lng: number;
+          name: string;
+          photos: NonNullable<Json>;
+          place_id: string;
+          primary_type: string | null;
+          rank: number;
+          region_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          expires_at: string;
+          fetched_at?: string;
+          lat: number;
+          lng: number;
+          name: string;
+          photos?: NonNullable<Json>;
+          place_id: string;
+          primary_type?: string | null;
+          rank: number;
+          region_id: string;
+        };
+        Update: {
+          expires_at?: string;
+          fetched_at?: string;
+          lat?: number;
+          lng?: number;
+          name?: string;
+          photos?: NonNullable<Json>;
+          place_id?: string;
+          primary_type?: string | null;
+          rank?: number;
+          region_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "food_region_spots_region_id_fkey";
+            columns: ["region_id"];
+            isOneToOne: false;
+            referencedRelation: "food_regions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      food_regions: {
+        Row: {
+          area_m2: number;
+          bbox_max_lat: number;
+          bbox_max_lng: number;
+          bbox_min_lat: number;
+          bbox_min_lng: number;
+          expires_at: string;
+          fetched_at: string;
+          geohash5: string;
+          id: string;
+          name: string;
+          polygon: NonNullable<Json>;
+          retired_at: string | null;
+          source: string;
+          source_ref: string;
+          spots_expires_at: string | null;
+          spots_fetched_at: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          area_m2: number;
+          bbox_max_lat: number;
+          bbox_max_lng: number;
+          bbox_min_lat: number;
+          bbox_min_lng: number;
+          expires_at: string;
+          fetched_at?: string;
+          geohash5: string;
+          id?: string;
+          name: string;
+          polygon: NonNullable<Json>;
+          retired_at?: string | null;
+          source: string;
+          source_ref: string;
+          spots_expires_at?: string | null;
+          spots_fetched_at?: string | null;
+        };
+        Update: {
+          area_m2?: number;
+          bbox_max_lat?: number;
+          bbox_max_lng?: number;
+          bbox_min_lat?: number;
+          bbox_min_lng?: number;
+          expires_at?: string;
+          fetched_at?: string;
+          geohash5?: string;
+          id?: string;
+          name?: string;
+          polygon?: NonNullable<Json>;
+          retired_at?: string | null;
+          source?: string;
+          source_ref?: string;
+          spots_expires_at?: string | null;
+          spots_fetched_at?: string | null;
+        };
+        Relationships: [];
+      };
       friend_invites: {
         Row: {
           code: string;
@@ -1324,6 +1505,22 @@ export type Database = {
       };
       export_my_data: { Args: Record<PropertyKey, never>; Returns: Json };
       follow_user: { Args: { p_user_id: string }; Returns: undefined };
+      food_map_area: { Args: { p_cells: string[] }; Returns: Json };
+      food_map_mine: {
+        Args: {
+          p_max_lat: number;
+          p_max_lng: number;
+          p_min_lat: number;
+          p_min_lng: number;
+          p_place_ids: string[];
+          p_region_ids: string[];
+        };
+        Returns: Json;
+      };
+      food_regions_containing: {
+        Args: { p_cells: string[]; p_lat: number; p_lng: number };
+        Returns: Json;
+      };
       get_feed: {
         Args: {
           p_author_id?: string;
@@ -1440,6 +1637,19 @@ export type Database = {
         };
         Returns: Json;
       };
+      record_food_check_in: {
+        Args: {
+          p_healthy: boolean;
+          p_place_cached_until: string;
+          p_place_id: string;
+          p_place_lat: number;
+          p_place_lng: number;
+          p_place_name: string;
+          p_region_id: string;
+          p_user_id: string;
+        };
+        Returns: Json;
+      };
       record_text_review: {
         Args: {
           p_body: string;
@@ -1479,7 +1689,16 @@ export type Database = {
         };
         Returns: number;
       };
+      resolve_food_place: { Args: { p_place_id: string }; Returns: Json };
       set_birth_year: { Args: { p_birth_year: number }; Returns: Json };
+      store_food_region_spots: {
+        Args: { p_region_id: string; p_spots: Json; p_ttl_seconds: number };
+        Returns: number;
+      };
+      store_food_regions: {
+        Args: { p_cells: string[]; p_regions: Json; p_ttl_seconds: number };
+        Returns: Json;
+      };
       sync_pull: {
         Args: { p_full?: boolean; p_limit?: number; p_since?: number };
         Returns: Json;

@@ -21,6 +21,7 @@ export const ERROR_STATUS = {
   payload_too_large: 413,
   unsupported_media_type: 415,
   ai_refused: 422,
+  too_far: 422,
   rate_limited: 429,
   quota_exceeded: 429,
   internal: 500,
