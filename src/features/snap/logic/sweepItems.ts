@@ -17,7 +17,13 @@ export interface SweepItem {
   quantity: number | null;
   unit: SnapPantryItem['unit'];
   confidence: number;
+  /** Who found the item first. */
   origin: SweepOrigin;
+  /**
+   * Where the amount came from, apart from where the item did: the video can find milk and the
+   * person then say how much. Null while there is no amount.
+   */
+  quantityFrom: SweepOrigin | null;
   /** When it first appeared on the list, for the brief "New" tag. */
   foundAt: number;
 }
@@ -37,7 +43,8 @@ export interface MergeResult {
 /**
  * Merges one reading into the list. The same food (by its singular, filler-free name) is listed
  * once: a later, more confident reading updates its amount; an amount the person said always
- * wins over one guessed from the video. New items go to the top.
+ * wins, and the video never changes it afterwards, however sure it is. The video can still fill
+ * an amount nobody said. New items go to the top.
  */
 export function mergeSweepItems(
   items: readonly SweepItem[],
@@ -58,10 +65,14 @@ export function mergeSweepItems(
     if (existing) {
       const said = origin === 'said' && quantity != null;
       if (!said && reading.confidence <= existing.confidence) continue;
+      // Only the person's words replace an amount the person gave.
+      const takesAmount =
+        quantity != null && (origin === 'said' || existing.quantityFrom !== 'said');
       home.set(key, {
         ...existing,
-        quantity: quantity ?? existing.quantity,
-        unit: quantity == null ? existing.unit : unit,
+        quantity: takesAmount ? quantity : existing.quantity,
+        unit: takesAmount ? unit : existing.unit,
+        quantityFrom: takesAmount ? origin : existing.quantityFrom,
         confidence: Math.max(existing.confidence, reading.confidence),
       });
       changed = true;
@@ -75,6 +86,7 @@ export function mergeSweepItems(
       unit,
       confidence: reading.confidence,
       origin,
+      quantityFrom: quantity == null ? null : origin,
       foundAt: now,
     });
     changed = true;

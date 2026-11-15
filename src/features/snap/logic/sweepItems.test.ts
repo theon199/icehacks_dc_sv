@@ -50,6 +50,21 @@ describe('mergeSweepItems', () => {
     expect(said.items[0]).toMatchObject({ quantity: 2, confidence: 0.9, origin: 'video' });
   });
 
+  it('keeps an amount the person said when the video later reads it more surely', () => {
+    const first = mergeSweepItems([], [seen('lemon', 1, 'piece', 0.6)], 'video', 0).items;
+    const said = mergeSweepItems(first, [seen('lemons', 2, 'piece', 0.7)], 'said', 1).items;
+    const later = mergeSweepItems(said, [seen('lemon', 1, 'piece', 0.9)], 'video', 2).items;
+    expect(later[0]).toMatchObject({ quantity: 2, unit: 'piece', origin: 'video' });
+  });
+
+  it('lets the video fill an amount nobody said', () => {
+    const said = mergeSweepItems([], [seen('paneer')], 'said', 0).items;
+    const seenLater = mergeSweepItems(said, [seen('paneer', 200, 'g', 0.9)], 'video', 1).items;
+    expect(seenLater[0]).toMatchObject({ quantity: 200, unit: 'g', origin: 'said' });
+    const surer = mergeSweepItems(seenLater, [seen('paneer', 250, 'g', 0.95)], 'video', 2).items;
+    expect(surer[0]).toMatchObject({ quantity: 250, unit: 'g' });
+  });
+
   it('marks items found in words as said', () => {
     const { items } = mergeSweepItems([], [seen('paneer')], 'said', 0);
     expect(items[0]).toMatchObject({ name: 'Paneer', origin: 'said' });
