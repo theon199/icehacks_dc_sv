@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Coach mount art</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #efefed;
+        margin: 24px;
+      }
+      #out {
+        display: grid;
+        grid-template-columns: repeat(4, 240px);
+        gap: 12px;
+        margin-top: 16px;
+      }
+      #out img {
+        width: 240px;
+        border-radius: 16px;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="go">Render</button>
+    <span id="status"></span>
+    <div id="out"></div>
+    <script>
+      /* The setup illustrations: an upper cabinet above a counter, the phone lying screen down on
+         the bottom shelf with a third past the edge, a plate on its inside end, and the camera's
+         view cone onto the counter. One still per setup step, rendered at 3x the app's card size. */
+      const W = 1029;
+      const H = 1020;
+      const LIME = 0xd0f64a;
+      const VIEWS = [
+        { tx: -26, ty: 165, tz: 30, dist: 380, az: 0.78, el: 0.14 },
+        { tx: -26, ty: 150, tz: 30, dist: 118, az: 0.78, el: 0.3 },
+        { tx: -24, ty: 152, tz: 26, dist: 128, az: 0.5, el: 0.5 },
+        { tx: -10, ty: 126, tz: 36, dist: 480, az: 0.62, el: 0.3 },
+      ];
+
+      function buildScene(T3) {
+        const sc = new T3.Scene();
+        sc.add(new T3.HemisphereLight(0xffffff, 0x8d8a84, 0.62));
+        const sun = new T3.DirectionalLight(0xffffff, 0.62);
+        sun.position.set(-90, 320, 260);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(4096, 4096);
+        Object.assign(sun.shadow.camera, {
+          left: -170,
+          right: 170,
+          top: 170,
+          bottom: -170,
+          near: 10,
+          far: 900,
+        });
+        sun.shadow.bias = -0.0004;
+        sun.shadow.radius = 3;
+        sc.add(sun);
+        const fill = new T3.DirectionalLight(0xffffff, 0.22);
+        fill.position.set(260, 140, 220);
+        sc.add(fill);
+
+        const mat = (c, o = {}) =>
+          new T3.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.85 }, o));
+        const edgeMat = new T3.LineBasicMaterial({
+          color: 0x17191b,
+          transparent: true,
+          opacity: 0.22,
+        });
+        const add = (geo, m, x, y, z, p = sc) => {
+          const o = new T3.Mesh(geo, m);
+          o.position.set(x, y, z);
+          o.castShadow = true;
+          o.receiveShadow = true;
+          p.add(o);
+          return o;
+        };
+        const box = (w, h, d, m, x, y, z, p) => {
+          const o = add(new T3.BoxGeometry(w, h, d), m, x, y, z, p);
+          if (Math.max(w, h, d) >= 5)
+            o.add(new T3.LineSegments(new T3.EdgesGeometry(o.geometry), edgeMat));
+          return o;
+        };
+        const cyl = (rt, rb, h, m, x, y, z, p, seg = 48) =>
+          add(new T3.CylinderGeometry(rt, rb, h, seg), m, x, y, z, p);
+        const sph = (r, m, x, y, z) => add(new T3.SphereGeometry(r, 20, 14), m, x, y, z);
+
+        const white = mat(0xf6f5f1);
+        const front = mat(0xfaf9f6);
+        const inner = mat(0xdedcd5);
+        const ink = mat(0x2a2c2f, { roughness: 0.45 });
+        const stone = mat(0x34363a, { roughness: 0.4 });
+        const wood = mat(0xc9a47a, { roughness: 0.7 });
+        const pea = mat(0x6ba954);
+
+        box(340, 250, 2, mat(0xd3d1ca), 0, 125, -1);
+        box(340, 56, 1, mat(0xe4e2dc), 0, 118, 0.6);
+        box(270, 86, 58, mat(0xe3e1db), 0, 43, 29);
+        for (let i = 0; i < 5; i++) {
+          box(52, 80, 1, mat(0xedebe6), -108 + i * 54, 44, 58.6);
+          box(1.4, 12, 1.6, ink, -108 + i * 54 + (i % 2 ? -21 : 21), 70, 59.6);
+        }
+        box(274, 4, 64, stone, 0, 88, 32);
+        box(64, 0.8, 50, mat(0x111112, { roughness: 0.25 }), 66, 90.4, 30);
+        [
+          [52, 18],
+          [80, 18],
+          [52, 42],
+          [80, 42],
+        ].forEach(([x, z]) => {
+          const t = add(new T3.TorusGeometry(8, 0.5, 8, 48), mat(0x55575a), x, 90.9, z);
+          t.rotation.x = -Math.PI / 2;
+        });
+        cyl(13, 12, 5, mat(0x2b2b2c, { roughness: 0.4, metalness: 0.3 }), 52, 93.3, 40);
+        cyl(11.8, 11.8, 0.4, mat(0xd98a3a), 52, 95.6, 40);
+        box(18, 1.4, 3, ink, 71, 94.5, 40);
+        for (let i = 0; i < 9; i++) {
+          const a = i * 2.1;
+          const rr = 3 + ((i * 37) % 7);
+          box(2.2, 1.2, 2.2, mat(0xf2e6cc), 52 + Math.cos(a) * rr, 96.2, 40 + Math.sin(a) * rr);
+        }
+        for (let i = 0; i < 12; i++) {
+          const a = i * 1.3 + 0.5;
+          const rr = 2 + ((i * 29) % 9);
+          sph(0.9, pea, 52 + Math.cos(a) * rr, 96.2, 40 + Math.sin(a) * rr);
+        }
+        box(40, 1.8, 26, wood, -28, 90.9, 38);
+        box(22, 0.5, 2.4, mat(0xbfc3c7, { metalness: 0.6, roughness: 0.3 }), -26, 92.1, 47);
+        box(9, 1.4, 2.2, ink, -42, 92.3, 47);
+        [
+          [-38, 31],
+          [-33, 28],
+          [-19, 32],
+        ].forEach(([x, z]) => sph(3.2, mat(0xc9352a, { roughness: 0.5 }), x, 95, z));
+        cyl(7, 4.5, 4.5, mat(0xfafaf7, { roughness: 0.4 }), 4, 92.3, 48);
+        for (let i = 0; i < 10; i++)
+          sph(0.9, pea, 4 + Math.cos(i) * 3.6, 94.6, 48 + Math.sin(i) * 3.6);
+
+        const T1 = 1.8;
+        [-100, 40].forEach((cx) => {
+          box(70, 72, 34, white, cx, 184, 17);
+          box(68, 70, 1, front, cx, 184, 34.6);
+          box(1.4, 12, 1.6, ink, cx + (cx < 0 ? 30 : -30), 160, 35.4);
+        });
+        box(70, T1, 34, white, -30, 148 + T1 / 2, 17);
+        box(70, T1, 34, white, -30, 220 - T1 / 2, 17);
+        box(T1, 72, 34, white, -65 + T1 / 2, 184, 17);
+        box(T1, 72, 34, white, 5 - T1 / 2, 184, 17);
+        box(70, 72, T1, inner, -30, 184, T1 / 2);
+        box(70 - 2 * T1, 1.4, 32, inner, -30, 186, 17);
+        [-54, -46, -38].forEach((x) =>
+          cyl(
+            3.3,
+            3,
+            10,
+            mat(0xdde6ea, { roughness: 0.2, transparent: true, opacity: 0.85 }),
+            x,
+            155,
+            9,
+          ),
+        );
+        [
+          [-54, 0xd8dcd6],
+          [-45, 0x7f8c84],
+          [-36, 0xd8dcd6],
+        ].forEach(([x, c]) => cyl(3.6, 3.3, 8, mat(c), x, 191.7, 14));
+        for (let i = 0; i < 5; i++)
+          cyl(10, 9, 0.8, mat(0xfbfbf8, { roughness: 0.4 }), -14, 188.3 + i * 0.9, 15);
+        box(12, 20, 7, mat(0xe3a33b), -50, 198, 24);
+        box(10, 16, 6, mat(0x4f6d8a), -37, 196, 24);
+
+        const doorPivot = new T3.Group();
+        doorPivot.position.set(-65, 184, 34);
+        doorPivot.rotation.y = -1.95;
+        sc.add(doorPivot);
+        const doorMat = mat(0xfaf9f6);
+        box(70, 72, 1.8, doorMat, 35, 0, 0.9, doorPivot);
+        box(1.4, 12, 1.6, ink, 64, -24, 2.4, doorPivot);
+
+        const phone = new T3.Group();
+        phone.position.set(-26, 150.2, 31.4);
+        sc.add(phone);
+        box(7.4, 0.85, 15.2, mat(0x2a2c2f, { roughness: 0.35, metalness: 0.2 }), 0, 0, 0, phone);
+        box(3.2, 0.35, 3.2, mat(0x3a3d41, { roughness: 0.3 }), -1.6, 0.55, 5.6, phone);
+        cyl(0.55, 0.55, 0.2, new T3.MeshBasicMaterial({ color: LIME }), 0, -0.52, 6.9, phone, 20);
+        const halo = new T3.Mesh(
+          new T3.BoxGeometry(9.8, 1.8, 17.6),
+          new T3.MeshBasicMaterial({
+            color: LIME,
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false,
+          }),
+        );
+        phone.add(halo);
+
+        const plate = new T3.Group();
+        plate.position.set(-26, 151.45, 21);
+        sc.add(plate);
+        const plateMat = mat(0xfbfbf8, { roughness: 0.35 });
+        cyl(12, 9, 1.6, plateMat, 0, 0, 0, plate);
+        const rim = add(new T3.TorusGeometry(11.4, 0.45, 8, 48), plateMat, 0, 0.75, 0, plate);
+        rim.rotation.x = -Math.PI / 2;
+
+        const A = [-26, 149.6, 38.6];
+        const y0 = 90.25;
+        const P = [
+          [-72, y0, 12],
+          [70, y0, 12],
+          [70, y0, 63],
+          [-72, y0, 63],
+        ];
+        const tri = [];
+        for (let i = 0; i < 4; i++) tri.push(...A, ...P[i], ...P[(i + 1) % 4]);
+        const cg = new T3.BufferGeometry();
+        cg.setAttribute('position', new T3.Float32BufferAttribute(tri, 3));
+        const view = new T3.Group();
+        view.add(
+          new T3.Mesh(
+            cg,
+            new T3.MeshBasicMaterial({
+              color: LIME,
+              transparent: true,
+              opacity: 0.28,
+              side: T3.DoubleSide,
+              depthWrite: false,
+            }),
+          ),
+        );
+        const lg = [];
+        P.forEach((p) => lg.push(...A, ...p));
+        for (let i = 0; i < 4; i++) lg.push(...P[i], ...P[(i + 1) % 4]);
+        const lgeo = new T3.BufferGeometry();
+        lgeo.setAttribute('position', new T3.Float32BufferAttribute(lg, 3));
+        view.add(new T3.LineSegments(lgeo, new T3.LineBasicMaterial({ color: 0x6e8e0a })));
+        const foot = new T3.Mesh(
+          new T3.PlaneGeometry(142, 51),
+          new T3.MeshBasicMaterial({
+            color: LIME,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false,
+          }),
+        );
+        foot.rotation.x = -Math.PI / 2;
+        foot.position.set(-1, y0 + 0.05, 37.5);
+        view.add(foot);
+        sc.add(view);
+
+        return { sc, doorMat, phone, halo, plate, plateMat, view };
+      }
+
+      function pose(s, step) {
+        const glow = (m, on) => {
+          m.color.setHex(on ? LIME : 0xfaf9f6);
+          m.emissive.setHex(on ? 0x2e3a08 : 0x000000);
+        };
+        glow(s.doorMat, step === 0);
+        s.phone.visible = step >= 1;
+        s.halo.visible = step === 1;
+        s.plate.visible = step >= 2;
+        glow(s.plateMat, step === 2);
+        s.view.visible = step === 3;
+      }
+
+      async function renderAll() {
+        const T3 = window.THREE;
+        const status = document.getElementById('status');
+        const out = document.getElementById('out');
+        const renderer = new T3.WebGLRenderer({
+          antialias: true,
+          alpha: true,
+          preserveDrawingBuffer: true,
+        });
+        renderer.setPixelRatio(1);
+        renderer.setSize(W, H);
+        renderer.setClearColor(0x000000, 0);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = T3.PCFSoftShadowMap;
+        const s = buildScene(T3);
+        const cam = new T3.PerspectiveCamera(30, W / H, 1, 3000);
+        out.textContent = '';
+        for (let step = 0; step < 4; step++) {
+          pose(s, step);
+          const v = VIEWS[step];
+          cam.position.set(
+            v.tx + v.dist * Math.sin(v.az) * Math.cos(v.el),
+            v.ty + v.dist * Math.sin(v.el),
+            v.tz + v.dist * Math.cos(v.az) * Math.cos(v.el),
+          );
+          cam.lookAt(v.tx, v.ty, v.tz);
+          renderer.render(s.sc, cam);
+          const blob = await new Promise((resolve) =>
+            renderer.domElement.toBlob(resolve, 'image/png'),
+          );
+          const name = `mount-step-${step + 1}.png`;
+          await fetch(`/save?name=${name}`, { method: 'POST', body: blob });
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(blob);
+          out.appendChild(img);
+          status.textContent = `Saved ${step + 1} of 4`;
+        }
+      }
+
+      document.getElementById('go').addEventListener('click', () => {
+        renderAll().catch((error) => {
+          document.getElementById('status').textContent = String(error);
+        });
+      });
+    </script>
+  </body>
+</html>
