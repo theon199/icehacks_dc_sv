@@ -154,17 +154,22 @@ export function buildCoachRequest(
   };
 }
 
+/**
+ * The answer as shown and spoken. "Looks good" is only for a recipe the app verified as
+ * plant-only; for any other the server already says "unsure", and this re-checks it on the device.
+ */
 export function answerReply(
   question: string,
   response: CoachResponse,
   photo: PhotoSize | null,
   withoutPhoto: 'camera_off' | 'capture_failed' | null,
+  plantOnly = false,
 ): CoachReply {
   return {
     status: {
       kind: 'answer',
       question,
-      verdict: response.verdict,
+      verdict: response.verdict === 'yes' && !plantOnly ? 'unsure' : response.verdict,
       answer: response.answer,
       focus: photo ? response.focus : null,
       photo,

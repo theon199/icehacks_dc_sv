@@ -92,7 +92,8 @@ export function useCoachQuestion(
       const response = await api.askCoach(request, { signal: controller.signal });
       if (controller.signal.aborted) return;
       const photo = still ? { width: still.width, height: still.height } : null;
-      live.current.onReply(answerReply(question, response, photo, withoutPhoto));
+      const plantOnly = request.facts?.plant_only === true;
+      live.current.onReply(answerReply(question, response, photo, withoutPhoto, plantOnly));
     } catch (error) {
       if (controller.signal.aborted || (isApiError(error) && error.kind === 'cancelled')) return;
       live.current.onReply(errorReply(error));

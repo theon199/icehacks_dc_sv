@@ -121,7 +121,7 @@ describe('buildCoachRequest', () => {
   });
 
   it('sends the catalog facts when the app has them', () => {
-    const facts = { safety: ['egg' as const], allergens: ['milk' as const] };
+    const facts = { safety: ['egg' as const], plant_only: false };
     const request = buildCoachRequest(
       recipe,
       0,
@@ -149,6 +149,24 @@ describe('answerReply', () => {
     );
     expect(reply.status).toMatchObject({ kind: 'answer', focus: null, withoutPhoto: 'camera_off' });
     expect(reply.say).toBe('Hard to say.');
+  });
+
+  it('shows "Looks good" only for a verified plant-only recipe', () => {
+    const yes = {
+      verdict: 'yes' as const,
+      answer: 'It looks tender all through.',
+      focus: null,
+      quota: { remaining: 3, reset_at: 'x' },
+    };
+    expect(answerReply('Is the pasta done?', yes, null, null, true).status).toMatchObject({
+      verdict: 'yes',
+    });
+    expect(answerReply('Is the pasta done?', yes, null, null, false).status).toMatchObject({
+      verdict: 'unsure',
+    });
+    expect(answerReply('Is the pasta done?', yes, null, null).status).toMatchObject({
+      verdict: 'unsure',
+    });
   });
 });
 

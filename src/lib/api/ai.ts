@@ -430,13 +430,16 @@ export type CoachSafetyCategory = (typeof COACH_SAFETY_CATEGORIES)[number];
 /** What the catalog knows about the recipe being cooked. */
 export interface CoachFacts {
   safety: CoachSafetyCategory[];
-  /** Allergens the catalog says the recipe contains. */
-  allergens: AllergenId[];
+  /**
+   * True only when every ingredient line matched a loaded catalog ingredient and none is
+   * poultry, meat, fish, shellfish or egg. Only then may the coach say something looks right.
+   */
+  plant_only: boolean;
 }
 
 export const coachFactsSchema = z.strictObject({
   safety: z.array(z.enum(COACH_SAFETY_CATEGORIES)).max(COACH_SAFETY_CATEGORIES.length),
-  allergens: z.array(allergenIdSchema).max(10),
+  plant_only: z.boolean(),
 });
 
 export interface CoachRequest {

@@ -1,21 +1,15 @@
 /**
  * What the coach function is told about the recipe from the catalog, not from its words: which
  * kinds of meat, fish and egg its ingredients include (the server picks the thermometer reading
- * from these) and which allergens the catalog says it contains (the only ones an answer may
- * mention without a warning).
+ * from these), and whether it is verified plant-only.
  *
  * Classification fails closed. An ingredient line the catalog could not match, an ingredient that
  * is not loaded, and meat this cannot place all count as `unknown`, which the server treats as
- * meat with the strictest reading.
+ * meat with the strictest reading. Plant-only needs positive proof: every line matched to a loaded
+ * ingredient marked vegetarian, and none of them poultry, meat, fish, shellfish or egg.
  */
 import type { CoachFacts, CoachSafetyCategory } from '@/lib/api/ai';
-import {
-  ALLERGEN_IDS,
-  DietFlag,
-  type AllergenId,
-  type Ingredient,
-  type RecipeDetail,
-} from '@/lib/catalog';
+import { DietFlag, type Ingredient, type RecipeDetail } from '@/lib/catalog';
 
 const POULTRY = /(?:^|_)(chicken|turkey|duck|goose|quail|pheasant|poultry|hen|guinea_fowl)(?:_|$)/;
 const MINCED =
@@ -57,23 +51,35 @@ function categoriesOf(item: Ingredient): CoachSafetyCategory[] {
   return found;
 }
 
+/** A plant food for the coach: vegetarian by the catalog and with no egg in it. */
+const isPlant = (item: Ingredient) =>
+  (item.dietFlags & DietFlag.vegetarian) !== 0 &&
+  !item.allergens.includes('egg') &&
+  categoriesOf(item).length === 0;
+
 /**
  * Catalog facts for `recipe`. `ingredients` holds the recipe's catalog ingredients by id, or is
- * null while they are not loaded (then every kind is unknown).
+ * null while they are not loaded (then every kind is unknown and it is not plant-only).
  */
 export function coachFacts(
   recipe: RecipeDetail,
   ingredients: ReadonlyMap<string, Ingredient> | null,
 ): CoachFacts {
   const present = new Set<CoachSafetyCategory>();
-  if (ingredients === null) present.add('unknown');
-  else {
-    for (const line of recipe.ingredients) {
-      const item = line.ingredientId ? ingredients.get(line.ingredientId) : undefined;
-      if (!item) present.add('unknown');
-      else for (const category of categoriesOf(item)) present.add(category);
+  let plantOnly = ingredients !== null && recipe.ingredients.length > 0;
+  for (const line of recipe.ingredients) {
+    const item = line.ingredientId ? ingredients?.get(line.ingredientId) : undefined;
+    if (!item) {
+      present.add('unknown');
+      plantOnly = false;
+      continue;
     }
+    for (const category of categoriesOf(item)) present.add(category);
+    if (!isPlant(item)) plantOnly = false;
   }
-  const allergens: AllergenId[] = ALLERGEN_IDS.filter((id) => recipe.allergens[id] === 'contains');
-  return { safety: ORDER.filter((category) => present.has(category)), allergens };
+  if (ingredients === null) present.add('unknown');
+  return {
+    safety: ORDER.filter((category) => present.has(category)),
+    plant_only: plantOnly && present.size === 0,
+  };
 }

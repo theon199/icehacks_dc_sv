@@ -56,11 +56,11 @@ const FREE = {
   gluten: 'free',
 } as const;
 
-function recipe(ingredientIds: (string | null)[], allergens = {}): RecipeDetail {
+function recipe(ingredientIds: (string | null)[]): RecipeDetail {
   return {
     id: 'r1',
     title: 'Test',
-    allergens: { ...FREE, ...allergens },
+    allergens: FREE,
     ingredients: ingredientIds.map((ingredientId, position) => ({
       position,
       ingredientId,
@@ -104,11 +104,18 @@ describe('coachFacts', () => {
     expect(coachFacts(recipe(['onion']), null).safety).toEqual(['unknown']);
   });
 
-  it('lists only the allergens the catalog says the recipe contains', () => {
-    const facts = coachFacts(
-      recipe(['onion'], { milk: 'contains', peanut: 'unknown', sesame: 'contains' }),
-      BY_ID,
-    );
-    expect(facts.allergens).toEqual(['milk', 'sesame']);
+  it('marks a recipe plant-only only when every line is a known plant ingredient', () => {
+    const plantOnly = (ids: (string | null)[]) => coachFacts(recipe(ids), BY_ID).plant_only;
+    expect(plantOnly(['tofu', 'onion'])).toBe(true);
+    // Sauces and stocks with meat or fish in them do not count as plant food.
+    expect(plantOnly(['onion', 'fish_sauce'])).toBe(false);
+    expect(plantOnly(['onion', 'chicken_stock'])).toBe(false);
+    expect(plantOnly(['onion', 'mayonnaise'])).toBe(false);
+    expect(plantOnly(['onion', 'chicken_thigh'])).toBe(false);
+    expect(plantOnly(['onion', 'egg'])).toBe(false);
+    expect(plantOnly(['onion', null])).toBe(false);
+    expect(plantOnly(['onion', 'not_in_the_catalog'])).toBe(false);
+    expect(plantOnly([])).toBe(false);
+    expect(coachFacts(recipe(['onion']), null).plant_only).toBe(false);
   });
 });

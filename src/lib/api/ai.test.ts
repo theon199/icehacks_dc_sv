@@ -213,13 +213,13 @@ describe('aiApi', () => {
       question: 'Is it done?',
       diet: [],
       allergens: [],
-      facts: { safety: ['poultry', 'minced_meat'], allergens: [] },
+      facts: { safety: ['poultry', 'minced_meat'], plant_only: false },
     });
     expect(reply.quota).toBeNull();
     expect(sent[0]?.body).toMatchObject({
       facts: {
         safety: ['poultry', 'minced_meat'],
-        allergens: [],
+        plant_only: false,
       },
     });
   });

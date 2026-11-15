@@ -171,7 +171,7 @@ const INPUT = {
   image: JPEG,
   diet: ["vegetarian"],
   allergens: ["peanut"],
-  facts: { safety: [], allergens: ["milk"] },
+  facts: { safety: [], plant_only: true },
 };
 
 const NOT_YET = {
@@ -275,6 +275,11 @@ Deno.test("coach answers with a verdict and a focus from the default model", asy
   assertStringIncludes(system, "thermometer");
   assertStringIncludes(system, "not_visible");
   assertStringIncludes(system, "allergens");
+  assertStringIncludes(
+    system,
+    "Never say that food is done, ready, safe, cooked through or fine to eat",
+  );
+  assertStringIncludes(system, "The app adds the thermometer reading itself");
 });
 
 Deno.test("coach answers from words alone when there is no photo", async () => {
@@ -342,12 +347,16 @@ Deno.test("allergenNotice names every allergen with its spoken label", () => {
   );
 });
 
-Deno.test("an allergen the recipe's catalog data lists is not a new suggestion", async () => {
+Deno.test("an answer naming an allergen is replaced even when the recipe contains it", async () => {
+  // Matar paneer contains milk; someone avoiding milk still never hears it named.
   const { handler } = harness({
     replies: [claudeJson({ verdict: "unsure", answer: "The paneer is coated.", focus: null })],
   });
   const res = await silenced(() => handler(post({ ...INPUT, allergens: ["milk"] })));
-  assertEquals((await res.json()).answer, "The paneer is coated.");
+  assertEquals(
+    (await res.json()).answer,
+    "That contains milk and dairy, which you've said you avoid.",
+  );
 });
 
 Deno.test("recipe words never exempt an allergen, only the catalog data does", async () => {
@@ -451,12 +460,13 @@ const safetyInput = (
   step: string,
   question: string,
   safety: string[] = [],
+  plantOnly = false,
 ): CoachInput => ({
   recipe: { id: "r1", title, step_index: 0, step_count: 2, step },
   question,
   diet: [],
   allergens: [],
-  facts: { safety, allergens: [] },
+  facts: { safety, plant_only: plantOnly },
 } as CoachInput);
 
 const YES = { verdict: "yes" as const, answer: "Yes, it's ready.", focus: null };
@@ -467,12 +477,10 @@ Deno.test("empty safety facts count as unknown, like missing ones", () => {
   const input = safetyInput("Matar Paneer", "Stir in the paneer", "is this stirred enough?");
   const result = coachAnswer(good, input, true);
   assertEquals(result.verdict, "unsure");
+  assert(result.answer.startsWith("Every piece is coated. "));
   assertStringIncludes(result.answer, "74°C (165°F)");
   const pasta = presetAnswer(safetyInput("Tomato pasta", "Boil", "is the pasta done?"));
   assertStringIncludes(pasta?.answer ?? "", "74°C (165°F)");
-  // A cautious answer still stands.
-  const notYet = { verdict: "not_yet" as const, answer: "A few more stirs.", focus: null };
-  assertEquals(coachAnswer(notYet, input, true), notYet);
 });
 
 Deno.test("kinds named in the model's answer raise the reading too", () => {
@@ -573,20 +581,94 @@ Deno.test("whole cuts need 63°C and a 3 minute rest", () => {
   assertStringIncludes(answer, "3 minutes");
 });
 
-Deno.test("a cautious answer stands, unless it quotes a temperature or calls it safe", () => {
+Deno.test("every model answer in a recipe that is not plant-only ends with the reading", () => {
   const input = safetyInput("Roast chicken", "Roast for an hour", "how is the skin?", ["poultry"]);
-  const notYet = { verdict: "not_yet" as const, answer: "Give it ten more minutes.", focus: null };
-  assertEquals(coachAnswer(notYet, input, true), notYet);
+  const line = "Check the thickest part with a thermometer: poultry should read 74°C (165°F).";
   for (
-    const answer of [
-      { verdict: "not_yet" as const, answer: "It needs to reach 40°C first.", focus: null },
-      { verdict: "unsure" as const, answer: "It is probably safe to eat now.", focus: null },
-      { verdict: "unsure" as const, answer: "Looks cooked through to me.", focus: null },
-    ]
+    const [reply, verdict] of [
+      [
+        { verdict: "not_yet" as const, answer: "Give it ten more minutes.", focus: null },
+        "not_yet",
+      ],
+      [{ verdict: "yes" as const, answer: "The skin is crisp and golden.", focus: null }, "unsure"],
+      [{ verdict: "unsure" as const, answer: "Hard to say from here.", focus: null }, "unsure"],
+      [
+        { verdict: "not_visible" as const, answer: "Move the tray into view.", focus: null },
+        "not_visible",
+      ],
+    ] as const
   ) {
-    const result = coachAnswer(answer, input, true);
-    assertEquals(result.verdict, "unsure", answer.answer);
-    assertStringIncludes(result.answer, "74°C (165°F)", answer.answer);
+    const result = coachAnswer(reply, input, true);
+    assertEquals(result.verdict, verdict, reply.answer);
+    assertEquals(result.answer, `${reply.answer} ${line}`);
+  }
+});
+
+Deno.test("each kind gets its own fixed line, and only the model's part is clamped", () => {
+  const cases: [string[], string][] = [
+    [["minced_meat"], "Check it with a thermometer: minced meat should read 71°C (160°F)."],
+    [["egg"], "Check it with a thermometer: egg dishes should read 71°C (160°F)."],
+    [
+      ["whole_meat"],
+      "Check it with a thermometer: whole cuts should read 63°C (145°F), then rest for 3 minutes.",
+    ],
+    [["fish"], "Check it with a thermometer: fish and seafood should read 63°C (145°F)."],
+    [
+      ["unknown"],
+      "Check the thickest part with a thermometer: 74°C (165°F) is safe for any meat, fish or eggs.",
+    ],
+  ];
+  const long = { verdict: "unsure" as const, answer: `${"Looks even ".repeat(60)}.`, focus: null };
+  for (const [safety, line] of cases) {
+    const result = coachAnswer(long, safetyInput("Dish", "Cook", "how is it?", safety), true);
+    assert(result.answer.endsWith(` ${line}`), safety.join());
+    assert(result.answer.length <= COACH_LIMITS.answerMaxChars, safety.join());
+  }
+  const leftovers = coachAnswer(long, safetyInput("Leftover stew", "Warm", "how is it?"), true);
+  assert(
+    leftovers.answer.endsWith(
+      "Check the middle with a thermometer: reheated food should read 74°C (165°F).",
+    ),
+  );
+});
+
+Deno.test("a verified plant-only recipe keeps the model's verdict and words", async () => {
+  const pasta = safetyInput("Tomato pasta", "Boil the pasta", "is the pasta done?", [], true);
+  assertEquals(presetAnswer(pasta), null);
+  const done = { verdict: "yes" as const, answer: "It looks tender all through.", focus: null };
+  assertEquals(coachAnswer(done, pasta, true), done);
+
+  const { handler, events } = harness({ replies: [claudeJson(done)] });
+  const body = await (await silenced(() =>
+    handler(post({
+      ...INPUT,
+      recipe: { ...INPUT.recipe, title: "Tomato pasta", step: "Boil the pasta" },
+      question: "is the pasta done?",
+      facts: { safety: [], plant_only: true },
+    }))
+  )).json();
+  assertEquals(body.verdict, "yes");
+  assertEquals(body.answer, done.answer);
+  assertEquals(events.at(-1), "claude");
+});
+
+Deno.test("plant-only is ignored when facts or words say otherwise", () => {
+  const reply = { verdict: "yes" as const, answer: "It looks right.", focus: null };
+  const cases: [CoachInput, typeof reply][] = [
+    [safetyInput("Veg frittata", "Bake", "how is it?", ["egg"], true), reply],
+    [safetyInput("Leftover pasta", "Warm", "how is it?", [], true), reply],
+    [safetyInput("Tomato pasta", "Reheat the sauce", "how is it?", [], true), reply],
+    [safetyInput("Tomato pasta", "Boil", "can I add chicken?", [], true), reply],
+    [safetyInput("Tomato pasta", "Boil", "how is it?", [], true), {
+      ...reply,
+      answer: "The chicken looks right.",
+    }],
+    [safetyInput("Tomato pasta", "Boil", "how is it?", [], false), reply],
+  ];
+  for (const [input, raw] of cases) {
+    const result = coachAnswer(raw, input, true);
+    assertEquals(result.verdict, "unsure", `${input.recipe.title}: ${input.question}`);
+    assertStringIncludes(result.answer, "°C", `${input.recipe.title}: ${input.question}`);
   }
 });
 
@@ -597,7 +679,7 @@ Deno.test("a doneness question in a meat, fish, egg or reheat recipe costs nothi
       ...INPUT,
       recipe: { ...INPUT.recipe, title: "Smoked haddock", step: "Heat in the pan" },
       question: "Is it ready?",
-      facts: { safety: ["fish"], allergens: ["fish"] },
+      facts: { safety: ["fish"], plant_only: false },
       allergens: [],
     }))
   );
@@ -620,7 +702,7 @@ Deno.test("coach turns a yes into the thermometer answer without a photo too", a
       recipe: { ...INPUT.recipe, title: "Chicken sausages", step: "Brown the sausages" },
       question: "do they look golden?",
       allergens: [],
-      facts: { safety: ["poultry", "minced_meat"], allergens: [] },
+      facts: { safety: ["poultry", "minced_meat"], plant_only: false },
     }))
   );
   const body = await res.json();
@@ -646,12 +728,15 @@ Deno.test("words in the photo cannot talk the coach past its safety checks", asy
       recipe: { ...INPUT.recipe, title: "Chicken traybake", step: "Roast" },
       question: "how does the skin look?",
       allergens: [],
-      facts: { safety: ["poultry"], allergens: [] },
+      facts: { safety: ["poultry"], plant_only: false },
     }))
   )).json();
   assertEquals(done.verdict, "unsure");
-  assertStringIncludes(done.answer, "74°C (165°F)");
-  assert(!done.answer.includes("40°C"));
+  assert(
+    done.answer.endsWith(
+      "Check the thickest part with a thermometer: poultry should read 74°C (165°F).",
+    ),
+  );
 
   const allergen = harness({
     replies: [

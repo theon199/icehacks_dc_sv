@@ -1,4 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import * as Speech from 'expo-speech';
 import Storage from 'expo-sqlite/kv-store';
 import type * as ReactModule from 'react';
 
@@ -209,7 +210,7 @@ describe('CoachScreen', () => {
         question: 'Is this stirred enough?',
         image: 'STILL',
         recipe: expect.objectContaining({ step: 'Stir in the paneer and garam masala' }),
-        facts: { safety: [], allergens: ['milk'] },
+        facts: { safety: [], plant_only: true },
       }),
       expect.anything(),
     );
@@ -253,9 +254,50 @@ describe('CoachScreen', () => {
     await act(async () => mockVoice.handlers.start?.(null));
     await hear('Hey Famara, is this stirred enough?');
     expect(askCoach).toHaveBeenCalledWith(
-      expect.objectContaining({ facts: { safety: ['unknown'], allergens: ['milk'] } }),
+      expect.objectContaining({ facts: { safety: ['unknown'], plant_only: false } }),
       expect.anything(),
     );
     expect(screen.getByText(NOT_YET.answer)).toBeTruthy();
+  });
+
+  it('speaks the whole answer with its thermometer line, and never "Looks good" unless plant-only', async () => {
+    mockIngredients.data = null;
+    const line = 'Check the thickest part with a thermometer: 74°C (165°F) is safe for any meat.';
+    const askCoach = jest.fn<Promise<CoachResponse>, [CoachRequest, unknown]>(async () => ({
+      verdict: 'yes',
+      answer: `The sauce coats the spoon. ${line}`,
+      focus: null,
+      quota: NOT_YET.quota,
+    }));
+    const deps: CoachQuestionDeps = {
+      askCoach,
+      isOnline: () => true,
+      profile: () => ({ diets: [], allergens: [] }),
+    };
+    await renderWithTheme(<CoachScreen recipeId="mealdb:52865" deps={deps} />);
+    await act(async () => mockVoice.handlers.start?.(null));
+    await hear('Hey Famara, is the sauce thick enough?');
+    expect(screen.queryByText('Looks good')).toBeNull();
+    expect(jest.mocked(Speech.speak).mock.calls.at(-1)?.[0]).toBe(
+      `The sauce coats the spoon. ${line}`,
+    );
+  });
+
+  it('shows "Looks good" for a verified plant-only recipe', async () => {
+    const askCoach = jest.fn<Promise<CoachResponse>, [CoachRequest, unknown]>(async () => ({
+      verdict: 'yes',
+      answer: 'Every piece is coated.',
+      focus: null,
+      quota: NOT_YET.quota,
+    }));
+    const deps: CoachQuestionDeps = {
+      askCoach,
+      isOnline: () => true,
+      profile: () => ({ diets: [], allergens: [] }),
+    };
+    await renderWithTheme(<CoachScreen recipeId="mealdb:52865" deps={deps} />);
+    await act(async () => mockVoice.handlers.start?.(null));
+    await hear('Hey Famara, is this stirred enough?');
+    expect(screen.getByText('Looks good')).toBeTruthy();
   });
 });

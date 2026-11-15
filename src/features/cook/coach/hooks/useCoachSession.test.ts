@@ -66,7 +66,7 @@ const NOT_YET: CoachResponse = {
   quota: { remaining: 59, reset_at: '2026-11-15T00:00:00Z' },
 };
 
-const FACTS = { safety: [], allergens: ['milk' as const] };
+const FACTS = { safety: [], plant_only: true };
 
 function setup(options: { cameraOn?: boolean; online?: boolean } = {}) {
   const askCoach = jest.fn<Promise<CoachResponse>, [CoachRequest, unknown]>(async () => NOT_YET);

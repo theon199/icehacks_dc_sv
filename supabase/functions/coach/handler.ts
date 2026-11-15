@@ -5,19 +5,19 @@
  *
  * The answer is short enough to be read aloud, carries a verdict (yes, not yet, unsure, not
  * visible) and optionally the spot in the photo it is about. The app also sends what the catalog
- * knows about the recipe: which kinds of meat, fish or egg its ingredients include, and which
- * allergens it contains. Two guards run in code, so nothing the model was told (by the person,
- * the recipe or text in the photo) can get past them:
- * - in a recipe with meat, poultry, fish, shellfish or eggs, or one of leftovers being reheated,
- *   no answer says it is done or safe: a "yes" (or an answer that calls it cooked or safe, or
- *   quotes a temperature) becomes the fixed thermometer reading for the strictest kind present.
- *   Catalog facts can only add kinds: missing facts, an empty list or an unknown ingredient
- *   count as meat. Kinds named in the recipe text, the question or the model's answer add more.
- * - an answer that names one of the person's allergens (read with hidden characters removed) is
- *   replaced with a fixed reminder unless the catalog says the recipe already contains it; a
- *   question that names one gets the reminder.
- * When the fixed answer is certain from the question alone (a doneness question in such a
- * recipe, or a question naming an allergen) it is returned without calling the model, and no
+ * knows about the recipe: which kinds of meat, fish or egg its ingredients include, and whether it
+ * is verified plant-only (every ingredient matched, none of them meat, fish, shellfish or egg).
+ *
+ * The coach never gives a doneness or safety verdict. Rules applied in code after the model, so
+ * nothing it was told (by the person, the recipe or text in the photo) can change them:
+ * - Unless the recipe is verified plant-only, a "yes" becomes "unsure" and every answer ends with
+ *   a fixed thermometer line for the strictest kind present. The plant-only flag is ignored when
+ *   the facts list any kind, or the title, step, question or answer names meat, fish, eggs or
+ *   leftovers being reheated. Missing facts count as unknown, which is treated as meat.
+ * - An answer naming any of the person's declared allergens (read with hidden characters
+ *   removed) is replaced with a fixed reminder, even when the recipe contains it.
+ * When the answer is certain from the question alone (a doneness question in a recipe that is not
+ * plant-only, or a question naming an allergen) it is returned without calling the model, and no
  * question is spent.
  */
 
@@ -90,8 +90,8 @@ export type SafetyCategory = (typeof SAFETY_CATEGORIES)[number];
 
 export const CoachFactsSchema = z.strictObject({
   safety: z.array(z.enum(SAFETY_CATEGORIES)).max(SAFETY_CATEGORIES.length),
-  /** Allergens the catalog says the recipe contains. */
-  allergens: z.array(z.enum(ALLERGEN_IDS)).max(ALLERGEN_IDS.length),
+  /** True only when the app verified every ingredient as plant food; anything else is not. */
+  plant_only: z.boolean(),
 });
 
 export const CoachInputSchema = z.strictObject({
@@ -147,12 +147,12 @@ const round3 = (value: number) => Math.round(value * 1000) / 1000;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 /** Keeps the first two sentences, plain text, within the spoken-answer length. */
-export function clampAnswer(raw: string): string {
+export function clampAnswer(raw: string, maxChars: number = COACH_LIMITS.answerMaxChars): string {
   const text = oneLine(raw.replace(/\*\*|__|`/g, "").replace(/^\s*(?:[-*•]|\d+[.)])\s+/, ""));
   const sentences = text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) ?? [];
   let answer = sentences.slice(0, COACH_LIMITS.answerMaxSentences).map((s) => s.trim()).join(" ");
-  if (answer.length > COACH_LIMITS.answerMaxChars) {
-    const cut = answer.slice(0, COACH_LIMITS.answerMaxChars - 1);
+  if (answer.length > maxChars) {
+    const cut = answer.slice(0, maxChars - 1);
     const space = cut.lastIndexOf(" ");
     answer = `${(space > 0 ? cut.slice(0, space) : cut).replace(/[\s,;:]+$/, "")}.`;
   }
@@ -174,8 +174,12 @@ function clampFocus(focus: CoachModelReply["focus"]): CoachFocus | null {
  * Brings a model reply inside the app's contract. Without a photo the coach has seen nothing, so
  * "yes" and "not yet" become "unsure" and there is no focus; "not visible" never has a focus.
  */
-export function finalizeAnswer(raw: CoachModelReply, hasPhoto: boolean): CoachAnswer {
-  const answer = clampAnswer(raw.answer);
+export function finalizeAnswer(
+  raw: CoachModelReply,
+  hasPhoto: boolean,
+  maxChars: number = COACH_LIMITS.answerMaxChars,
+): CoachAnswer {
+  const answer = clampAnswer(raw.answer, maxChars);
   if (answer === "") {
     throw new HttpError("upstream_error", "The coach did not answer. Ask again.");
   }
@@ -224,43 +228,49 @@ const REHEAT = /\b(leftovers?|reheat|reheated|reheating)\b/;
 const DONENESS =
   /\b(done|cooked|ready|safe|through|finished|raw|pink|undercooked|set|serve|eat|long enough|hot enough)\b/;
 
-/** An answer that vouches for doneness or safety, whatever its verdict. */
-const VOUCHES =
-  /\d\s*°|\bdegrees\b|\bsafe\b|cooked (?:through|enough)|\bdone\b|\bready to (?:eat|serve)\b|\b(?:fine|okay|ok|good) to (?:eat|serve)\b|\bserve\b/;
-
-const SAFE_ANSWERS: Readonly<Record<SafetyKind, string>> = {
-  reheat: "I can't tell if leftovers are hot enough by looking. Check the middle with a " +
-    "thermometer: reheated food should read 74°C (165°F).",
-  poultry: "I can't tell if poultry is cooked through by looking. Check the thickest part " +
-    "with a thermometer: it should read 74°C (165°F).",
-  unknown: "I can't tell if it's cooked through by looking. Check the thickest part with a " +
-    "thermometer: 74°C (165°F) is safe for any meat, fish or eggs.",
-  minced: "I can't tell if minced meat is cooked through by looking. Check it with a " +
-    "thermometer: it should read 71°C (160°F).",
-  egg: "I can't tell if eggs are cooked through by looking. Egg dishes should reach " +
-    "71°C (160°F) on a thermometer.",
-  whole: "I can't tell if it's cooked through by looking. Whole cuts of beef, pork, lamb or " +
-    "veal should read 63°C (145°F) on a thermometer, then rest for 3 minutes.",
-  seafood: "I can't tell if fish or seafood is cooked through by looking. Check it with a " +
-    "thermometer: it should read 63°C (145°F).",
+/** The fixed line every answer in a recipe that is not plant-only ends with. */
+export const THERMOMETER_LINES: Readonly<Record<SafetyKind, string>> = {
+  reheat: "Check the middle with a thermometer: reheated food should read 74°C (165°F).",
+  poultry: "Check the thickest part with a thermometer: poultry should read 74°C (165°F).",
+  unknown:
+    "Check the thickest part with a thermometer: 74°C (165°F) is safe for any meat, fish or eggs.",
+  minced: "Check it with a thermometer: minced meat should read 71°C (160°F).",
+  egg: "Check it with a thermometer: egg dishes should read 71°C (160°F).",
+  whole:
+    "Check it with a thermometer: whole cuts should read 63°C (145°F), then rest for 3 minutes.",
+  seafood: "Check it with a thermometer: fish and seafood should read 63°C (145°F).",
 };
 
+const CANT_TELL: Readonly<Record<SafetyKind, string>> = {
+  reheat: "I can't tell if leftovers are hot enough by looking.",
+  poultry: "I can't tell if poultry is cooked through by looking.",
+  unknown: "I can't tell if it's cooked through by looking.",
+  minced: "I can't tell if minced meat is cooked through by looking.",
+  egg: "I can't tell if eggs are cooked through by looking.",
+  whole: "I can't tell if beef, pork, lamb or veal is cooked through by looking.",
+  seafood: "I can't tell if fish or seafood is cooked through by looking.",
+};
+
+/** The fixed answer to a doneness question in a recipe that is not plant-only. */
+const safeAnswer = (kind: SafetyKind) => `${CANT_TELL[kind]} ${THERMOMETER_LINES[kind]}`;
+
 /**
- * The strictest temperature kind for the recipe being cooked, from its catalog facts, its title,
- * the step, the question and `also` (the model's answer, once there is one). Facts can only add
- * kinds: missing facts, or facts listing none, count as unknown, which is treated as meat. Words
- * add kinds on top, so "reheated rice" or chicken named in a beef stew raises the reading.
+ * The strictest temperature kind for the recipe being cooked, or null when it is verified
+ * plant-only. Kinds come from the catalog facts and from the title, the step, the question and
+ * `answer` (the model's words, once there are some), so "reheated rice" or chicken named in a
+ * beef stew raises the reading. Facts can only add kinds: with none found, the recipe is
+ * plant-only only if the app verified it; otherwise it counts as unknown, treated as meat.
  */
-export function recipeSafetyKind(input: CoachInput, also = ""): SafetyKind | null {
-  const listed = input.facts?.safety ?? [];
+export function recipeSafetyKind(input: CoachInput, answer = ""): SafetyKind | null {
   const kinds = new Set<SafetyKind>(
-    listed.length > 0 ? listed.map((category) => CATEGORY_KIND[category]) : ["unknown"],
+    (input.facts?.safety ?? []).map((category) => CATEGORY_KIND[category]),
   );
-  const words = [input.recipe.title, input.recipe.step, input.question, also].join("\n")
+  const words = [input.recipe.title, input.recipe.step, input.question, answer].join("\n")
     .toLowerCase();
   for (const [kind, pattern] of SAFETY_TERMS) if (pattern.test(words)) kinds.add(kind);
   if (REHEAT.test(words)) kinds.add("reheat");
-  return SAFETY_KINDS.find((kind) => kinds.has(kind)) ?? null;
+  if (kinds.size === 0) return input.facts?.plant_only === true ? null : "unknown";
+  return SAFETY_KINDS.find((kind) => kinds.has(kind)) ?? "unknown";
 }
 
 /** How an allergen is said aloud: its prompt label without the bracketed detail. */
@@ -291,12 +301,6 @@ function namedAllergens(texts: readonly string[], input: CoachInput): AllergenId
     .map((conflict) => conflict.allergen);
 }
 
-/** Declared allergens that `texts` name, beyond what the catalog says the recipe contains. */
-function newAllergens(texts: readonly string[], input: CoachInput): AllergenId[] {
-  const known = new Set<AllergenId>(input.facts?.allergens ?? []);
-  return namedAllergens(texts, input).filter((allergen) => !known.has(allergen));
-}
-
 function allergenReply(allergens: readonly AllergenId[]): CoachAnswer {
   console.warn(JSON.stringify({ event: "coach_allergen_conflict", allergens }));
   return { verdict: "unsure", answer: allergenNotice(allergens), focus: null };
@@ -304,26 +308,27 @@ function allergenReply(allergens: readonly AllergenId[]): CoachAnswer {
 
 /**
  * The answer when it is certain from the request alone, so the model is not asked and no
- * question is spent: a question naming one of the person's allergens (even one the recipe
- * contains) gets the allergen reminder, and a doneness question in a recipe with meat, fish,
- * eggs or reheated leftovers gets the thermometer reading.
+ * question is spent: a question naming one of the person's allergens gets the allergen
+ * reminder, and a doneness question in a recipe that is not verified plant-only gets the fixed
+ * thermometer answer.
  */
 export function presetAnswer(input: CoachInput): CoachAnswer | null {
   const asked = namedAllergens([input.question], input);
   if (asked.length > 0) return allergenReply(asked);
   const kind = recipeSafetyKind(input);
   if (kind !== null && DONENESS.test(input.question.toLowerCase())) {
-    return { verdict: "unsure", answer: SAFE_ANSWERS[kind], focus: null };
+    return { verdict: "unsure", answer: safeAnswer(kind), focus: null };
   }
   return null;
 }
 
 /**
- * The model's reply as the person hears it: clamped, then screened. An answer naming an allergen
- * the catalog does not list for this recipe is replaced (recipe words never count, so a step
- * saying "do not add peanuts" exempts nothing). In a recipe with meat, fish, eggs or reheated
- * leftovers, a "yes", or any answer that vouches for doneness or safety or quotes a temperature,
- * becomes "unsure" with the fixed thermometer reading. A photo can't show food is safe to eat.
+ * The model's reply as the person hears it. An answer naming any declared allergen is replaced
+ * with the allergen reminder. Otherwise, unless the recipe is verified plant-only, a "yes"
+ * becomes "unsure" (the coach never says food is done or safe) and the fixed thermometer line
+ * for the strictest kind is appended, whatever the answer says. Only the model's part is
+ * clamped, so the line is always heard in full. Both checks read the model's whole reply, not
+ * just the part that is kept.
  */
 export function coachAnswer(
   raw: CoachModelReply,
@@ -332,13 +337,17 @@ export function coachAnswer(
 ): CoachAnswer {
   const preset = presetAnswer(input);
   if (preset !== null) return preset;
-  const answer = finalizeAnswer(raw, hasPhoto);
-  const fresh = newAllergens([answer.answer], input);
-  if (fresh.length > 0) return allergenReply(fresh);
-  const kind = recipeSafetyKind(input, answer.answer);
-  if (kind === null) return answer;
-  if (raw.verdict !== "yes" && !VOUCHES.test(answer.answer.toLowerCase())) return answer;
-  return { verdict: "unsure", answer: SAFE_ANSWERS[kind], focus: answer.focus };
+  const named = namedAllergens([raw.answer], input);
+  if (named.length > 0) return allergenReply(named);
+  const kind = recipeSafetyKind(input, raw.answer);
+  if (kind === null) return finalizeAnswer(raw, hasPhoto);
+  const line = THERMOMETER_LINES[kind];
+  const answer = finalizeAnswer(raw, hasPhoto, COACH_LIMITS.answerMaxChars - line.length - 1);
+  return {
+    verdict: answer.verdict === "yes" ? "unsure" : answer.verdict,
+    answer: `${answer.answer} ${line}`,
+    focus: answer.focus,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
