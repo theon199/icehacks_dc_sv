@@ -3,11 +3,12 @@
  *
  * - One photo spends one pantry or dish Snap from the daily allowance.
  * - A fridge sweep spends one pantry Snap for the whole pass. The sweep lives in
- *   `private.snap_sweeps`, which only the service role can write: its first batch opens it and pays
- *   the daily Snap in one transaction, later batches wait on the sweep's row lock and pass only once
- *   it is paid, and a sweep whose payment was refused stays refused. A sweep lasts an hour from its
- *   first request and holds four batches of frames.
- * - Words spend `snap_text`. Words tied to a sweep also spend one of that pass's two calls of words.
+ *   `private.snap_sweeps`, which only the service role can write. Each request locks its sweep,
+ *   pays the daily allowance before writing anything, and writes nothing when it is refused: the
+ *   first batch pays the pantry Snap and opens the sweep, later batches pass only once it is paid.
+ *   A sweep lasts an hour from its first paid request and holds four batches of frames.
+ * - Words spend `snap_text`. Words tied to a sweep pay it inside the sweep's RPC, along with one of
+ *   that pass's two calls of words.
  *
  * The sweep RPCs take the user id from the verified session, never from the request body.
  */
@@ -43,7 +44,6 @@ const SweepReason = z.enum([
   "batch",
   "words",
   "daily_limit",
-  "refused",
   "expired",
   "spent",
 ]);
@@ -69,10 +69,12 @@ type Refusal = Exclude<SweepReason, "paid" | "batch" | "words">;
 const SWEEP_RPC = {
   batch: {
     fn: "spend_snap_sweep_batch",
+    daily: "snap_pantry",
     spent: "This sweep has sent all its frames. Start a new one.",
   },
   words: {
     fn: "spend_snap_sweep_words",
+    daily: "snap_text",
     spent: "This sweep has already added what was said. Start a new one.",
   },
 } as const;
@@ -86,8 +88,7 @@ function refusal(
   now: () => number,
 ): HttpError {
   const retryAfter = Math.max(1, Math.ceil((resetAt.getTime() - now()) / 1000));
-  // A sweep refused at the daily limit stays refused: the app is told it is the daily limit.
-  const daily = reason === "daily_limit" || reason === "refused";
+  const daily = reason === "daily_limit";
   const message = daily
     ? DAILY_LIMIT
     : reason === "expired"
@@ -95,7 +96,10 @@ function refusal(
     : SWEEP_RPC[kind].spent;
   return new HttpError("quota_exceeded", message, {
     // The sweep id stays out of the details: it is the app's, and says nothing useful here.
-    details: { feature: daily ? "snap_pantry" : "snap_sweep", reset_at: resetAt.toISOString() },
+    details: {
+      feature: daily ? SWEEP_RPC[kind].daily : "snap_sweep",
+      reset_at: resetAt.toISOString(),
+    },
     headers: { "Retry-After": String(retryAfter) },
   });
 }
@@ -142,14 +146,18 @@ export async function spendSweepBatch(
   }, now);
 }
 
-/** Spends one call of words: always `snap_text`, and one of the sweep's own when given. */
+/**
+ * Spends one call of words: always `snap_text`, and one of the sweep's own when given (both in the
+ * sweep's RPC, so a refused call opens no sweep). Reports what is left of `snap_text`.
+ */
 export async function spendWords(
   client: SupabaseClient,
   sweep: { account: SweepAccount; sweepId: string } | undefined,
   now: () => number = Date.now,
 ): Promise<QuotaResult> {
-  if (sweep !== undefined) {
-    await spendSweep(sweep.account, "words", { p_sweep_id: sweep.sweepId }, now);
-  }
-  return await enforceQuota(client, AI_QUOTAS.snap_text, now);
+  if (sweep === undefined) return await enforceQuota(client, AI_QUOTAS.snap_text, now);
+  return await spendSweep(sweep.account, "words", {
+    p_sweep_id: sweep.sweepId,
+    p_daily_limit: AI_QUOTAS.snap_text.limit,
+  }, now);
 }

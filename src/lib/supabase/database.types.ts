@@ -1701,7 +1701,7 @@ export type Database = {
         }[];
       };
       spend_snap_sweep_words: {
-        Args: { p_sweep_id: string; p_user_id: string };
+        Args: { p_daily_limit: number; p_sweep_id: string; p_user_id: string };
         Returns: {
           allowed: boolean;
           reason: string;

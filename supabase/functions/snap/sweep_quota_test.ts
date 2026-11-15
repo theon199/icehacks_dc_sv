@@ -108,3 +108,35 @@ Deno.test("a sweep's two calls of words are not renewed by the clock hour", asyn
   assertEquals((await silenced(() => h.handler(post(words)))).status, 429);
   assertEquals(h.claudeCalls.length, 2);
 });
+
+Deno.test("words turned away at the daily limit open no sweep", async () => {
+  const h = harness({ exhausted: ["snap_text"] });
+  for (const sweepId of [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()]) {
+    const res = await h.handler(post({ mode: "pantry", sweep_id: sweepId, text: "milk" }));
+    assertEquals(res.status, 429);
+    assertEquals((await res.json()).error.details.feature, "snap_text");
+  }
+  assertEquals(h.sweepRows(), 0);
+  assertEquals(h.claudeCalls.length, 0);
+});
+
+Deno.test("a first batch turned away at the daily limit opens no sweep", async () => {
+  const h = harness({ exhausted: ["snap_pantry"] });
+  for (const sweepId of [SWEEP_ID, crypto.randomUUID()]) {
+    const res = await h.handler(post({ mode: "pantry", sweep_id: sweepId, images: [JPEG] }));
+    assertEquals(res.status, 429);
+    assertEquals((await res.json()).error.details.feature, "snap_pantry");
+  }
+  assertEquals(h.sweepRows(), 0);
+});
+
+Deno.test("words in a sweep spend snap_text in the same step that counts them", async () => {
+  const h = harness({ replies: say(1) });
+  const res = await silenced(() => h.handler(post(words)));
+  assertEquals(res.status, 200);
+  // The daily allowance, as for words outside a sweep.
+  assertEquals((await res.json()).quota.remaining, 39);
+  assertEquals(h.dailySpent("snap_text"), 1);
+  assertEquals(h.quotaCalls().length, 0);
+  assertEquals(h.sweepRows(), 1);
+});

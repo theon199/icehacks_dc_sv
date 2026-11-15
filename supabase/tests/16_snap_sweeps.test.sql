@@ -36,11 +36,26 @@ as $fn$
   select b.reason from public.spend_snap_sweep_batch(p_user, p_sweep, p_daily_limit) b;
 $fn$;
 
-create function tests.words(p_user uuid, p_sweep uuid)
+create function tests.words(p_user uuid, p_sweep uuid, p_daily_limit integer default 40)
 returns text
 language sql
 as $fn$
-  select w.reason from public.spend_snap_sweep_words(p_user, p_sweep) w;
+  select w.reason from public.spend_snap_sweep_words(p_user, p_sweep, p_daily_limit) w;
+$fn$;
+
+create function tests.sweep_rows(p_sweep uuid)
+returns integer
+language sql
+as $fn$
+  select count(*)::integer from private.snap_sweeps s where s.sweep_id = p_sweep;
+$fn$;
+
+create function tests.daily_spent(p_user uuid, p_feature text)
+returns integer
+language sql
+as $fn$
+  select coalesce(sum(u.count), 0)::integer from public.ai_usage u
+  where u.user_id = p_user and u.feature = p_feature;
 $fn$;
 
 grant execute on all functions in schema tests to authenticated, anon, service_role;
@@ -64,13 +79,13 @@ select is(
 select ok(
   not has_function_privilege('authenticated', 'public.spend_snap_sweep_batch(uuid, uuid, integer)', 'execute')
   and not has_function_privilege('anon', 'public.spend_snap_sweep_batch(uuid, uuid, integer)', 'execute')
-  and not has_function_privilege('authenticated', 'public.spend_snap_sweep_words(uuid, uuid)', 'execute')
-  and not has_function_privilege('anon', 'public.spend_snap_sweep_words(uuid, uuid)', 'execute'),
+  and not has_function_privilege('authenticated', 'public.spend_snap_sweep_words(uuid, uuid, integer)', 'execute')
+  and not has_function_privilege('anon', 'public.spend_snap_sweep_words(uuid, uuid, integer)', 'execute'),
   'members and anon cannot call the sweep RPCs'
 );
 select ok(
   has_function_privilege('service_role', 'public.spend_snap_sweep_batch(uuid, uuid, integer)', 'execute')
-  and has_function_privilege('service_role', 'public.spend_snap_sweep_words(uuid, uuid)', 'execute'),
+  and has_function_privilege('service_role', 'public.spend_snap_sweep_words(uuid, uuid, integer)', 'execute'),
   'the service role can call the sweep RPCs'
 );
 select ok(
@@ -154,7 +169,7 @@ select is(tests.words('aaaaaaaa-0000-4000-8000-000000000001', '22222222-2222-422
 reset role;
 
 -- ---------------------------------------------------------------------------------------------
--- A sweep that hits the daily limit stays unusable
+-- A request refused at the daily limit writes nothing
 -- ---------------------------------------------------------------------------------------------
 
 set local role service_role;
@@ -165,28 +180,41 @@ select is(
   row(false, 'daily_limit')::text,
   'a new sweep over the daily limit is refused'
 );
-select is(tests.batch('bbbbbbbb-0000-4000-8000-000000000002', '44444444-4444-4444-8444-444444444444', 20), 'refused', 'later batches of it stay refused, even with allowance back');
-select is(tests.words('bbbbbbbb-0000-4000-8000-000000000002', '44444444-4444-4444-8444-444444444444'), 'refused', 'so do its words');
+select is(tests.batch('bbbbbbbb-0000-4000-8000-000000000002', '44444444-4444-4444-8444-444444444444', 1), 'daily_limit', 'its next batch is a first batch again, and is refused again');
+reset role;
+
+select is(tests.sweep_rows('44444444-4444-4444-8444-444444444444'), 0, 'a refused first batch leaves no sweep row');
+select is(tests.daily_spent('bbbbbbbb-0000-4000-8000-000000000002', 'snap_pantry'), 1, 'the refused batches spent nothing');
+
+set local role service_role;
+select is(tests.batch('bbbbbbbb-0000-4000-8000-000000000002', '44444444-4444-4444-8444-444444444444', 20), 'paid', 'once there is allowance again, the same sweep has to pay to open');
+reset role;
+select is(tests.daily_spent('bbbbbbbb-0000-4000-8000-000000000002', 'snap_pantry'), 2, 'and it did pay');
+
+set local role service_role;
+select is(tests.words('bbbbbbbb-0000-4000-8000-000000000002', '77777777-7777-4777-8777-777777777777', 1), 'words', 'ben spends his only call of words');
+select is(tests.words('bbbbbbbb-0000-4000-8000-000000000002', '88888888-8888-4888-8888-888888888888', 1), 'daily_limit', 'words in a new sweep over the daily snap_text limit are refused');
+select is(tests.words('bbbbbbbb-0000-4000-8000-000000000002', '99999999-9999-4999-8999-999999999999', 1), 'daily_limit', 'and again with another fresh sweep');
 reset role;
 
 select is(
-  (select s.status || ':' || s.batches from private.snap_sweeps s where s.sweep_id = '44444444-4444-4444-8444-444444444444'),
-  'refused:0',
-  'the refusal is stored, with no batch spent'
+  tests.sweep_rows('88888888-8888-4888-8888-888888888888') + tests.sweep_rows('99999999-9999-4999-8999-999999999999'),
+  0,
+  'refused words leave no sweep rows'
 );
-select is(
-  (select sum(u.count)::integer from public.ai_usage u
-   where u.user_id = 'bbbbbbbb-0000-4000-8000-000000000002' and u.feature = 'snap_pantry'),
-  1,
-  'the refused sweep spent nothing'
-);
+select is(tests.daily_spent('bbbbbbbb-0000-4000-8000-000000000002', 'snap_text'), 1, 'refused words spent nothing');
 
 -- ---------------------------------------------------------------------------------------------
 -- Words
 -- ---------------------------------------------------------------------------------------------
 
 set local role service_role;
-select is(tests.words('aaaaaaaa-0000-4000-8000-000000000001', '55555555-5555-4555-8555-555555555555'), 'words', 'words can come before any frame');
+select is(
+  (select row(w.allowed, w.reason, w.remaining)::text
+   from public.spend_snap_sweep_words('aaaaaaaa-0000-4000-8000-000000000001', '55555555-5555-4555-8555-555555555555', 40) w),
+  row(true, 'words', 39)::text,
+  'words can come before any frame, and report the daily snap_text left'
+);
 select is(tests.words('aaaaaaaa-0000-4000-8000-000000000001', '55555555-5555-4555-8555-555555555555'), 'words', 'second call of words');
 select is(tests.words('aaaaaaaa-0000-4000-8000-000000000001', '55555555-5555-4555-8555-555555555555'), 'spent', 'a third call of words is refused');
 select is(tests.batch('aaaaaaaa-0000-4000-8000-000000000001', '55555555-5555-4555-8555-555555555555'), 'paid', 'the first batch after words still pays');
@@ -198,6 +226,18 @@ select is(
   'paid:1:2',
   'the sweep counts its words and batches'
 );
+select is(tests.daily_spent('aaaaaaaa-0000-4000-8000-000000000001', 'snap_text'), 2, 'words paid snap_text twice, the refused third call nothing');
+
+-- ---------------------------------------------------------------------------------------------
+-- Purge
+-- ---------------------------------------------------------------------------------------------
+
+update private.snap_sweeps
+set opened_at = now() - interval '26 hours', expires_at = now() - interval '25 hours'
+where sweep_id = '22222222-2222-4222-8222-222222222222';
+select is(private.job_purge_snap_sweeps(), 1, 'the purge drops sweeps a day past their end');
+select is(private.job_purge_snap_sweeps(), 0, 'and leaves live ones alone');
+select is(tests.sweep_rows('11111111-1111-4111-8111-111111111111'), 1, 'a live sweep is kept');
 
 -- ---------------------------------------------------------------------------------------------
 -- Sweeps are per member, and checked
@@ -215,8 +255,8 @@ select throws_ok(
 );
 reset role;
 
--- Not covered here: two first batches racing on the row lock. That needs two sessions, which a
--- pgTAP transaction cannot open.
+-- Not covered here: two first requests racing on the sweep lock. That needs a second session,
+-- and this repo has no dblink (or other two-session harness) to open one.
 
 select * from finish();
 rollback;

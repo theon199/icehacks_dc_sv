@@ -41,7 +41,7 @@ export interface RpcCall {
 }
 
 interface SweepRow {
-  status: "open" | "paid" | "refused";
+  status: "open" | "paid";
   batches: number;
   textCalls: number;
   expiresAt: number;
@@ -55,7 +55,7 @@ type RpcResult = { data: unknown; error: null } | {
 /**
  * A handler wired to fakes. Quotas behave like `consume_ai_quota`: fixed windows aligned to the
  * epoch, each call spends a unit, and a call past the limit is refused. Sweeps behave like the
- * `spend_snap_sweep_*` RPCs: one row per sweep, opened and paid in one step. State lives as long
+ * `spend_snap_sweep_*` RPCs: one row per sweep, written only after its daily allowance is paid. State lives as long
  * as the harness, so several requests through one harness share it.
  */
 export function harness(options: HarnessOptions = {}) {
@@ -80,21 +80,8 @@ export function harness(options: HarnessOptions = {}) {
     return { allowed: true, remaining: limit - count - 1, reset_at: resetAt };
   };
 
-  const openSweep = (userId: string, sweepId: string): SweepRow => {
-    const key = `${userId}:${sweepId}`;
-    const existing = sweeps.get(key);
-    if (existing) return existing;
-    const row: SweepRow = {
-      status: "open",
-      batches: 0,
-      textCalls: 0,
-      expiresAt: now() + SWEEP_LIFETIME_MS,
-    };
-    sweeps.set(key, row);
-    return row;
-  };
-
-  const dailyReset = () => new Date((Math.floor(now() / 1000 / DAY) + 1) * DAY * 1000);
+  const sweepKey = (args: Record<string, unknown>) =>
+    `${String(args["p_user_id"])}:${String(args["p_sweep_id"])}`;
   const row = (allowed: boolean, reason: string, remaining: number, resetAt: number | string) => [{
     allowed,
     reason,
@@ -102,32 +89,51 @@ export function harness(options: HarnessOptions = {}) {
     reset_at: new Date(resetAt).toISOString(),
   }];
 
+  // Each fake RPC runs to completion before another starts, as the sweep lock makes the real ones.
   const sweepBatch = (args: Record<string, unknown>) => {
-    const sweep = openSweep(String(args["p_user_id"]), String(args["p_sweep_id"]));
-    if (sweep.status === "refused") return row(false, "refused", 0, dailyReset().getTime());
-    if (sweep.expiresAt <= now()) return row(false, "expired", 0, sweep.expiresAt);
-    if (sweep.batches >= SWEEP_MAX_BATCHES) return row(false, "spent", 0, sweep.expiresAt);
-    if (sweep.status === "open") {
-      const paid = spend("snap_pantry", Number(args["p_daily_limit"]), DAY);
-      if (!paid.allowed) {
-        sweep.status = "refused";
-        return row(false, "daily_limit", 0, paid.reset_at);
+    const sweep = sweeps.get(sweepKey(args));
+    if (sweep) {
+      if (sweep.expiresAt <= now()) return row(false, "expired", 0, sweep.expiresAt);
+      if (sweep.batches >= SWEEP_MAX_BATCHES) return row(false, "spent", 0, sweep.expiresAt);
+      if (sweep.status === "paid") {
+        sweep.batches += 1;
+        return row(true, "batch", SWEEP_MAX_BATCHES - sweep.batches, sweep.expiresAt);
       }
-      sweep.status = "paid";
-      sweep.batches += 1;
-      return row(true, "paid", paid.remaining, paid.reset_at);
     }
-    sweep.batches += 1;
-    return row(true, "batch", SWEEP_MAX_BATCHES - sweep.batches, sweep.expiresAt);
+    const paid = spend("snap_pantry", Number(args["p_daily_limit"]), DAY);
+    if (!paid.allowed) return row(false, "daily_limit", 0, paid.reset_at);
+    if (sweep) {
+      sweep.status = "paid";
+      sweep.batches = 1;
+    } else {
+      sweeps.set(sweepKey(args), {
+        status: "paid",
+        batches: 1,
+        textCalls: 0,
+        expiresAt: now() + SWEEP_LIFETIME_MS,
+      });
+    }
+    return row(true, "paid", paid.remaining, paid.reset_at);
   };
 
   const sweepWords = (args: Record<string, unknown>) => {
-    const sweep = openSweep(String(args["p_user_id"]), String(args["p_sweep_id"]));
-    if (sweep.status === "refused") return row(false, "refused", 0, dailyReset().getTime());
-    if (sweep.expiresAt <= now()) return row(false, "expired", 0, sweep.expiresAt);
-    if (sweep.textCalls >= SWEEP_MAX_WORDS) return row(false, "spent", 0, sweep.expiresAt);
-    sweep.textCalls += 1;
-    return row(true, "words", SWEEP_MAX_WORDS - sweep.textCalls, sweep.expiresAt);
+    const sweep = sweeps.get(sweepKey(args));
+    if (sweep) {
+      if (sweep.expiresAt <= now()) return row(false, "expired", 0, sweep.expiresAt);
+      if (sweep.textCalls >= SWEEP_MAX_WORDS) return row(false, "spent", 0, sweep.expiresAt);
+    }
+    const paid = spend("snap_text", Number(args["p_daily_limit"]), DAY);
+    if (!paid.allowed) return row(false, "daily_limit", 0, paid.reset_at);
+    if (sweep) sweep.textCalls += 1;
+    else {
+      sweeps.set(sweepKey(args), {
+        status: "open",
+        batches: 0,
+        textCalls: 1,
+        expiresAt: now() + SWEEP_LIFETIME_MS,
+      });
+    }
+    return row(true, "words", paid.remaining, paid.reset_at);
   };
 
   const rpc = (role: RpcCall["role"], fn: string, args: Record<string, unknown>): RpcResult => {
@@ -168,9 +174,27 @@ export function harness(options: HarnessOptions = {}) {
   /** Daily pantry Snaps spent, however they were spent. */
   const pantrySpent = () =>
     [...used].filter(([key]) => key.startsWith("snap_pantry:")).reduce((sum, [, n]) => sum + n, 0);
+  /** Units of a daily feature spent, however they were spent. */
+  const dailySpent = (feature: string) =>
+    [...used]
+      .filter(([key]) => key.startsWith(`${feature}:${DAY}:`))
+      .reduce((sum, [, n]) => sum + n, 0);
+  /** Sweep rows the database holds. */
+  const sweepRows = () => sweeps.size;
   /** What the signed-in person could call themselves with their own JWT. */
   const callAsUser = (fn: string, args: Record<string, unknown>) => rpc("user", fn, args);
-  return { handler, claudeCalls, rpcCalls, quotaCalls, features, pantrySpent, callAsUser, USER_ID };
+  return {
+    handler,
+    claudeCalls,
+    rpcCalls,
+    quotaCalls,
+    features,
+    pantrySpent,
+    dailySpent,
+    sweepRows,
+    callAsUser,
+    USER_ID,
+  };
 }
 
 export function claudeJson(value: unknown, stopReason = "end_turn"): Response {

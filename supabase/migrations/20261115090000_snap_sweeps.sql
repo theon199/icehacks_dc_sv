@@ -2,11 +2,13 @@
 -- `snap` edge function (service role) can create or advance. The app's own session can neither
 -- read nor write it, so no counter the caller spends themselves can make a sweep look paid.
 --
--- A sweep opens with its first request (a batch of frames, or words said before any frame) and
--- lasts one hour from then, whatever the clock hour. The first batch pays one pantry Snap from
--- the daily allowance in the same transaction that records it. Every request locks the sweep's
--- row first, so a second batch racing the first waits for it to commit and then sees the sweep
--- paid, or refused for good when the daily allowance was already used up.
+-- A sweep opens with its first paid request (a batch of frames, or words said before any frame)
+-- and lasts one hour from then, whatever the clock hour. Every request takes a lock on its
+-- (user, sweep) first, so a batch racing the first one waits for it to commit and then sees the
+-- sweep paid. The daily allowance is charged before anything is written, and a refused request
+-- writes nothing: a row exists only once something was paid, so turned-away requests cannot pile
+-- up rows. A first batch refused at the daily limit therefore leaves no sweep behind, and the next
+-- batch of that id is a first batch again that has to pay: no frame is ever read unpaid.
 --
 -- The limits mirror SWEEP_LIMITS in supabase/functions/snap/schema.ts (12 frames, sent 3 to a
 -- batch, and 2 calls of words per sweep); the two must change together.
@@ -14,8 +16,9 @@
 create table private.snap_sweeps (
   user_id uuid not null references auth.users on delete cascade,
   sweep_id uuid not null,
+  -- open: words were paid for, frames not yet; paid: the first batch paid the pantry Snap.
   status text not null default 'open'
-    constraint snap_sweeps_status check (status in ('open', 'paid', 'refused')),
+    constraint snap_sweeps_status check (status in ('open', 'paid')),
   batches integer not null default 0
     constraint snap_sweeps_batches_range check (batches between 0 and 4),
   text_calls integer not null default 0
@@ -73,8 +76,9 @@ begin
 end;
 $$;
 
--- Opens (when new) and locks the sweep's row. Rows a day past their end are dropped first: they
--- can no longer be spent, and a sweep id that comes back after that is a new sweep that pays.
+-- Validates the request, serialises every request for one (user, sweep), and returns the sweep's
+-- row, or a row of nulls while the sweep has not opened. The lock is taken before the row is read,
+-- so two first requests cannot both find it missing.
 create function private.lock_snap_sweep(p_user_id uuid, p_sweep_id uuid)
 returns private.snap_sweeps
 language plpgsql
@@ -90,37 +94,19 @@ begin
     raise exception 'invalid_sweep' using errcode = '22023', detail = 'sweep_id is required.';
   end if;
 
-  delete from private.snap_sweeps s
-  where s.user_id = p_user_id and s.expires_at < now() - interval '1 day';
-
-  -- A concurrent insert of the same sweep makes this wait for that transaction, then do nothing.
-  insert into private.snap_sweeps (user_id, sweep_id, expires_at)
-  values (p_user_id, p_sweep_id, now() + interval '1 hour')
-  on conflict (user_id, sweep_id) do nothing;
+  perform private.rate_lock(p_user_id, 'snap_sweep_' || p_sweep_id::text);
 
   select * into v_row
   from private.snap_sweeps s
-  where s.user_id = p_user_id and s.sweep_id = p_sweep_id
-  for update;
+  where s.user_id = p_user_id and s.sweep_id = p_sweep_id;
   return v_row;
 end;
-$$;
-
--- When the daily allowance that refused a sweep resets.
-create function private.next_day_start()
-returns timestamptz
-language sql
-stable
-set search_path = ''
-as $$
-  select to_timestamp((floor(extract(epoch from now()) / 86400) + 1) * 86400);
 $$;
 
 -- One batch of frames. reason:
 --   paid        the first batch: the pantry Snap was spent; remaining/reset_at are the daily allowance
 --   batch       a later batch; remaining is batches left, reset_at when the sweep ends
---   daily_limit the first batch found the daily allowance used up; the sweep is refused for good
---   refused     the sweep was refused earlier
+--   daily_limit the first batch found the daily allowance used up; nothing was written
 --   expired     the sweep's hour is over
 --   spent       all four batches were sent
 create function public.spend_snap_sweep_batch(p_user_id uuid, p_sweep_id uuid, p_daily_limit integer)
@@ -139,46 +125,47 @@ begin
   end if;
   v_sweep := private.lock_snap_sweep(p_user_id, p_sweep_id);
 
-  if v_sweep.status = 'refused' then
-    return query select false, 'refused'::text, 0, private.next_day_start();
-    return;
-  end if;
-  if v_sweep.expires_at <= now() then
-    return query select false, 'expired'::text, 0, v_sweep.expires_at;
-    return;
-  end if;
-  if v_sweep.batches >= c_max_batches then
-    return query select false, 'spent'::text, 0, v_sweep.expires_at;
-    return;
-  end if;
-
-  if v_sweep.status = 'open' then
-    select * into v_paid from private.charge_ai_quota(p_user_id, 'snap_pantry', p_daily_limit, 86400);
-    if not v_paid.allowed then
-      -- Committed, not raised: the refusal must outlive this request.
-      update private.snap_sweeps s set status = 'refused'
-      where s.user_id = p_user_id and s.sweep_id = p_sweep_id;
-      return query select false, 'daily_limit'::text, 0, v_paid.reset_at;
+  if v_sweep.user_id is not null then
+    if v_sweep.expires_at <= now() then
+      return query select false, 'expired'::text, 0, v_sweep.expires_at;
       return;
     end if;
-    update private.snap_sweeps s set status = 'paid', batches = 1
-    where s.user_id = p_user_id and s.sweep_id = p_sweep_id;
-    return query select true, 'paid'::text, v_paid.remaining::integer, v_paid.reset_at::timestamptz;
-    return;
+    if v_sweep.batches >= c_max_batches then
+      return query select false, 'spent'::text, 0, v_sweep.expires_at;
+      return;
+    end if;
+    if v_sweep.status = 'paid' then
+      update private.snap_sweeps s set batches = s.batches + 1
+      where s.user_id = p_user_id and s.sweep_id = p_sweep_id;
+      return query select true, 'batch'::text, c_max_batches - v_sweep.batches - 1, v_sweep.expires_at;
+      return;
+    end if;
   end if;
 
-  update private.snap_sweeps s set batches = s.batches + 1
-  where s.user_id = p_user_id and s.sweep_id = p_sweep_id;
-  return query select true, 'batch'::text, c_max_batches - v_sweep.batches - 1, v_sweep.expires_at;
+  -- The first batch: pay before writing anything.
+  select * into v_paid from private.charge_ai_quota(p_user_id, 'snap_pantry', p_daily_limit, 86400);
+  if not v_paid.allowed then
+    return query select false, 'daily_limit'::text, 0, v_paid.reset_at::timestamptz;
+    return;
+  end if;
+  if v_sweep.user_id is null then
+    insert into private.snap_sweeps (user_id, sweep_id, status, batches, expires_at)
+    values (p_user_id, p_sweep_id, 'paid', 1, now() + interval '1 hour');
+  else
+    update private.snap_sweeps s set status = 'paid', batches = 1
+    where s.user_id = p_user_id and s.sweep_id = p_sweep_id;
+  end if;
+  return query select true, 'paid'::text, v_paid.remaining::integer, v_paid.reset_at::timestamptz;
 end;
 $$;
 
 comment on function public.spend_snap_sweep_batch(uuid, uuid, integer) is
   'Service role only. Spends one frame batch of a sweep; the first batch pays one snap_pantry.';
 
--- One call of words tied to a sweep (the daily snap_text is spent separately). reason: words
--- (remaining is calls left), refused, expired or spent, as for batches.
-create function public.spend_snap_sweep_words(p_user_id uuid, p_sweep_id uuid)
+-- One call of words tied to a sweep, paying one snap_text from the daily allowance in the same
+-- transaction. reason: words (remaining/reset_at are the daily snap_text allowance), daily_limit
+-- (nothing was written), expired or spent (two calls per sweep), as for batches.
+create function public.spend_snap_sweep_words(p_user_id uuid, p_sweep_id uuid, p_daily_limit integer)
 returns table (allowed boolean, reason text, remaining integer, reset_at timestamptz)
 language plpgsql
 security definer
@@ -187,39 +174,79 @@ as $$
 declare
   c_max_text_calls constant integer := 2;
   v_sweep private.snap_sweeps;
+  v_paid record;
 begin
+  if p_daily_limit is null or p_daily_limit not between 1 and 10000 then
+    raise exception 'invalid_limit' using errcode = '22023', detail = 'Limit must be between 1 and 10000.';
+  end if;
   v_sweep := private.lock_snap_sweep(p_user_id, p_sweep_id);
 
-  if v_sweep.status = 'refused' then
-    return query select false, 'refused'::text, 0, private.next_day_start();
-    return;
-  end if;
-  if v_sweep.expires_at <= now() then
-    return query select false, 'expired'::text, 0, v_sweep.expires_at;
-    return;
-  end if;
-  if v_sweep.text_calls >= c_max_text_calls then
-    return query select false, 'spent'::text, 0, v_sweep.expires_at;
-    return;
+  if v_sweep.user_id is not null then
+    if v_sweep.expires_at <= now() then
+      return query select false, 'expired'::text, 0, v_sweep.expires_at;
+      return;
+    end if;
+    if v_sweep.text_calls >= c_max_text_calls then
+      return query select false, 'spent'::text, 0, v_sweep.expires_at;
+      return;
+    end if;
   end if;
 
-  update private.snap_sweeps s set text_calls = s.text_calls + 1
-  where s.user_id = p_user_id and s.sweep_id = p_sweep_id;
-  return query select true, 'words'::text, c_max_text_calls - v_sweep.text_calls - 1, v_sweep.expires_at;
+  select * into v_paid from private.charge_ai_quota(p_user_id, 'snap_text', p_daily_limit, 86400);
+  if not v_paid.allowed then
+    return query select false, 'daily_limit'::text, 0, v_paid.reset_at::timestamptz;
+    return;
+  end if;
+  if v_sweep.user_id is null then
+    insert into private.snap_sweeps (user_id, sweep_id, text_calls, expires_at)
+    values (p_user_id, p_sweep_id, 1, now() + interval '1 hour');
+  else
+    update private.snap_sweeps s set text_calls = s.text_calls + 1
+    where s.user_id = p_user_id and s.sweep_id = p_sweep_id;
+  end if;
+  return query select true, 'words'::text, v_paid.remaining::integer, v_paid.reset_at::timestamptz;
 end;
 $$;
 
-comment on function public.spend_snap_sweep_words(uuid, uuid) is
-  'Service role only. Spends one call of words of a sweep (two per sweep).';
+comment on function public.spend_snap_sweep_words(uuid, uuid, integer) is
+  'Service role only. Spends one call of words of a sweep (two per sweep) and one snap_text.';
+
+-- Sweeps a day past their end. Until then a late request is told the sweep has ended; after it,
+-- the same id would open a new sweep, which pays again.
+create function private.job_purge_snap_sweeps()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_count integer;
+begin
+  delete from private.snap_sweeps s where s.expires_at < now() - interval '1 day';
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
 
 revoke all on function private.charge_ai_quota(uuid, text, integer, integer) from public, anon, authenticated;
 revoke all on function private.lock_snap_sweep(uuid, uuid) from public, anon, authenticated;
-revoke all on function private.next_day_start() from public, anon, authenticated;
+revoke all on function private.job_purge_snap_sweeps() from public, anon, authenticated;
 revoke all on function public.spend_snap_sweep_batch(uuid, uuid, integer) from public, anon, authenticated;
-revoke all on function public.spend_snap_sweep_words(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.spend_snap_sweep_words(uuid, uuid, integer) from public, anon, authenticated;
 
+grant execute on function private.job_purge_snap_sweeps() to service_role;
 grant execute on function public.spend_snap_sweep_batch(uuid, uuid, integer) to service_role;
-grant execute on function public.spend_snap_sweep_words(uuid, uuid) to service_role;
+grant execute on function public.spend_snap_sweep_words(uuid, uuid, integer) to service_role;
+
+do $$
+begin
+  if not exists (select 1 from pg_catalog.pg_extension where extname = 'pg_cron') then
+    raise notice 'pg_cron is not installed; famara-purge-snap-sweeps was not scheduled.';
+    return;
+  end if;
+  perform cron.schedule('famara-purge-snap-sweeps', '53 * * * *', 'select private.job_purge_snap_sweeps()');
+end;
+$$;
 
 -- PUBLIC holds EXECUTE on new functions by default; only the explicit grants above apply.
 revoke execute on all functions in schema public from public, anon;

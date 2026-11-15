@@ -159,7 +159,7 @@ Deno.test("words spend snap_text and go to the fast model", async () => {
 });
 
 Deno.test("words in a sweep spend that pass's word counter too, twice at most", async () => {
-  const { handler, features, claudeCalls, rpcCalls, pantrySpent } = harness({
+  const { handler, features, claudeCalls, rpcCalls, pantrySpent, dailySpent } = harness({
     replies: [claudeJson({ items: [] }), claudeJson({ items: [] })],
   });
   const said = { mode: "pantry", sweep_id: SWEEP_ID, text: "oat milk" };
@@ -167,7 +167,9 @@ Deno.test("words in a sweep spend that pass's word counter too, twice at most", 
   assertEquals(first.status, 200);
   const body = await first.json();
   assertEquals([body.status, body.reason], ["no_food", "not_food"]);
-  assertEquals(features(), ["snap_text"]);
+  // snap_text is paid inside the sweep's own RPC, not through consume_ai_quota.
+  assertEquals(features(), []);
+  assertEquals(dailySpent("snap_text"), 1);
   const sweepCalls = rpcCalls.filter((call) => call.fn.startsWith("spend_snap_sweep"));
   assertEquals(sweepCalls.map((call) => [call.fn, call.role]), [[
     "spend_snap_sweep_words",
@@ -177,6 +179,8 @@ Deno.test("words in a sweep spend that pass's word counter too, twice at most", 
   const third = await handler(post(said));
   assertEquals(third.status, 429);
   assertEquals(claudeCalls.length, 2);
+  // The refused third call paid nothing.
+  assertEquals(dailySpent("snap_text"), 2);
   // Words never touch the pass's frame budget or the pantry allowance.
   assertEquals(rpcCalls.some((call) => call.fn === "spend_snap_sweep_batch"), false);
   assertEquals(pantrySpent(), 0);
