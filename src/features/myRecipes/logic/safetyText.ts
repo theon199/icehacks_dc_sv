@@ -37,7 +37,8 @@ export function lineNote(line: IngredientCheck): string | null {
   if (line.verdict === 'clear') return null;
   if (line.verdict === 'confirmed') return 'You checked this';
   const shown = line.verdict === 'conflict' ? line.issues.slice(0, 1) : line.issues.slice(0, 2);
-  return shown.map(issueText).join(' · ');
+  const note = shown.map(issueText).join(' · ');
+  return line.verdict === 'unverifiable' ? `${note} · Famara can't confirm this` : note;
 }
 
 export type SafetyTone = 'clear' | 'check' | 'conflict' | 'unanswered';
@@ -66,6 +67,14 @@ export function safetySummary(safety: OwnRecipeSafety): SafetySummary {
       title: `${safety.conflicts} ${plural(safety.conflicts, 'ingredient', 'ingredients')} not for you`,
       message:
         "This recipe has something you avoid, so it won't appear in your suggestions. You can still keep it.",
+    };
+  }
+  if (safety.status === 'needs_check' && safety.unverifiable > 0) {
+    const count = safety.unverifiable;
+    return {
+      tone: 'check',
+      title: `${count} ${plural(count, "ingredient Famara can't check", "ingredients Famara can't check")}`,
+      message: `${plural(count, 'It', 'They')} may hold something you're allergic to, so this recipe stays out of suggestions. Name the exact ingredient to include it.`,
     };
   }
   if (safety.status === 'needs_check') {

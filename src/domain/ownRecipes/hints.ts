@@ -170,3 +170,61 @@ export const DIET_HINTS: Readonly<Record<DietFlagName, readonly string[]>> = {
   gluten_free: [],
   dairy_free: [],
 };
+
+/**
+ * Words for a food made of other foods. When one is left over after the match ("rice, cooked in
+ * vegetable stock" matched to rice), the match cannot vouch for it, so every declared allergen
+ * is unverified for the line.
+ */
+export const COMPOUND_FOODS: readonly string[] = [
+  'stock',
+  'broth',
+  'bouillon',
+  'sauce',
+  'paste',
+  'dressing',
+  'marinade',
+  'gravy',
+  'glaze',
+  'seasoning',
+  'spice',
+  'rub',
+  'mix',
+  'blend',
+  'spread',
+  'dip',
+  'relish',
+  'chutney',
+  'curry',
+  'condiment',
+  'batter',
+  'dough',
+  'crust',
+  'filling',
+  'frosting',
+  'icing',
+  'topping',
+  'stuffing',
+  'salsa',
+  'powder',
+  'extract',
+  'flavoring',
+  'flavouring',
+  'substitute',
+  'cube',
+  'concentrate',
+  'margarine',
+  'oil',
+];
+
+/**
+ * Words that start an allergen note ("may contain milk", "traces of sesame"). Whatever follows is
+ * always read for allergen hints; the match never explains it away.
+ */
+export const ADVISORY_WORDS: readonly string[] = [
+  'contain',
+  'contains',
+  'trace',
+  'traces',
+  'facility',
+];

@@ -86,9 +86,10 @@ describe('checkOwnRecipe', () => {
       const safety = check([GARLIC, VINEGAR], prefs(['milk']));
       expect(safety.status).toBe('needs_check');
       expect(isClearedForSuggestions(safety)).toBe(false);
-      expect(safety.toConfirm).toBe(1);
+      expect(safety.toConfirm).toBe(0);
+      expect(safety.unverifiable).toBe(1);
       expect(safety.ingredients[1]).toMatchObject({
-        verdict: 'needs_check',
+        verdict: 'unverifiable',
         catalog: null,
         issues: expect.arrayContaining([
           { code: 'unmatched' },
@@ -133,7 +134,7 @@ describe('checkOwnRecipe', () => {
       const either = line('1 cup butter, or peanut butter', 'butter', 'butter');
       const safety = check([either], prefs(['peanut']));
       expect(safety.ingredients[0]).toMatchObject({
-        verdict: 'needs_check',
+        verdict: 'unverifiable',
         issues: [{ code: 'allergen_unverified', allergen: 'peanut' }],
       });
     });
@@ -212,7 +213,7 @@ describe('checkOwnRecipe', () => {
 
   describe('confirmations', () => {
     it('clears a confirmed line and with it the recipe', () => {
-      const person = prefs(['milk'], ['pescatarian']);
+      const person = prefs([], ['pescatarian']);
       const confirmations = confirmIngredient([], ingredientKey(VINEGAR), person, 'now') ?? [];
       const safety = check([GARLIC, VINEGAR], person, confirmations);
       expect(safety.ingredients[1]?.verdict).toBe('confirmed');
@@ -221,10 +222,9 @@ describe('checkOwnRecipe', () => {
     });
 
     it('stops counting once the person declares an allergen the check did not cover', () => {
-      const confirmations =
-        confirmIngredient([], ingredientKey(VINEGAR), prefs(['milk']), 'now') ?? [];
-      const safety = check([VINEGAR], prefs(['milk', 'sesame']), confirmations);
-      expect(safety.ingredients[0]?.verdict).toBe('needs_check');
+      const confirmations = confirmIngredient([], ingredientKey(VINEGAR), prefs([]), 'now') ?? [];
+      const safety = check([VINEGAR], prefs(['sesame']), confirmations);
+      expect(safety.ingredients[0]?.verdict).toBe('unverifiable');
       expect(safety.status).toBe('needs_check');
     });
 
@@ -233,10 +233,11 @@ describe('checkOwnRecipe', () => {
       expect(check([VINEGAR], prefs([], ['vegan']), confirmations).status).toBe('needs_check');
     });
 
-    it('still counts when the person declares fewer allergens than they checked for', () => {
+    it('still counts when the person follows fewer diets than they checked for', () => {
       const confirmations =
-        confirmIngredient([], ingredientKey(VINEGAR), prefs(['milk', 'egg']), 'now') ?? [];
-      expect(check([VINEGAR], prefs(['egg']), confirmations).status).toBe('clear');
+        confirmIngredient([], ingredientKey(VINEGAR), prefs([], ['vegan', 'no_alcohol']), 'now') ??
+        [];
+      expect(check([VINEGAR], prefs([], ['vegan']), confirmations).status).toBe('clear');
     });
 
     it('belongs to the line as written: editing the line needs a new check', () => {
@@ -261,6 +262,92 @@ describe('checkOwnRecipe', () => {
       const kept = { key: ingredientKey(VINEGAR), allergens: [], diets: [], at: 'a' };
       const stale = { key: 'old|line', allergens: [], diets: [], at: 'a' };
       expect(pruneConfirmations([kept, stale], [VINEGAR, GARLIC])).toEqual([kept]);
+    });
+  });
+});
+
+describe('review fixes', () => {
+  describe('a manual check never clears a declared allergen', () => {
+    const SAUCE = line('2 tbsp mystery sauce', 'mystery sauce', null);
+
+    it('cannot confirm an unmatched line for someone with a declared allergen', () => {
+      const person = prefs(['peanut']);
+      const confirmations = confirmIngredient([], ingredientKey(SAUCE), person, 'now') ?? [];
+      const safety = check([GARLIC, SAUCE], person, confirmations);
+      expect(safety.ingredients[1]?.verdict).toBe('unverifiable');
+      expect(safety.status).toBe('needs_check');
+      expect(safety.toConfirm).toBe(0);
+      expect(safety.unverifiable).toBe(1);
+      expect(isClearedForSuggestions(safety)).toBe(false);
+    });
+
+    it('cannot confirm a product whose contents vary for someone with a declared allergen', () => {
+      const stock = line('2 cups vegetable stock', 'vegetable stock', 'vegetable_stock');
+      const person = prefs(['wheat']);
+      const confirmations = confirmIngredient([], ingredientKey(stock), person, 'now') ?? [];
+      expect(check([stock], person, confirmations).ingredients[0]?.verdict).toBe('unverifiable');
+    });
+
+    it('still lets someone without allergens confirm an unmatched line', () => {
+      const person = prefs([], ['vegan']);
+      const confirmations = confirmIngredient([], ingredientKey(SAUCE), person, 'now') ?? [];
+      const safety = check([SAUCE], person, confirmations);
+      expect(safety.ingredients[0]?.verdict).toBe('confirmed');
+      expect(isClearedForSuggestions(safety)).toBe(true);
+    });
+
+    it('still lets a diet-only doubt be confirmed', () => {
+      const rice = line('1 cup rice with bacon bits', 'rice', 'rice');
+      const person = prefs(['milk'], ['vegetarian']);
+      expect(check([rice], person).ingredients[0]?.issues).toEqual([
+        { code: 'diet_unverified', diet: 'vegetarian' },
+      ]);
+      const confirmations = confirmIngredient([], ingredientKey(rice), person, 'now') ?? [];
+      const safety = check([rice], person, confirmations);
+      expect(safety.ingredients[0]?.verdict).toBe('confirmed');
+      expect(isClearedForSuggestions(safety)).toBe(true);
+    });
+  });
+
+  describe('words the match does not explain', () => {
+    it('subtracts the matched name once, so a repeated allergen word still counts', () => {
+      const milk = line('1 cup almond milk (may contain milk)', 'almond milk', 'almond_milk');
+      const safety = check([milk], prefs(['milk']));
+      expect(safety.ingredients[0]?.issues).toContainEqual({
+        code: 'allergen_unverified',
+        allergen: 'milk',
+      });
+      expect(isClearedForSuggestions(safety)).toBe(false);
+    });
+
+    it('always reads a "may contain" or "traces of" note for allergens', () => {
+      const rice = line('4 cups rice (traces of sesame)', 'rice', 'rice');
+      expect(check([rice], prefs(['sesame'])).status).not.toBe('clear');
+      const contains = line('2 cups rice, contains soy', 'rice', 'rice');
+      expect(check([contains], prefs(['soy'])).status).not.toBe('clear');
+    });
+
+    it('does not let a resolved base ingredient vouch for a stock it was cooked in', () => {
+      const rice = line('1 cup rice, cooked in vegetable stock', 'rice', 'rice');
+      const safety = check([rice], prefs(['soy']));
+      expect(safety.ingredients[0]?.issues).toContainEqual({
+        code: 'allergen_unverified',
+        allergen: 'soy',
+      });
+      expect(safety.ingredients[0]?.verdict).toBe('unverifiable');
+    });
+
+    it('flags sauces, pastes, dressings and marinades on the line', () => {
+      for (const extra of ['tossed in sauce', 'with curry paste', 'with dressing', 'in marinade']) {
+        const rice = line(`1 cup rice ${extra}`, 'rice', 'rice');
+        expect(check([rice], prefs(['peanut'])).status).not.toBe('clear');
+      }
+    });
+
+    it('still clears a plain line whose only words are its match', () => {
+      expect(
+        check([line('1 cup almond milk', 'almond milk', 'almond_milk')], prefs(['milk'])).status,
+      ).toBe('clear');
     });
   });
 });

@@ -13,7 +13,7 @@ export interface IngredientRowProps {
   stock: LineStock;
   /** Null while the line is still being matched to the catalog. */
   check: IngredientCheck | null;
-  /** Offered for lines that need a check; never for conflicts. */
+  /** Offered for lines that need a check; never for conflicts or unverifiable lines. */
   onConfirm?: () => void;
   onUndo?: () => void;
   divider?: boolean;
@@ -30,6 +30,7 @@ const NOTE_COLOR: Readonly<Record<IngredientCheck['verdict'], keyof Palette>> = 
   clear: 'textMuted',
   confirmed: 'textMuted',
   needs_check: 'onWarningSoft',
+  unverifiable: 'onWarningSoft',
   conflict: 'danger',
 };
 

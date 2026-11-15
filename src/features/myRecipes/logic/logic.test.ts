@@ -106,15 +106,27 @@ describe('safety wording', () => {
     { text: '1 cup vinegar', name: 'datu puti vinegar', catalogIngredientId: null },
   ];
 
-  it('summarises a recipe with lines to confirm and records what it was checked against', () => {
-    const prefs = { allergens: ['milk' as const], diets: ['vegan' as const] };
+  it('summarises a recipe with lines to confirm', () => {
+    const prefs = { allergens: [], diets: ['vegan' as const] };
     const safety = checkOwnRecipe({ ingredients, catalog: new Map(), prefs, confirmations: [] });
     expect(safetySummary(safety)).toMatchObject({
       tone: 'check',
       title: '1 ingredient to confirm',
     });
     expect(lineNote(safety.ingredients[0]!)).toBe(
-      "Famara doesn't know this ingredient · May contain milk",
+      "Famara doesn't know this ingredient · May not be vegan",
+    );
+  });
+
+  it("says when a line may hold a declared allergen and can't be confirmed", () => {
+    const prefs = { allergens: ['milk' as const], diets: ['vegan' as const] };
+    const safety = checkOwnRecipe({ ingredients, catalog: new Map(), prefs, confirmations: [] });
+    expect(safetySummary(safety)).toMatchObject({
+      tone: 'check',
+      title: "1 ingredient Famara can't check",
+    });
+    expect(lineNote(safety.ingredients[0]!)).toBe(
+      "Famara doesn't know this ingredient · May contain milk · Famara can't confirm this",
     );
     expect(safetySnapshot(safety, prefs, 'at')).toEqual({
       status: 'needs_check',

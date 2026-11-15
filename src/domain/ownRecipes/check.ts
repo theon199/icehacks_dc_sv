@@ -5,9 +5,14 @@
  * - Every ingredient line must be matched to a catalog ingredient whose allergen data is resolved.
  *   An unmatched line, a store-bought product whose contents vary, or a line that mentions an
  *   allergen or meat word the match does not account for all make the recipe "needs a check".
- * - The person can confirm such a line ("I checked this"). A confirmation names the allergens and
- *   diets it was made against, and only counts while it covers everything they declare now, so
- *   adding an allergen later puts the line back up for a check.
+ * - Anything left on the line once the match is taken away is still read: a second mention of an
+ *   allergen, an allergen note ("may contain milk"), or another food made of other foods ("cooked
+ *   in vegetable stock") the match cannot vouch for.
+ * - The person can confirm a line that is only in doubt for a diet, or for an unknown food when
+ *   they declare no allergens ("I checked this"). A line that may hold an allergen they declared is
+ *   never confirmable: it stays `unverifiable` until it is edited to a food Famara knows. A
+ *   confirmation names the allergens and diets it was made against, and only counts while it
+ *   covers everything they declare now, so adding an allergen later puts the line back up.
  * - A known conflict (the line contains a declared allergen, or an ingredient the diet rules out)
  *   is never confirmable. It stays a conflict whatever the person confirms.
  * - Until the person has answered the allergen and diet questions nothing is clear.
@@ -15,7 +20,7 @@
  * Only recipes whose status is `clear` may appear in any suggestion list.
  */
 import { compileSafetyRules, DIET_ALLERGEN_CHECKS, type SafetyPrefs } from '../safety';
-import { ALLERGEN_HINTS, DIET_HINTS } from './hints';
+import { ADVISORY_WORDS, ALLERGEN_HINTS, COMPOUND_FOODS, DIET_HINTS } from './hints';
 import { isPlausibleMatch, type MatchableIngredient } from './match';
 import { foodWords, nameKey, tokenize } from './words';
 import type { AllergenId } from '../types/allergens';
@@ -66,9 +71,11 @@ export type IngredientIssueCode = IngredientIssue['code'];
  * - `clear`: checked against the catalog, nothing to worry about.
  * - `confirmed`: the person checked it themselves; counts as clear.
  * - `needs_check`: Famara cannot tell; the person may confirm it.
+ * - `unverifiable`: may hold an allergen the person declared and Famara cannot tell; never
+ *   confirmable, so the recipe stays out of suggestions until the line is edited.
  * - `conflict`: contains a declared allergen or breaks a diet; never confirmable.
  */
-export type IngredientVerdict = 'clear' | 'confirmed' | 'needs_check' | 'conflict';
+export type IngredientVerdict = 'clear' | 'confirmed' | 'needs_check' | 'unverifiable' | 'conflict';
 
 export interface IngredientCheck {
   readonly index: number;
@@ -89,6 +96,8 @@ export interface OwnRecipeSafety {
   readonly ingredients: readonly IngredientCheck[];
   /** Lines the person could confirm. */
   readonly toConfirm: number;
+  /** Lines that may hold a declared allergen and cannot be confirmed. */
+  readonly unverifiable: number;
   readonly conflicts: number;
   /** Lines that count as clear (`clear` or `confirmed`). */
   readonly cleared: number;
@@ -116,15 +125,57 @@ function hasDiet(flags: number, diet: DietFlagName): boolean {
   return (withImpliedDiets(flags) & DietFlag[diet]) !== 0;
 }
 
-/** Words of the line the catalog match does not account for. */
-function unexplainedWords(ingredient: OwnIngredient, catalog: CatalogFacts | null): Set<string> {
-  const words = new Set([...foodWords(ingredient.text), ...foodWords(ingredient.name)]);
-  if (catalog) {
-    for (const name of [catalog.name, catalog.plural, catalog.id.replace(/_/g, ' ')]) {
-      if (name) for (const word of foodWords(name)) words.delete(word);
+/** Removes one occurrence of the first catalog name found as a run of words, else each word once. */
+function withoutMatch(words: readonly string[], names: readonly (readonly string[])[]): string[] {
+  for (const name of names) {
+    if (name.length === 0) continue;
+    for (let start = 0; start + name.length <= words.length; start += 1) {
+      if (name.every((word, offset) => words[start + offset] === word)) {
+        return [...words.slice(0, start), ...words.slice(start + name.length)];
+      }
     }
   }
-  return words;
+  const rest = [...words];
+  for (const word of names[0] ?? []) {
+    const at = rest.indexOf(word);
+    if (at >= 0) rest.splice(at, 1);
+  }
+  return rest;
+}
+
+/** Splits a line at its allergen note: the words before it, and the note's words. */
+function splitAdvisory(text: string): { readonly body: string[]; readonly note: string[] } {
+  const tokens = tokenize(text);
+  const at = tokens.findIndex((token) => ADVISORY_WORDS.includes(token));
+  if (at < 0) return { body: foodWords(text), note: [] };
+  return {
+    body: foodWords(tokens.slice(0, at).join(' ')),
+    note: foodWords(tokens.slice(at).join(' ')),
+  };
+}
+
+interface Leftover {
+  /** Words the match does not account for, allergen notes included. */
+  readonly words: ReadonlySet<string>;
+  /** A food made of other foods is left over, so the match cannot vouch for any allergen. */
+  readonly compound: boolean;
+}
+
+/** What is left of the line once the catalog match is taken away, each matched word only once. */
+function leftover(ingredient: OwnIngredient, catalog: CatalogFacts | null): Leftover {
+  const names = catalog
+    ? [catalog.name, catalog.plural, catalog.id.replace(/_/g, ' ')]
+        .filter((name): name is string => Boolean(name))
+        .map(foodWords)
+    : [];
+  const text = splitAdvisory(ingredient.text);
+  const name = splitAdvisory(ingredient.name);
+  const rest = [...withoutMatch(text.body, names), ...withoutMatch(name.body, names)];
+  const words = new Set([...rest, ...text.note, ...name.note]);
+  return {
+    words,
+    compound: catalog !== null && rest.some((word) => COMPOUND_FOODS.includes(word)),
+  };
 }
 
 const mentions = (words: ReadonlySet<string>, hints: readonly string[]) =>
@@ -142,12 +193,12 @@ export function ingredientIssues(
   else if (catalog.allergenStatus !== 'resolved') unsure.push({ code: 'composition_unknown' });
   const contains = new Set(catalog?.allergens ?? []);
   const resolved = catalog?.allergenStatus === 'resolved';
-  const words = unexplainedWords(ingredient, catalog);
+  const { words, compound } = leftover(ingredient, catalog);
   // An allergen is clear only when the line is matched, the match is resolved and does not hold
-  // it, and nothing else on the line hints at it.
+  // it, nothing else on the line hints at it, and no other made-up food is on the line.
   const allergenState = (allergen: AllergenId): 'contains' | 'unknown' | 'free' => {
     if (contains.has(allergen)) return 'contains';
-    if (!resolved || mentions(words, ALLERGEN_HINTS[allergen])) return 'unknown';
+    if (!resolved || compound || mentions(words, ALLERGEN_HINTS[allergen])) return 'unknown';
     return 'free';
   };
 
@@ -201,6 +252,9 @@ function verdictOf(
     return 'conflict';
   if (!answered) return 'needs_check';
   if (issues.length === 0) return 'clear';
+  // Only allergens the person declared are checked, so any unverified one is theirs: a manual
+  // check never clears it.
+  if (issues.some((issue) => issue.code === 'allergen_unverified')) return 'unverifiable';
   return confirmed ? 'confirmed' : 'needs_check';
 }
 
@@ -233,13 +287,22 @@ export function checkOwnRecipe(input: OwnRecipeCheckInput): OwnRecipeSafety {
   const toConfirm = rules.answered
     ? ingredients.filter((line) => line.verdict === 'needs_check').length
     : 0;
+  const unverifiable = ingredients.filter((line) => line.verdict === 'unverifiable').length;
   const cleared = ingredients.filter(
     (line) => line.verdict === 'clear' || line.verdict === 'confirmed',
   ).length;
   const allClear = ingredients.length > 0 && cleared === ingredients.length;
   const status: OwnRecipeStatus =
     conflicts > 0 ? 'conflict' : rules.answered && allClear ? 'clear' : 'needs_check';
-  return { status, unanswered: !rules.answered, ingredients, toConfirm, conflicts, cleared };
+  return {
+    status,
+    unanswered: !rules.answered,
+    ingredients,
+    toConfirm,
+    unverifiable,
+    conflicts,
+    cleared,
+  };
 }
 
 /** The only gate for suggestion lists. */
@@ -250,7 +313,8 @@ export function isClearedForSuggestions(safety: OwnRecipeSafety): boolean {
 /**
  * Records "I checked this" for a line under the person's current declarations, replacing any
  * older confirmation of it. Returns null while the safety questions are unanswered: there is
- * nothing to check against yet. Confirming a conflict has no effect (see `checkOwnRecipe`).
+ * nothing to check against yet. Confirming a conflict or an unverifiable line has no effect (see
+ * `checkOwnRecipe`).
  */
 export function confirmIngredient(
   confirmations: readonly IngredientConfirmation[],

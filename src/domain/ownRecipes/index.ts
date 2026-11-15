@@ -27,7 +27,7 @@ export {
   type PantryCoverage,
   type PantryEntry,
 } from './coverage';
-export { ALLERGEN_HINTS, DIET_HINTS } from './hints';
+export { ADVISORY_WORDS, ALLERGEN_HINTS, COMPOUND_FOODS, DIET_HINTS } from './hints';
 export {
   isPlausibleMatch,
   lookupPhrases,

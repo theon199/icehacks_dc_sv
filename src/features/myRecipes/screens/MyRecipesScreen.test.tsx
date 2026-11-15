@@ -103,7 +103,7 @@ describe('MyRecipesScreen', () => {
     expect(screen.getByText('Needs a check')).toBeOnTheScreen();
     expect(screen.getByText('You have all 2')).toBeOnTheScreen();
     expect(screen.getByText('Need bay leaves')).toBeOnTheScreen();
-    expect(screen.getByText('1 to confirm')).toBeOnTheScreen();
+    expect(screen.getByText("1 can't be checked")).toBeOnTheScreen();
     expect(screen.getByText('Contains peanuts')).toBeOnTheScreen();
 
     await user.press(screen.getByTestId('my-recipes-add'));

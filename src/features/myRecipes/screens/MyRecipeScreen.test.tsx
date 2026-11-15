@@ -51,19 +51,28 @@ afterEach(() => client.clear());
 
 describe('MyRecipeScreen', () => {
   it('re-checks the saved recipe and stores a confirmation with the new result', async () => {
+    usePreferencesStore.setState({
+      prefs: { ...defaultPreferences, allergensAnswered: true, allergens: [], diets: [] },
+    });
     const user = userEvent.setup();
     await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
     expect(await screen.findByText('1 ingredient to confirm')).toBeOnTheScreen();
     await user.press(screen.getByTestId('safety-confirm-single'));
     expect(await screen.findByText('Fits your allergies and diet')).toBeOnTheScreen();
     const saved = useMyRecipesStore.getState().recipes.ube;
-    expect(saved?.safety).toMatchObject({ status: 'clear', allergens: ['milk'] });
-    expect(saved?.confirmations).toEqual([
-      expect.objectContaining({ allergens: ['milk'], diets: [] }),
-    ]);
+    expect(saved?.safety).toMatchObject({ status: 'clear', allergens: [] });
+    expect(saved?.confirmations).toEqual([expect.objectContaining({ allergens: [], diets: [] })]);
 
     await user.press(screen.getByTestId('ingredient-0-undo'));
     expect(await screen.findByText('1 ingredient to confirm')).toBeOnTheScreen();
+    expect(useMyRecipesStore.getState().recipes.ube?.safety.status).toBe('needs_check');
+  });
+
+  it('offers no check for a line that may hold a declared allergen', async () => {
+    await renderWithTheme(<MyRecipeScreen id="ube" />, { wrapper });
+    expect(await screen.findByText("1 ingredient Famara can't check")).toBeOnTheScreen();
+    expect(screen.queryByTestId('safety-confirm-single')).toBeNull();
+    expect(screen.queryByText('I checked this')).toBeNull();
     expect(useMyRecipesStore.getState().recipes.ube?.safety.status).toBe('needs_check');
   });
 

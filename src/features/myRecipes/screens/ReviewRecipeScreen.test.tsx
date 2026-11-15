@@ -129,15 +129,16 @@ afterEach(() => client.clear());
 
 describe('ReviewRecipeScreen', () => {
   it('checks every ingredient, lets the person confirm the unknown one, and saves', async () => {
+    usePreferencesStore.setState({
+      prefs: { ...defaultPreferences, allergensAnswered: true, allergens: [], diets: [] },
+    });
     const user = userEvent.setup();
     await renderReview();
 
     expect(screen.getByText("Mom's chicken adobo")).toBeOnTheScreen();
     expect(await screen.findByText('1 ingredient to confirm')).toBeOnTheScreen();
     expect(screen.getByText('1 of 4 in your pantry')).toBeOnTheScreen();
-    expect(
-      screen.getByText("Famara doesn't know this ingredient · May contain peanuts"),
-    ).toBeOnTheScreen();
+    expect(screen.getByText("Famara doesn't know this ingredient")).toBeOnTheScreen();
 
     await user.press(screen.getByTestId('safety-confirm-single'));
     expect(await screen.findByText('Fits your allergies and diet')).toBeOnTheScreen();
@@ -150,7 +151,7 @@ describe('ReviewRecipeScreen', () => {
       title: "Mom's chicken adobo",
       meal: 'dinner',
       source: { kind: 'photo', url: null },
-      safety: { status: 'clear', allergens: ['peanut'], diets: [] },
+      safety: { status: 'clear', allergens: [], diets: [] },
       ingredients: [
         { name: 'chicken thighs', catalogIngredientId: 'chicken_thigh' },
         { name: 'soy sauce', catalogIngredientId: 'soy_sauce' },
@@ -164,6 +165,21 @@ describe('ReviewRecipeScreen', () => {
       params: { id: 'recipe-1' },
     });
     expect(useImportSession.getState().pending).toBeNull();
+  });
+
+  it("won't let an unknown line be confirmed for someone with a declared allergen", async () => {
+    const user = userEvent.setup();
+    await renderReview();
+    expect(await screen.findByText("1 ingredient Famara can't check")).toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        "Famara doesn't know this ingredient · May contain peanuts · Famara can't confirm this",
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.queryByTestId('safety-confirm-single')).toBeNull();
+    expect(screen.queryByText('I checked this')).toBeNull();
+    await user.press(screen.getByTestId('review-save'));
+    expect(useMyRecipesStore.getState().recipes['recipe-1']?.safety.status).toBe('needs_check');
   });
 
   it('shows a declared allergen as a conflict with no way to confirm it', async () => {
@@ -192,14 +208,16 @@ describe('ReviewRecipeScreen', () => {
   it('lets the person edit a field before saving', async () => {
     const user = userEvent.setup();
     await renderReview();
-    await screen.findByText('1 ingredient to confirm');
+    await screen.findByText("1 ingredient Famara can't check");
     await user.press(screen.getByTestId('review-edit'));
     const title = screen.getByTestId('edit-title');
     await user.clear(title);
     await user.type(title, 'Adobo');
     await user.press(screen.getByTestId('review-edit'));
     expect(screen.getByText('Adobo')).toBeOnTheScreen();
-    await waitFor(() => expect(screen.getByText('1 ingredient to confirm')).toBeOnTheScreen());
+    await waitFor(() =>
+      expect(screen.getByText("1 ingredient Famara can't check")).toBeOnTheScreen(),
+    );
     await user.press(screen.getByTestId('review-save'));
     expect(useMyRecipesStore.getState().recipes['recipe-1']).toMatchObject({
       title: 'Adobo',

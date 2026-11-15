@@ -22,6 +22,9 @@ function statusOf(check: MyRecipeCheck): { label: string; tone: TagTone } {
   }
   if (!check.cleared) {
     if (safety.unanswered) return { label: 'Answer allergies first', tone: 'accent' };
+    if (safety.unverifiable > 0) {
+      return { label: `${safety.unverifiable} can't be checked`, tone: 'accent' };
+    }
     const count = safety.toConfirm;
     return {
       label: count > 0 ? `${count} to confirm` : 'Checking',
