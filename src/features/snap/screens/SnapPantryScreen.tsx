@@ -3,9 +3,7 @@ import { router } from 'expo-router';
 import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { haptics } from '@/lib/haptics';
-import { MAX_PANTRY_ITEMS, usePantryStore } from '@/stores';
-import { Button, EmptyState, space, Text, toast } from '@/ui';
+import { Button, EmptyState, space, Text } from '@/ui';
 
 import { AddItemField } from '../components/AddItemField';
 import { DraftItemRow } from '../components/DraftItemRow';
@@ -14,18 +12,18 @@ import { PantryMeals } from '../components/PantryMeals';
 import { ResultHeader } from '../components/ResultHeader';
 import { ResultSheet } from '../components/ResultSheet';
 import { SnapPill } from '../components/SnapPill';
+import { useAddToPantry, type AddedToPantry } from '../hooks/useAddToPantry';
 import { useIngredientMatches } from '../hooks/useIngredientMatches';
 import { snapCameraHref } from '../links';
 import {
   draftFromDetections,
   draftReducer,
-  isInPantry,
   selectedItems,
-  toNewPantryItems,
   type DraftItem,
 } from '../logic/pantryDraft';
 import { nameKey } from '../logic/words';
-import { selectPantryResult, useSnapSession, type PantrySnapResult } from '../snapSession';
+import { useSnapSession, type PantrySnapResult } from '../snapSession';
+import { SweepReview } from './SweepReview';
 
 /** Back to the camera for another photo. */
 function retake() {
@@ -33,35 +31,22 @@ function retake() {
   else router.replace(snapCameraHref({ mode: 'pantry' }));
 }
 
-/** What to say when the pantry kept some (or none) of the ticked items. */
-function refusalMessage(landed: number, refused: number, full: boolean): string {
-  const lead = landed === 0 ? '' : `Added ${landed}. `;
-  if (full) {
-    return landed === 0
-      ? `Your pantry is full (${MAX_PANTRY_ITEMS} items). Remove a few items to make room.`
-      : `${lead}${refused} didn't fit: your pantry holds ${MAX_PANTRY_ITEMS} items.`;
-  }
-  const what = refused === 1 ? "1 item couldn't" : `${refused} items couldn't`;
-  return `${lead}${what} be added. Check the name and amount, then try again.`;
-}
-
-/** Review what a pantry photo found, add it to the pantry, then see meals it makes possible. */
+/**
+ * Review what a pantry photo (or a fridge sweep) found, add it to the pantry, then see meals it
+ * makes possible.
+ */
 export function SnapPantryScreen() {
-  const result = useSnapSession(selectPantryResult);
-  if (!result) return <NoSnapResult mode="pantry" />;
+  const result = useSnapSession((state) => state.result);
   // A new snap starts a fresh review.
+  if (result?.mode === 'sweep') return <SweepReview key={result.id} result={result} />;
+  if (result?.mode !== 'pantry') return <NoSnapResult mode="pantry" />;
   return <PantryReview key={result.id} result={result} />;
-}
-
-interface Added {
-  count: number;
-  snappedIds: string[];
 }
 
 function PantryReview({ result }: { result: PantrySnapResult }) {
   const [items, dispatch] = useReducer(draftReducer, result.items, draftFromDetections);
-  const [added, setAdded] = useState<Added | null>(null);
-  const addMany = usePantryStore((state) => state.addMany);
+  const [added, setAdded] = useState<AddedToPantry | null>(null);
+  const add = useAddToPantry(dispatch);
   const nextKey = useRef(0);
 
   const names = useMemo(() => items.map((item) => item.name), [items]);
@@ -84,38 +69,8 @@ function PantryReview({ result }: { result: PantrySnapResult }) {
   }, []);
 
   const addToPantry = () => {
-    const kept = selectedItems(items);
-    const entries = toNewPantryItems(items, matches);
-    if (entries.length === 0) return;
-    addMany(entries);
-    // The pantry turns items away when it is full or an entry breaks its rules; only report what
-    // it really stored.
-    const stored = usePantryStore.getState().items;
-    const refusedKeys = new Set<string>();
-    entries.forEach((entry, index) => {
-      const key = kept[index]?.key;
-      if (key && !isInPantry(stored, entry)) refusedKeys.add(key);
-    });
-    if (refusedKeys.size > 0) {
-      const landed = entries.length - refusedKeys.size;
-      haptics.warning();
-      // Keep the review open with only what did not fit, so nothing is silently lost.
-      for (const item of kept) {
-        if (!refusedKeys.has(item.key)) dispatch({ type: 'remove', key: item.key });
-      }
-      const full = Object.keys(stored).length >= MAX_PANTRY_ITEMS;
-      toast.show({ message: refusalMessage(landed, refusedKeys.size, full), tone: 'danger' });
-      return;
-    }
-    haptics.success();
-    toast.show({
-      message: entries.length === 1 ? 'Added to your pantry' : `${entries.length} items added`,
-      tone: 'success',
-    });
-    setAdded({
-      count: entries.length,
-      snappedIds: entries.flatMap((entry) => (entry.ingredientId ? [entry.ingredientId] : [])),
-    });
+    const done = add(items, matches);
+    if (done) setAdded(done);
   };
 
   if (added) {

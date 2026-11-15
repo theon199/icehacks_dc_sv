@@ -46,6 +46,17 @@ jest.mock('expo-camera', () => {
   return { CameraView, useCameraPermissions: jest.fn() };
 });
 jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: jest.fn() }));
+jest.mock('expo-speech-recognition', () => ({
+  ExpoSpeechRecognitionModule: {
+    isRecognitionAvailable: jest.fn(() => true),
+    requestPermissionsAsync: jest.fn(async () => ({ granted: true })),
+    supportsOnDeviceRecognition: jest.fn(() => true),
+    start: jest.fn(),
+    stop: jest.fn(),
+    abort: jest.fn(),
+  },
+  useSpeechRecognitionEvent: jest.fn(),
+}));
 jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('../capture/preparePhoto', () => ({ preparePhoto: jest.fn() }));
 jest.mock('@/lib/api/ai', () => ({
@@ -81,11 +92,25 @@ function permission(state: 'granted' | 'ask' | 'blocked') {
 
 const quota = { remaining: 4, reset_at: '2026-11-12T00:00:00Z' };
 
+/**
+ * One pantry photo from the library: in Pantry mode the shutter starts a fridge sweep (see
+ * SnapSweep.test.tsx), so a single photo comes from the library.
+ */
+async function snapOnePhoto() {
+  const library = screen.getByRole('button', { name: 'Choose a photo from your library' });
+  await waitFor(() => expect(library).toBeEnabled());
+  await userEvent.setup().press(library);
+}
+
 beforeEach(() => {
   useSnapSession.getState().clear();
   signIn({ age: 30, consent: true });
   permission('granted');
   mockTakePicture.mockResolvedValue({ uri: 'file:///shot.jpg', width: 4032, height: 3024 });
+  jest.mocked(launchImageLibraryAsync).mockResolvedValue({
+    canceled: false,
+    assets: [{ uri: 'file:///lib.jpg', width: 4032, height: 3024 } as never],
+  });
   jest.mocked(preparePhoto).mockResolvedValue({
     uri: 'file:///small.jpg',
     base64: 'YWJj',
@@ -198,7 +223,7 @@ describe('Snap camera', () => {
     expect(openSettings).toHaveBeenCalled();
   });
 
-  it('reads a pantry photo and opens the pantry result', async () => {
+  it('reads a pantry photo from the library and opens the pantry result', async () => {
     jest.mocked(aiApi.readSnap).mockResolvedValue({
       status: 'ok',
       mode: 'pantry',
@@ -206,13 +231,11 @@ describe('Snap camera', () => {
       quota,
     });
     await renderScreen(<SnapScreen />);
-    const shutter = screen.getByRole('button', { name: 'Take photo' });
-    await waitFor(() => expect(shutter).toBeEnabled());
-    await userEvent.setup().press(shutter);
+    await snapOnePhoto();
 
     await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/snap/pantry'));
     expect(preparePhoto).toHaveBeenCalledWith({
-      uri: 'file:///shot.jpg',
+      uri: 'file:///lib.jpg',
       width: 4032,
       height: 3024,
     });
@@ -257,6 +280,30 @@ describe('Snap camera', () => {
     expect(jest.mocked(aiApi.readSnap).mock.calls[0]?.[0]).toMatchObject({ mode: 'dish' });
   });
 
+  it('takes one photo with the shutter in Dish mode', async () => {
+    jest.mocked(aiApi.readSnap).mockResolvedValue({
+      status: 'no_food',
+      mode: 'dish',
+      reason: 'unclear',
+      message: 'Hard to read',
+      quota,
+    });
+    await renderScreen(<SnapScreen />);
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('tab', { name: 'Dish' }));
+    const shutter = screen.getByRole('button', { name: 'Take photo' });
+    await waitFor(() => expect(shutter).toBeEnabled());
+    await user.press(shutter);
+    expect(await screen.findByText('That photo is hard to read')).toBeOnTheScreen();
+    expect(mockTakePicture).toHaveBeenCalledTimes(1);
+    expect(preparePhoto).toHaveBeenCalledWith({
+      uri: 'file:///shot.jpg',
+      width: 4032,
+      height: 3024,
+    });
+    expect(jest.mocked(aiApi.readSnap).mock.calls[0]?.[0]).toEqual({ mode: 'dish', image: 'YWJj' });
+  });
+
   it('asks for another photo when no food is found', async () => {
     jest.mocked(aiApi.readSnap).mockResolvedValue({
       status: 'no_food',
@@ -266,9 +313,7 @@ describe('Snap camera', () => {
       quota,
     });
     await renderScreen(<SnapScreen />);
-    const shutter = screen.getByRole('button', { name: 'Take photo' });
-    await waitFor(() => expect(shutter).toBeEnabled());
-    await userEvent.setup().press(shutter);
+    await snapOnePhoto();
     expect(await screen.findByText("We couldn't see any food")).toBeOnTheScreen();
     await userEvent.setup().press(screen.getByRole('button', { name: 'Retake' }));
     expect(await screen.findByTestId('mock-camera')).toBeOnTheScreen();
@@ -286,9 +331,7 @@ describe('Snap camera', () => {
       }),
     );
     await renderScreen(<SnapScreen />);
-    const shutter = screen.getByRole('button', { name: 'Take photo' });
-    await waitFor(() => expect(shutter).toBeEnabled());
-    await userEvent.setup().press(shutter);
+    await snapOnePhoto();
     expect(await screen.findByText("You've reached today's Snap limit")).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retake' })).toBeNull();
@@ -296,7 +339,7 @@ describe('Snap camera', () => {
     expect(await screen.findByTestId('mock-camera')).toBeOnTheScreen();
 
     // Dismissing the message does not bring snapping back before the limit resets.
-    expect(screen.getByRole('button', { name: 'Take photo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Start filming' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Choose a photo from your library' })).toBeDisabled();
     expect(screen.getByTestId('snap-hint')).toHaveTextContent(/Daily limit reached/);
     expect(aiApi.readSnap).toHaveBeenCalledTimes(1);
@@ -342,9 +385,7 @@ describe('Snap camera', () => {
       .mockRejectedValueOnce(new ApiError({ kind: 'network', functionName: 'snap' }))
       .mockResolvedValueOnce({ status: 'ok', mode: 'pantry', items: [], quota });
     await renderScreen(<SnapScreen />);
-    const shutter = screen.getByRole('button', { name: 'Take photo' });
-    await waitFor(() => expect(shutter).toBeEnabled());
-    await userEvent.setup().press(shutter);
+    await snapOnePhoto();
     expect(await screen.findByText("You're offline")).toBeOnTheScreen();
     await userEvent.setup().press(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/snap/pantry'));
@@ -363,9 +404,7 @@ describe('Snap camera', () => {
         }),
     );
     await renderScreen(<SnapScreen />);
-    const shutter = screen.getByRole('button', { name: 'Take photo' });
-    await waitFor(() => expect(shutter).toBeEnabled());
-    await userEvent.setup().press(shutter);
+    await snapOnePhoto();
     expect(await screen.findByText('Spotting the food items')).toBeOnTheScreen();
     await userEvent.setup().press(screen.getByRole('button', { name: 'Cancel' }));
     expect(signal?.aborted).toBe(true);
@@ -381,9 +420,7 @@ describe('Snap camera', () => {
         new ApiError({ kind: 'validation', functionName: 'snap', status: 422, code: 'ai_refused' }),
       );
     await renderScreen(<SnapScreen />);
-    const shutter = screen.getByRole('button', { name: 'Take photo' });
-    await waitFor(() => expect(shutter).toBeEnabled());
-    await userEvent.setup().press(shutter);
+    await snapOnePhoto();
     expect(await screen.findByText("Couldn't read that photo")).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Retake' })).toBeOnTheScreen();
@@ -400,9 +437,7 @@ describe('Snap camera', () => {
         }),
     );
     await renderScreen(<SnapScreen />);
-    const shutter = screen.getByRole('button', { name: 'Take photo' });
-    await waitFor(() => expect(shutter).toBeEnabled());
-    await userEvent.setup().press(shutter);
+    await snapOnePhoto();
     await waitFor(() => expect(finish).toBeDefined());
 
     await act(() => {

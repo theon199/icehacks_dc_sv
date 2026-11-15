@@ -64,15 +64,19 @@ function abortRecognition(): void {
   }
 }
 
-export function useSweepDictation(onPhrase: (text: string) => void) {
+/**
+ * `onEnd` hears every end of listening, with the whole phrase (empty when nothing was said), so a
+ * caller waiting on the mic can always carry on.
+ */
+export function useSweepDictation(onEnd: (phrase: string) => void) {
   const [status, setStatus] = useState<DictationStatus>('off');
   const [transcript, setTranscript] = useState('');
   /** Whether this hook started a session that has not ended yet. */
   const active = useRef(false);
   const heard = useRef('');
-  const handler = useRef(onPhrase);
+  const handler = useRef(onEnd);
   useLayoutEffect(() => {
-    handler.current = onPhrase;
+    handler.current = onEnd;
   });
 
   useSpeechRecognitionEvent('start', () => {
@@ -85,12 +89,13 @@ export function useSweepDictation(onPhrase: (text: string) => void) {
   });
   useSpeechRecognitionEvent('error', (event) => {
     if (!active.current || QUIET.has(event.error)) return;
-    if (event.error === 'not-allowed') {
+    if (event.error === 'not-allowed' || UNAVAILABLE.has(event.error)) {
+      // The session is over without its `end` being of use: hand over what was heard now.
       active.current = false;
-      setStatus('denied');
-    } else if (UNAVAILABLE.has(event.error)) {
-      active.current = false;
-      setStatus('unavailable');
+      setStatus(event.error === 'not-allowed' ? 'denied' : 'unavailable');
+      const phrase = heard.current.trim();
+      heard.current = '';
+      handler.current(phrase);
     } else {
       logger.warn('Sweep dictation failed', { code: event.error });
     }
@@ -101,7 +106,7 @@ export function useSweepDictation(onPhrase: (text: string) => void) {
     setStatus('off');
     const phrase = heard.current.trim();
     heard.current = '';
-    if (phrase) handler.current(phrase);
+    handler.current(phrase);
   });
 
   const start = useCallback(async () => {
@@ -136,13 +141,20 @@ export function useSweepDictation(onPhrase: (text: string) => void) {
     }
   }, []);
 
-  /** Ends listening; what was heard so far is still handed over. */
-  const stop = useCallback(() => {
-    if (!active.current) return;
+  /**
+   * Ends listening; what was heard so far is still handed over through `onEnd`. False when no
+   * session was running, so there is nothing to wait for.
+   */
+  const stop = useCallback((): boolean => {
+    if (!active.current) return false;
     try {
       ExpoSpeechRecognitionModule.stop();
+      return true;
     } catch {
+      active.current = false;
+      setStatus('off');
       abortRecognition();
+      return false;
     }
   }, []);
 
