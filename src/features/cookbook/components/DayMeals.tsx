@@ -1,11 +1,11 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 
 import type { DayIndex, IsoDate, MealSlot } from '@/domain/plan';
 import type { RecipeSummary } from '@/lib/catalog';
 import { entryPortion, slotKey, type PlanWeek } from '@/stores';
-import { IconButton, space, Text, toast } from '@/ui';
+import { fontFamily, space, Text, toast, useTheme } from '@/ui';
 
 import { ActionSheet } from './ActionSheet';
 import { AddMealSheet } from './AddMealSheet';
@@ -13,7 +13,7 @@ import { SlotPickerSheet } from './SlotPickerSheet';
 import { SlotRow } from './SlotRow';
 import { plannerActions, type SlotRef } from '../hooks/usePlanner';
 import { ARCHIVED_WEEK_MESSAGE } from '../model/planToast';
-import { mealsForDay, SLOT_LABELS, type DayInfo } from '../model/week';
+import { mealsForDay, plannedSummary, SLOT_LABELS, type DayInfo } from '../model/week';
 
 export interface DayMealsProps {
   weekStart: IsoDate;
@@ -28,6 +28,9 @@ export interface DayMealsProps {
   moveWeeks: readonly IsoDate[];
   /** The person's current allergen and diet rules; meals planned before a change may now fail them. */
   isSafe: (recipe: RecipeSummary) => boolean;
+  /** Fixed card size inside the day rail; omitted, the card sizes to its content. */
+  width?: number;
+  height?: number;
 }
 
 /**
@@ -38,7 +41,12 @@ function openRecipe(id: string, portion: number) {
   router.push({ pathname: '/recipe/[id]', params: { id, portion: String(portion) } });
 }
 
-/** The meal slots of one day, with add, move and remove flows. */
+/**
+ * One day of the planner as a card: its weekday and plan summary, then each meal as its own tile.
+ * Add, move, replace and remove flows open from the tiles; clearing the whole day sits in a filled
+ * meal's actions. The body scrolls only when the meals are taller than the card, so it never takes
+ * a drag that belongs to the rail or the page.
+ */
 export function DayMeals({
   weekStart,
   today,
@@ -49,12 +57,17 @@ export function DayMeals({
   smallAppetite,
   moveWeeks,
   isSafe,
+  width,
+  height,
 }: DayMealsProps) {
+  const theme = useTheme();
   const day: DayIndex = info.day;
   const meals = mealsForDay(slots, day);
   const [adding, setAdding] = useState<MealSlot | null>(null);
   const [actionsFor, setActionsFor] = useState<MealSlot | null>(null);
   const [moving, setMoving] = useState<MealSlot | null>(null);
+  const [bodyHeight, setBodyHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
   const ref = useCallback(
     (slot: MealSlot): SlotRef => ({ week: weekStart, day, slot }),
     [weekStart, day],
@@ -95,42 +108,92 @@ export function DayMeals({
     ]);
   };
 
-  const hasMeals = meals.some((m) => m.entry);
+  const planned = meals.filter((m) => m.entry).length;
+  const hasMeals = planned > 0;
+  const plannedText = plannedSummary(planned);
+  const fixed = width !== undefined && height !== undefined;
+  const scrolls = fixed && bodyHeight > 0 && contentHeight > bodyHeight + 1;
+  const tiles = meals.map((meal) => {
+    const recipe = meal.entry ? recipes.get(meal.entry.recipeId) : undefined;
+    return (
+      <SlotRow
+        key={meal.slot}
+        slot={meal.slot}
+        entry={meal.entry}
+        recipe={recipe}
+        unsafe={recipe !== undefined && !isSafe(recipe)}
+        readOnly={readOnly}
+        portion={meal.entry ? entryPortion(meal.entry, meal.slot, smallAppetite) : 1}
+        onAdd={setAdding}
+        onOpen={openRecipe}
+        onActions={setActionsFor}
+        onMove={setMoving}
+        onClear={clear}
+      />
+    );
+  });
   return (
-    <View style={styles.root}>
+    <View
+      style={[
+        styles.root,
+        {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.radii.card,
+          borderColor: info.isToday ? theme.colors.primary : theme.colors.border,
+          borderWidth: info.isToday ? 2 : 1,
+          shadowColor: theme.colors.shadow,
+          ...theme.elevation.medium,
+        },
+        fixed ? { width, height } : null,
+        info.isPast && !info.isToday ? styles.past : null,
+      ]}
+      testID={`day-card-${info.date}`}
+    >
       <View style={styles.heading}>
-        <Text variant="title3" style={styles.flex} testID="day-heading">
-          {info.isToday ? `Today, ${info.long}` : info.long}
-        </Text>
-        {hasMeals && !readOnly ? (
-          <IconButton
-            icon="trash"
-            accessibilityLabel={`Clear ${info.long}`}
-            onPress={clearDay}
-            color="textMuted"
-            testID="clear-day"
-          />
+        <View
+          style={styles.titles}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`${info.isToday ? `Today, ${info.long}` : info.long}, ${plannedText.toLowerCase()}`}
+          testID={`day-heading-${info.date}`}
+        >
+          <Text variant="title2" numberOfLines={1} maxFontSizeMultiplier={1.4}>
+            {info.weekday}
+          </Text>
+          <Text variant="caption" tone="muted" numberOfLines={1} maxFontSizeMultiplier={1.4}>
+            {`${info.monthDay} · ${plannedText}`}
+          </Text>
+        </View>
+        {info.isToday ? (
+          <View
+            style={[
+              styles.today,
+              { backgroundColor: theme.colors.primary, borderRadius: theme.radii.pill },
+            ]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <Text variant="caption" color="onPrimary" style={styles.bold}>
+              Today
+            </Text>
+          </View>
         ) : null}
       </View>
-      {meals.map((meal) => {
-        const recipe = meal.entry ? recipes.get(meal.entry.recipeId) : undefined;
-        return (
-          <SlotRow
-            key={meal.slot}
-            slot={meal.slot}
-            entry={meal.entry}
-            recipe={recipe}
-            unsafe={recipe !== undefined && !isSafe(recipe)}
-            readOnly={readOnly}
-            portion={meal.entry ? entryPortion(meal.entry, meal.slot, smallAppetite) : 1}
-            onAdd={setAdding}
-            onOpen={openRecipe}
-            onActions={setActionsFor}
-            onMove={setMoving}
-            onClear={clear}
-          />
-        );
-      })}
+      {fixed ? (
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.body}
+          nestedScrollEnabled
+          scrollEnabled={scrolls}
+          showsVerticalScrollIndicator={false}
+          onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}
+          onContentSizeChange={(_, h) => setContentHeight(h)}
+        >
+          {tiles}
+        </ScrollView>
+      ) : (
+        <View style={styles.body}>{tiles}</View>
+      )}
       <ActionSheet
         visible={actionsFor !== null}
         title={actionsFor ? titleOf(actionsFor) : ''}
@@ -158,13 +221,25 @@ export function DayMeals({
                   destructive: true,
                   onPress: () => clear(actionsFor),
                 },
+                ...(hasMeals
+                  ? [
+                      {
+                        key: 'clear-day',
+                        label: `Clear ${info.weekday}`,
+                        icon: 'trash' as const,
+                        destructive: true,
+                        onPress: clearDay,
+                      },
+                    ]
+                  : []),
               ]
             : []
         }
       />
       {adding ? (
         <AddMealSheet
-          title={`${info.short} ${SLOT_LABELS[adding].toLowerCase()}`}
+          slot={SLOT_LABELS[adding].toLowerCase()}
+          dayLabel={`${info.weekday} ${info.monthDay}`}
           onClose={() => setAdding(null)}
           onPick={(recipe) => {
             setAdding(null);
@@ -209,7 +284,12 @@ export function DayMeals({
 }
 
 const styles = StyleSheet.create({
-  root: { gap: space.sm },
-  heading: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+  root: { padding: space.md, gap: space.md },
+  past: { opacity: 0.66 },
+  heading: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  titles: { flex: 1, minWidth: 0, gap: space.xxs },
+  today: { paddingHorizontal: space.md, paddingVertical: space.xs },
+  bold: { fontFamily: fontFamily.textBold },
   flex: { flex: 1 },
+  body: { gap: space.sm },
 });

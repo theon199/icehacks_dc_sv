@@ -1,12 +1,23 @@
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
 import { memo, useCallback } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Modal, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatRelativeTime } from '@/lib/format';
 import { selectThreadList, useChefStore, type ChefThread } from '@/stores';
-import { Button, IconButton, PressableScale, Text, gutter, space, useTheme } from '@/ui';
+import {
+  GlassIconButton,
+  Icon,
+  IconButton,
+  PressableScale,
+  Text,
+  fontFamily,
+  radii,
+  space,
+  useTheme,
+} from '@/ui';
 
+import { AskHeader } from './AskHeader';
 import { readPhotoMark } from '../logic/conversation';
 
 export interface ThreadDrawerProps {
@@ -23,6 +34,12 @@ function threadTitle(thread: ChefThread): string {
   return readPhotoMark(thread.title).text || UNTITLED;
 }
 
+function threadMeta(thread: ChefThread): string {
+  const count = thread.messages.length;
+  const messages = count === 1 ? '1 message' : `${count} messages`;
+  return `${formatRelativeTime(thread.updatedAt)} · ${messages}`;
+}
+
 const ThreadRow = memo(function ThreadRow({
   thread,
   active,
@@ -36,31 +53,47 @@ const ThreadRow = memo(function ThreadRow({
 }) {
   const theme = useTheme();
   const title = threadTitle(thread);
-  const when = formatRelativeTime(thread.updatedAt);
+  const meta = threadMeta(thread);
   return (
     <View
       style={[
-        styles.row,
+        styles.card,
         {
-          backgroundColor: active ? theme.colors.primarySoft : 'transparent',
-          borderRadius: theme.radii.md,
+          backgroundColor: theme.colors.surface,
+          ...theme.elevation.medium,
+          shadowColor: theme.colors.shadow,
         },
+        active ? { borderWidth: 1, borderColor: theme.colors.success } : null,
       ]}
     >
       <PressableScale
         accessibilityRole="button"
-        accessibilityLabel={`${title}, ${when}`}
+        accessibilityLabel={`${title}${active ? ', current' : ''}, ${meta}`}
         accessibilityState={{ selected: active }}
+        accessibilityActions={[{ name: 'delete', label: `Delete ${title}` }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'delete') onDelete(thread);
+        }}
         onPress={() => onSelect(thread.id)}
         pressedScale={0.99}
-        style={styles.rowText}
+        style={styles.cardText}
       >
-        <Text variant="body" numberOfLines={1} accessible={false}>
+        <Text variant="headline" numberOfLines={2} accessible={false}>
           {title}
         </Text>
-        <Text variant="footnote" tone="subtle" accessible={false}>
-          {when}
-        </Text>
+        <View style={styles.metaRow}>
+          {active ? (
+            <View style={[styles.current, { backgroundColor: theme.colors.highlightSoft }]}>
+              <View style={[styles.currentDot, { backgroundColor: theme.colors.success }]} />
+              <Text variant="caption" style={styles.currentText} accessible={false}>
+                Current
+              </Text>
+            </View>
+          ) : null}
+          <Text variant="caption" tone="muted" accessible={false}>
+            {meta}
+          </Text>
+        </View>
       </PressableScale>
       <IconButton
         icon="trash"
@@ -73,7 +106,10 @@ const ThreadRow = memo(function ThreadRow({
   );
 });
 
-/** Slide-over list of Chef threads: switch between them, start a new one or delete one. */
+/**
+ * Past chats as their own page, sliding up over Chef: a glass back circle and New chat in the
+ * header, then one card per thread to switch to it or delete it.
+ */
 export function ThreadDrawer({
   visible,
   activeThreadId,
@@ -119,70 +155,104 @@ export function ThreadDrawer({
   );
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View
-          testID="chef-thread-drawer"
-          accessibilityViewIsModal
-          style={[
-            styles.panel,
-            {
-              backgroundColor: theme.colors.surface,
-              paddingTop: insets.top + space.md,
-              paddingBottom: insets.bottom + space.md,
-            },
-          ]}
-        >
-          <View style={styles.header}>
-            <Text variant="title2">Your chats</Text>
-            <IconButton icon="xmark" accessibilityLabel="Close chats" onPress={onClose} />
-          </View>
-          <Button
-            testID="chef-new-thread"
-            label="New chat"
-            icon="square.and.pencil"
-            variant="secondary"
-            fullWidth
-            onPress={onNewThread}
-          />
-          {threads.length === 0 ? (
-            <Text variant="callout" tone="muted" style={styles.empty}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+    >
+      <View
+        testID="chef-thread-drawer"
+        style={[styles.page, { backgroundColor: theme.colors.background }]}
+      >
+        <AskHeader
+          title="Your chats"
+          backLabel="Back to Chef"
+          onBack={onClose}
+          testID="chef-threads-header"
+          trailing={
+            <GlassIconButton
+              icon="square.and.pencil"
+              accessibilityLabel="New chat"
+              accessibilityHint="Starts a new conversation with Chef"
+              onPress={onNewThread}
+              testID="chef-new-thread"
+            />
+          }
+        />
+        {threads.length === 0 ? (
+          <View style={styles.empty}>
+            <View style={[styles.emptyIcon, { backgroundColor: theme.colors.surface }]}>
+              <Icon name="book" size={23} color="textMuted" />
+            </View>
+            <Text variant="headline" align="center">
+              Your next good idea starts here
+            </Text>
+            <Text variant="caption" tone="muted" align="center">
               Your conversations with Chef show up here.
             </Text>
-          ) : (
-            <FlashList
-              data={threads}
-              renderItem={renderItem}
-              keyExtractor={(thread) => thread.id}
-              extraData={activeThreadId}
-              contentContainerStyle={styles.list}
-            />
-          )}
-        </View>
-        <Pressable
-          style={[styles.scrim, { backgroundColor: theme.colors.scrim }]}
-          accessibilityRole="button"
-          accessibilityLabel="Close chats"
-          onPress={onClose}
-        />
+          </View>
+        ) : (
+          <FlashList
+            data={threads}
+            renderItem={renderItem}
+            keyExtractor={(thread) => thread.id}
+            extraData={activeThreadId}
+            ItemSeparatorComponent={Gap}
+            contentContainerStyle={{
+              paddingHorizontal: space.xl,
+              paddingBottom: insets.bottom + space.sectionLarge,
+            }}
+          />
+        )}
       </View>
     </Modal>
   );
 }
 
+function Gap() {
+  return <View style={styles.gap} />;
+}
+
 const styles = StyleSheet.create({
-  overlay: { flex: 1, flexDirection: 'row' },
-  panel: { width: '82%', maxWidth: 380, paddingHorizontal: gutter, gap: space.md },
-  scrim: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  list: { paddingVertical: space.sm },
-  empty: { paddingVertical: space.lg },
-  row: {
+  page: { flex: 1 },
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: space.md,
-    marginBottom: space.xxs,
-    minHeight: 56,
+    borderRadius: radii.xl,
+    paddingRight: space.sm,
   },
-  rowText: { flex: 1, paddingVertical: space.sm, gap: 2 },
+  cardText: {
+    flex: 1,
+    minHeight: 72,
+    paddingVertical: space.md + space.xxs,
+    paddingHorizontal: space.lg,
+    gap: space.sm,
+  },
+  metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm },
+  current: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radii.pill,
+  },
+  currentDot: { width: 6, height: 6, borderRadius: 3 },
+  currentText: { fontFamily: fontFamily.textBold },
+  gap: { height: space.sm + space.xxs },
+  empty: {
+    alignItems: 'center',
+    gap: space.xs,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.sectionLarge,
+  },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space.xs,
+  },
 });

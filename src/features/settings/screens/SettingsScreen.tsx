@@ -1,28 +1,51 @@
 import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
-import { Button, ListRow, Screen, Text, space, toast } from '@/ui';
+import { Text, space, toast, type IconName } from '@/ui';
 
 import { ABOUT_PAGE_LIST } from '../about/pages';
+import type { AboutSlug } from '../about/types';
 import { AccountError, signOutEverywhere, signOutLocally } from '../account/accountApi';
-import { formatAppVersion, readAppVersion } from '../appVersion';
+import { readAppVersion } from '../appVersion';
 import { AiConsentSection } from '../components/AiConsentSection';
 import { CommunitySafetySection } from '../components/CommunitySafetySection';
 import { DataPrivacySection } from '../components/DataPrivacySection';
 import { GeneralSettings } from '../components/GeneralSettings';
 import { HealthSection } from '../components/HealthSection';
 import { NotificationSettings } from '../components/NotificationSettings';
+import { SettingsPage } from '../components/SettingsPage';
+import { SettingsRow, SettingsValueRow } from '../components/SettingsRow';
 import { SettingsSection } from '../components/SettingsSection';
 
+const SETUP_LINKS: readonly { label: string; icon: IconName; href: Href }[] = [
+  { label: 'Personal details', icon: 'person', href: '/personal-details' },
+  { label: 'Food preferences', icon: 'slider.horizontal.3', href: '/preferences' },
+  { label: 'Pantry', icon: 'cabinet', href: '/pantry' },
+  { label: 'Account', icon: 'person.crop.circle', href: '/account' },
+];
+
+const ABOUT_ICONS: Readonly<Record<AboutSlug, IconName>> = {
+  'how-it-works': 'safari',
+  sources: 'book',
+  'ai-use': 'sparkles',
+  limitations: 'exclamationmark.circle',
+  privacy: 'lock',
+  terms: 'doc.text',
+};
+
+function versionValue(): string {
+  const { version, build } = readAppVersion();
+  return build ? `${version} (${build})` : version;
+}
+
 /**
- * The settings hub: account, preferences, display, notifications, health, community safety, AI,
- * privacy and about.
+ * The settings hub: your setup, cooking and display, notifications, health, community safety, AI,
+ * privacy, transparency pages and account actions.
  */
 export function SettingsScreen() {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
-  const version = formatAppVersion(readAppVersion());
 
   const run = async (work: () => Promise<void>) => {
     setSigningOut(true);
@@ -62,28 +85,16 @@ export function SettingsScreen() {
     );
 
   return (
-    <Screen testID="settings-screen">
-      <SettingsSection title="You">
-        <ListRow
-          title="Account"
-          subtitle="Email, password and deletion"
-          icon="person.crop.circle"
-          divider
-          onPress={() => router.push('/account')}
-        />
-        <ListRow
-          title="Food preferences"
-          subtitle="Cuisines, diet, allergens and goals"
-          icon="fork.knife"
-          divider
-          onPress={() => router.push('/preferences')}
-        />
-        <ListRow
-          title="Personal details"
-          subtitle="Optional, for nutrient targets"
-          icon="figure"
-          onPress={() => router.push('/personal-details')}
-        />
+    <SettingsPage title="Settings" fallbackHref="/profile" testID="settings-screen">
+      <SettingsSection title="Your setup">
+        {SETUP_LINKS.map((link) => (
+          <SettingsRow
+            key={link.label}
+            label={link.label}
+            icon={link.icon}
+            onPress={() => router.push(link.href)}
+          />
+        ))}
       </SettingsSection>
 
       <GeneralSettings />
@@ -95,40 +106,70 @@ export function SettingsScreen() {
       <AiConsentSection />
       <DataPrivacySection />
 
-      <SettingsSection title="About Famara">
-        {ABOUT_PAGE_LIST.map((page, index) => (
-          <ListRow
+      <SettingsSection title="Transparency">
+        {ABOUT_PAGE_LIST.map((page) => (
+          <SettingsRow
             key={page.slug}
-            title={page.title}
-            divider={index < ABOUT_PAGE_LIST.length - 1}
+            label={page.title}
+            icon={ABOUT_ICONS[page.slug]}
             onPress={() => router.push(`/about/${page.slug}` as Href)}
           />
         ))}
       </SettingsSection>
 
-      <Button
-        testID="settings-sign-out"
-        label="Sign out"
-        variant="secondary"
-        fullWidth
-        loading={signingOut}
-        onPress={() => void signOutHere()}
-      />
-      <Button
-        testID="settings-sign-out-everywhere"
-        label="Sign out of all devices"
-        variant="ghost"
-        fullWidth
-        disabled={signingOut}
-        onPress={confirmSignOutAll}
-      />
-      <Text variant="footnote" tone="subtle" align="center" style={styles.version} selectable>
-        {version}
-      </Text>
-    </Screen>
+      <SettingsSection
+        title="Account"
+        footnote="Deleting your account removes everything Famara stores about you and cannot be undone."
+      >
+        <SettingsRow
+          testID="settings-sign-out"
+          label={signingOut ? 'Signing out…' : 'Sign out'}
+          icon="rectangle.portrait.and.arrow.right"
+          accessory="none"
+          disabled={signingOut}
+          onPress={() => void signOutHere()}
+        />
+        <SettingsRow
+          testID="settings-sign-out-everywhere"
+          label="Sign out of all devices"
+          icon="person.crop.circle.badge.xmark"
+          accessory="none"
+          disabled={signingOut}
+          onPress={confirmSignOutAll}
+        />
+        <SettingsRow
+          testID="settings-delete"
+          label="Delete account"
+          icon="trash"
+          tone="destructive"
+          accessory="none"
+          disabled={signingOut}
+          onPress={() => router.push('/account')}
+          accessibilityHint="Opens your account page, where you can confirm deletion."
+        />
+      </SettingsSection>
+
+      <SettingsSection title="About">
+        <SettingsValueRow
+          testID="settings-version"
+          label="Version"
+          value={versionValue()}
+          icon="info.circle"
+        />
+      </SettingsSection>
+
+      <View style={styles.footer}>
+        <Text variant="caption" tone="muted" align="center">
+          Famara
+        </Text>
+        <Text variant="caption" tone="muted" align="center">
+          Better-for-you versions of the dishes you grew up with.
+        </Text>
+      </View>
+    </SettingsPage>
   );
 }
 
 const styles = StyleSheet.create({
-  version: { marginTop: space.sm },
+  footer: { alignItems: 'center', gap: 2, paddingTop: space.sm },
 });

@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { ErrorState, Text, TextField, useTheme } from '@/ui';
+import { ErrorState, Text, space, useTheme } from '@/ui';
 
 import { ChipGroup } from '../components/ChipGroup';
+import { PlainField } from '../components/PlainField';
+import { SectionLabel } from '../components/SectionLabel';
 import { StepHeader } from '../components/StepHeader';
 import { loadCuisineOptions } from '../deps';
 import { MAX_CUISINES, toggleCuisine } from '../onboardingModel';
@@ -30,7 +32,8 @@ export function CuisineStep({ draft, onChange }: StepProps) {
         title="Which cuisines do you love?"
         description={`Pick up to ${MAX_CUISINES}. We’ll start with lighter takes on these.`}
       />
-      <TextField
+      <PlainField
+        style={styles.search}
         testID="cuisine-search"
         label="Search cuisines"
         value={search}
@@ -42,6 +45,7 @@ export function CuisineStep({ draft, onChange }: StepProps) {
         clearable
       />
       <Text
+        style={styles.count}
         variant="subhead"
         tone={full ? 'primary' : 'muted'}
         accessibilityLiveRegion="polite"
@@ -53,23 +57,26 @@ export function CuisineStep({ draft, onChange }: StepProps) {
       </Text>
 
       {query.isPending ? (
-        <ActivityIndicator color={theme.colors.primary} accessibilityLabel="Loading cuisines" />
+        <ActivityIndicator
+          style={styles.state}
+          color={theme.colors.primary}
+          accessibilityLabel="Loading cuisines"
+        />
       ) : query.isError ? (
         <ErrorState
+          style={styles.state}
           title="Cuisines didn’t load"
           message="You can try again, or skip this question for now."
           onRetry={() => void query.refetch()}
         />
       ) : sections.length === 0 ? (
-        <Text variant="callout" tone="muted">
+        <Text variant="callout" tone="muted" style={styles.state}>
           No cuisines match “{search.trim()}”.
         </Text>
       ) : (
         sections.map((section) => (
-          <View key={section.region} style={styles.section}>
-            <Text variant="overline" tone="muted" accessibilityRole="header">
-              {section.label}
-            </Text>
+          <View key={section.region}>
+            <SectionLabel>{section.label}</SectionLabel>
             <ChipGroup
               items={section.cuisines}
               selected={draft.cuisines}
@@ -85,5 +92,7 @@ export function CuisineStep({ draft, onChange }: StepProps) {
 }
 
 const styles = StyleSheet.create({
-  section: { gap: 8 },
+  search: { marginTop: 20 },
+  count: { marginTop: space.md, marginLeft: space.xs },
+  state: { marginTop: space.xl },
 });

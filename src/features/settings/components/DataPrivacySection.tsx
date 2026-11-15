@@ -1,15 +1,16 @@
 import { useRouter } from 'expo-router';
 import { ActivityIndicator } from 'react-native';
 
-import { ListRow, useTheme } from '@/ui';
+import { useTheme } from '@/ui';
 
+import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
 import { useDataExport } from '../account/useDataExport';
 
 export const EXPORT_FOOTNOTE =
   'Your export is a JSON file with everything Famara stores about you, on our servers and on this device.';
 
-/** Export, deletion and the privacy policy. */
+/** Export and the privacy policy. */
 export function DataPrivacySection() {
   const router = useRouter();
   const theme = useTheme();
@@ -17,29 +18,20 @@ export function DataPrivacySection() {
 
   return (
     <SettingsSection title="Data and privacy" footnote={EXPORT_FOOTNOTE}>
-      <ListRow
+      <SettingsRow
         testID="settings-export"
-        title="Export my data"
+        label={exporting ? 'Preparing your export' : 'Export my data'}
         icon="square.and.arrow.up"
-        divider
-        // While an export runs the row has no press handler, so it cannot start a second one.
-        {...(exporting
-          ? { accessory: <ActivityIndicator color={theme.colors.primary} />, value: 'Preparing' }
-          : { onPress: () => void run() })}
+        accessory="none"
+        // While an export runs the row is disabled, so it cannot start a second one.
+        disabled={exporting}
+        onPress={() => void run()}
+        {...(exporting ? { trailing: <ActivityIndicator color={theme.colors.primary} /> } : {})}
       />
-      <ListRow
-        title="Privacy policy"
-        icon="hand.raised"
-        divider
+      <SettingsRow
+        label="Privacy policy"
+        icon="lock"
         onPress={() => router.push('/about/privacy')}
-      />
-      <ListRow
-        testID="settings-delete"
-        title="Delete account"
-        icon="trash"
-        destructive
-        onPress={() => router.push('/account')}
-        accessibilityHint="Opens your account page, where you can confirm deletion."
       />
     </SettingsSection>
   );

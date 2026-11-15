@@ -6,9 +6,10 @@ import { Icon, type IconName } from './Icon';
 import { PressableScale } from './PressableScale';
 import { Text } from './Text';
 import { useTheme } from './ThemeProvider';
-import { minTouchTarget, type Palette } from './tokens';
+import { fontFamily, minTouchTarget, type Palette } from './tokens';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive';
+/** `highlight` is the lime call to action, kept to one per screen. */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive' | 'highlight';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps {
@@ -31,7 +32,7 @@ export interface ButtonProps {
 const sizeStyle: Record<ButtonSize, { height: number; paddingHorizontal: number; icon: number }> = {
   sm: { height: 36, paddingHorizontal: 14, icon: 16 },
   md: { height: 48, paddingHorizontal: 20, icon: 18 },
-  lg: { height: 56, paddingHorizontal: 24, icon: 20 },
+  lg: { height: 52, paddingHorizontal: 20, icon: 18 },
 };
 
 const variantColors: Record<
@@ -47,6 +48,7 @@ const variantColors: Record<
   secondary: { bg: 'surface', pressed: 'surfaceSunken', fg: 'primary', border: 'border' },
   ghost: { bg: null, pressed: 'surfaceSunken', fg: 'primary' },
   destructive: { bg: 'danger', pressed: 'dangerPressed', fg: 'onDanger' },
+  highlight: { bg: 'highlight', pressed: null, fg: 'onHighlight' },
 };
 
 export function Button({
@@ -107,10 +109,11 @@ export function Button({
         <View style={styles.content}>
           {icon ? <Icon name={icon} size={dims.icon} color={colors.fg} weight="semibold" /> : null}
           <Text
-            variant={size === 'sm' ? 'subhead' : 'label'}
+            variant={size === 'sm' ? 'subhead' : 'headline'}
             color={colors.fg}
             numberOfLines={1}
             accessible={false}
+            style={size === 'sm' ? null : styles.label}
           >
             {label}
           </Text>
@@ -123,4 +126,6 @@ export function Button({
 const styles = StyleSheet.create({
   base: { alignItems: 'center', justifyContent: 'center' },
   content: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Medium and large labels: 16pt bold.
+  label: { fontFamily: fontFamily.textBold },
 });

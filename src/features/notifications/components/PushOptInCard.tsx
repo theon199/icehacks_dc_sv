@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { Button, Card, Icon, Text } from '@/ui';
+import { Button, Icon, Text, fontFamily, useTheme } from '@/ui';
 import { space } from '@/ui/tokens';
 
 import type { PushMoment } from '../push/pushPolicy';
@@ -24,16 +24,33 @@ const COPY: Record<PushMoment, { title: string; body: string }> = {
 
 /** Famara's own ask before the system dialog. Renders nothing when an offer would not help. */
 export function PushOptInCard({ moment }: PushOptInCardProps) {
+  const theme = useTheme();
   const offer = usePushOffer();
   if (!offer.visible) return null;
   const copy = COPY[moment];
   return (
-    <Card variant="sunken" testID="push-opt-in">
+    <View
+      testID="push-opt-in"
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radii.tile,
+          ...theme.elevation.low,
+          shadowColor: theme.colors.shadow,
+        },
+      ]}
+    >
       <View style={styles.row}>
-        <Icon name="bell.badge" size={26} color="primary" />
+        <View style={[styles.chip, { backgroundColor: theme.colors.highlight }]}>
+          <Icon name="bell" size={18} color="onHighlight" />
+        </View>
         <View style={styles.text}>
-          <Text variant="headline">{copy.title}</Text>
-          <Text variant="callout" tone="muted">
+          <Text variant="headline" style={styles.title}>
+            {copy.title}
+          </Text>
+          <Text variant="subhead" tone="muted">
             {copy.body}
           </Text>
         </View>
@@ -54,11 +71,14 @@ export function PushOptInCard({ moment }: PushOptInCardProps) {
           onPress={() => offer.dismiss(true)}
         />
       </View>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  card: { borderWidth: 1, padding: space.xl },
+  chip: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  title: { fontFamily: fontFamily.textBold },
   row: { flexDirection: 'row', gap: space.md, alignItems: 'flex-start' },
   text: { flex: 1, gap: space.xs },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },

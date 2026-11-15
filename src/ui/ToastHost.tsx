@@ -1,6 +1,6 @@
 import { Fragment, useEffect, type ReactNode } from 'react';
 import { AccessibilityInfo, Platform, StyleSheet, View } from 'react-native';
-import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import Animated, { SlideInUp, SlideOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
 
@@ -59,7 +59,8 @@ export function ToastHost() {
   return (
     <ToastLayer>
       <View pointerEvents="box-none" style={[styles.overlay, { top: insets.top + space.sm }]}>
-        <Animated.View key={current.id} entering={FadeInUp} exiting={FadeOutUp}>
+        {/* Slide, never fade: a glass surface under a fading ancestor draws an empty outline. */}
+        <Animated.View key={current.id} entering={SlideInUp} exiting={SlideOutUp}>
           <GlassSurface radius="lg" style={styles.toast}>
             <PressableScale
               accessibilityRole="alert"

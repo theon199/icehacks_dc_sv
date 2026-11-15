@@ -19,10 +19,10 @@ export const StepRow = memo(function StepRow({ step, number }: StepRowProps) {
       <View
         style={[
           styles.badge,
-          { backgroundColor: theme.colors.primarySoft, borderRadius: theme.radii.pill },
+          { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.pill },
         ]}
       >
-        <Text variant="subhead" color="onPrimarySoft">
+        <Text variant="label" tone="muted">
           {number}
         </Text>
       </View>
@@ -42,8 +42,8 @@ export const StepRow = memo(function StepRow({ step, number }: StepRowProps) {
 });
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: space.md, paddingVertical: space.sm },
-  badge: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', gap: space.md, paddingVertical: space.sm + 2 },
+  badge: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: space.xs },
   timer: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
 });

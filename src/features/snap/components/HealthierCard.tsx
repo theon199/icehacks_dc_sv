@@ -33,9 +33,9 @@ export function HealthierCard({ version, onOpen }: HealthierCardProps) {
   const theme = useTheme();
   const { recipe } = version;
   return (
-    <Card testID="dish-healthier">
+    <Card variant="sunken" testID="dish-healthier">
       <View style={styles.stack}>
-        <Text variant="overline" tone="primary">
+        <Text variant="label" tone="muted">
           Healthier version to cook
         </Text>
         <View style={styles.row}>

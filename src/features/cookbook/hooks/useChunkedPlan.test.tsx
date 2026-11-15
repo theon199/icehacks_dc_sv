@@ -4,10 +4,10 @@ import { dailyTargets } from '@/domain/nutrition';
 import type { PlanDaysInput } from '@/domain/plan';
 import { defaultPreferences } from '@/stores';
 
+import { progressOf, useChunkedPlan, type ChunkedPlanState } from './useChunkedPlan';
 import { candidatePool } from '../__fixtures__/recipes';
 import { manualScheduler } from '../__fixtures__/scheduler';
 import { toDomainPreferences } from '../deps';
-import { progressOf, useChunkedPlan, type ChunkedPlanState } from './useChunkedPlan';
 import { rankForPlanning, toDayPlanCandidates } from '../model/candidates';
 
 type Clock = ReturnType<typeof manualScheduler>;

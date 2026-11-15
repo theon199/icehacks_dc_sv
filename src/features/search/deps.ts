@@ -15,6 +15,9 @@ import { usePreferencesStore } from '@/stores/preferences';
  */
 export { ChefScreen as ChefChat } from '@/features/chef';
 
+/** Chef's toque mark, on the Search | Chef switch and the Ask Chef card. */
+export { ChefHat } from '@/features/chef';
+
 /** Account that owns the recent searches on this device. */
 export function useSearchOwnerId(): string | null {
   return useSessionStore((state) => state.userId);

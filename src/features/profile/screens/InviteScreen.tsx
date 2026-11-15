@@ -12,14 +12,15 @@ export interface InviteScreenProps {
 
 function StateIcon({ name, tone }: { name: IconName; tone: 'primary' | 'danger' | 'success' }) {
   const theme = useTheme();
+  // The lime highlight marks the one moment that matters: being invited, and being friends.
   const background =
     tone === 'danger'
       ? theme.colors.dangerSoft
       : tone === 'success'
-        ? theme.colors.successSoft
-        : theme.colors.primarySoft;
+        ? theme.colors.highlight
+        : theme.colors.highlightSoft;
   const color =
-    tone === 'danger' ? 'danger' : tone === 'success' ? 'onSuccessSoft' : 'onPrimarySoft';
+    tone === 'danger' ? 'danger' : tone === 'success' ? 'onHighlight' : 'onHighlightSoft';
   return (
     <View style={[styles.icon, { backgroundColor: background }]}>
       <Icon name={name} size={30} color={color} />
@@ -138,6 +139,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
+    // Icon discs sit on the sheet, so they carry no shadow of their own.
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: space.sm,

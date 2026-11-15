@@ -190,6 +190,25 @@ export function toggleDiet(draft: Draft, id: DietFlagName, on: boolean): Draft {
   return { ...draft, diets };
 }
 
+/** The one eating pattern a person follows; "everything" is none of the other three. */
+export const DIET_PATTERNS = ['everything', 'vegetarian', 'vegan', 'pescatarian'] as const;
+export type DietPattern = (typeof DIET_PATTERNS)[number];
+
+/** The pattern the draft's diets describe. */
+export function dietPatternOf(draft: Draft): DietPattern {
+  if (draft.diets.includes('vegan')) return 'vegan';
+  if (draft.diets.includes('vegetarian')) return 'vegetarian';
+  if (draft.diets.includes('pescatarian')) return 'pescatarian';
+  return 'everything';
+}
+
+/** Picks a pattern through the same rules as `toggleDiet`; other diets are left as they are. */
+export function setDietPattern(draft: Draft, pattern: DietPattern): Draft {
+  if (pattern !== 'everything') return toggleDiet(draft, pattern, true);
+  const patterns: readonly DietFlagName[] = ['vegetarian', 'vegan', 'pescatarian'];
+  return { ...draft, diets: draft.diets.filter((diet) => !patterns.includes(diet)) };
+}
+
 export function clampHousehold(size: number): number {
   if (!Number.isFinite(size)) return 1;
   return Math.min(MAX_HOUSEHOLD, Math.max(1, Math.round(size)));

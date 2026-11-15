@@ -69,7 +69,7 @@ function Section({
   if (recipes.length === 0) return null;
   return (
     <View style={styles.section}>
-      <Text variant="overline" tone="subtle">
+      <Text variant="label" tone="subtle">
         {title}
       </Text>
       {recipes.slice(0, PICKER_SECTION_LIMIT).map((recipe) => (

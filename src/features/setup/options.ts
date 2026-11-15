@@ -15,6 +15,8 @@ import {
 } from '@/domain/types';
 import type { IconName } from '@/ui';
 
+import type { DietPattern } from './onboardingModel';
+
 export interface Choice<T extends string | number> {
   id: T;
   label: string;
@@ -22,10 +24,20 @@ export interface Choice<T extends string | number> {
   icon?: IconName;
 }
 
-export const dietChoices: readonly Choice<DietFlagName>[] = DIET_FLAG_NAMES.map((id) => ({
-  id,
-  label: DIET_LABELS[id],
-}));
+/** The one eating pattern, as single-choice rows. */
+export const dietPatternChoices: readonly Choice<DietPattern>[] = [
+  { id: 'everything', label: 'Everything', description: 'Meat, fish and plants' },
+  { id: 'vegetarian', label: DIET_LABELS.vegetarian, description: 'No meat or fish' },
+  { id: 'pescatarian', label: DIET_LABELS.pescatarian, description: 'Fish, but no meat' },
+  { id: 'vegan', label: DIET_LABELS.vegan, description: 'Plants only' },
+];
+
+const PATTERN_DIETS: ReadonlySet<DietFlagName> = new Set(['vegetarian', 'vegan', 'pescatarian']);
+
+/** Every other diet, as checkboxes under the pattern. */
+export const dietExtraChoices: readonly Choice<DietFlagName>[] = DIET_FLAG_NAMES.filter(
+  (id) => !PATTERN_DIETS.has(id),
+).map((id) => ({ id, label: DIET_LABELS[id] }));
 
 export const allergenChoices: readonly Choice<AllergenId>[] = ALLERGEN_IDS.map((id) => ({
   id,
@@ -33,12 +45,12 @@ export const allergenChoices: readonly Choice<AllergenId>[] = ALLERGEN_IDS.map((
 }));
 
 export const goalChoices: readonly Choice<Goal>[] = [
-  { id: 'more_protein', label: 'More protein', icon: 'fish.fill' },
-  { id: 'more_fiber', label: 'More fiber', icon: 'leaf.fill' },
-  { id: 'lower_sodium', label: 'Less salt', icon: 'drop.fill' },
-  { id: 'heart_friendly', label: 'Heart-friendly', icon: 'heart.fill' },
+  { id: 'more_protein', label: 'More protein', icon: 'dumbbell' },
+  { id: 'more_fiber', label: 'More fiber', icon: 'leaf' },
+  { id: 'lower_sodium', label: 'Less salt', icon: 'drop' },
+  { id: 'heart_friendly', label: 'Heart-friendly', icon: 'heart' },
   { id: 'lighter_meals', label: 'Lighter meals', icon: 'scalemass' },
-  { id: 'plant_forward', label: 'More plants', icon: 'carrot.fill' },
+  { id: 'plant_forward', label: 'More plants', icon: 'carrot' },
   { id: 'steady_energy', label: 'Steadier energy', icon: 'bolt.heart' },
 ];
 
@@ -46,9 +58,14 @@ function budgetLabel(minutes: number): string {
   return minutes === 60 ? 'An hour' : `${minutes} minutes`;
 }
 
-export const timeChoices: readonly { minutes: number | null; label: string }[] = [
-  ...TIME_BUDGET_CHOICES.map((minutes) => ({ minutes, label: budgetLabel(minutes) })),
-  { minutes: null, label: 'No limit' },
+/** `label` is read aloud; `short` is the segment's visible text. */
+export const timeChoices: readonly { minutes: number | null; label: string; short: string }[] = [
+  ...TIME_BUDGET_CHOICES.map((minutes) => ({
+    minutes,
+    label: budgetLabel(minutes),
+    short: String(minutes),
+  })),
+  { minutes: null, label: 'No limit', short: 'Any' },
 ];
 
 export const effortChoices: readonly Choice<Effort>[] = [

@@ -35,25 +35,29 @@ export function ReasonPicker({ options, value, onChange }: ReasonPickerProps) {
             style={[
               styles.option,
               {
-                borderRadius: theme.radii.md,
-                borderColor: selected ? theme.colors.primary : theme.colors.border,
-                backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+                borderRadius: theme.radii.lg,
+                borderColor: selected ? theme.colors.highlight : theme.colors.border,
+                backgroundColor: selected ? theme.colors.highlight : theme.colors.surface,
               },
             ]}
             testID={`reason-${option.value}`}
           >
             <View style={styles.text}>
-              <Text variant="bodyStrong" accessible={false}>
+              <Text variant="headline" color={selected ? 'onHighlight' : 'text'} accessible={false}>
                 {option.label}
               </Text>
-              <Text variant="footnote" tone="muted" accessible={false}>
+              <Text
+                variant="caption"
+                color={selected ? 'onHighlight' : 'textMuted'}
+                accessible={false}
+              >
                 {option.hint}
               </Text>
             </View>
             <Icon
               name={selected ? 'checkmark.circle.fill' : 'circle'}
               size={22}
-              color={selected ? 'primary' : 'textSubtle'}
+              color={selected ? 'onHighlight' : 'textMuted'}
             />
           </PressableScale>
         );

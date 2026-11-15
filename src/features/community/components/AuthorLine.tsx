@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { formatRelativeTime } from '@/lib/format';
-import { Avatar, PressableScale, Text } from '@/ui';
+import { Avatar, PressableScale, Text, fontFamily, space } from '@/ui';
 
 import { TeamBadge } from './TeamBadge';
 
@@ -14,6 +14,8 @@ export interface AuthorLineProps {
   createdAt: string;
   onPress?: () => void;
   avatarSize?: number;
+  /** Leave the time off the second line (the post header shows it at the far end instead). */
+  hideTime?: boolean;
 }
 
 /** Avatar, name, team badge and "2 hours ago" at the top of a post or comment. */
@@ -25,21 +27,25 @@ export const AuthorLine = memo(function AuthorLine({
   createdAt,
   onPress,
   avatarSize = 36,
+  hideTime = false,
 }: AuthorLineProps) {
   const when = formatRelativeTime(createdAt);
+  const second = hideTime ? (handle ? `@${handle}` : '') : handle ? `@${handle} · ${when}` : when;
   const content = (
     <>
       <Avatar name={name} uri={avatarUrl} size={avatarSize} />
       <View style={styles.text}>
         <View style={styles.nameRow}>
-          <Text variant="subhead" numberOfLines={1} style={styles.name}>
+          <Text variant="label" numberOfLines={1} style={styles.name}>
             {name}
           </Text>
           {isTeam ? <TeamBadge compact /> : null}
         </View>
-        <Text variant="caption" tone="subtle" numberOfLines={1}>
-          {handle ? `@${handle} · ${when}` : when}
-        </Text>
+        {second ? (
+          <Text variant="caption" tone="muted" numberOfLines={1}>
+            {second}
+          </Text>
+        ) : null}
       </View>
     </>
   );
@@ -60,8 +66,8 @@ export const AuthorLine = memo(function AuthorLine({
 });
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, flexShrink: 1 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44, flexShrink: 1 },
   text: { flexShrink: 1, gap: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  name: { flexShrink: 1 },
+  name: { flexShrink: 1, fontFamily: fontFamily.textBold },
 });

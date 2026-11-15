@@ -1,20 +1,28 @@
 import { Stack } from 'expo-router';
 
-import { useTheme } from '@/ui';
-import { sheetOptions, useStackScreenOptions } from '@/ui/navigation';
+import { NightTheme, night } from '@/features/auth';
+import { useStackScreenOptions } from '@/ui/navigation';
 
-/** Signed-out flow. Shown only while the session store reports `signedOut`. */
-export default function AuthLayout() {
-  const theme = useTheme();
-  const screenOptions = useStackScreenOptions();
+function AuthStack() {
+  const screenOptions = useStackScreenOptions({ headerless: true });
   return (
-    <Stack screenOptions={screenOptions}>
-      <Stack.Screen name="welcome" options={{ headerShown: false }} />
-      <Stack.Screen name="continue" options={sheetOptions(theme, [0.65, 0.95])} />
-      <Stack.Screen name="sign-in" options={{ title: 'Sign in' }} />
-      <Stack.Screen name="sign-up" options={{ title: 'Create account' }} />
-      <Stack.Screen name="check-email" options={{ title: 'Confirm your email' }} />
-      <Stack.Screen name="forgot-password" options={{ title: 'Reset password' }} />
+    <Stack screenOptions={{ ...screenOptions, contentStyle: { backgroundColor: night.black } }}>
+      <Stack.Screen name="welcome" />
+      {/* Old entry points; each opens the account sheet on the welcome screen. */}
+      <Stack.Screen name="continue" options={{ animation: 'none' }} />
+      <Stack.Screen name="sign-in" options={{ animation: 'none' }} />
+      <Stack.Screen name="sign-up" options={{ animation: 'none' }} />
+      <Stack.Screen name="check-email" />
+      <Stack.Screen name="forgot-password" />
     </Stack>
+  );
+}
+
+/** Signed-out flow, always in the night look. Shown only while the session reports `signedOut`. */
+export default function AuthLayout() {
+  return (
+    <NightTheme>
+      <AuthStack />
+    </NightTheme>
   );
 }

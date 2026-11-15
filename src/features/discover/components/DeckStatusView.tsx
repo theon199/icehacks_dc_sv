@@ -1,8 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { DeckMode } from '@/domain';
-import { Button, EmptyState, ErrorState, Skeleton, SkeletonGroup, useTheme } from '@/ui';
-import { gutter, space } from '@/ui/tokens';
+import { Button, EmptyState, ErrorState, Skeleton, SkeletonGroup } from '@/ui';
+import { space } from '@/ui/tokens';
 
 import type { DeckStatus } from '../useDiscoverDeck';
 
@@ -99,26 +99,15 @@ function Exhausted({
 }
 
 function DeckSkeleton() {
-  const theme = useTheme();
   return (
     <SkeletonGroup label="Finding recipes for you" style={styles.skeleton}>
-      <View
-        style={[
-          styles.skeletonCard,
-          { borderRadius: theme.radii.xl, backgroundColor: theme.colors.surface },
-        ]}
-      >
-        <Skeleton height="62%" radius="lg" />
-        <Skeleton width="70%" height={22} />
-        <Skeleton width="45%" height={16} />
-        <Skeleton width="85%" height={16} />
-      </View>
+      <Skeleton height="100%" radius="card" />
     </SkeletonGroup>
   );
 }
 
 const styles = StyleSheet.create({
   secondary: { alignItems: 'center', gap: space.xs },
-  skeleton: { flex: 1, paddingHorizontal: gutter, paddingTop: space.sm, paddingBottom: space.huge },
-  skeletonCard: { flex: 1, padding: space.md, gap: space.md },
+  // The card's own footprint: the dots row (30 pt) stays clear under it.
+  skeleton: { flex: 1, paddingBottom: 30 },
 });

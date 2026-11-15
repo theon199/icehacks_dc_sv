@@ -1,6 +1,6 @@
 import { useRecyclingState } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { memo, useRef, useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -10,7 +10,7 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
-import { useTheme } from '@/ui';
+import { PressableScale, space, useTheme } from '@/ui';
 
 import type { PostPhoto } from '../api/types';
 
@@ -22,18 +22,72 @@ export function carouselAspect(photos: readonly PostPhoto[]): number {
   return Math.min(1.91, Math.max(0.8, ratio));
 }
 
+const THUMB = 56;
+
 export interface PhotoCarouselProps {
   photos: readonly PostPhoto[];
   /** Describes the dish for VoiceOver, e.g. the post title. */
   label: string;
   priority?: 'low' | 'normal' | 'high';
+  /** Horizontal padding of the thumbnail strip, so it lines up with the text around it. */
+  inset?: number;
 }
 
-/** Swipeable post photos with blurhash placeholders and a page indicator. */
+interface ThumbProps {
+  photo: PostPhoto;
+  index: number;
+  count: number;
+  label: string;
+  selected: boolean;
+  onSelect: (index: number) => void;
+}
+
+const Thumb = memo(function Thumb({ photo, index, count, label, selected, onSelect }: ThumbProps) {
+  const theme = useTheme();
+  const select = useCallback(() => onSelect(index), [index, onSelect]);
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={`Show photo ${index + 1} of ${count}`}
+      accessibilityState={{ selected }}
+      pressedScale={0.95}
+      onPress={select}
+      style={[
+        styles.thumb,
+        {
+          borderRadius: theme.radii.md + 2,
+          borderColor: selected ? theme.colors.primary : 'transparent',
+        },
+        !selected && styles.thumbIdle,
+      ]}
+    >
+      <Image
+        accessible={false}
+        accessibilityLabel={label}
+        source={photo.url ? { uri: photo.url, cacheKey: photo.path } : null}
+        placeholder={photo.blurhash ? { blurhash: photo.blurhash } : null}
+        placeholderContentFit="cover"
+        contentFit="cover"
+        recyclingKey={`${photo.path}#thumb`}
+        priority="low"
+        style={[
+          styles.thumbImage,
+          { borderRadius: theme.radii.md - 1, backgroundColor: theme.colors.skeleton },
+        ]}
+      />
+    </PressableScale>
+  );
+});
+
+/**
+ * Edge-to-edge post photos with blurhash placeholders. Posts with several photos get a strip of
+ * thumbnails underneath; the one on screen is outlined, and tapping another pages to it.
+ */
 export const PhotoCarousel = memo(function PhotoCarousel({
   photos,
   label,
   priority = 'normal',
+  inset = 0,
 }: PhotoCarouselProps) {
   const theme = useTheme();
   const [width, setWidth] = useState(0);
@@ -53,61 +107,62 @@ export const PhotoCarousel = memo(function PhotoCarousel({
     if (width <= 0) return;
     setPage(Math.round(event.nativeEvent.contentOffset.x / width));
   };
+  const showPhoto = useCallback(
+    (index: number) => {
+      setPage(index);
+      scroller.current?.scrollTo({ x: index * width, animated: true });
+    },
+    [setPage, width],
+  );
 
   if (photos.length === 0) return null;
   return (
-    <View
-      onLayout={onLayout}
-      style={[
-        styles.frame,
-        {
-          aspectRatio: aspect,
-          borderRadius: theme.radii.md,
-          backgroundColor: theme.colors.skeleton,
-        },
-      ]}
-    >
-      {width > 0 ? (
-        <ScrollView
-          ref={scroller}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={onScrollEnd}
-          accessibilityLabel={
-            photos.length > 1 ? `${label}, photo ${page + 1} of ${photos.length}` : label
-          }
-        >
-          {photos.map((photo, index) => (
-            <Image
-              key={photo.path}
-              accessible
-              accessibilityRole="image"
-              accessibilityLabel={`${label}, photo ${index + 1}`}
-              source={photo.url ? { uri: photo.url, cacheKey: photo.path } : null}
-              placeholder={photo.blurhash ? { blurhash: photo.blurhash } : null}
-              placeholderContentFit="cover"
-              contentFit="cover"
-              recyclingKey={photo.path}
-              priority={index === 0 ? priority : 'low'}
-              transition={180}
-              style={{ width, height }}
-            />
-          ))}
-        </ScrollView>
-      ) : null}
+    <View style={styles.wrap}>
+      <View
+        onLayout={onLayout}
+        style={[styles.frame, { aspectRatio: aspect, backgroundColor: theme.colors.skeleton }]}
+      >
+        {width > 0 ? (
+          <ScrollView
+            ref={scroller}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={onScrollEnd}
+            accessibilityLabel={
+              photos.length > 1 ? `${label}, photo ${page + 1} of ${photos.length}` : label
+            }
+          >
+            {photos.map((photo, index) => (
+              <Image
+                key={photo.path}
+                accessible
+                accessibilityRole="image"
+                accessibilityLabel={`${label}, photo ${index + 1}`}
+                source={photo.url ? { uri: photo.url, cacheKey: photo.path } : null}
+                placeholder={photo.blurhash ? { blurhash: photo.blurhash } : null}
+                placeholderContentFit="cover"
+                contentFit="cover"
+                recyclingKey={photo.path}
+                priority={index === 0 ? priority : 'low'}
+                transition={180}
+                style={{ width, height }}
+              />
+            ))}
+          </ScrollView>
+        ) : null}
+      </View>
       {photos.length > 1 ? (
-        <View style={styles.dots} pointerEvents="none">
+        <View style={[styles.strip, { paddingHorizontal: inset }]}>
           {photos.map((photo, index) => (
-            <View
+            <Thumb
               key={photo.path}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor: theme.colors.textInverse,
-                  opacity: index === page ? 1 : 0.5,
-                },
-              ]}
+              photo={photo}
+              index={index}
+              count={photos.length}
+              label={label}
+              selected={index === page}
+              onSelect={showPhoto}
             />
           ))}
         </View>
@@ -117,13 +172,15 @@ export const PhotoCarousel = memo(function PhotoCarousel({
 });
 
 const styles = StyleSheet.create({
+  wrap: { gap: space.sm },
   frame: { width: '100%', overflow: 'hidden' },
-  dots: {
-    position: 'absolute',
-    bottom: 10,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: 6,
+  strip: { flexDirection: 'row', gap: 6 },
+  thumb: {
+    width: THUMB + 6,
+    height: THUMB + 6,
+    borderWidth: 2,
+    padding: 1,
   },
-  dot: { width: 7, height: 7, borderRadius: 4 },
+  thumbImage: { width: THUMB, height: THUMB },
+  thumbIdle: { opacity: 0.55 },
 });

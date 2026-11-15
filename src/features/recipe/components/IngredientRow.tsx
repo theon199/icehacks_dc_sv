@@ -12,6 +12,8 @@ export interface IngredientRowProps {
   suggestions: readonly SubstitutionSuggestion[] | undefined;
   /** "Contains peanuts" when the line holds one of the person's declared allergens. */
   allergenNote?: string | undefined;
+  /** The last line of its card draws no divider under it. */
+  last?: boolean;
 }
 
 /** One ingredient: pantry check, amount, name and, when relevant, swaps that suit the person. */
@@ -19,6 +21,7 @@ export const IngredientRow = memo(function IngredientRow({
   row,
   suggestions,
   allergenNote,
+  last = false,
 }: IngredientRowProps) {
   const theme = useTheme();
   // Rows are recycled by the list; the open state belongs to this line only.
@@ -35,7 +38,15 @@ export const IngredientRow = memo(function IngredientRow({
     .join(', ');
 
   return (
-    <View style={[styles.container, { borderBottomColor: theme.colors.border }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          borderBottomColor: theme.colors.border,
+          borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
+        },
+      ]}
+    >
       <View style={styles.row} accessible accessibilityLabel={spoken}>
         <Icon
           name={row.owned ? 'checkmark.circle.fill' : 'circle'}
@@ -128,7 +139,6 @@ const styles = StyleSheet.create({
   container: {
     paddingVertical: space.sm,
     gap: space.xs,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, minHeight: 28 },
   amount: { minWidth: 76, maxWidth: 110 },

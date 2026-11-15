@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
+import type * as Reanimated from 'react-native-reanimated';
 
 import { useSessionStore } from '@/features/auth';
 import { aiApi, type ChefRequest, type ChefResponse } from '@/lib/api/ai';
@@ -14,6 +16,18 @@ import { resetChefSession, useChefSession } from '../hooks/chefSession';
 
 const mockRouter = { push: jest.fn() };
 jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
+
+// The keyboard's height as Reanimated reports it, set by each test.
+const mockKeyboard = { height: makeMutable(0), state: makeMutable(0) };
+jest.mock('react-native-reanimated', () => {
+  const actual = jest.requireActual<typeof Reanimated>('react-native-reanimated');
+  return {
+    __esModule: true,
+    ...actual,
+    default: actual.default,
+    useAnimatedKeyboard: () => mockKeyboard,
+  };
+});
 
 let mockIds = 0;
 jest.mock('expo-crypto', () => ({ randomUUID: () => `id-${++mockIds}` }));
@@ -68,6 +82,7 @@ async function ask(question: string) {
 }
 
 beforeEach(() => {
+  mockKeyboard.height.set(0);
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useSessionStore.setState(initialSession, true);
   useChefStore.getState().reset();
@@ -236,5 +251,23 @@ describe('ChefScreen', () => {
     expect(screen.queryByTestId('chef-problem')).toBeNull();
     expect(screen.queryByTestId('chef-ask-again')).toBeNull();
     expect(screen.getByText("You've reached today's Chef limit.")).toBeOnTheScreen();
+  });
+
+  it('makes room for the keyboard by shrinking the thread, not sliding it under the header', async () => {
+    signIn(30);
+    mockKeyboard.height.set(336);
+    await renderChef();
+    // The test safe area leaves 34 pt at the bottom, which the question box already keeps clear.
+    const style = getAnimatedStyle(screen.getByTestId('chef-body'));
+    expect(style).toEqual(expect.objectContaining({ paddingBottom: 302 }));
+    expect(style).not.toHaveProperty('transform');
+  });
+
+  it('leaves no gap under the question box while the keyboard is down', async () => {
+    signIn(30);
+    await renderChef();
+    expect(getAnimatedStyle(screen.getByTestId('chef-body'))).toEqual(
+      expect.objectContaining({ paddingBottom: 0 }),
+    );
   });
 });

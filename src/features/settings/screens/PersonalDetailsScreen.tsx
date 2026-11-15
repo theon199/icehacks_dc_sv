@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { Button, Card, Screen, Skeleton, Text, TextField, space, toast } from '@/ui';
+import { Button, Skeleton, Text, TextField, space, toast } from '@/ui';
 
 import {
   heightToInput,
@@ -11,6 +11,8 @@ import {
   type HeightInput,
 } from '../bodyUnits';
 import { ChoiceGroup } from '../components/ChoiceGroup';
+import { PreferenceCard } from '../components/PreferenceCard';
+import { SettingsPage } from '../components/SettingsPage';
 import {
   selectPersonalDetails,
   selectUnits,
@@ -65,9 +67,9 @@ export function PersonalDetailsScreen() {
   const hydrated = usePersonalDetailsHydrated();
   if (!hydrated) {
     return (
-      <Screen testID="personal-details-screen">
-        <Skeleton height={220} />
-      </Screen>
+      <SettingsPage title="Personal details" testID="personal-details-screen">
+        <Skeleton height={220} radius="xl" />
+      </SettingsPage>
     );
   }
   return <PersonalDetailsForm />;
@@ -133,18 +135,20 @@ function PersonalDetailsForm() {
 
   const metric = units === 'metric';
   return (
-    <Screen
+    <SettingsPage
+      title="Personal details"
       testID="personal-details-screen"
-      footer={<Button testID="personal-details-save" label="Save" fullWidth onPress={save} />}
+      footer={
+        <Button testID="personal-details-save" label="Save" size="lg" fullWidth onPress={save} />
+      }
     >
-      <Text variant="callout" tone="muted">
+      <Text variant="body" tone="muted">
         All optional. Famara uses these only to estimate your daily energy and protein targets. They
         are saved to your Famara account and synced to the other devices you sign in on. On this
         device they are kept in secure storage. They are never shown to other people.
       </Text>
 
-      <Card style={styles.card}>
-        <Text variant="headline">Height</Text>
+      <PreferenceCard title="Your measurements">
         <View style={styles.row}>
           <View style={styles.flex}>
             <TextField
@@ -181,10 +185,11 @@ function PersonalDetailsForm() {
           onChangeText={(weight) => update({ weight })}
           error={errors.weight ?? null}
         />
-      </Card>
+      </PreferenceCard>
 
       <ChoiceGroup
         testID="personal-sex"
+        variant="card"
         title="Sex"
         hint="Energy needs differ a little by sex. Leave it unselected if you prefer."
         single
@@ -195,6 +200,7 @@ function PersonalDetailsForm() {
 
       <ChoiceGroup
         testID="personal-activity"
+        variant="card"
         title="Activity level"
         hint="On a typical day, including work and exercise."
         single
@@ -211,12 +217,11 @@ function PersonalDetailsForm() {
         onPress={confirmWipe}
         style={styles.clear}
       />
-    </Screen>
+    </SettingsPage>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { gap: space.md },
   row: { flexDirection: 'row', gap: space.md },
   flex: { flex: 1 },
   clear: { alignSelf: 'flex-start' },

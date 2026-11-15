@@ -3,9 +3,11 @@ import { userPreferencesSchema } from '@/domain/types';
 import {
   STEP_IDS,
   canContinue,
+  dietPatternOf,
   draftFrom,
   emptyDraft,
   isOptional,
+  setDietPattern,
   setNoAllergens,
   skipStep,
   toAnswers,
@@ -157,5 +159,22 @@ describe('groupCuisines', () => {
     expect(groupCuisines(options, 'VIET')[0]?.cuisines.map((c) => c.id)).toEqual(['vietnamese']);
     expect(groupCuisines(options, 'southeast')[0]?.cuisines).toHaveLength(2);
     expect(groupCuisines(options, 'zzz')).toEqual([]);
+  });
+});
+
+describe('diet patterns', () => {
+  it('reads "everything" from an empty diet list, whatever else is picked', () => {
+    expect(dietPatternOf(emptyDraft)).toBe('everything');
+    expect(dietPatternOf({ ...emptyDraft, diets: ['no_pork', 'gluten_free'] })).toBe('everything');
+  });
+
+  it('switches between patterns and keeps the other preferences', () => {
+    const start: Draft = { ...emptyDraft, diets: ['no_pork'] };
+    const vegan = setDietPattern(start, 'vegan');
+    expect(vegan.diets).toEqual(['no_pork', 'vegan']);
+    expect(dietPatternOf(vegan)).toBe('vegan');
+    const pescatarian = setDietPattern(vegan, 'pescatarian');
+    expect(pescatarian.diets).toEqual(['no_pork', 'pescatarian']);
+    expect(setDietPattern(pescatarian, 'everything').diets).toEqual(['no_pork']);
   });
 });

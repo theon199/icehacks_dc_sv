@@ -1,5 +1,3 @@
-import { StyleSheet, View } from 'react-native';
-
 import {
   REGIONS,
   REGION_LABELS,
@@ -7,10 +5,10 @@ import {
   cuisineLabel,
   cuisinesInRegion,
 } from '@/domain/types';
-import { Text, space } from '@/ui';
 
 import { MAX_CUISINES } from '../deps';
 import { ChoiceGroup } from './ChoiceGroup';
+import { PreferenceCard } from './PreferenceCard';
 
 export interface CuisinePickerProps {
   selected: readonly string[];
@@ -33,13 +31,12 @@ export function CuisinePicker({ selected, onChange }: CuisinePickerProps) {
     onChange(next ? [...selected, id] : selected.filter((value) => value !== id));
 
   return (
-    <View style={styles.group} testID="prefs-cuisines">
-      <View style={styles.heading}>
-        <Text variant="title3">Cuisines you love</Text>
-        <Text variant="footnote" tone="muted" accessibilityLiveRegion="polite">
-          {`${selected.length} of ${MAX_CUISINES} chosen`}
-        </Text>
-      </View>
+    <PreferenceCard
+      testID="prefs-cuisines"
+      title="Cuisines you love"
+      summary={`${selected.length} of ${MAX_CUISINES} chosen`}
+      summaryActive={selected.length > 0}
+    >
       {unlisted.length > 0 ? (
         <ChoiceGroup
           testID="prefs-cuisine"
@@ -60,11 +57,6 @@ export function CuisinePicker({ selected, onChange }: CuisinePickerProps) {
           onToggle={toggle}
         />
       ))}
-    </View>
+    </PreferenceCard>
   );
 }
-
-const styles = StyleSheet.create({
-  group: { gap: space.lg },
-  heading: { gap: space.xxs },
-});

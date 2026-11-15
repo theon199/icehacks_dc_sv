@@ -1,9 +1,15 @@
-import { StyleSheet, View } from 'react-native';
-
-import { OptionCard } from '../components/OptionCard';
+import type { StepProps } from './types';
+import { SectionLabel } from '../components/SectionLabel';
+import { Segmented } from '../components/Segmented';
 import { StepHeader } from '../components/StepHeader';
 import { timeChoices } from '../options';
-import type { StepProps } from './types';
+
+const options = timeChoices.map((choice) => ({
+  value: choice.minutes,
+  label: choice.short,
+  accessibilityLabel: choice.label,
+  testID: `time-${choice.minutes ?? 'any'}`,
+}));
 
 export function TimeStep({ draft, onChange }: StepProps) {
   return (
@@ -12,24 +18,13 @@ export function TimeStep({ draft, onChange }: StepProps) {
         title="How long for a weekday meal?"
         description="We’ll favor recipes that fit in that time."
       />
-      <View style={styles.list} accessibilityRole="radiogroup">
-        {timeChoices.map((choice) => (
-          <OptionCard
-            key={choice.label}
-            testID={`time-${choice.minutes ?? 'any'}`}
-            label={choice.label}
-            icon="clock"
-            selected={draft.timeChosen && draft.timeBudgetMinutes === choice.minutes}
-            onSelect={() =>
-              onChange({ ...draft, timeBudgetMinutes: choice.minutes, timeChosen: true })
-            }
-          />
-        ))}
-      </View>
+      <SectionLabel first>How long on a weeknight, in minutes</SectionLabel>
+      <Segmented
+        accessibilityLabel="Time for a weekday meal"
+        options={options}
+        value={draft.timeChosen ? draft.timeBudgetMinutes : undefined}
+        onChange={(minutes) => onChange({ ...draft, timeBudgetMinutes: minutes, timeChosen: true })}
+      />
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  list: { gap: 10 },
-});

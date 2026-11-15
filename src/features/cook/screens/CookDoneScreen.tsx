@@ -1,41 +1,48 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRecipe } from '@/lib/catalog';
 import { haptics } from '@/lib/haptics';
 import { newId } from '@/lib/id';
 import {
-  Button,
-  ChoiceChip,
   EmptyState,
   ErrorState,
-  IconButton,
+  GlassIconButton,
+  HEADER_TITLE_MAX_FONT_SCALE,
+  Icon,
   Screen,
   Text,
-  TextField,
+  palettes,
+  photoOverlay,
+  space,
 } from '@/ui';
 
-import { PhotoField } from '../components/PhotoField';
-import { RatingInput } from '../components/RatingInput';
+import { DishBackdrop } from '../components/DishBackdrop';
+import { DonePhotoAsk } from '../components/DonePhotoAsk';
+import { DoneReviewSheet, type Again } from '../components/DoneReviewSheet';
+import { PhotoGlassButton } from '../components/PhotoGlass';
 import { composeHref } from '../deps';
 import { useCompleteCook } from '../hooks/useCompleteCook';
+import { useCookPhotoPicker } from '../hooks/useCookPhotoPicker';
 import { useFlushPendingCooks } from '../hooks/useFlushPendingCooks';
-import { MAX_NOTES_LENGTH } from '../logic/completion';
 import type { CookPhoto } from '../services/photo';
 
 export interface CookDoneScreenProps {
   recipeId: string;
 }
 
-type Again = 'yes' | 'no' | null;
+const RETAKE_HEIGHT = 40;
 
 /**
- * After the last step: how it went. Saving logs the cook on this device, teaches recommendations
+ * After the last step, in two beats over the dish: "Cooked it" with an optional photo, then how it
+ * went on a sheet under the photo. Saving logs the cook on this device, teaches recommendations
  * and updates streaks and badges; sharing then opens the community composer with a draft.
  */
 export function CookDoneScreen({ recipeId }: CookDoneScreenProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const query = useRecipe(recipeId || null);
   // Nothing is saved until the catalog confirms the dish exists: a deep link to an unknown id must
   // not write a cook log entry, a feedback signal or a server event.
@@ -47,6 +54,9 @@ export function CookDoneScreen({ recipeId }: CookDoneScreenProps) {
   const [again, setAgain] = useState<Again>(null);
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<CookPhoto | null>(null);
+  const [beat, setBeat] = useState<'photo' | 'review'>('photo');
+  const [celebrated, setCelebrated] = useState(false);
+  const picker = useCookPhotoPicker();
   const { save, saving } = useCompleteCook();
   useFlushPendingCooks();
 
@@ -94,95 +104,108 @@ export function CookDoneScreen({ recipeId }: CookDoneScreenProps) {
     );
   }
 
-  return (
-    <Screen
-      safeTop
-      footer={
-        <>
-          <Button
-            label="Save"
-            icon="checkmark"
-            size="lg"
-            fullWidth
-            loading={saving}
-            disabled={!recipe}
-            onPress={() => void submit(false)}
-            testID="cook-done-save"
-          />
-          <Button
-            label="Save and share to community"
-            icon="square.and.arrow.up"
-            variant="ghost"
-            fullWidth
-            disabled={!recipe || saving}
-            onPress={() => void submit(true)}
-            testID="cook-done-share"
-          />
-        </>
-      }
-    >
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text variant="overline" tone="accent">
-            You cooked
-          </Text>
-          <Text variant="title1">{recipe?.title ?? 'Nicely done'}</Text>
-        </View>
-        <IconButton
-          icon="xmark"
-          accessibilityLabel="Close without saving"
-          variant="tinted"
-          onPress={close}
+  const title = recipe?.title ?? 'Nicely done';
+  const toReview = () => {
+    setCelebrated(true);
+    setBeat('review');
+  };
+  const backdropUri = photo?.uri ?? recipe?.imageUrl ?? null;
+
+  if (beat === 'photo') {
+    return (
+      <View style={styles.screen}>
+        <DishBackdrop uri={recipe?.imageUrl ?? null} blurred />
+        <DonePhotoAsk
+          title={title}
+          celebrating={!celebrated}
+          picker={picker}
+          onPhoto={(picked) => {
+            setPhoto(picked);
+            toReview();
+          }}
+          onSkip={toReview}
         />
       </View>
+    );
+  }
 
-      <View style={styles.section}>
-        <Text variant="headline">How was it?</Text>
-        <RatingInput value={rating} onChange={setRating} />
-      </View>
-
-      <View style={styles.section}>
-        <Text variant="headline">Would you cook it again?</Text>
-        <View style={styles.chips} accessibilityRole="radiogroup">
-          <ChoiceChip
-            label="Yes"
-            mode="radio"
-            selected={again === 'yes'}
-            onToggle={(on) => setAgain(on ? 'yes' : null)}
-            testID="cook-again-yes"
-          />
-          <ChoiceChip
-            label="Probably not"
-            mode="radio"
-            selected={again === 'no'}
-            onToggle={(on) => setAgain(on ? 'no' : null)}
-            testID="cook-again-no"
-          />
+  return (
+    <View style={styles.screen} testID="cook-done-review">
+      <DishBackdrop uri={backdropUri} blurred={false} />
+      <View style={[styles.head, { top: insets.top + space.sm }]}>
+        <View style={styles.headText}>
+          <Text variant="overline" style={{ color: photoOverlay.textMuted }}>
+            Cooked it
+          </Text>
+          <Text
+            variant="headline"
+            accessibilityRole="header"
+            numberOfLines={1}
+            maxFontSizeMultiplier={HEADER_TITLE_MAX_FONT_SCALE}
+            style={{ color: photoOverlay.text }}
+          >
+            {title}
+          </Text>
         </View>
+        {photo ? (
+          <PhotoGlassButton
+            radius={RETAKE_HEIGHT / 2}
+            onPress={() => setBeat('photo')}
+            accessibilityLabel={`Retake the photo of ${title}`}
+            style={styles.retake}
+            testID="cook-done-retake"
+          >
+            <Icon name="camera.fill" size={16} color="onImage" />
+            <Text variant="label" style={{ color: photoOverlay.text }} accessible={false}>
+              Retake
+            </Text>
+          </PhotoGlassButton>
+        ) : null}
+        <GlassIconButton
+          icon="xmark"
+          accessibilityLabel="Close without saving"
+          scheme="dark"
+          iconColor="onImage"
+          onPress={close}
+          testID="cook-done-close"
+        />
       </View>
-
-      <TextField
-        label="What I changed"
-        placeholder="Less salt, added spinach, baked instead of fried…"
-        value={notes}
-        onChangeText={setNotes}
-        multiline
-        maxLength={MAX_NOTES_LENGTH}
-        testID="cook-done-notes"
+      <DoneReviewSheet
+        hasPhoto={photo !== null}
+        rating={rating}
+        again={again}
+        notes={notes}
+        saving={saving}
+        canSave={recipe !== null}
+        onRating={setRating}
+        onAgain={setAgain}
+        onNotes={setNotes}
+        onAddPhoto={() => setBeat('photo')}
+        onSave={() => void submit(false)}
+        onShare={() => void submit(true)}
       />
-
-      <View style={styles.section}>
-        <Text variant="headline">Photo</Text>
-        <PhotoField photo={photo} onChange={setPhoto} />
-      </View>
-    </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  headerText: { flex: 1, gap: 4 },
-  section: { gap: 10 },
-  chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  // The dish photo is pinned dark in both appearances.
+  screen: { flex: 1, backgroundColor: palettes.light.text },
+  head: {
+    position: 'absolute',
+    left: space.xl,
+    right: space.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  headText: { flex: 1 },
+  retake: {
+    minHeight: RETAKE_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    paddingHorizontal: space.md,
+  },
   centered: { flex: 1, justifyContent: 'center' },
 });

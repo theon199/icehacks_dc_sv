@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Card, Icon, Text, space, useTheme, type IconName } from '@/ui';
+import { Icon, Text, fontFamily, radii, space, useTheme, type IconName } from '@/ui';
 
 import type {
   CompareSide,
@@ -44,7 +44,7 @@ export const CompareHeader = memo(function CompareHeader({
       <Text variant="overline" tone={tone}>
         {label}
       </Text>
-      <Text variant="headline" numberOfLines={3}>
+      <Text variant="title3" style={styles.sideTitle} numberOfLines={3}>
         {s.title}
       </Text>
       <Text variant="caption" tone="subtle">
@@ -53,7 +53,16 @@ export const CompareHeader = memo(function CompareHeader({
     </View>
   );
   return (
-    <View style={styles.header}>
+    <View
+      style={[
+        styles.header,
+        {
+          backgroundColor: theme.colors.surface,
+          ...theme.elevation.medium,
+          shadowColor: theme.colors.shadow,
+        },
+      ]}
+    >
       <View style={styles.sides}>
         {side('Original', original, 'muted')}
         <Icon name="arrow.right" android="arrow_forward" size={18} color="textSubtle" />
@@ -62,10 +71,10 @@ export const CompareHeader = memo(function CompareHeader({
       <View
         style={[
           styles.summary,
-          { backgroundColor: theme.colors.primarySoft, borderRadius: theme.radii.md },
+          { backgroundColor: theme.colors.highlightSoft, borderRadius: theme.radii.md },
         ]}
       >
-        <Text variant="subhead" color="onPrimarySoft">
+        <Text variant="subhead" color="onHighlightSoft">
           {summaryLine(summary)}
         </Text>
       </View>
@@ -98,7 +107,16 @@ export const DeltaTable = memo(function DeltaTable({
 }) {
   const theme = useTheme();
   return (
-    <Card variant="outlined" padding="md" style={styles.table}>
+    <View
+      style={[
+        styles.table,
+        {
+          backgroundColor: theme.colors.surface,
+          ...theme.elevation.medium,
+          shadowColor: theme.colors.shadow,
+        },
+      ]}
+    >
       <View style={styles.deltaRow}>
         <Text variant="caption" tone="subtle" style={styles.deltaLabel}>
           Per serving
@@ -134,7 +152,7 @@ export const DeltaTable = memo(function DeltaTable({
           </Text>
         </View>
       ))}
-    </Card>
+    </View>
   );
 });
 
@@ -152,46 +170,76 @@ const KIND_LOOK: Readonly<
   same: { icon: 'equal.circle', label: 'Same', color: 'textMuted' },
 };
 
-export const DiffRow = memo(function DiffRow({ entry }: { entry: DiffEntry }) {
+/** Where a diff row sits in its white card: the ends carry the rounded corners. */
+export type DiffEdge = 'top' | 'middle' | 'bottom' | 'single';
+
+export const DiffRow = memo(function DiffRow({
+  entry,
+  edge = 'single',
+}: {
+  entry: DiffEntry;
+  edge?: DiffEdge;
+}) {
   const theme = useTheme();
+  const top = edge === 'top' || edge === 'single';
+  const bottom = edge === 'bottom' || edge === 'single';
+  const radius = theme.radii.card;
   const look = KIND_LOOK[entry.kind];
   const before = entry.before?.name;
   const after = entry.after?.name;
   const title = entry.kind === 'swapped' ? `${before} → ${after}` : (after ?? before ?? '');
   return (
     <View
-      style={[styles.diff, { borderBottomColor: theme.colors.border }]}
-      accessible
-      accessibilityLabel={`${look.label}: ${entry.kind === 'swapped' ? `${before} to ${after}` : title}${entry.note ? `. ${entry.note}` : ''}`}
+      style={[
+        styles.diffCard,
+        {
+          backgroundColor: theme.colors.surface,
+          borderTopLeftRadius: top ? radius : 0,
+          borderTopRightRadius: top ? radius : 0,
+          borderBottomLeftRadius: bottom ? radius : 0,
+          borderBottomRightRadius: bottom ? radius : 0,
+          paddingTop: top ? space.sm : 0,
+          paddingBottom: bottom ? space.sm : 0,
+        },
+      ]}
     >
-      <Icon name={look.icon} size={20} color={look.color} />
-      <View style={styles.diffText}>
-        <Text variant="body">{title}</Text>
-        <Text variant="caption" tone="muted">
-          {look.label}
-          {entry.kind === 'more' || entry.kind === 'less' ? ' per serving' : ''}
-        </Text>
-        {entry.note ? (
-          <Text variant="footnote" tone="muted">
-            {entry.note}
+      <View
+        style={[styles.diff, { borderBottomColor: theme.colors.border }, bottom && styles.noRule]}
+        accessible
+        accessibilityLabel={`${look.label}: ${entry.kind === 'swapped' ? `${before} to ${after}` : title}${entry.note ? `. ${entry.note}` : ''}`}
+      >
+        <Icon name={look.icon} size={20} color={look.color} />
+        <View style={styles.diffText}>
+          <Text variant="body">{title}</Text>
+          <Text variant="caption" tone="muted">
+            {look.label}
+            {entry.kind === 'more' || entry.kind === 'less' ? ' per serving' : ''}
           </Text>
-        ) : null}
+          {entry.note ? (
+            <Text variant="footnote" tone="muted">
+              {entry.note}
+            </Text>
+          ) : null}
+        </View>
       </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  header: { gap: space.md, paddingTop: space.lg },
+  header: { gap: space.md, marginTop: space.sm, padding: space.xl, borderRadius: radii.card },
+  sideTitle: { fontFamily: fontFamily.textBold },
   sides: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   side: { flex: 1, gap: 2 },
   summary: { padding: space.md },
-  table: { gap: space.xxs },
+  table: { gap: space.xxs, padding: space.xl, borderRadius: radii.card },
   deltaRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.xs },
   rule: { borderTopWidth: StyleSheet.hairlineWidth },
   deltaLabel: { flex: 1.4 },
   deltaValue: { flex: 1, textAlign: 'right' },
   deltaChange: { flex: 1, textAlign: 'right' },
+  diffCard: { paddingHorizontal: space.xl },
+  noRule: { borderBottomWidth: 0 },
   diff: {
     flexDirection: 'row',
     gap: space.md,

@@ -1,6 +1,6 @@
 /**
- * Discover screen happy paths with the real deck hook and stores over a fixture catalog: buttons,
- * the "Not for me" sheet, mode switching and the entry points in the header.
+ * Discover screen happy paths with the real deck hook and stores over a fixture catalog: the top
+ * card's actions, its details side, the "Not for me" sheet, mode switching and the header.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
@@ -85,6 +85,11 @@ async function renderScreen() {
 
 const feedback = () => selectFeedbackEvents(useFeedbackStore.getState());
 const topLabel = () => screen.getByTestId('discover-top-card').props.accessibilityLabel as string;
+/** Runs one of the top card's accessibility actions, the gesture-free path to every decision. */
+const cardAction = (actionName: string) =>
+  fireEvent(screen.getByTestId('discover-top-card'), 'accessibilityAction', {
+    nativeEvent: { actionName },
+  });
 
 async function untilCards() {
   await waitFor(() => expect(screen.getByTestId('discover-top-card')).toBeTruthy());
@@ -109,20 +114,23 @@ afterEach(() => {
 });
 
 describe('DiscoverScreen', () => {
-  it('shows a card with its fit score, reasons and nutrition', async () => {
+  it('shows a card with its match, reasons and nutrition, and counts the cards lined up', async () => {
     await renderScreen();
     await untilCards();
-    expect(topLabel()).toMatch(/Fit score \d+ out of 100/);
+    expect(topLabel()).toMatch(/\d+% match/);
     expect(topLabel()).toMatch(/kcal/);
+    expect(screen.getByTestId('discover-dots').props.accessibilityLabel).toMatch(
+      /^\d+ recipes? lined up$/,
+    );
   });
 
-  it('likes with the button and records it once the next card is passed', async () => {
+  it('likes from the card and records it once the next card is passed', async () => {
     const view = await renderScreen();
     await untilCards();
     const first = topLabel();
-    await fireEvent.press(screen.getByTestId('discover-like'));
+    await cardAction('like');
     await waitFor(() => expect(topLabel()).not.toBe(first));
-    await fireEvent.press(screen.getByTestId('discover-pass'));
+    await cardAction('pass');
     expect(feedback().map((event) => event.kind)).toEqual(['like']);
     await view.unmount();
     // Both share the fixed test clock, so their stored order is arbitrary.
@@ -133,14 +141,45 @@ describe('DiscoverScreen', () => {
     ).toEqual(['like', 'pass']);
   });
 
-  it('puts the card back with undo', async () => {
+  it('puts the card back with undo from the deck options menu', async () => {
     await renderScreen();
     await untilCards();
     const first = topLabel();
-    await fireEvent.press(screen.getByTestId('discover-pass'));
+    await fireEvent.press(screen.getByTestId('discover-options'));
+    expect(screen.queryByTestId('discover-option-undo')).toBeNull();
+    await fireEvent.press(screen.getByTestId('discover-option-preferences'));
+    await cardAction('pass');
     await waitFor(() => expect(topLabel()).not.toBe(first));
-    await fireEvent.press(screen.getByTestId('discover-undo'));
+    await fireEvent.press(screen.getByTestId('discover-options'));
+    await fireEvent.press(await screen.findByTestId('discover-option-undo'));
     await waitFor(() => expect(topLabel()).toBe(first));
+  });
+
+  it('offers undo as a card action too', async () => {
+    await renderScreen();
+    await untilCards();
+    const first = topLabel();
+    await cardAction('pass');
+    await waitFor(() => expect(topLabel()).not.toBe(first));
+    const actions = screen.getByTestId('discover-top-card').props.accessibilityActions as {
+      name: string;
+    }[];
+    expect(actions.map((action) => action.name)).toContain('undo');
+    await cardAction('undo');
+    await waitFor(() => expect(topLabel()).toBe(first));
+  });
+
+  it('turns the card over to why it fits, and opens the recipe from there', async () => {
+    await renderScreen();
+    await untilCards();
+    await cardAction('activate');
+    expect(await screen.findByTestId('discover-card-back')).toBeTruthy();
+    expect(screen.getByText('Why it fits')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('discover-card-open'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/recipe/[id]',
+      params: { id: expect.any(String) },
+    });
   });
 
   it('handles VoiceOver actions on the top card', async () => {
@@ -153,9 +192,7 @@ describe('DiscoverScreen', () => {
     await waitFor(() => expect(topLabel()).not.toBe(first));
     expect(Object.keys(useSavedStore.getState().saved)).toHaveLength(1);
 
-    await fireEvent(screen.getByTestId('discover-top-card'), 'accessibilityAction', {
-      nativeEvent: { actionName: 'activate' },
-    });
+    await cardAction('open');
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/recipe/[id]',
       params: { id: expect.any(String) },
@@ -166,7 +203,7 @@ describe('DiscoverScreen', () => {
     const view = await renderScreen();
     await untilCards();
     const first = topLabel();
-    await fireEvent.press(screen.getByTestId('discover-not-for-me'));
+    await cardAction('notForMe');
     await fireEvent.press(await screen.findByTestId('not-for-me-too_long'));
     await waitFor(() => expect(topLabel()).not.toBe(first));
     await view.unmount();
@@ -179,7 +216,7 @@ describe('DiscoverScreen', () => {
       .mockResolvedValue([ingredient('cilantro', 'Cilantro'), ingredient('salt', 'Salt', true)]);
     const view = await renderScreen();
     await untilCards();
-    await fireEvent.press(screen.getByTestId('discover-not-for-me'));
+    await cardAction('notForMe');
     await fireEvent.press(await screen.findByTestId('not-for-me-dislike_ingredient'));
     await fireEvent.press(await screen.findByTestId('not-for-me-ingredient-cilantro'));
     expect(screen.queryByTestId('not-for-me-ingredient-salt')).toBeNull();
@@ -193,20 +230,25 @@ describe('DiscoverScreen', () => {
   it('switches to Quick mode', async () => {
     await renderScreen();
     await untilCards();
+    await fireEvent.press(screen.getByTestId('discover-mode-menu'));
+    expect(screen.queryByTestId('discover-mode-gentle')).toBeNull();
     await fireEvent.press(screen.getByTestId('discover-mode-quick'));
     await waitFor(() =>
       expect(listCandidates).toHaveBeenLastCalledWith(expect.objectContaining({ maxMinutes: 30 })),
     );
     await untilCards();
     await waitFor(() => expect(topLabel()).toMatch(/\. 20 min\./));
-    expect(screen.queryByTestId('discover-mode-gentle')).toBeNull();
   });
 
-  it('opens notifications and profile from the header', async () => {
+  it('opens preferences, notifications and profile from the header', async () => {
     await renderScreen();
-    await fireEvent.press(screen.getByTestId('discover-notifications'));
+    await fireEvent.press(screen.getByTestId('discover-options'));
+    await fireEvent.press(screen.getByTestId('discover-option-preferences'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/preferences'));
+    await fireEvent.press(screen.getByTestId('discover-options'));
+    await fireEvent.press(screen.getByTestId('discover-option-notifications'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/notifications'));
     await fireEvent.press(screen.getByTestId('discover-profile'));
-    expect(mockPush).toHaveBeenCalledWith('/notifications');
     expect(mockPush).toHaveBeenCalledWith('/profile');
   });
 

@@ -5,30 +5,30 @@ export interface TabSpec {
   /** Route name inside `src/app/(app)/(tabs)`. */
   name: string;
   label: string;
-  sf: { default: SFSymbol; selected: SFSymbol };
+  sf: SFSymbol | { default: SFSymbol; selected: SFSymbol };
   md: AndroidSymbol;
-  /** iOS 26 places the `search` role tab apart from the others. */
+  /** iOS system role. `search` lifts the tab out into the Liquid Glass search island. */
   role?: 'search';
 }
 
+/**
+ * Four tabs share the bar and Search is the iOS `search` role, which iOS 26 draws as a separate
+ * Liquid Glass island beside it. Selecting the island folds the other tabs into one circle and
+ * expands the island into the search field, as in Apple Music. Keep the group at four: a fifth
+ * pushes the island into "More".
+ */
 export const tabs: readonly TabSpec[] = [
   {
     name: '(discover)',
     label: 'Discover',
-    sf: { default: 'sparkles', selected: 'sparkles' },
+    sf: { default: 'safari', selected: 'safari.fill' },
     md: 'explore',
   },
   {
     name: 'cookbook',
     label: 'Cookbook',
-    sf: { default: 'book.closed', selected: 'book.closed.fill' },
+    sf: { default: 'bookmark', selected: 'bookmark.fill' },
     md: 'menu_book',
-  },
-  {
-    name: 'snap',
-    label: 'Snap',
-    sf: { default: 'camera', selected: 'camera.fill' },
-    md: 'photo_camera',
   },
   {
     name: 'community',
@@ -37,9 +37,15 @@ export const tabs: readonly TabSpec[] = [
     md: 'groups',
   },
   {
+    name: 'snap',
+    label: 'Snap',
+    sf: { default: 'camera', selected: 'camera.fill' },
+    md: 'photo_camera',
+  },
+  {
     name: 'search',
     label: 'Search',
-    sf: { default: 'magnifyingglass', selected: 'magnifyingglass' },
+    sf: 'magnifyingglass',
     md: 'search',
     role: 'search',
   },

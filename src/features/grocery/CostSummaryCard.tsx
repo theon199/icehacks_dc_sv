@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { PricesNotice } from '@/lib/api/commerce';
-import { Button, Card, Skeleton, space, Text } from '@/ui';
+import { Button, radii, Skeleton, space, Text, useTheme } from '@/ui';
 
 import { checkingMessage, missingMessage, noticeMessage, retailersMessage } from './copy';
 import { formatCents } from './format';
@@ -35,7 +35,9 @@ function Figures({ display }: { display: CostDisplay }) {
         accessibilityLabel={`About ${perServing} per serving, ${total} in total`}
         testID="grocery-cost-figures"
       >
-        <Text variant="title1">{perServing}</Text>
+        <Text variant="title1" accessibilityRole="text" style={styles.figure}>
+          {perServing}
+        </Text>
         <Text variant="callout" tone="muted">
           per serving · {total} total
         </Text>
@@ -49,7 +51,9 @@ function Figures({ display }: { display: CostDisplay }) {
       accessibilityLabel={`About ${total} in total`}
       testID="grocery-cost-figures"
     >
-      <Text variant="title1">{total}</Text>
+      <Text variant="title1" accessibilityRole="text" style={styles.figure}>
+        {total}
+      </Text>
       <Text variant="callout" tone="muted">
         estimated total
       </Text>
@@ -68,6 +72,7 @@ export function CostSummaryCard({
   onRetry,
   footer,
 }: CostSummaryCardProps) {
+  const theme = useTheme();
   if (display.empty) return null;
   const checking = checkingMessage(display.checking);
   const missing = missingMessage(display.missing);
@@ -102,9 +107,12 @@ export function CostSummaryCard({
   }
 
   return (
-    <Card testID="grocery-cost-summary">
+    <View
+      testID="grocery-cost-summary"
+      style={[styles.card, { backgroundColor: theme.colors.surface }]}
+    >
       <View style={styles.stack}>
-        <Text variant="overline" tone="muted">
+        <Text variant="headline" accessibilityRole="header">
           Estimated cost
         </Text>
         {body}
@@ -161,12 +169,15 @@ export function CostSummaryCard({
         ) : null}
         {footer}
       </View>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: space.sm },
+  /** A white card on the canvas, the same shape as the list's aisle cards and the Cookbook's. */
+  card: { borderRadius: radii.card, padding: space.xl },
+  stack: { gap: space.md },
+  figure: { fontVariant: ['tabular-nums'] },
   figures: { gap: space.xxs },
   status: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   sources: { flexDirection: 'row', alignItems: 'center', gap: space.sm },

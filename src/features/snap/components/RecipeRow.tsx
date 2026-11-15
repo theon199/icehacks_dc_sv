@@ -14,7 +14,7 @@ export interface RecipeRowProps {
   testID?: string;
 }
 
-const THUMB = 64;
+const THUMB = 48;
 
 /** A catalog recipe in a result list. */
 export const RecipeRow = memo(function RecipeRow({
@@ -43,20 +43,26 @@ export const RecipeRow = memo(function RecipeRow({
         accessible={false}
       />
       <View style={styles.text}>
-        <Text variant="headline" numberOfLines={2}>
+        <Text variant="headline" numberOfLines={1}>
           {recipe.title}
         </Text>
-        <Text variant="footnote" tone="muted" numberOfLines={1}>
+        <Text variant="caption" tone="muted" numberOfLines={1}>
           {minutes ? `${detail} · ${minutes}` : detail}
         </Text>
       </View>
-      <Icon name="chevron.right" size={16} color="textSubtle" />
+      <Icon name="chevron.right" size={18} color="textMuted" />
     </PressableScale>
   );
 });
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm },
-  thumb: { width: THUMB, height: THUMB, borderRadius: radii.sm },
-  text: { flex: 1, gap: space.xxs },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: 56,
+    paddingVertical: space.xs,
+  },
+  thumb: { width: THUMB, height: THUMB, borderRadius: radii.md },
+  text: { flex: 1, minWidth: 0, gap: space.xxs },
 });

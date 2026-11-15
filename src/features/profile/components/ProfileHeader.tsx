@@ -1,16 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import {
-  Avatar,
-  Button,
-  Chip,
-  Icon,
-  IconButton,
-  PressableScale,
-  space,
-  Text,
-  useTheme,
-} from '@/ui';
+import { Avatar, Chip, Icon, PressableScale, space, Text, fontFamily, useTheme } from '@/ui';
 
 import type { ProfileRow } from '../api/schemas';
 import { cuisineLabel } from '../model/cuisines';
@@ -21,26 +11,37 @@ export interface ProfileHeaderProps {
   avatarBusy: boolean;
   onAvatarPress: () => void;
   onEdit: () => void;
-  onFriends: () => void;
-  onSettings: () => void;
 }
 
-const AVATAR_SIZE = 96;
+const AVATAR_SIZE = 60;
+const EDIT_SIZE = 36;
 
-/** Photo, name, handle, bio and favourite cuisines, with the main profile actions. */
+/**
+ * Who this is, on one white card: photo, name and handle with an edit circle, then the bio the
+ * cook wrote and their favourite cuisines.
+ */
 export function ProfileHeader({
   profile,
   avatarUri,
   avatarBusy,
   onAvatarPress,
   onEdit,
-  onFriends,
-  onSettings,
 }: ProfileHeaderProps) {
   const theme = useTheme();
   return (
-    <View style={styles.container}>
-      <View style={styles.topRow}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.radii.tile,
+          ...theme.elevation.low,
+          shadowColor: theme.colors.shadow,
+        },
+      ]}
+      testID="profile-identity"
+    >
+      <View style={styles.row}>
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel="Profile photo"
@@ -54,36 +55,57 @@ export function ProfileHeader({
           <View
             style={[
               styles.cameraBadge,
-              { backgroundColor: theme.colors.primary, borderColor: theme.colors.background },
+              { backgroundColor: theme.colors.primary, borderColor: theme.colors.surface },
             ]}
           >
-            <Icon name={avatarBusy ? 'hourglass' : 'camera.fill'} size={14} color="onPrimary" />
+            <Icon name={avatarBusy ? 'hourglass' : 'camera.fill'} size={11} color="onPrimary" />
           </View>
         </PressableScale>
-        <IconButton
-          icon="gearshape"
-          accessibilityLabel="Settings"
-          variant="tinted"
-          onPress={onSettings}
-          testID="profile-settings"
-        />
-      </View>
-
-      <View style={styles.names}>
-        <View style={styles.nameRow}>
-          <Text variant="title1" numberOfLines={2} style={styles.shrink}>
-            {profile.display_name}
+        <View style={styles.copy}>
+          <View style={styles.nameRow}>
+            <Text variant="title2" numberOfLines={1} style={styles.name}>
+              {profile.display_name}
+            </Text>
+            {profile.is_team ? (
+              <Chip label="Famara Team" tone="primary" icon="checkmark.seal.fill" />
+            ) : null}
+          </View>
+          <Text variant="caption" tone="muted" numberOfLines={2} style={styles.meta}>
+            @{profile.handle}
           </Text>
-          {profile.is_team ? (
-            <Chip label="Famara Team" tone="primary" icon="checkmark.seal.fill" />
-          ) : null}
         </View>
-        <Text variant="subhead" tone="muted">
-          @{profile.handle}
-        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Edit profile"
+          hitSlop={(44 - EDIT_SIZE) / 2}
+          onPress={onEdit}
+          style={({ pressed }) => [
+            styles.edit,
+            { backgroundColor: theme.colors.surfaceSunken },
+            pressed && styles.pressed,
+          ]}
+          testID="profile-edit"
+        >
+          <Icon name="pencil" size={16} color="text" />
+        </Pressable>
       </View>
 
-      {profile.bio ? <Text variant="callout">{profile.bio}</Text> : null}
+      {profile.bio ? (
+        <Text variant="subhead" tone="muted">
+          {profile.bio}
+        </Text>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add a bio"
+          onPress={onEdit}
+          style={({ pressed }) => pressed && styles.pressed}
+        >
+          <Text variant="subhead" tone="muted" style={styles.empty}>
+            Add a bio
+          </Text>
+        </Pressable>
+      )}
 
       {profile.cuisines.length > 0 ? (
         <View
@@ -96,32 +118,36 @@ export function ProfileHeader({
           ))}
         </View>
       ) : null}
-
-      <View style={styles.actions}>
-        <Button label="Edit profile" icon="pencil" variant="secondary" size="sm" onPress={onEdit} />
-        <Button label="Friends" icon="person.2" variant="secondary" size="sm" onPress={onFriends} />
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { gap: space.md },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  card: { padding: 14, gap: space.md },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   cameraBadge: {
     position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  names: { gap: space.xxs },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
-  shrink: { flexShrink: 1 },
+  copy: { flex: 1, minWidth: 0, gap: 2 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  name: { flexShrink: 1, fontFamily: fontFamily.textBold, letterSpacing: -0.3 },
+  meta: { fontFamily: fontFamily.textSemiBold },
+  edit: {
+    width: EDIT_SIZE,
+    height: EDIT_SIZE,
+    borderRadius: EDIT_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  empty: { fontFamily: fontFamily.textSemiBold },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
-  actions: { flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' },
+  pressed: { opacity: 0.7 },
 });

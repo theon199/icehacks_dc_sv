@@ -13,6 +13,16 @@ import { renderWithTheme } from '@/test/render';
 
 import { PersonalDetailsScreen } from './PersonalDetailsScreen';
 
+jest.mock('expo-router', () => ({
+  Stack: { Screen: () => null },
+  useRouter: () => ({
+    push: jest.fn(),
+    back: jest.fn(),
+    replace: jest.fn(),
+    canGoBack: () => true,
+  }),
+}));
+
 /** Where the shared store keeps its Keychain copy. */
 const KEYCHAIN_KEY = 'famara.user.personal_details';
 

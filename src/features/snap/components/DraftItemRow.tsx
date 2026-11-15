@@ -67,7 +67,10 @@ export const DraftItemRow = memo(function DraftItemRow({
 
   return (
     <View
-      style={[styles.row, { borderBottomColor: theme.colors.border }]}
+      style={[
+        styles.row,
+        { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.lg },
+      ]}
       testID={`draft-item-${item.key}`}
     >
       <PressableScale
@@ -81,12 +84,18 @@ export const DraftItemRow = memo(function DraftItemRow({
         style={styles.tick}
         testID={`draft-toggle-${item.key}`}
       >
-        <Icon
-          name={item.selected ? 'checkmark.circle.fill' : 'circle'}
-          color={item.selected ? 'primary' : 'textSubtle'}
-          size={22}
-          weight="semibold"
-        />
+        <View
+          style={[
+            styles.check,
+            item.selected
+              ? { backgroundColor: theme.colors.highlight, borderColor: theme.colors.highlight }
+              : { borderColor: theme.colors.borderStrong },
+          ]}
+        >
+          {item.selected ? (
+            <Icon name="checkmark" color="onHighlight" size={14} weight="bold" />
+          ) : null}
+        </View>
       </PressableScale>
       <View style={styles.body}>
         <View style={styles.fields}>
@@ -142,11 +151,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.xs,
     paddingVertical: space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingRight: space.xs,
+    marginBottom: space.sm,
   },
   tick: {
     width: minTouchTarget,
     height: minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  check: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },

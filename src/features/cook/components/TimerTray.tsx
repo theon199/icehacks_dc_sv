@@ -57,7 +57,8 @@ export const TimerTray = memo(function TimerTray({
             style={[
               styles.pill,
               {
-                backgroundColor: done ? theme.colors.accent : theme.colors.surfaceSunken,
+                backgroundColor: done ? theme.colors.accent : theme.colors.surface,
+                borderColor: done ? theme.colors.accent : theme.colors.border,
                 borderRadius: theme.radii.pill,
               },
             ]}
@@ -90,6 +91,7 @@ const styles = StyleSheet.create({
     gap: 8,
     minHeight: 44,
     paddingHorizontal: 14,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   text: { gap: 0 },
   clock: { fontVariant: ['tabular-nums'] },

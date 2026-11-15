@@ -9,7 +9,10 @@ import { renderWithTheme } from '@/test/render';
 import { WhyThisFitsScreen } from './WhyThisFitsScreen';
 import { allergenMap, ingredient, makeDetail, prefs } from '../test/fixtures';
 
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+  useNavigation: () => ({ addListener: () => () => undefined, canGoBack: () => true }),
+}));
 jest.mock('@/lib/catalog/queries', () => ({
   getRecipeDetail: jest.fn(),
   getRecipeSummaries: jest.fn(),

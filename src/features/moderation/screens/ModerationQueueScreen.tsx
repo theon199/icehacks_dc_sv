@@ -4,18 +4,19 @@ import { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import {
-  EmptyState,
-  ErrorState,
   SegmentedControl,
   Skeleton,
   SkeletonGroup,
+  errorMessageFor,
   useTheme,
   type Segment,
 } from '@/ui';
-import { gutter, space } from '@/ui/tokens';
+import { space } from '@/ui/tokens';
 
 import { AppealReviewCard } from '../components/AppealReviewCard';
 import { AuditRow } from '../components/AuditRow';
+import { ModerationPage } from '../components/ModerationPage';
+import { ModerationStateCard } from '../components/ModerationStateCard';
 import { ModeratorGate } from '../components/ModeratorGate';
 import { QueueItemCard } from '../components/QueueItemCard';
 import { reviewHref } from '../links';
@@ -34,9 +35,22 @@ function Loading() {
   return (
     <SkeletonGroup style={styles.padded}>
       {[0, 1, 2].map((i) => (
-        <Skeleton key={i} height={120} radius="md" />
+        <Skeleton key={i} height={120} radius="card" />
       ))}
     </SkeletonGroup>
+  );
+}
+
+function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <View style={styles.padded}>
+      <ModerationStateCard
+        alert
+        title="Something didn't load"
+        message={errorMessageFor(error)}
+        action={{ label: 'Try again', onPress: onRetry }}
+      />
+    </View>
   );
 }
 
@@ -52,16 +66,18 @@ function ReportsTab() {
   );
 
   if (queue.isPending) return <Loading />;
-  if (queue.isError) return <ErrorState error={queue.error} onRetry={() => void queue.refetch()} />;
+  if (queue.isError) return <LoadFailed error={queue.error} onRetry={() => void queue.refetch()} />;
   return (
     <FlashList
       data={items}
       keyExtractor={(item) => `${item.target_kind}:${item.target_id}`}
-      renderItem={({ item }) => <QueueItemCard item={item} now={now} onOpen={open} />}
+      renderItem={({ item }) => (
+        <View style={styles.cardGap}>
+          <QueueItemCard item={item} now={now} onOpen={open} />
+        </View>
+      )}
       contentContainerStyle={styles.padded}
-      ListEmptyComponent={
-        <EmptyState icon="checkmark.seal" title="Queue is clear" message="No open reports." />
-      }
+      ListEmptyComponent={<ModerationStateCard title="Queue is clear" message="No open reports." />}
       onEndReached={() => {
         if (queue.hasNextPage && !queue.isFetchingNextPage) void queue.fetchNextPage();
       }}
@@ -82,7 +98,7 @@ function AppealsTab() {
   const now = appeals.dataUpdatedAt;
   if (appeals.isPending) return <Loading />;
   if (appeals.isError) {
-    return <ErrorState error={appeals.error} onRetry={() => void appeals.refetch()} />;
+    return <LoadFailed error={appeals.error} onRetry={() => void appeals.refetch()} />;
   }
   return (
     <FlashList
@@ -95,7 +111,7 @@ function AppealsTab() {
       )}
       contentContainerStyle={styles.padded}
       ListEmptyComponent={
-        <EmptyState icon="checkmark.seal" title="No pending appeals" message="All caught up." />
+        <ModerationStateCard title="No pending appeals" message="All caught up." />
       }
       refreshControl={
         <RefreshControl
@@ -120,14 +136,14 @@ function HistoryTab() {
     [router],
   );
   if (audit.isPending) return <Loading />;
-  if (audit.isError) return <ErrorState error={audit.error} onRetry={() => void audit.refetch()} />;
+  if (audit.isError) return <LoadFailed error={audit.error} onRetry={() => void audit.refetch()} />;
   return (
     <FlashList
       data={entries}
       keyExtractor={(entry) => entry.id}
       renderItem={({ item }) => <AuditRow entry={item} now={now} onOpen={open} />}
       contentContainerStyle={styles.padded}
-      ListEmptyComponent={<EmptyState icon="clock" title="No decisions yet" />}
+      ListEmptyComponent={<ModerationStateCard message="No decisions yet." />}
       onEndReached={() => {
         if (audit.hasNextPage && !audit.isFetchingNextPage) void audit.fetchNextPage();
       }}
@@ -143,10 +159,9 @@ function HistoryTab() {
 }
 
 function QueueTabs() {
-  const theme = useTheme();
   const [tab, setTab] = useState<Tab>('reports');
   return (
-    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+    <View style={styles.flex}>
       <View style={styles.tabs}>
         <SegmentedControl
           segments={TABS}
@@ -165,15 +180,17 @@ function QueueTabs() {
 /** Moderators: open reports grouped by target, pending appeals and the decision history. */
 export function ModerationQueueScreen() {
   return (
-    <ModeratorGate>
-      <QueueTabs />
-    </ModeratorGate>
+    <ModerationPage eyebrow="Moderation" title="Review queue" scroll={false}>
+      <ModeratorGate>
+        <QueueTabs />
+      </ModeratorGate>
+    </ModerationPage>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  tabs: { paddingHorizontal: gutter, paddingVertical: space.md },
-  padded: { paddingHorizontal: gutter, paddingBottom: space.xxxl },
-  cardGap: { paddingBottom: space.md },
+  tabs: { paddingHorizontal: space.xl, paddingBottom: space.md },
+  padded: { paddingHorizontal: space.xl, paddingBottom: space.xxxl },
+  cardGap: { paddingBottom: space.xl },
 });

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import type { ModerationActionKind } from '@/lib/supabase/database.types';
-import { Button, ChoiceChip, ErrorState, Text, TextField } from '@/ui';
+import { Button, ChoiceChip, ErrorState, Text, TextField, fontFamily } from '@/ui';
 import { space } from '@/ui/tokens';
 
 import {
@@ -53,7 +53,9 @@ export function ModerateForm({ options, busy, error, onSubmit }: ModerateFormPro
 
   return (
     <View style={styles.form}>
-      <Text variant="title3">Decision</Text>
+      <Text variant="body" accessibilityRole="header" style={styles.heading}>
+        Decision
+      </Text>
       <View style={styles.chips} accessibilityRole="radiogroup" accessibilityLabel="Action">
         {options.map((option) => (
           <ChoiceChip
@@ -110,5 +112,6 @@ export function ModerateForm({ options, busy, error, onSubmit }: ModerateFormPro
 
 const styles = StyleSheet.create({
   form: { gap: space.md },
+  heading: { fontFamily: fontFamily.textSemiBold },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

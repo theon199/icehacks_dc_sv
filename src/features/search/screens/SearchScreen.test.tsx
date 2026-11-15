@@ -13,6 +13,7 @@ import { useSessionStore } from '@/features/auth';
 import { DietFlag, type RecipeSummary, type SearchPage } from '@/lib/catalog';
 import { getCuisines, searchRecipes } from '@/lib/catalog/queries';
 import { defaultPreferences, usePreferencesStore } from '@/stores/preferences';
+import type * as NativeStack from '@/test/nativeStack';
 import { renderWithTheme } from '@/test/render';
 
 import { SearchScreen } from './SearchScreen';
@@ -44,7 +45,15 @@ configure({ asyncUtilTimeout: 10_000 });
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
+  useRouter: () => ({
+    push: mockPush,
+    navigate: jest.fn(),
+    back: jest.fn(),
+    canGoBack: () => true,
+  }),
+  useNavigation: () => ({ getParent: () => undefined }),
+  useIsFocused: () => true,
+  Stack: jest.requireActual<typeof NativeStack>('@/test/nativeStack').mockStack,
 }));
 
 const fits = searchRecipe('mealdb:1', { title: 'Lentil soup' });
@@ -151,6 +160,8 @@ describe('SearchScreen', () => {
     });
 
     await fireEvent.changeText(screen.getByTestId('search-input'), '');
+    // Recent searches show while the field is focused and empty.
+    await fireEvent(screen.getByTestId('search-input'), 'focus');
     expect(await screen.findByRole('button', { name: 'Search again for soup' })).toBeOnTheScreen();
   });
 
@@ -190,5 +201,23 @@ describe('SearchScreen', () => {
     await userEvent.setup().press(screen.getByRole('tab', { name: 'Chef' }));
     expect(screen.getByTestId('chef-pane')).toBeOnTheScreen();
     expect(screen.getByTestId('chef-screen')).toBeOnTheScreen();
+  });
+
+  it('keeps the search in the field after a trip to Chef and back', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+    await fireEvent.changeText(screen.getByTestId('search-input'), 'chicken');
+    await user.press(screen.getByRole('tab', { name: 'Chef' }));
+    expect(screen.queryByTestId('search-input')).not.toBeOnTheScreen();
+
+    await user.press(screen.getByRole('tab', { name: 'Search' }));
+    expect(screen.getByTestId('search-input')).toHaveDisplayValue('chicken');
+    expect(useSearchStore.getState().query).toBe('chicken');
+  });
+
+  it('opens Chef from the card above the browse grid', async () => {
+    await renderScreen();
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Ask Chef' }));
+    expect(screen.getByTestId('chef-pane')).toBeOnTheScreen();
   });
 });

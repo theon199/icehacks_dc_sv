@@ -3,7 +3,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { formatRelativeTime } from '@/lib/format';
 import type { ReportReason } from '@/lib/supabase/database.types';
-import { Chip, PressableScale, Text } from '@/ui';
+import { Chip, PressableScale, Text, fontFamily } from '@/ui';
+import { GlassCard } from '@/ui/GlassCard';
 import { space } from '@/ui/tokens';
 
 import type { QueueItem } from '../model';
@@ -38,22 +39,28 @@ function QueueItemCardView({ item, now, onOpen }: QueueItemCardProps) {
       accessibilityHint="Opens the review"
       onPress={() => onOpen(item)}
       pressedScale={0.99}
-      style={styles.card}
       testID={`queue-${item.target_kind}-${item.target_id}`}
     >
-      <View style={styles.meta}>
-        <Text variant="subhead">{summary}</Text>
-        <Text variant="footnote" tone="subtle">
-          {formatRelativeTime(item.first_reported_at, now)}
-        </Text>
-      </View>
-      <View style={styles.chips}>
-        {item.automated_count > 0 ? <Chip label="Automatic hold" tone="accent" /> : null}
-        {reasons.map((reason) => (
-          <Chip key={reason} label={reasonLabel(reason)} />
-        ))}
-      </View>
-      <TargetPreview item={item} compact />
+      {/* Pressing scales the card, never fades it: faded glass draws an empty rim. */}
+      <GlassCard>
+        <View style={styles.stack}>
+          <View style={styles.meta}>
+            <Text variant="body" style={styles.summary}>
+              {summary}
+            </Text>
+            <Text variant="caption" tone="muted">
+              {formatRelativeTime(item.first_reported_at, now)}
+            </Text>
+          </View>
+          <View style={styles.chips}>
+            {item.automated_count > 0 ? <Chip label="Automatic hold" tone="accent" /> : null}
+            {reasons.map((reason) => (
+              <Chip key={reason} label={reasonLabel(reason)} />
+            ))}
+          </View>
+        </View>
+        <TargetPreview item={item} compact inset />
+      </GlassCard>
     </PressableScale>
   );
 }
@@ -61,7 +68,8 @@ function QueueItemCardView({ item, now, onOpen }: QueueItemCardProps) {
 export const QueueItemCard = memo(QueueItemCardView);
 
 const styles = StyleSheet.create({
-  card: { gap: space.sm, paddingVertical: space.md },
-  meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  stack: { gap: space.sm },
+  summary: { flex: 1, fontFamily: fontFamily.textSemiBold },
+  meta: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
 });

@@ -9,10 +9,10 @@ import { fetchFeedPage, fetchWeeklyTopDishes } from '../api/communityApi';
 import { makePage, makePost, makeRecipe } from '../testing/fixtures';
 import { renderWithClient } from '../testing/renderWithClient';
 
-jest.mock('expo-router', () => ({
-  router: { push: jest.fn(), navigate: jest.fn(), back: jest.fn(), canGoBack: () => true },
-  Stack: { Screen: () => null },
-}));
+jest.mock('expo-router', () => {
+  const router = { push: jest.fn(), navigate: jest.fn(), back: jest.fn(), canGoBack: () => true };
+  return { router, useRouter: () => router, Stack: { Screen: () => null } };
+});
 
 jest.mock('../api/communityApi', () => ({
   fetchFeedPage: jest.fn(),
@@ -75,14 +75,29 @@ describe('CommunityScreen', () => {
     feedMock.mockResolvedValue(makePage([]));
     await renderWithClient(<CommunityScreen />);
 
-    await fireEvent.press(screen.getByRole('tab', { name: 'Following' }));
+    await fireEvent.press(screen.getByTestId('feed-mode'));
+    await fireEvent.press(await screen.findByTestId('feed-mode-following'));
 
     expect(await screen.findByText('Nothing from your people yet')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Find friends' })).toBeTruthy();
     expect(feedMock).toHaveBeenCalledWith(expect.objectContaining({ mode: 'following' }));
   });
 
-  describe('Cooked most this week', () => {
+  it('opens notifications, compose and profile from the title row', async () => {
+    feedMock.mockResolvedValue(makePage([]));
+    await renderWithClient(<CommunityScreen />);
+    const { router } = jest.requireMock<{ router: { push: jest.Mock } }>('expo-router');
+
+    await fireEvent.press(screen.getByTestId('community-notifications'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Share a dish' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Open your profile' }));
+
+    expect(router.push).toHaveBeenCalledWith('/notifications');
+    expect(router.push).toHaveBeenCalledWith('/compose');
+    expect(router.push).toHaveBeenCalledWith('/profile');
+  });
+
+  describe('Most cooked this week', () => {
     const satay = makeRecipe({
       id: 'mealdb:10',
       title: 'Chicken satay',
@@ -115,7 +130,7 @@ describe('CommunityScreen', () => {
       await renderWithClient(<CommunityScreen />);
 
       expect(await screen.findByText('Peanut-free curry')).toBeTruthy();
-      expect(screen.getByText('Cooked most this week')).toBeTruthy();
+      expect(screen.getByText('Most cooked this week')).toBeTruthy();
       expect(screen.queryByText('Chicken satay')).toBeNull();
       expect(screen.queryByText('Mystery stew')).toBeNull();
     });
@@ -127,7 +142,7 @@ describe('CommunityScreen', () => {
       expect(
         await screen.findByText(/No popular dishes|No posts yet|Nothing from your people/),
       ).toBeTruthy();
-      expect(screen.queryByText('Cooked most this week')).toBeNull();
+      expect(screen.queryByText('Most cooked this week')).toBeNull();
       expect(screen.queryByText('Peanut-free curry')).toBeNull();
       expect(weeklyMock).not.toHaveBeenCalled();
     });

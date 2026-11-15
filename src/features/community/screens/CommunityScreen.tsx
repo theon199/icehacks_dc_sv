@@ -1,26 +1,22 @@
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
-import { router, Stack } from 'expo-router';
-import { useCallback, useState, type ReactElement } from 'react';
+import { router } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { defineKvKey } from '@/lib/storage/kv';
-import { ErrorState, IconButton, SegmentedControl, gutter, space, useTheme } from '@/ui';
+import { GlassIconButton, TabHeader, gutter, space, useTheme } from '@/ui';
 
 import { feedModeSchema, type FeedMode } from '../api/schemas';
 import type { Post } from '../api/types';
-import { FeedEmpty } from '../components/FeedEmpty';
+import { CommunityStateCard } from '../components/CommunityStateCard';
+import { FeedEmpty, FeedError } from '../components/FeedEmpty';
+import { FeedModeButton } from '../components/FeedModeButton';
 import { PostCard } from '../components/PostCard';
-import { PostSkeletonList } from '../components/PostSkeleton';
 import { usePostMenu } from '../components/usePostMenu';
 import { WeeklyTopDishes } from '../components/WeeklyTopDishes';
+import { NotificationBell, ProfileButton } from '../deps';
 import { useForgetOtherViewers, useViewer } from '../hooks/queryKeys';
 import { useFeed } from '../hooks/useFeed';
-
-const SEGMENTS = [
-  { value: 'following', label: 'Following' },
-  { value: 'popular', label: 'Popular' },
-  { value: 'new', label: 'New' },
-] as const;
 
 const lastMode = defineKvKey('community.feedMode', feedModeSchema);
 
@@ -33,8 +29,12 @@ function readLastMode(): FeedMode {
 }
 
 const keyExtractor = (post: Post) => post.id;
+const openCompose = () => router.push('/compose');
 
-/** The Community tab: Following, Popular and New feeds with this week's most-cooked dishes. */
+/**
+ * The Community tab: this week's most-cooked dishes, then the feed. Which feed (Following,
+ * Popular, New) is chosen from the glass menu on the header's filter circle.
+ */
 export function CommunityScreen() {
   const theme = useTheme();
   useForgetOtherViewers(useViewer());
@@ -49,7 +49,7 @@ export function CommunityScreen() {
     try {
       lastMode.setSync(next);
     } catch {
-      // Remembering the tab is a convenience only.
+      // Remembering the feed is a convenience only.
     }
   }, []);
 
@@ -71,39 +71,47 @@ export function CommunityScreen() {
     [openMenu],
   );
 
+  // With nothing in the feed, the card that says why sits above the rail, as the first thing.
+  let state = null;
+  if (feed.posts.length === 0) {
+    if (feed.isPending)
+      state = (
+        <CommunityStateCard
+          loading
+          title="Loading Community"
+          message="Getting the community feed ready…"
+        />
+      );
+    else if (feed.isError)
+      state = <FeedError error={feed.error} onRetry={() => void feed.refetch()} />;
+    else state = <FeedEmpty mode={mode} />;
+  }
+
   const header = (
     <View style={styles.header}>
-      <SegmentedControl
-        segments={SEGMENTS}
-        value={mode}
-        onChange={changeMode}
-        accessibilityLabel="Feed"
-        testID="feed-mode"
-      />
+      {state}
       <WeeklyTopDishes />
     </View>
   );
 
-  let empty: ReactElement;
-  if (feed.isPending) empty = <PostSkeletonList />;
-  else if (feed.isError)
-    empty = <ErrorState error={feed.error} onRetry={() => void feed.refetch()} />;
-  else empty = <FeedEmpty mode={mode} />;
-
   return (
     <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <IconButton
-              icon="square.and.pencil"
+      <TabHeader
+        title="Community"
+        testID="community-header"
+        trailing={
+          <>
+            <FeedModeButton mode={mode} onChange={changeMode} />
+            <NotificationBell variant="glass" testID="community-notifications" />
+            <GlassIconButton
+              icon="plus"
               accessibilityLabel="Share a dish"
-              color="primary"
-              onPress={() => router.push('/compose')}
+              onPress={openCompose}
               testID="compose-button"
             />
-          ),
-        }}
+            <ProfileButton testID="community-profile" />
+          </>
+        }
       />
       <FlashList
         key={mode}
@@ -112,9 +120,9 @@ export function CommunityScreen() {
         keyExtractor={keyExtractor}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={Gap}
         ListHeaderComponent={header}
-        ListEmptyComponent={empty}
         ListFooterComponent={
           feed.isFetchingNextPage ? (
             <ActivityIndicator style={styles.footer} color={theme.colors.primary} />
@@ -140,8 +148,8 @@ function Gap() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { paddingHorizontal: gutter, paddingBottom: space.huge },
-  header: { gap: space.lg, paddingTop: space.sm, paddingBottom: space.lg },
-  gap: { height: space.lg },
+  content: { paddingHorizontal: gutter, paddingBottom: space.sectionLarge },
+  header: { gap: space.xl, marginBottom: space.xl },
+  gap: { height: space.md },
   footer: { paddingVertical: space.xl },
 });

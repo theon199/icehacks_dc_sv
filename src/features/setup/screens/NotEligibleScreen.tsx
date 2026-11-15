@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import {
   MIN_AGE,
+  NightNotice,
+  NightPrimaryButton,
+  NightSecondaryButton,
+  NightTextLink,
+  night,
   accountErrorMessage,
   ageBandFor,
   deleteMyAccount,
@@ -15,7 +20,9 @@ import {
 } from '@/features/auth';
 import { haptics } from '@/lib/haptics';
 import { logger } from '@/lib/logger';
-import { Button, EmptyState, Screen, Text, toast, useTheme } from '@/ui';
+import { Icon, Text, radii, space, toast, type IconName } from '@/ui';
+
+import { NightGate } from '../components/NightGate';
 
 /**
  * Account rows go at once, but uploaded files are only queued for removal until the storage
@@ -38,7 +45,6 @@ async function deleteAccount(account: AccountIdentity): Promise<void> {
  * the one signed in here.
  */
 function UnderMinimum() {
-  const theme = useTheme();
   const removal = useSubmission();
   const { submit } = removal;
   const started = useRef(false);
@@ -87,29 +93,33 @@ function UnderMinimum() {
   }, [removeIfConfirmed]);
 
   return (
-    <Screen safeTop>
-      <EmptyState
+    <NightGate>
+      <GateNotice
         icon="hand.raised.fill"
         title={`Famara is for ages ${MIN_AGE} and up`}
         message="Thanks for wanting to cook with us. We can’t keep an account for anyone under 13, so we’re deleting yours along with the details you entered."
-      />
-      {removal.failure == null ? (
-        <View style={styles.status} accessible accessibilityLiveRegion="polite">
-          <ActivityIndicator color={theme.colors.primary} />
-          <Text variant="subhead" tone="muted">
-            Deleting your account…
-          </Text>
-        </View>
-      ) : (
+      >
+        {removal.failure == null ? (
+          <View style={styles.status} accessible accessibilityLiveRegion="polite">
+            <ActivityIndicator color={night.ink} />
+            <Text variant="subhead" style={styles.muted}>
+              Deleting your account…
+            </Text>
+          </View>
+        ) : null}
+      </GateNotice>
+      {removal.failure != null ? (
         <View style={styles.actions}>
-          <Text variant="callout" tone="danger" align="center" accessibilityLiveRegion="polite">
-            {removal.failure}
-          </Text>
-          <Button testID="retry-removal" label="Try again" fullWidth onPress={removeIfConfirmed} />
-          <Button label="Sign out" variant="ghost" fullWidth onPress={() => void signOut()} />
+          <NightNotice message={removal.failure} />
+          <NightPrimaryButton
+            testID="retry-removal"
+            label="Try again"
+            onPress={removeIfConfirmed}
+          />
+          <NightSecondaryButton label="Sign out" onPress={() => void signOut()} />
         </View>
-      )}
-    </Screen>
+      ) : null}
+    </NightGate>
   );
 }
 
@@ -145,34 +155,54 @@ function NotYet({ birthYear }: { birthYear: number }) {
   };
 
   return (
-    <Screen
-      safeTop
-      footer={
-        <>
-          <Button
-            testID="not-yet-sign-out"
-            label="Sign out"
-            size="lg"
-            fullWidth
-            onPress={() => void signOut()}
-          />
-          <Button
-            testID="not-yet-delete"
-            label="Delete my account"
-            variant="ghost"
-            fullWidth
-            loading={deleting}
-            onPress={confirmDelete}
-          />
-        </>
-      }
-    >
-      <EmptyState
+    <NightGate>
+      <GateNotice
         icon="calendar"
         title="See you soon"
         message={`Famara is for people ${MIN_AGE} and older. As you may still be 12 this year, you can start using Famara from January 1, ${joinYear}.`}
       />
-    </Screen>
+      <View style={styles.actions}>
+        <NightPrimaryButton
+          testID="not-yet-sign-out"
+          label="Sign out"
+          onPress={() => void signOut()}
+        />
+        <NightTextLink
+          testID="not-yet-delete"
+          label={deleting ? 'Deleting your account…' : 'Delete my account'}
+          disabled={deleting}
+          onPress={confirmDelete}
+        />
+      </View>
+    </NightGate>
+  );
+}
+
+/** The gate's answer: a calm statement in a faint card, the glyph in a round well. */
+function GateNotice({
+  icon,
+  title,
+  message,
+  children,
+}: {
+  icon: IconName;
+  title: string;
+  message: string;
+  children?: ReactNode;
+}) {
+  return (
+    <View style={styles.notice}>
+      <View style={styles.glyph}>
+        <Icon name={icon} size={20} color="text" />
+      </View>
+      <Text variant="title2" align="center" style={styles.onNight}>
+        {title}
+      </Text>
+      <Text variant="body" align="center" style={styles.muted} accessibilityLiveRegion="polite">
+        {message}
+      </Text>
+      {children}
+    </View>
   );
 }
 
@@ -187,6 +217,26 @@ export function NotEligibleScreen() {
 }
 
 const styles = StyleSheet.create({
+  notice: {
+    alignItems: 'center',
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.xl,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: night.hairline,
+    backgroundColor: night.field,
+  },
+  glyph: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.pill,
+    backgroundColor: night.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  onNight: { color: night.ink },
+  muted: { color: night.inkMuted },
   status: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  actions: { gap: 8 },
+  actions: { gap: space.sm },
 });

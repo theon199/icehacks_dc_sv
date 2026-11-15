@@ -23,6 +23,8 @@ import { selectCookEntries, selectSavedIds, useCookLogStore, useSavedStore } fro
 
 import type { PostKind, PublishedComment, PublishedPost } from './api/schemas';
 import { recentCookedRecipeIds } from './logic/myRecipes';
+export { NotificationBell } from '@/features/notifications';
+export { ProfileButton } from '@/features/shell';
 
 // -------------------------------------------------------------------------------------------------
 // Recipes (catalog)
@@ -33,7 +35,7 @@ export type { CatalogRecipe };
 /** The recipe fields Community shows on chips, tiles and the picker. */
 export type RecipeSummary = Pick<
   CatalogRecipe,
-  'id' | 'title' | 'cuisine' | 'imageUrl' | 'totalMinutes'
+  'id' | 'title' | 'cuisine' | 'imageUrl' | 'totalMinutes' | 'nutrition' | 'nutritionConfidence'
 >;
 
 /** Catalog summaries for the given ids, in the order asked. Unknown ids are skipped. */

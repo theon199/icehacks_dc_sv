@@ -12,6 +12,7 @@ import { renderWithQuery, signInForTest } from '../testing';
 jest.mock('../api/friendsApi', () => ({ redeemFriendInvite: jest.fn() }));
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), replace: jest.fn(), push: jest.fn(), canGoBack: jest.fn(() => true) },
+  useNavigation: () => ({ addListener: () => () => undefined, canGoBack: () => true }),
 }));
 
 const redeem = jest.mocked(redeemFriendInvite);

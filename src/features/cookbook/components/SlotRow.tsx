@@ -6,8 +6,9 @@ import type { MealSlot } from '@/domain/plan';
 import type { RecipeSummary } from '@/lib/catalog';
 import { formatMinutes } from '@/lib/format';
 import type { PlanEntry } from '@/stores';
-import { Icon, IconButton, minTouchTarget, PressableScale, space, Text, useTheme } from '@/ui';
+import { fontFamily, Icon, PressableScale, space, Text, useTheme, type Palette } from '@/ui';
 
+import { SLOT_ART_SIZE, SLOT_ROW_HEIGHT } from './plannerLayout';
 import { SLOT_LABELS } from '../model/week';
 
 export interface SlotRowProps {
@@ -47,7 +48,35 @@ export function servingsText(servings: number, portion: number, spoken = false):
     : `${servings} ${noun} at ${size}× size`;
 }
 
-/** One meal slot of a day: the planned recipe with its actions, or an add button. */
+/** Each meal keeps one colour dot beside its label, morning to evening, so a day reads at a glance. */
+const SLOT_DOT: Readonly<Record<MealSlot, keyof Palette>> = {
+  breakfast: 'highlight',
+  lunch: 'success',
+  snack: 'borderStrong',
+  dinner: 'primary',
+};
+
+/** The coloured dot and meal name at the top of a tile; the row's own label already says it. */
+function SlotLabel({ slot, label }: { slot: MealSlot; label: string }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={styles.label}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <View style={[styles.dot, { backgroundColor: theme.colors[SLOT_DOT[slot]] }]} />
+      <Text variant="caption" tone="muted" style={styles.bold}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * One meal of a day as its own inset tile: the planned recipe with its actions, a dashed button
+ * to add one, or a quiet "Nothing planned" on a read-only (archived) week.
+ */
 export const SlotRow = memo(function SlotRow({
   slot,
   entry,
@@ -63,38 +92,44 @@ export const SlotRow = memo(function SlotRow({
 }: SlotRowProps) {
   const theme = useTheme();
   const label = SLOT_LABELS[slot];
+  const tile = {
+    backgroundColor: theme.colors.surfaceSunken,
+    borderColor: theme.colors.surfaceSunken,
+    borderRadius: theme.radii.lg,
+  };
 
   if (!entry) {
     return (
-      <PressableScale
-        accessibilityRole="button"
-        accessibilityLabel={`${label}, empty`}
-        accessibilityHint={readOnly ? undefined : `Adds a recipe for ${label.toLowerCase()}`}
-        accessibilityState={{ disabled: readOnly }}
-        disabled={readOnly}
-        onPress={() => onAdd(slot)}
-        testID={`slot-add-${slot}`}
-        style={[
-          styles.empty,
-          {
-            borderRadius: theme.radii.md,
-            borderColor: theme.colors.border,
-            opacity: readOnly ? 0.6 : 1,
-          },
-        ]}
-      >
-        <Text variant="overline" tone="muted" style={styles.flex}>
-          {label}
-        </Text>
-        {readOnly ? null : (
-          <View style={styles.addHint}>
-            <Icon name="plus" size={14} color="primary" />
-            <Text variant="subhead" tone="primary">
-              Add
+      <View style={[styles.tile, tile]}>
+        <SlotLabel slot={slot} label={label} />
+        {readOnly ? (
+          <View
+            accessible
+            accessibilityLabel={`${label}, nothing planned`}
+            style={styles.empty}
+            testID={`slot-empty-${slot}`}
+          >
+            <Text variant="subhead" tone="muted">
+              Nothing planned
             </Text>
           </View>
+        ) : (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={`${label}, empty`}
+            accessibilityHint={`Adds a recipe for ${label.toLowerCase()}`}
+            onPress={() => onAdd(slot)}
+            testID={`slot-add-${slot}`}
+            style={[
+              styles.add,
+              { borderRadius: theme.radii.md, borderColor: theme.colors.borderStrong },
+            ]}
+          >
+            <Icon name="plus" size={18} />
+            <Text variant="label">{`Add ${label.toLowerCase()}`}</Text>
+          </PressableScale>
         )}
-      </PressableScale>
+      </View>
     );
   }
 
@@ -112,91 +147,93 @@ export const SlotRow = memo(function SlotRow({
   };
 
   return (
-    <View
-      style={[
-        styles.filled,
-        { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md },
-      ]}
-    >
-      <PressableScale
-        accessibilityRole="button"
-        accessibilityLabel={[
-          `${label}: ${title}`,
-          spokenMeta,
-          unsafe ? 'Check allergens: does not fit your allergens or diet' : '',
-        ]
-          .filter(Boolean)
-          .join(', ')}
-        accessibilityActions={readOnly ? [{ name: 'activate' }] : FILLED_ACTIONS}
-        onAccessibilityAction={onA11yAction}
-        onPress={() => onOpen(entry.recipeId, portion)}
-        onLongPress={readOnly ? undefined : () => onActions(slot)}
-        pressedOpacity={0.8}
-        pressedScale={1}
-        style={styles.filledMain}
-        testID={`slot-${slot}`}
-      >
-        <Image
-          source={recipe?.imageUrl ? { uri: recipe.imageUrl } : null}
-          recyclingKey={entry.recipeId}
-          contentFit="cover"
-          style={[
-            styles.thumb,
-            { borderRadius: theme.radii.sm, backgroundColor: theme.colors.surfaceSunken },
-          ]}
-          accessible={false}
-        />
-        <View style={styles.flex}>
-          <Text variant="overline" tone="muted">
-            {label}
-          </Text>
-          <Text variant="subhead" numberOfLines={2}>
-            {title}
-          </Text>
-          <Text variant="caption" tone="muted" numberOfLines={1}>
-            {meta}
-          </Text>
-          {unsafe ? (
-            <View style={styles.flag} testID={`slot-unsafe-${slot}`}>
-              <Icon name="exclamationmark.triangle.fill" size={12} color="warning" />
-              <Text variant="caption" color="warning" numberOfLines={1}>
-                Check allergens
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      </PressableScale>
-      {readOnly ? null : (
-        <IconButton
-          icon="ellipsis"
-          accessibilityLabel={`Actions for ${label.toLowerCase()}`}
-          onPress={() => onActions(slot)}
-          testID={`slot-more-${slot}`}
-        />
-      )}
+    <View style={[styles.tile, tile]}>
+      <SlotLabel slot={slot} label={label} />
+      <View style={styles.row}>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={[
+            `${label}: ${title}`,
+            spokenMeta,
+            unsafe ? 'Check allergens: does not fit your allergens or diet' : '',
+          ]
+            .filter(Boolean)
+            .join(', ')}
+          accessibilityActions={readOnly ? [{ name: 'activate' }] : FILLED_ACTIONS}
+          onAccessibilityAction={onA11yAction}
+          onPress={() => onOpen(entry.recipeId, portion)}
+          onLongPress={readOnly ? undefined : () => onActions(slot)}
+          pressedOpacity={0.8}
+          pressedScale={1}
+          style={styles.main}
+          testID={`slot-${slot}`}
+        >
+          <Image
+            source={recipe?.imageUrl ? { uri: recipe.imageUrl } : null}
+            recyclingKey={entry.recipeId}
+            contentFit="cover"
+            style={[
+              styles.art,
+              { borderRadius: theme.radii.md, backgroundColor: theme.colors.surface },
+            ]}
+            accessible={false}
+          />
+          <View style={styles.text}>
+            <Text variant="headline" numberOfLines={1}>
+              {title}
+            </Text>
+            <Text variant="caption" tone="muted" numberOfLines={1}>
+              {meta}
+            </Text>
+            {unsafe ? (
+              <View style={styles.flag} testID={`slot-unsafe-${slot}`}>
+                <Icon name="exclamationmark.triangle.fill" size={12} color="warning" />
+                <Text variant="caption" color="warning" numberOfLines={1}>
+                  Check allergens
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </PressableScale>
+        {readOnly ? null : (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={`Actions for ${label.toLowerCase()}`}
+            hitSlop={space.xs}
+            onPress={() => onActions(slot)}
+            pressedScale={1}
+            pressedOpacity={0.6}
+            style={[styles.more, { borderRadius: theme.radii.pill }]}
+            testID={`slot-more-${slot}`}
+          >
+            <Icon name="ellipsis" size={18} color="textMuted" />
+          </PressableScale>
+        )}
+      </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, gap: space.xxs },
-  empty: {
-    minHeight: minTouchTarget + space.md,
+  // The border is drawn in the tile's own colour so the tile keeps its size whatever it holds.
+  tile: { padding: space.sm, gap: space.xs, borderWidth: 1.5 },
+  label: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.xs },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  bold: { fontFamily: fontFamily.textBold },
+  add: {
+    height: SLOT_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    paddingHorizontal: space.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
-  addHint: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  filled: { flexDirection: 'row', alignItems: 'center', paddingRight: space.xs },
-  filledMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    padding: space.sm,
-  },
-  thumb: { width: 64, height: 64 },
+  empty: { height: SLOT_ROW_HEIGHT, justifyContent: 'center', paddingHorizontal: space.xs },
+  row: { minHeight: SLOT_ROW_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  main: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  art: { width: SLOT_ART_SIZE, height: SLOT_ART_SIZE },
+  text: { flex: 1, minWidth: 0, gap: space.xxs },
   flag: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  more: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });

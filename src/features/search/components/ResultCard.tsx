@@ -1,18 +1,14 @@
 import { Image } from 'expo-image';
 import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { cuisineLabel } from '@/domain/types';
 import { formatKcal, formatMinutes } from '@/lib/format';
-import { Icon, PressableScale, Text, useTheme } from '@/ui';
+import { Icon, PressableScale, Text, fontFamily, space, useTheme } from '@/ui';
 
 import { SafetyBadge } from './SafetyBadge';
+import { ROW_THUMB, SearchRow } from './SearchRows';
 import type { SearchResultItem } from '../resultItems';
-
-export interface ResultCardProps {
-  item: SearchResultItem;
-  onOpen: (item: SearchResultItem) => void;
-}
 
 export interface ResultFacts {
   /** "Indian · 35 min · 420 kcal", or "~420 kcal est." when the calories are an estimate. */
@@ -49,39 +45,54 @@ function accessibilityLabelFor(item: SearchResultItem, facts: ResultFacts): stri
   return item.eligible ? base : `${base}. Does not fit you: ${item.reasons.join('; ')}`;
 }
 
-/** One cell of the results grid: photo, title, quick facts, and a safety badge when needed. */
-export const ResultCard = memo(function ResultCard({ item, onOpen }: ResultCardProps) {
+const TOP_CARD = 150;
+
+export interface ResultViewProps {
+  item: SearchResultItem;
+  onOpen: (item: SearchResultItem) => void;
+}
+
+/** The recipe's photo, dimmed when it does not fit the person; a fork glyph when there is none. */
+function ResultPhoto({ item, style }: { item: SearchResultItem; style: StyleProp<ViewStyle> }) {
   const theme = useTheme();
   const { recipe } = item;
+  return (
+    <View style={[style, styles.photo, { backgroundColor: theme.colors.surfaceSunken }]}>
+      {recipe.imageUrl ? (
+        <Image
+          source={{ uri: recipe.imageUrl }}
+          recyclingKey={recipe.id}
+          contentFit="cover"
+          transition={theme.motion.duration.fast}
+          priority="normal"
+          accessible={false}
+          style={[StyleSheet.absoluteFill, !item.eligible && styles.dimmed]}
+        />
+      ) : (
+        <Icon name="fork.knife" android="restaurant" size={22} color="textSubtle" />
+      )}
+    </View>
+  );
+}
+
+/**
+ * A "Top Results" card: a square photo with the title and quick facts under it, and a safety
+ * badge on the photo when the recipe does not fit.
+ */
+export const TopResultCard = memo(function TopResultCard({ item, onOpen }: ResultViewProps) {
+  const theme = useTheme();
   const facts = resultFacts(item);
   return (
     <PressableScale
-      testID={`search-result-${recipe.id}`}
+      testID={`search-result-${item.recipe.id}`}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabelFor(item, facts)}
       accessibilityHint="Opens the recipe"
       onPress={() => onOpen(item)}
-      style={styles.card}
+      style={styles.topCard}
     >
-      <View
-        style={[
-          styles.photo,
-          { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.md },
-        ]}
-      >
-        {recipe.imageUrl ? (
-          <Image
-            source={{ uri: recipe.imageUrl }}
-            recyclingKey={recipe.id}
-            contentFit="cover"
-            transition={theme.motion.duration.fast}
-            priority="normal"
-            accessible={false}
-            style={[StyleSheet.absoluteFill, !item.eligible && styles.dimmed]}
-          />
-        ) : (
-          <Icon name="fork.knife" android="restaurant" size={28} color="textSubtle" />
-        )}
+      <View>
+        <ResultPhoto item={item} style={[styles.topArt, { borderRadius: theme.radii.lg }]} />
         {item.badge ? (
           <View style={styles.badgeSlot}>
             <SafetyBadge label={item.badge} />
@@ -89,29 +100,52 @@ export const ResultCard = memo(function ResultCard({ item, onOpen }: ResultCardP
         ) : null}
       </View>
       <Text
-        variant="subhead"
+        variant="label"
         numberOfLines={2}
         accessible={false}
+        maxFontSizeMultiplier={1.3}
         tone={item.eligible ? 'default' : 'muted'}
+        style={styles.bold}
       >
-        {recipe.title}
+        {item.recipe.title}
       </Text>
-      <Text variant="footnote" tone="subtle" numberOfLines={1} accessible={false}>
+      <Text
+        variant="caption"
+        tone="muted"
+        numberOfLines={1}
+        accessible={false}
+        maxFontSizeMultiplier={1.3}
+      >
         {facts.text}
       </Text>
     </PressableScale>
   );
 });
 
+/** A row in the "Recipes" list: thumbnail, title, "Recipe · facts", and a safety badge if needed. */
+export const RecipeResultRow = memo(function RecipeResultRow({ item, onOpen }: ResultViewProps) {
+  const theme = useTheme();
+  const facts = resultFacts(item);
+  return (
+    <SearchRow
+      testID={`search-result-${item.recipe.id}`}
+      accessibilityLabel={accessibilityLabelFor(item, facts)}
+      accessibilityHint="Opens the recipe"
+      onPress={() => onOpen(item)}
+      thumb={<ResultPhoto item={item} style={[styles.thumb, { borderRadius: theme.radii.md }]} />}
+      title={item.recipe.title}
+      subtitle={`Recipe · ${facts.text}`}
+      {...(item.badge ? { badge: <SafetyBadge label={item.badge} /> } : {})}
+    />
+  );
+});
+
 const styles = StyleSheet.create({
-  card: { flex: 1, gap: 4 },
-  photo: {
-    aspectRatio: 1,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
+  photo: { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   dimmed: { opacity: 0.55 },
-  badgeSlot: { position: 'absolute', top: 8, left: 8, right: 8 },
+  topCard: { width: TOP_CARD, gap: 2 },
+  topArt: { width: TOP_CARD, height: TOP_CARD, marginBottom: space.xs },
+  badgeSlot: { position: 'absolute', top: space.sm, left: space.sm, right: space.sm },
+  bold: { fontFamily: fontFamily.textBold },
+  thumb: { width: ROW_THUMB, height: ROW_THUMB },
 });

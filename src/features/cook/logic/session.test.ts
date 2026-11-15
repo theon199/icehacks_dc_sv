@@ -3,7 +3,6 @@ import {
   fitWithin,
   localDateString,
   pickTutorialVideo,
-  stepProgress,
   youtubeEmbedUrl,
   youtubeVideoId,
 } from './session';
@@ -15,12 +14,6 @@ describe('step navigation', () => {
     expect(clampStep(2.7, 5)).toBe(2);
     expect(clampStep(3, 0)).toBe(0);
     expect(clampStep(Number.NaN, 4)).toBe(0);
-  });
-
-  it('reports progress including the step on screen', () => {
-    expect(stepProgress(0, 4)).toBe(0.25);
-    expect(stepProgress(3, 4)).toBe(1);
-    expect(stepProgress(0, 0)).toBe(0);
   });
 });
 

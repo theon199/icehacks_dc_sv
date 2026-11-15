@@ -3,22 +3,21 @@ import { StyleSheet, View } from 'react-native';
 import { Skeleton } from '@/ui';
 import { space } from '@/ui/tokens';
 
-const CELLS = [0, 1, 2, 3];
+import { ROW_THUMB } from './SearchRows';
 
-/** Placeholder grid while the first page of results loads. */
+const ROWS = [0, 1, 2, 3, 4];
+
+/** Placeholder rows while the first page of results loads, shaped like the recipe rows. */
 export function ResultsSkeleton() {
   return (
-    <View
-      style={styles.grid}
-      accessible
-      accessibilityRole="progressbar"
-      accessibilityLabel="Loading recipes"
-    >
-      {CELLS.map((cell) => (
-        <View key={cell} style={styles.cell}>
-          <Skeleton height="auto" radius="md" style={styles.photo} />
-          <Skeleton height={14} width="85%" />
-          <Skeleton height={12} width="55%" />
+    <View accessible accessibilityRole="progressbar" accessibilityLabel="Loading recipes">
+      {ROWS.map((row) => (
+        <View key={row} style={styles.row}>
+          <Skeleton width={ROW_THUMB} height={ROW_THUMB} radius="md" />
+          <View style={styles.lines}>
+            <Skeleton width="70%" height={16} />
+            <Skeleton width="45%" height={12} />
+          </View>
         </View>
       ))}
     </View>
@@ -26,7 +25,6 @@ export function ResultsSkeleton() {
 }
 
 const styles = StyleSheet.create({
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: '50%', paddingHorizontal: space.md / 2, paddingBottom: space.xl, gap: 6 },
-  photo: { aspectRatio: 1 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 60 },
+  lines: { flex: 1, gap: space.xs + 2 },
 });

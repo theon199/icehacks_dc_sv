@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { ScrollView, StyleSheet, View, type ScrollViewProps } from 'react-native';
 
-import { gutter } from '@/ui';
+import { space } from '@/ui';
 
 import { PlaceCard } from './PlaceCard';
 import type { PlaceView } from '../model/placeView';
@@ -13,7 +13,11 @@ import {
   type SelectionState,
 } from '../model/selection';
 
-export const CARD_GAP = 12;
+export const CARD_GAP = space.sm;
+/** Leading inset of the strip. */
+export const STRIP_INSET = space.md;
+/** How much of the next card stays visible, hinting that the strip scrolls. */
+export const CARD_PEEK = 28;
 
 export interface PlaceStripProps {
   places: readonly PlaceView[];
@@ -74,6 +78,7 @@ function PlaceStripView({ places, selection, cardWidth, onSettle, onOpen }: Plac
         <View key={place.id} style={index === 0 ? null : styles.spaced}>
           <PlaceCard
             place={place}
+            number={index + 1}
             selected={place.id === selectedId}
             width={cardWidth}
             onOpen={onOpen}
@@ -87,6 +92,7 @@ function PlaceStripView({ places, selection, cardWidth, onSettle, onOpen }: Plac
 export const PlaceStrip = memo(PlaceStripView);
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: gutter, paddingVertical: 8 },
+  // Vertical room keeps the cards' shadows from being clipped by the scroll view.
+  content: { paddingLeft: STRIP_INSET, paddingRight: STRIP_INSET + CARD_PEEK, paddingVertical: 14 },
   spaced: { marginLeft: CARD_GAP },
 });

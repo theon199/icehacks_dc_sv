@@ -1,13 +1,13 @@
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Keyboard, StyleSheet, View } from 'react-native';
+import { Keyboard } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Button, EmptyState, Screen, Text } from '@/ui';
+import { Button } from '@/ui';
 
 import { requestPasswordReset } from '../authActions';
+import { AccountPage, PageLink, PageNotice } from '../components/AccountPage';
 import { EmailField } from '../components/EmailField';
-import { FormMessage } from '../components/FormMessage';
+import { useBackToLogIn } from '../useBackToLogIn';
 import { useCooldown } from '../useCooldown';
 import { useField } from '../useField';
 import { useSubmission } from '../useSubmission';
@@ -15,7 +15,7 @@ import { normalizeEmail, validateEmail } from '../validation';
 
 /** Asks for a password-reset link. The reply never says whether an account exists. */
 export function ForgotPasswordScreen() {
-  const router = useRouter();
+  const backToLogIn = useBackToLogIn();
   const email = useField(validateEmail);
   const cooldown = useCooldown();
   const request = useSubmission();
@@ -44,72 +44,56 @@ export function ForgotPasswordScreen() {
     });
   };
 
-  const failureNote = request.failure ? <FormMessage message={request.failure} /> : null;
-
   if (linkSentTo) {
     return (
-      <Screen
-        footer={
-          <Button
-            label="Back to sign in"
-            size="lg"
-            fullWidth
-            onPress={() => router.replace('/sign-in')}
-          />
-        }
+      <AccountPage
+        title="Check your email."
+        subtitle="Open the newest message on this phone to choose a new password."
+        footer={<PageLink label="Use a different email" onPress={() => setLinkSentTo(null)} />}
       >
-        <EmptyState
-          icon="envelope.badge"
-          title="Check your email"
-          message={`If there’s a Famara account for ${linkSentTo}, a link to choose a new password is on its way. Open it on this phone.`}
+        <PageNotice
+          tone="info"
+          message={`If there’s a Famara account for ${linkSentTo}, a link to choose a new password is on its way.`}
         />
-        {failureNote}
-        <View style={styles.row}>
-          <Button
-            label={againLabel}
-            variant="secondary"
-            icon="arrow.clockwise"
-            loading={request.busy}
-            disabled={waiting}
-            onPress={sendLink}
-          />
-          <Button
-            label="Use a different email"
-            variant="ghost"
-            onPress={() => setLinkSentTo(null)}
-          />
-        </View>
-      </Screen>
-    );
-  }
-
-  return (
-    <Screen
-      footer={
+        <PageNotice message={request.failure} />
+        <Button label="Back to log in" size="lg" fullWidth onPress={backToLogIn} />
         <Button
-          testID="reset-submit"
-          label={waiting ? againLabel : 'Send reset link'}
+          label={againLabel}
+          variant="secondary"
           size="lg"
+          icon="arrow.clockwise"
           fullWidth
           loading={request.busy}
           disabled={waiting}
           onPress={sendLink}
         />
-      }
+      </AccountPage>
+    );
+  }
+
+  return (
+    <AccountPage
+      title="Reset your password."
+      subtitle="We’ll send a secure link that opens Famara so you can choose a new password."
+      footer={<PageLink label="Back to log in" onPress={backToLogIn} />}
     >
-      <View style={styles.heading}>
-        <Text variant="title1">Forgot your password?</Text>
-        <Text variant="callout" tone="muted">
-          Enter your email and we’ll send you a link to choose a new one.
-        </Text>
-      </View>
-      {failureNote}
-      <EmailField field={email} testID="reset-email" returnKeyType="send" onReturn={sendLink} />
-    </Screen>
+      <EmailField
+        field={email}
+        look="page"
+        testID="reset-email"
+        returnKeyType="send"
+        onReturn={sendLink}
+      />
+      <PageNotice message={request.failure} />
+      <Button
+        testID="reset-submit"
+        label={waiting ? againLabel : 'Send reset link'}
+        size="lg"
+        fullWidth
+        loading={request.busy}
+        disabled={waiting}
+        onPress={sendLink}
+      />
+    </AccountPage>
   );
 }
-
-const styles = StyleSheet.create({
-  heading: { gap: 6 },
-  row: { alignItems: 'center', gap: 4 },
-});

@@ -32,13 +32,13 @@ export function Card({
   const dark = theme.scheme === 'dark';
   const bordered = variant === 'outlined' || (variant === 'elevated' && dark);
   const surface: ViewStyle = {
-    borderRadius: theme.radii.lg,
+    borderRadius: theme.radii.xl,
     padding: theme.space[padding],
     backgroundColor: variant === 'sunken' ? theme.colors.surfaceSunken : theme.colors.surface,
     borderWidth: bordered ? StyleSheet.hairlineWidth : 0,
     borderColor: theme.colors.border,
     ...(variant === 'elevated' && !dark
-      ? { ...theme.elevation.low, shadowColor: theme.colors.shadow }
+      ? { ...theme.elevation.medium, shadowColor: theme.colors.shadow }
       : null),
   };
 

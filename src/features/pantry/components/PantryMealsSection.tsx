@@ -3,12 +3,24 @@ import { router } from 'expo-router';
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, Icon, PressableScale, Skeleton, SkeletonGroup, Text, space, useTheme } from '@/ui';
+import {
+  Button,
+  Icon,
+  PressableScale,
+  Skeleton,
+  SkeletonGroup,
+  Text,
+  fontFamily,
+  minTouchTarget,
+  radii,
+  space,
+  useTheme,
+} from '@/ui';
 
 import type { PantryMeal } from '../pantryMeals';
 import { usePantryMeals } from '../usePantryMeals';
 
-const THUMB = 56;
+const THUMB = 48;
 
 function haveLabel(meal: PantryMeal): string {
   if (meal.total === 0) return 'Only needs staples';
@@ -36,7 +48,7 @@ const MealRow = memo(function MealRow({ meal }: { meal: PantryMeal }) {
           recyclingKey={recipe.id}
           contentFit="cover"
           transition={150}
-          style={[styles.thumb, { borderRadius: theme.radii.md }]}
+          style={styles.thumb}
           accessible={false}
         />
       ) : (
@@ -44,27 +56,28 @@ const MealRow = memo(function MealRow({ meal }: { meal: PantryMeal }) {
           style={[
             styles.thumb,
             styles.placeholder,
-            { borderRadius: theme.radii.md, backgroundColor: theme.colors.primarySoft },
+            { backgroundColor: theme.colors.surfaceSunken },
           ]}
         >
-          <Icon name="fork.knife" size={22} color="onPrimarySoft" />
+          <Icon name="fork.knife" size={20} color="textMuted" />
         </View>
       )}
       <View style={styles.text}>
-        <Text variant="bodyStrong" numberOfLines={2}>
+        <Text variant="headline" numberOfLines={2} style={styles.bold}>
           {recipe.title}
         </Text>
-        <Text variant="footnote" tone="muted" numberOfLines={1}>
+        <Text variant="caption" tone="muted" numberOfLines={1}>
           {subtitle}
         </Text>
       </View>
-      <Icon name="chevron.right" size={14} color="textSubtle" weight="semibold" />
+      <Icon name="chevron.right" size={18} color="textMuted" />
     </PressableScale>
   );
 });
 
 /** Recipes the pantry already mostly covers, ranked for the person. */
 export function PantryMealsSection() {
+  const theme = useTheme();
   const { status, meals, retry } = usePantryMeals();
   if (status === 'emptyPantry') return null;
 
@@ -110,17 +123,44 @@ export function PantryMealsSection() {
   }
 
   return (
-    <View style={styles.section} testID="pantry-meals">
-      <Text variant="title3">Meals you can make</Text>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        theme.scheme === 'light'
+          ? { ...theme.elevation.medium, shadowColor: theme.colors.shadow }
+          : null,
+      ]}
+      testID="pantry-meals"
+    >
+      <View style={styles.head}>
+        <View style={styles.badge}>
+          <Icon name="sparkles" size={14} color="success" />
+          <Text variant="sectionLabel" tone="success">
+            From your pantry
+          </Text>
+        </View>
+        <Text variant="headline" accessibilityRole="header" style={styles.bold}>
+          Meals you can make
+        </Text>
+      </View>
       {body}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  section: { gap: space.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 64 },
-  thumb: { width: THUMB, height: THUMB },
+  card: {
+    padding: space.xl,
+    gap: space.md,
+    borderRadius: radii.card,
+    borderWidth: 1,
+  },
+  head: { gap: space.xs },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  bold: { fontFamily: fontFamily.textBold },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: minTouchTarget },
+  thumb: { width: THUMB, height: THUMB, borderRadius: radii.lg },
   placeholder: { alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: 2 },
   message: { gap: space.sm, alignItems: 'flex-start' },

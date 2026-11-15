@@ -1,8 +1,7 @@
 import { useRouter } from 'expo-router';
 
-import { ListRow } from '@/ui';
-
 import { blockedPeopleHref, reviewQueueHref, useIsModerator } from '../deps';
+import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
 
 /**
@@ -15,20 +14,19 @@ export function CommunitySafetySection() {
   const { isModerator } = useIsModerator();
 
   return (
-    <SettingsSection title="Community">
-      <ListRow
+    <SettingsSection title="Community and safety">
+      <SettingsRow
         testID="settings-blocked-people"
-        title="Blocked people"
-        subtitle="People whose posts and comments you do not see"
+        label="Blocked people"
+        description="People whose posts and comments you do not see. Unblock them here."
         icon="hand.raised"
-        divider={isModerator}
         onPress={() => router.push(blockedPeopleHref)}
       />
       {isModerator ? (
-        <ListRow
+        <SettingsRow
           testID="settings-review-queue"
-          title="Review queue"
-          subtitle="Reports waiting for a moderator"
+          label="Review queue"
+          description="Reports waiting for a moderator"
           icon="checkmark.shield"
           onPress={() => router.push(reviewQueueHref)}
         />

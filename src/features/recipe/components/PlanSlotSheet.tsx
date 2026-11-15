@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { useRecipes, type Course } from '@/lib/catalog';
 import {
@@ -13,11 +13,12 @@ import {
 import {
   Button,
   ChoiceChip,
+  GlassSheet,
   IconButton,
   SegmentedControl,
-  SheetContent,
   Text,
   space,
+  useSheetSession,
   useTheme,
 } from '@/ui';
 
@@ -61,19 +62,13 @@ const MEAL_SEGMENTS = MEALS.map((meal) => ({ value: meal, label: MEAL_LABELS[mea
 
 /** Picks a week, day and meal for a recipe and writes it to the meal plan. */
 export function PlanSlotSheet(props: PlanSlotSheetProps) {
-  return (
-    <Modal
-      visible={props.visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={props.onClose}
-    >
-      {props.visible ? <PlanSlotBody {...props} /> : null}
-    </Modal>
-  );
+  // Each opening starts from today and the recipe's own servings; the last one can still exit.
+  const session = useSheetSession(props.visible);
+  return session === 0 ? null : <PlanSlotBody key={session} {...props} />;
 }
 
 function PlanSlotBody({
+  visible,
   purpose,
   recipeId,
   recipeTitle,
@@ -104,7 +99,10 @@ function PlanSlotBody({
   };
 
   return (
-    <SheetContent
+    <GlassSheet
+      visible={visible}
+      onClose={onClose}
+      testID="plan-slot-sheet"
       title={purpose === 'shop' ? 'Add to your shopping list' : 'Add to your plan'}
       description={
         purpose === 'shop'
@@ -180,7 +178,7 @@ function PlanSlotBody({
           </Text>
         </View>
       ) : null}
-    </SheetContent>
+    </GlassSheet>
   );
 }
 

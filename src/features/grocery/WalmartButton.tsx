@@ -1,7 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 
-import { Button, Text, space, toast } from '@/ui';
+import { Button, Text, space, toast, useTheme } from '@/ui';
 
+import { PILL_HEIGHT } from './metrics';
 import {
   useKnownWalmartReadiness,
   useWalmartCart,
@@ -33,6 +34,7 @@ export function WalmartButton({ idsToBuy, names, cartDeps }: WalmartButtonProps)
   const status = useWalmartStatus(idsToBuy.length > 0);
   const known = useKnownWalmartReadiness(idsToBuy, cartDeps?.readiness);
   const cart = useWalmartCart(cartDeps);
+  const theme = useTheme();
 
   if (!shouldShowWalmart(status.data, idsToBuy, known)) return null;
   const readyCount = idsToBuy.filter((id) => known.ready.has(id)).length;
@@ -68,6 +70,7 @@ export function WalmartButton({ idsToBuy, names, cartDeps }: WalmartButtonProps)
         icon="cart"
         variant="secondary"
         fullWidth
+        style={[styles.pill, { backgroundColor: theme.colors.surfaceSunken }]}
         loading={cart.isPending}
         onPress={onPress}
         accessibilityHint={cartHint(readyCount, known.unknown.length)}
@@ -84,4 +87,6 @@ export function WalmartButton({ idsToBuy, names, cartDeps }: WalmartButtonProps)
 
 const styles = StyleSheet.create({
   wrap: { gap: space.xs },
+  /** A sunken pill inside the white cost card, so it reads as the card's own action. */
+  pill: { height: PILL_HEIGHT, borderWidth: 0 },
 });

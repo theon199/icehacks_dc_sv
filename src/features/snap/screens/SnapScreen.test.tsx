@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { AppState, Linking, type AppStateStatus, type View as ViewType } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
+import { isTabBarHidden } from '@/features/shell';
+import { resetTabBarVisibility } from '@/features/shell/tabBarVisibility';
 import type * as AiModule from '@/lib/api/ai';
 import { aiApi } from '@/lib/api/ai';
 import { ApiError } from '@/lib/api/errors';
@@ -111,6 +113,47 @@ describe('Snap gating', () => {
   });
 });
 
+describe('Snap full-screen camera', () => {
+  afterEach(() => resetTabBarVisibility());
+
+  it('hides the tab bar while focused, for the gate and the camera alike', async () => {
+    signIn({ age: 30, consent: false });
+    await renderScreen(<SnapScreen />);
+    expect(isTabBarHidden()).toBe(true);
+    await act(async () => blurScreen());
+    expect(isTabBarHidden()).toBe(false);
+    await act(async () => focusScreen());
+    expect(isTabBarHidden()).toBe(true);
+  });
+
+  it('closes back to Discover from the gate', async () => {
+    mockRouter.navigate.mockClear();
+    signIn({ age: 30, consent: false });
+    await renderScreen(<SnapScreen />);
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Close Snap' }));
+    expect(mockRouter.navigate).toHaveBeenCalledWith('/');
+  });
+
+  it('closes back to Discover from the camera', async () => {
+    mockRouter.navigate.mockClear();
+    await renderScreen(<SnapScreen />);
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Close camera' }));
+    expect(mockRouter.navigate).toHaveBeenCalledWith('/');
+  });
+
+  it('shows the frame hint, the mode switch and the photo line over the live camera', async () => {
+    await renderScreen(<SnapScreen />);
+    expect(screen.getByTestId('snap-hint')).toHaveTextContent(/shelves or fridge/);
+    expect(
+      screen.getByText('Read once by an AI service. Never used to train AI.'),
+    ).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Flash off' })).toBeOnTheScreen();
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Flash off' }));
+    expect(screen.getByRole('button', { name: 'Flash auto' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Flip camera' })).toBeOnTheScreen();
+  });
+});
+
 describe('Snap camera', () => {
   it('opens on the mode a link asks for and clears the request once applied', async () => {
     let route: (mode: AiModule.SnapMode | undefined) => void = () => undefined;
@@ -144,7 +187,7 @@ describe('Snap camera', () => {
     await renderScreen(<SnapScreen />);
     await userEvent.setup().press(screen.getByRole('button', { name: 'Allow camera' }));
     expect(requestPermission).toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Choose from library' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Choose a photo from your library' })).toBeEnabled();
   });
 
   it('sends people to Settings when camera access is blocked', async () => {

@@ -1,62 +1,92 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { RecipeStep } from '@/lib/catalog';
-import { Text, useTheme } from '@/ui';
+import { Text, gutter, space, useTheme } from '@/ui';
+
+import { CookAllSteps } from './CookAllSteps';
 
 export interface CookStepViewProps {
-  step: RecipeStep;
+  steps: readonly RecipeStep[];
   index: number;
   /** Changes whenever the step should be shown again from the top ("repeat"). */
   replayKey: number;
-  /** Timer card and video, shown with the step. */
-  children?: React.ReactNode;
-  header?: React.ReactNode;
+  /** Room left under the last block for the floating Ingredients pill. */
+  bottomInset: number;
+  /** Timer and notices, inside the step card under the instruction. */
+  children?: ReactNode;
+  /** The back / timer / next row closing the step card. */
+  controls: ReactNode;
+  /** The tutorial video, above the step card. */
+  header?: ReactNode;
 }
 
 /**
- * One instruction in large type. Fades in on each new step (instantly with Reduce Motion).
- * Not memoised: its header and children are fresh elements on every parent render.
+ * The current step on a white card (its number, the instruction, the step's timer and the
+ * controls), then every step at a glance. The card fades in on each new step, at once with Reduce
+ * Motion. Not memoised: its header, children and controls are fresh elements on every render.
  */
-export function CookStepView({ step, index, replayKey, children, header }: CookStepViewProps) {
+export function CookStepView({
+  steps,
+  index,
+  replayKey,
+  bottomInset,
+  children,
+  controls,
+  header,
+}: CookStepViewProps) {
   const theme = useTheme();
   const scroll = useRef<ScrollView>(null);
+  const step = steps[index];
 
   useEffect(() => {
     scroll.current?.scrollTo({ y: 0, animated: false });
   }, [index, replayKey]);
 
+  if (!step) return null;
+
   return (
     <ScrollView
       ref={scroll}
       style={styles.flex}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
       {header}
       <Animated.View
         key={`${index}:${replayKey}`}
         entering={FadeIn.duration(theme.motion.duration.base)}
       >
-        <View style={styles.body} testID="cook-step">
-          <Text variant="overline" tone="accent">
-            Step {index + 1}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.hairline,
+              borderRadius: theme.radii.card,
+              ...theme.elevation.medium,
+              shadowColor: theme.colors.shadow,
+            },
+          ]}
+          testID="cook-step"
+        >
+          <Text variant="overline" tone="muted">
+            Step {index + 1} of {steps.length}
           </Text>
-          <Text variant="body" style={styles.instruction}>
-            {step.text}
-          </Text>
+          <Text variant="headline">{step.text}</Text>
+          {children}
+          {controls}
         </View>
       </Animated.View>
-      {children}
+      <CookAllSteps steps={steps} current={index} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { gap: 20, paddingVertical: 20 },
-  body: { gap: 10 },
-  // Readable at arm's length from the stove.
-  instruction: { fontSize: 26, lineHeight: 36 },
+  content: { gap: space.lg, paddingHorizontal: gutter, paddingTop: space.sm },
+  card: { gap: space.sm, padding: space.xl, borderWidth: StyleSheet.hairlineWidth },
 });

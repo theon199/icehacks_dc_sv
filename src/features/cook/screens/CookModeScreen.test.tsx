@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { Alert, type AlertButton } from 'react-native';
 
 import type { RecipeDetail } from '@/lib/catalog';
@@ -51,6 +51,8 @@ jest.mock('expo-speech-recognition', () => ({
   },
 }));
 const hear = (name: string, event: unknown) => mockVoice.handlers[name]?.(event);
+/** The current step's card; the "All steps" list under it repeats every instruction. */
+const stepCard = () => within(screen.getByTestId('cook-step'));
 
 const mockRecipe: RecipeDetail = {
   id: 'mealdb:1',
@@ -130,11 +132,12 @@ describe('CookModeScreen', () => {
   it('walks through the steps and finishes on the completion screen', async () => {
     await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
 
-    expect(screen.getByText('Rinse the lentils.')).toBeTruthy();
-    expect(screen.getByText('Step 1 of 3')).toBeTruthy();
+    expect(stepCard().getByText('Rinse the lentils.')).toBeTruthy();
+    expect(stepCard().getByText('Step 1 of 3')).toBeTruthy();
+    expect(screen.getByLabelText('Step 1, current step. Rinse the lentils.')).toBeTruthy();
 
     await act(async () => fireEvent.press(screen.getByTestId('cook-next')));
-    expect(screen.getByText('Simmer for 20 minutes.')).toBeTruthy();
+    expect(stepCard().getByText('Simmer for 20 minutes.')).toBeTruthy();
 
     await act(async () => fireEvent.press(screen.getByTestId('cook-step-timer-start')));
     expect(screen.getByTestId('cook-step-timer')).toBeTruthy();
@@ -142,7 +145,7 @@ describe('CookModeScreen', () => {
 
     // The running timer follows the cook to the next step in the tray.
     await act(async () => fireEvent.press(screen.getByTestId('cook-next')));
-    expect(screen.getByText('Blend and season.')).toBeTruthy();
+    expect(stepCard().getByText('Blend and season.')).toBeTruthy();
     expect(screen.getByTestId('cook-timer-tray')).toBeTruthy();
 
     // A timer is still going, so finishing asks first.
@@ -204,9 +207,9 @@ describe('CookModeScreen', () => {
       }),
     );
     // A partial result acts once it has stood for a moment with nothing added.
-    expect(screen.queryByText('Simmer for 20 minutes.')).toBeNull();
+    expect(stepCard().queryByText('Simmer for 20 minutes.')).toBeNull();
     await act(() => new Promise((resolve) => setTimeout(resolve, PARTIAL_SETTLE_MS + 50)));
-    expect(screen.getByText('Simmer for 20 minutes.')).toBeTruthy();
+    expect(stepCard().getByText('Simmer for 20 minutes.')).toBeTruthy();
 
     await act(async () =>
       hear('result', {
@@ -215,7 +218,7 @@ describe('CookModeScreen', () => {
       }),
     );
     // The final result repeats the same words; it does not advance again.
-    expect(screen.getByText('Simmer for 20 minutes.')).toBeTruthy();
+    expect(stepCard().getByText('Simmer for 20 minutes.')).toBeTruthy();
   });
 
   it('explains when voice control is not allowed', async () => {

@@ -1,19 +1,19 @@
 import { Stack } from 'expo-router';
 
-import { useTheme } from '@/ui';
 import { sheetOptions, useStackScreenOptions } from '@/ui/navigation';
 
 /**
- * Search tab stack. The title stays compact: the segmented control and search box sit right under
- * it and the results grid scrolls beneath them.
+ * Search tab stack, behind the tab bar's search island. The tab root is the Ask page, which uses
+ * the native header: the Search | Chef switch as its title view, system glass buttons on the right
+ * and, on the Search side, the native search field the island expands into. Filters open as a
+ * glass sheet over it.
  */
 export default function SearchStackLayout() {
-  const theme = useTheme();
   const screenOptions = useStackScreenOptions();
   return (
     <Stack screenOptions={screenOptions}>
-      <Stack.Screen name="index" options={{ title: 'Search' }} />
-      <Stack.Screen name="filters" options={sheetOptions(theme, [0.7, 1])} />
+      <Stack.Screen name="index" options={{ title: '' }} />
+      <Stack.Screen name="filters" options={sheetOptions()} />
     </Stack>
   );
 }

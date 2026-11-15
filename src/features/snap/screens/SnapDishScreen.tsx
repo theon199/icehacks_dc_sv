@@ -1,10 +1,10 @@
 import { router } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
 import { useCookLogStore } from '@/stores';
-import { Button, Card, EmptyState, ErrorState, Screen, space, Text, toast } from '@/ui';
+import { EmptyState, ErrorState, space, Text, toast, useTheme } from '@/ui';
 
 import { HealthierCard } from '../components/HealthierCard';
 import { LoadingRows } from '../components/LoadingRows';
@@ -12,6 +12,8 @@ import { NoSnapResult } from '../components/NoSnapResult';
 import { NutritionEstimateCard } from '../components/NutritionEstimateCard';
 import { RecipeRow } from '../components/RecipeRow';
 import { ResultHeader } from '../components/ResultHeader';
+import { ResultSheet } from '../components/ResultSheet';
+import { SnapPill } from '../components/SnapPill';
 import { logEstimatedMeal } from '../deps';
 import { useDishMatches } from '../hooks/useDishMatches';
 import { snapCameraHref } from '../links';
@@ -41,6 +43,7 @@ export function SnapDishScreen() {
 }
 
 function DishResult({ result }: { result: DishSnapResult }) {
+  const theme = useTheme();
   const { dish } = result;
   const matches = useDishMatches(result.id, dish);
   const [loggedId, setLoggedId] = useState<string | null>(null);
@@ -89,7 +92,9 @@ function DishResult({ result }: { result: DishSnapResult }) {
       <>
         {healthier ? <HealthierCard version={healthier} onOpen={openRecipe} /> : null}
         <View style={styles.section}>
-          <Text variant="title3">Closest recipes</Text>
+          <Text variant="title2" accessibilityRole="header">
+            Closest recipes
+          </Text>
           {closest.length === 0 && !healthier ? (
             <Text variant="callout" tone="muted" testID="dish-no-matches">
               No recipes in Famara match this dish closely yet.
@@ -110,52 +115,61 @@ function DishResult({ result }: { result: DishSnapResult }) {
   }
 
   return (
-    <Screen
+    <ResultSheet
+      photoUri={result.photoUri}
+      onClose={retake}
+      peek={0.18}
       testID="snap-dish"
       footer={
-        <View style={styles.actions}>
-          <Button
-            label="Retake"
-            variant="secondary"
-            icon="camera"
-            onPress={retake}
-            testID="dish-retake"
-            style={styles.action}
-          />
-          <Button
+        <>
+          <SnapPill label="Retake" icon="camera" onPress={retake} testID="dish-retake" />
+          <SnapPill
             label={loggedId ? 'Logged' : 'Log it to today'}
             icon={loggedId ? 'checkmark' : 'plus'}
+            tone="lime"
             onPress={logIt}
             disabled={loggedId != null}
             testID="dish-log"
-            style={styles.action}
           />
-        </View>
+        </>
       }
     >
-      <ResultHeader
-        photoUri={result.photoUri}
-        title={name}
-        subtitle={`${CONFIDENCE_LABELS[confidenceBand(dish.confidence)]} match${
-          dish.cuisine ? ` · ${dish.cuisine}` : ''
-        }`}
-        remaining={result.remaining}
-      />
-      <NutritionEstimateCard dish={dish} />
-      {loggedId ? (
-        <Card variant="sunken" testID="dish-logged">
-          <Text variant="callout">
-            Logged to today as eaten out. The figures are kept as an estimate.
-          </Text>
-        </Card>
-      ) : null}
-      {recipes}
-    </Screen>
+      <ScrollView contentContainerStyle={styles.content}>
+        <ResultHeader
+          photoUri={result.photoUri}
+          title={name}
+          subtitle={`${CONFIDENCE_LABELS[confidenceBand(dish.confidence)]} match${
+            dish.cuisine ? ` · ${dish.cuisine}` : ''
+          }`}
+          remaining={result.remaining}
+        />
+        <NutritionEstimateCard dish={dish} />
+        {loggedId ? (
+          <View
+            style={[
+              styles.logged,
+              { backgroundColor: theme.colors.highlightSoft, borderRadius: theme.radii.lg },
+            ]}
+            testID="dish-logged"
+          >
+            <Text variant="subhead" color="onHighlightSoft">
+              Logged to today as eaten out. The figures are kept as an estimate.
+            </Text>
+          </View>
+        ) : null}
+        {recipes}
+      </ScrollView>
+    </ResultSheet>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.xl,
+    gap: space.md,
+  },
   section: { gap: space.xs },
-  actions: { flexDirection: 'row', gap: space.md },
-  action: { flex: 1 },
+  logged: { padding: space.md },
 });

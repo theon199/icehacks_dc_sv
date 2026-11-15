@@ -7,9 +7,9 @@ import { useReducedMotion, useSharedValue } from 'react-native-reanimated';
 import type { DeckCard } from '@/domain';
 import { prefetchRecipe } from '@/lib/catalog';
 import { haptics } from '@/lib/haptics';
-import { gutter, space } from '@/ui/tokens';
+import { gutter } from '@/ui/tokens';
 
-import { DeckActions } from './DeckActions';
+import { DeckDots } from './DeckDots';
 import { SwipeableCard, type CardCommand } from './SwipeableCard';
 import { MOUNTED_CARDS, PREFETCH_AHEAD } from '../swipe';
 
@@ -25,7 +25,10 @@ export interface SwipeDeckProps {
   onUndo: () => void;
 }
 
-/** The card stack (top three mounted) with its button row. */
+/**
+ * The card stack (top three mounted) with the dots counting the cards lined up. Swiping is the
+ * whole interaction on screen; every decision is also an accessibility action on the top card.
+ */
 export function SwipeDeck({
   cards,
   canUndo,
@@ -38,6 +41,7 @@ export function SwipeDeck({
 }: SwipeDeckProps) {
   const window = useWindowDimensions();
   const [width, setWidth] = useState(window.width - gutter * 2);
+  const [flippedId, setFlippedId] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
   const progress = useSharedValue(0);
   const exitDirection = useSharedValue(0);
@@ -86,24 +90,17 @@ export function SwipeDeck({
         case 'open':
           onOpen(card);
           break;
+        case 'flip':
+          haptics.selection();
+          setFlippedId(card.recipe.id);
+          break;
+        case 'unflip':
+          setFlippedId(null);
+          break;
       }
     },
     [exitDirection, onLike, onPass, onSave, onNotForMe, onOpen],
   );
-
-  const act = useCallback(
-    (command: Exclude<CardCommand, 'open'>) => {
-      if (!top) return;
-      exitDirection.set(command === 'like' ? 1 : command === 'pass' ? -1 : 0);
-      onCommand(top, command);
-    },
-    [top, exitDirection, onCommand],
-  );
-
-  const passTop = useCallback(() => act('pass'), [act]);
-  const saveTop = useCallback(() => act('save'), [act]);
-  const likeTop = useCallback(() => act('like'), [act]);
-  const dislikeTop = useCallback(() => act('notForMe'), [act]);
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.round(event.nativeEvent.layout.width);
@@ -123,25 +120,20 @@ export function SwipeDeck({
               progress={progress}
               exitDirection={exitDirection}
               reduceMotion={reduceMotion}
+              flipped={depth === 0 && card.recipe.id === flippedId}
+              canUndo={canUndo}
+              onUndo={onUndo}
               onCommand={onCommand}
             />
           ))
           .reverse()}
       </View>
-      <DeckActions
-        canUndo={canUndo}
-        disabled={!top}
-        onUndo={onUndo}
-        onPass={passTop}
-        onSave={saveTop}
-        onLike={likeTop}
-        onNotForMe={dislikeTop}
-      />
+      <DeckDots remaining={cards.length} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: gutter, paddingTop: space.sm },
+  container: { flex: 1 },
   stack: { flex: 1 },
 });

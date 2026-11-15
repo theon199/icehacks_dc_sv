@@ -23,7 +23,10 @@ jest.mock('../deps', () => ({
   listCatalogCuisines: jest.fn(() => Promise.resolve([])),
 }));
 jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: jest.fn() }));
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  Stack: { Screen: () => null },
+  router: { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) },
+}));
 
 const stats: MyStats = {
   cooked_count: 8,
@@ -137,7 +140,7 @@ describe('ProfileScreen', () => {
     await renderWithQuery(<ProfileScreen />);
     await fireEvent.press(await screen.findByRole('button', { name: 'Settings' }));
     expect(router.push).toHaveBeenCalledWith('/settings');
-    await fireEvent.press(screen.getByRole('button', { name: 'Friends' }));
+    await fireEvent.press(await screen.findByRole('button', { name: 'See your friends' }));
     expect(router.push).toHaveBeenCalledWith('/friends');
   });
 

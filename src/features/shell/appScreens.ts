@@ -4,7 +4,7 @@
  */
 import type { NativeStackNavigationOptions } from 'expo-router';
 
-import { sheetOptions } from '@/ui/navigation';
+import { nativeSheetOptions, sheetOptions } from '@/ui/navigation';
 import type { Theme } from '@/ui/tokens';
 
 export interface AppScreen {
@@ -19,6 +19,7 @@ export interface AppScreen {
   ai?: true;
 }
 
+/** Screens that draw their own glass back button and title hide the native bar. */
 const titled =
   (title: string, extra: NativeStackNavigationOptions = {}) =>
   (): NativeStackNavigationOptions => ({ title, ...extra });
@@ -33,48 +34,52 @@ export const appScreens: readonly AppScreen[] = [
   { name: '(tabs)', options: () => ({ headerShown: false, title: 'Home' }) },
 
   // Recipes and cooking
-  { name: 'recipe/[id]/index', options: titled('Recipe') },
-  { name: 'recipe/[id]/why', options: (t) => sheetOptions(t, [0.55, 1]) },
-  { name: 'compare', options: titled('Compare') },
-  { name: 'makeover', options: titled('Make it healthier', { presentation: 'modal' }), ai: true },
+  { name: 'recipe/[id]/index', options: titled('Recipe', { headerShown: false }) },
+  { name: 'recipe/[id]/why', options: sheetOptions },
+  { name: 'compare', options: titled('Compare', { headerShown: false }) },
+  {
+    name: 'makeover',
+    options: titled('Make it healthier', { headerShown: false, presentation: 'modal' }),
+    ai: true,
+  },
   { name: 'cook/[id]/index', options: () => fullScreen },
   { name: 'cook/[id]/done', options: () => fullScreen },
 
   // Planning, pantry and shopping
-  { name: 'pantry', options: titled('Pantry') },
-  { name: 'shopping', options: titled('Shopping list') },
-  { name: 'nearby/[dish]', options: titled('Nearby') },
+  { name: 'pantry', options: titled('Pantry', { headerShown: false }) },
+  { name: 'shopping', options: titled('Shopping list', { headerShown: false }) },
+  { name: 'nearby/[dish]', options: titled('Nearby', { headerShown: false }) },
 
   // AI and Snap results
-  { name: 'chef', options: titled('Chef'), ai: true },
-  { name: 'snap/dish', options: titled('Your dish'), ai: true },
-  { name: 'snap/pantry', options: titled('Pantry photo'), ai: true },
+  { name: 'chef', options: titled('Chef', { headerShown: false }), ai: true },
+  { name: 'snap/dish', options: titled('Your dish', { headerShown: false }), ai: true },
+  { name: 'snap/pantry', options: titled('Pantry photo', { headerShown: false }), ai: true },
 
   // Community
-  { name: 'post/[id]', options: titled('Post') },
-  { name: 'author/[id]', options: titled('') },
-  // A tall sheet that keeps its header, so the screen's Close button stays reachable.
+  { name: 'post/[id]', options: titled('Post', { headerShown: false }) },
+  { name: 'author/[id]', options: titled('', { headerShown: false }) },
+  // Compose paints its own opaque page with a Close button, so it keeps the native sheet.
   {
     name: 'compose',
-    options: (t) => ({ ...sheetOptions(t, [0.9, 1]), headerShown: true, title: 'Share a dish' }),
+    options: (t) => ({ ...nativeSheetOptions(t, [0.9, 1]), title: 'Share a dish' }),
   },
-  { name: 'notifications', options: titled('Notifications') },
-  { name: 'profile', options: titled('Profile') },
-  { name: 'friends', options: titled('Friends') },
-  { name: 'invite/[code]', options: (t) => sheetOptions(t, [0.5]) },
+  { name: 'notifications', options: titled('Notifications', { headerShown: false }) },
+  { name: 'profile', options: titled('Profile', { headerShown: false }) },
+  { name: 'friends', options: titled('Friends', { headerShown: false }) },
+  { name: 'invite/[code]', options: sheetOptions },
 
   // Settings
-  { name: 'settings', options: titled('Settings') },
-  { name: 'account', options: titled('Account') },
-  { name: 'preferences', options: titled('Preferences') },
-  { name: 'personal-details', options: titled('Personal details') },
-  { name: 'ai-consent', options: (t) => sheetOptions(t, [0.75, 1]) },
+  { name: 'settings', options: titled('Settings', { headerShown: false }) },
+  { name: 'account', options: titled('Account', { headerShown: false }) },
+  { name: 'preferences', options: titled('Preferences', { headerShown: false }) },
+  { name: 'personal-details', options: titled('Personal details', { headerShown: false }) },
+  { name: 'ai-consent', options: sheetOptions },
   { name: 'health', options: titled('Health') },
 
   // Moderation and safety
-  { name: 'moderation/index', options: titled('Review queue') },
-  { name: 'moderation/review', options: titled('Review') },
-  { name: 'moderation/report', options: (t) => sheetOptions(t, [0.6, 1]) },
-  { name: 'moderation/blocked', options: titled('Blocked people') },
-  { name: 'moderation/notice/[id]', options: titled('Content notice') },
+  { name: 'moderation/index', options: titled('Review queue', { headerShown: false }) },
+  { name: 'moderation/review', options: titled('Review', { headerShown: false }) },
+  { name: 'moderation/report', options: sheetOptions },
+  { name: 'moderation/blocked', options: titled('Blocked people', { headerShown: false }) },
+  { name: 'moderation/notice/[id]', options: titled('Content notice', { headerShown: false }) },
 ];

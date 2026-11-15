@@ -1,10 +1,8 @@
-import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router, useNavigation } from 'expo-router';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useReducedMotion } from 'react-native-reanimated';
 
-import { Text } from './Text';
-import { useTheme } from './ThemeProvider';
-import { gutter, space } from './tokens';
+import { GlassSheetPanel } from './GlassSheetPanel';
 
 export interface SheetContentProps {
   title?: string;
@@ -12,13 +10,30 @@ export interface SheetContentProps {
   children: ReactNode;
   /** Pinned actions at the bottom of the sheet. */
   footer?: ReactNode;
-  /** Scroll the body (default true). Disable for sheets that fit their smallest detent. */
+  /** Scroll the body (default true). */
   scroll?: boolean;
+  /** Share of the window the sheet may fill before its body scrolls. */
+  maxHeightRatio?: number;
+  /** False hides the X and ignores the dim and the drag, while a required step runs. */
+  dismissible?: boolean;
+  /**
+   * The X, the dim and the drag asked to close. Defaults to going back, or to the first tab when
+   * the sheet was opened from a link with nothing beneath it.
+   */
+  onClose?: () => void;
+  testID?: string;
 }
 
+/** Navigation actions that take the sheet's route off the stack in place: the exit plays first. */
+const BACK_ACTIONS: ReadonlySet<string> = new Set(['GO_BACK', 'POP']);
+
 /**
- * Body of a native form sheet route (`presentation: 'formSheet'`). The system draws the grabber and
- * the rounded container; this adds consistent padding, title and footer.
+ * A route presented as a glass sheet (`sheetOptions` in `navigation.ts`: a transparent modal with
+ * no native animation). The screen below stays drawn; this draws the dim and the sheet over it.
+ *
+ * Every way back (the X, the dim, a drag, a screen's own Done that calls `router.back()`, Android
+ * back) plays the slide out before the route is removed, by holding the back action until the
+ * sheet has left. Opened from a link with nothing beneath, the app canvas fills in behind the dim.
  */
 export function SheetContent({
   title,
@@ -26,51 +41,59 @@ export function SheetContent({
   children,
   footer,
   scroll = true,
+  maxHeightRatio,
+  dismissible = true,
+  onClose,
+  testID = 'route-sheet',
 }: SheetContentProps) {
-  const theme = useTheme();
-  const insets = useSafeAreaInsets();
-  const heading =
-    title || description ? (
-      <View style={styles.heading}>
-        {title ? <Text variant="title2">{title}</Text> : null}
-        {description ? (
-          <Text variant="callout" tone="muted">
-            {description}
-          </Text>
-        ) : null}
-      </View>
-    ) : null;
+  const navigation = useNavigation();
+  const reduceMotion = useReducedMotion();
+  const [open, setOpen] = useState(true);
+  const held = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
+  const releasing = useRef(false);
+
+  useEffect(
+    () =>
+      navigation.addListener('beforeRemove', (event) => {
+        const { action } = event.data;
+        if (releasing.current || reduceMotion || !BACK_ACTIONS.has(action.type)) return;
+        event.preventDefault();
+        if (held.current) return;
+        held.current = action;
+        setOpen(false);
+      }),
+    [navigation, reduceMotion],
+  );
+
+  const onExited = useCallback(() => {
+    const action = held.current;
+    if (!action) return;
+    held.current = null;
+    releasing.current = true;
+    navigation.dispatch(action);
+  }, [navigation]);
+
+  // Opened from a link there is nothing to go back to, so it lands on the first tab instead.
+  const goBack = useCallback(() => {
+    if (navigation.canGoBack()) navigation.goBack();
+    else router.replace('/');
+  }, [navigation]);
 
   return (
-    <View style={[styles.flex, { backgroundColor: theme.colors.surface }]}>
-      {scroll ? (
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.body}
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets
-        >
-          {heading}
-          {children}
-        </ScrollView>
-      ) : (
-        <View style={[styles.flex, styles.body]}>
-          {heading}
-          {children}
-        </View>
-      )}
-      {footer ? (
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
-          {footer}
-        </View>
-      ) : null}
-    </View>
+    <GlassSheetPanel
+      open={open}
+      onRequestClose={onClose ?? goBack}
+      onExited={onExited}
+      dismissible={dismissible}
+      scroll={scroll}
+      testID={testID}
+      {...(navigation.canGoBack() ? {} : { backdrop: 'background' as const })}
+      {...(title === undefined ? {} : { title })}
+      {...(description === undefined ? {} : { description })}
+      {...(footer === undefined ? {} : { footer })}
+      {...(maxHeightRatio === undefined ? {} : { maxHeightRatio })}
+    >
+      {children}
+    </GlassSheetPanel>
   );
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  body: { padding: gutter, paddingTop: space.xxl, gap: space.lg },
-  heading: { gap: space.xs },
-  footer: { paddingHorizontal: gutter, paddingTop: space.md, gap: space.sm },
-});

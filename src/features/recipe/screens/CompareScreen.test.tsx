@@ -33,6 +33,7 @@ jest.mock('expo-router', () => ({
     replace: jest.fn(),
     canGoBack: () => true,
   }),
+  Stack: { Screen: () => null },
 }));
 jest.mock('@/lib/catalog/queries', () => ({
   getRecipeDetail: jest.fn(),
@@ -68,7 +69,7 @@ const rich = makeDetail({
   nutrition: { ...makeDetail().nutrition!, satFatG: 12, proteinG: 15 },
   ingredients: [
     line(1, '200 ml heavy cream', { ingredientId: 'heavy_cream', grams: 200 }),
-    line(2, '200 g pasta', { ingredientId: 'pasta', grams: 200 }),
+    line(2, '200g pasta', { ingredientId: 'pasta', grams: 200 }),
   ],
 });
 const lean = makeDetail({
@@ -79,8 +80,8 @@ const lean = makeDetail({
   servings: 2,
   nutrition: { ...makeDetail().nutrition!, satFatG: 3, proteinG: 22 },
   ingredients: [
-    line(1, '200 g greek yogurt', { ingredientId: 'greek_yogurt', grams: 200 }),
-    line(2, '200 g pasta', { ingredientId: 'pasta', grams: 200 }),
+    line(1, '200g greek yogurt', { ingredientId: 'greek_yogurt', grams: 200 }),
+    line(2, '200g pasta', { ingredientId: 'pasta', grams: 200 }),
   ],
 });
 const solo = makeDetail({ id: 'solo', title: 'Lonely stew', familyId: 'fam:stew' });
@@ -156,7 +157,7 @@ describe('CompareScreen', () => {
     expect(screen.getByText('Creamy pasta')).toBeTruthy();
     expect(screen.getByText('Lighter creamy pasta')).toBeTruthy();
     expect(screen.getByText('1 swap · 2 nutrients better')).toBeTruthy();
-    expect(screen.getByText('−9 g')).toBeTruthy();
+    expect(screen.getByText('−9g')).toBeTruthy();
     expect(screen.getByText('Stays the same')).toBeTruthy();
   });
 
@@ -242,7 +243,7 @@ describe('CompareScreen', () => {
       id: 'mine',
       title: 'My lighter stew',
       servings: 2,
-      ingredients: ['200 g greek yogurt', '1 tin chickpeas'],
+      ingredients: ['200g greek yogurt', '1 tin chickpeas'],
     });
     await renderWithTheme(
       <Providers>

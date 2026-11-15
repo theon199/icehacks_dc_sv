@@ -2,7 +2,16 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { formatClock } from '@/lib/format';
-import { Button, Icon, IconButton, Text, useTheme } from '@/ui';
+import {
+  Button,
+  Icon,
+  IconButton,
+  PressableScale,
+  Text,
+  minTouchTarget,
+  space,
+  useTheme,
+} from '@/ui';
 
 import { useNow } from '../hooks/useNow';
 import { remainingMs, type CookTimer } from '../logic/timers';
@@ -37,12 +46,11 @@ export const StepTimerCard = memo(function StepTimerCard({
   const now = useNow(timer?.status === 'running');
 
   if (!timer) {
+    const label = `Start ${formatClock(seconds)} timer`;
     return (
-      <Button
-        label={`Start ${formatClock(seconds)} timer`}
-        icon="timer"
-        variant="secondary"
-        size="lg"
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel={label}
         onPress={onStart}
         accessibilityHint={
           alertsInBackground
@@ -50,15 +58,24 @@ export const StepTimerCard = memo(function StepTimerCard({
             : 'Counts down and alerts you when it is done while Famara is open.'
         }
         testID="cook-step-timer-start"
-      />
+        style={[
+          styles.start,
+          { backgroundColor: theme.colors.highlightSoft, borderRadius: theme.radii.pill },
+        ]}
+      >
+        <Icon name="timer" size={18} color="onHighlightSoft" />
+        <Text variant="headline" color="onHighlightSoft" accessible={false}>
+          {label}
+        </Text>
+      </PressableScale>
     );
   }
 
   const left = Math.ceil(remainingMs(timer, now) / 1000);
   const done = timer.status === 'done';
   const paused = timer.status === 'paused';
-  const background = done ? theme.colors.accentSoft : theme.colors.primarySoft;
-  const foreground = done ? 'onAccentSoft' : 'onPrimarySoft';
+  const background = done ? theme.colors.accentSoft : theme.colors.highlightSoft;
+  const foreground = done ? 'onAccentSoft' : 'onHighlightSoft';
 
   return (
     <View
@@ -73,8 +90,8 @@ export const StepTimerCard = memo(function StepTimerCard({
           done ? 'Timer done' : `${paused ? 'Paused, ' : ''}${formatClock(left)} left`
         }
       >
-        <Icon name={done ? 'bell.fill' : 'timer'} size={26} color={foreground} />
-        <Text variant="display" color={foreground} style={styles.clock}>
+        <Icon name={done ? 'bell.fill' : 'timer'} size={22} color={foreground} />
+        <Text variant="title1" color={foreground} style={styles.clock}>
           {done ? 'Done' : formatClock(left)}
         </Text>
         {paused ? (
@@ -91,13 +108,13 @@ export const StepTimerCard = memo(function StepTimerCard({
             <IconButton
               icon={paused ? 'play.fill' : 'pause.fill'}
               accessibilityLabel={paused ? 'Resume timer' : 'Pause timer'}
-              variant="tinted"
+              variant="glass"
               onPress={() => (paused ? onResume(timer.id) : onPause(timer.id))}
             />
             <IconButton
               icon="xmark"
               accessibilityLabel="Cancel timer"
-              variant="tinted"
+              variant="glass"
               onPress={() => onRemove(timer.id)}
             />
           </>
@@ -115,8 +132,16 @@ export const StepTimerCard = memo(function StepTimerCard({
 });
 
 const styles = StyleSheet.create({
-  card: { padding: 16, gap: 12 },
-  readout: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  start: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: space.xs,
+    minHeight: minTouchTarget,
+    paddingHorizontal: space.md,
+  },
+  card: { padding: space.md, gap: space.sm },
+  readout: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   clock: { fontVariant: ['tabular-nums'] },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
 });

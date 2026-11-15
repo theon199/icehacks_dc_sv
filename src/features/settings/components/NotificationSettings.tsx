@@ -3,7 +3,7 @@ import { Alert } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import { describeError, logger } from '@/lib/logger';
-import { ListRow, toast, Toggle } from '@/ui';
+import { toast, type IconName } from '@/ui';
 
 import {
   fetchPushCategories,
@@ -20,24 +20,28 @@ import {
 } from '../notificationPermission';
 import { rememberPushChoices, usePushChoices } from '../pushChoices';
 import { refreshNotificationAccess, useNotificationAccess } from '../useNotificationAccess';
+import { SettingsRow, SettingsToggleRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
 
 type ChoiceKey = 'cookTimers' | PushCategory;
 
-const rows: readonly { key: ChoiceKey; label: string; description: string }[] = [
+const rows: readonly { key: ChoiceKey; label: string; description: string; icon: IconName }[] = [
   {
     key: 'cookTimers',
     label: 'Cook mode timers',
+    icon: 'timer',
     description: 'An alert when a step timer finishes, even if Famara is in the background.',
   },
   {
     key: 'social',
     label: 'Likes and comments',
+    icon: 'heart',
     description: 'When someone likes, comments on or replies to your posts.',
   },
   {
     key: 'follows',
     label: 'Followers and friends',
+    icon: 'person.2',
     description: 'When someone follows you or accepts your friend invite.',
   },
 ];
@@ -198,29 +202,29 @@ export function NotificationSettings() {
       footnote="You will always see activity in the in-app inbox, whatever you choose here."
     >
       {heldBack && anyChosen ? (
-        <ListRow
+        <SettingsRow
           testID={`settings-notify-${heldBack}`}
-          title={
+          label={
             heldBack === 'blocked'
               ? 'Notifications are off for Famara'
               : 'Notifications are not allowed yet'
           }
-          subtitle={
+          description={
             heldBack === 'blocked'
               ? 'Allow them in the Settings app to get the alerts you chose.'
               : 'Allow them to get the alerts you chose.'
           }
           icon="bell.slash"
-          divider
           onPress={() => void allowNotifications()}
         />
       ) : null}
       {rows.map((row) => {
         const chosen = choices[row.key];
         return (
-          <Toggle
+          <SettingsToggleRow
             key={row.key}
             testID={`settings-notify-${row.key}`}
+            icon={row.icon}
             label={row.label}
             description={
               chosen && heldBack ? `${row.description} ${heldBackNote}` : row.description

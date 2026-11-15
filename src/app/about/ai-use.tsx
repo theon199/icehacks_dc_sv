@@ -1,4 +1,4 @@
-import { AboutPageScreen } from '@/features/settings/screens/AboutPageScreen';
+import { AboutPageScreen } from '@/features/about';
 
 export default function AiUseAboutRoute() {
   return <AboutPageScreen page="ai-use" />;

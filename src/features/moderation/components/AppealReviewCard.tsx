@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { formatRelativeTime } from '@/lib/format';
-import { Button, Card, errorMessageFor, Text, TextField, toast } from '@/ui';
+import { Button, errorMessageFor, fontFamily, Text, TextField, toast } from '@/ui';
+import { GlassCard } from '@/ui/GlassCard';
 import { space } from '@/ui/tokens';
 
 import { actionPastTense } from '../actions';
@@ -47,9 +48,9 @@ function AppealReviewBody({ appeal, now }: AppealReviewCardProps) {
   };
 
   return (
-    <Card variant="outlined" padding="md" testID={`appeal-${appeal.appeal_id}`}>
+    <GlassCard testID={`appeal-${appeal.appeal_id}`}>
       <View style={styles.body}>
-        <Text variant="subhead">
+        <Text variant="body" accessibilityRole="header" style={styles.heading}>
           {who} appeals: {actionPastTense(appeal.action.action).toLowerCase()}{' '}
           {targetNoun(appeal.action.target_kind)}
         </Text>
@@ -93,11 +94,12 @@ function AppealReviewBody({ appeal, now }: AppealReviewCardProps) {
           />
         </View>
       </View>
-    </Card>
+    </GlassCard>
   );
 }
 
 const styles = StyleSheet.create({
   body: { gap: space.sm },
+  heading: { fontFamily: fontFamily.textSemiBold },
   actions: { flexDirection: 'row', gap: space.sm, justifyContent: 'flex-end' },
 });

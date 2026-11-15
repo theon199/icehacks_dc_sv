@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Button, EmptyState, Screen, Text, useTheme } from '@/ui';
+import { Button, Text, space, useTheme } from '@/ui';
 
 import { completeCallback, hasSession } from '../authActions';
 import { callbackLinkId, readCallback } from '../callback';
+import { AccountPage, PageLink, PageNotice } from '../components/AccountPage';
+import { useBackToLogIn } from '../useBackToLogIn';
 
 export interface AuthCallbackScreenProps {
   params: Record<string, string>;
@@ -26,6 +28,7 @@ interface LinkFailure {
 export function AuthCallbackScreen({ params }: AuthCallbackScreenProps) {
   const router = useRouter();
   const theme = useTheme();
+  const backToLogIn = useBackToLogIn();
   const linkId = useMemo(() => callbackLinkId(params), [params]);
   const [linkFailure, setLinkFailure] = useState<LinkFailure | null>(null);
   // Links are single use. Re-renders and development remounts deliver the same link again, but a
@@ -62,37 +65,29 @@ export function AuthCallbackScreen({ params }: AuthCallbackScreenProps) {
 
   if (failure) {
     return (
-      <Screen safeTop>
-        <EmptyState
-          tone="danger"
-          icon="exclamationmark.triangle"
-          title="That link didn’t work"
-          message={failure}
-        />
-        <View style={styles.actions}>
-          <Button label="Back to sign in" fullWidth onPress={() => router.replace('/sign-in')} />
-          <Button
-            label="Reset password"
-            variant="ghost"
-            fullWidth
-            onPress={() => router.replace('/forgot-password')}
-          />
-        </View>
-      </Screen>
+      <AccountPage
+        back={false}
+        title="That link didn’t work"
+        footer={
+          <PageLink label="Reset password" onPress={() => router.replace('/forgot-password')} />
+        }
+      >
+        <PageNotice message={failure} />
+        <Button label="Back to log in" size="lg" fullWidth onPress={backToLogIn} />
+      </AccountPage>
     );
   }
 
   return (
-    <Screen safeTop scroll={false} contentContainerStyle={styles.centre}>
+    <View style={[styles.centre, { backgroundColor: theme.colors.background }]}>
       <ActivityIndicator size="large" color={theme.colors.primary} />
       <Text variant="headline" align="center" accessibilityLiveRegion="polite">
         Signing you in…
       </Text>
-    </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  centre: { alignItems: 'center', justifyContent: 'center', gap: 16 },
-  actions: { gap: 8 },
+  centre: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.lg },
 });

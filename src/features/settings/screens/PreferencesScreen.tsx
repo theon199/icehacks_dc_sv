@@ -13,11 +13,14 @@ import {
   type Effort,
   type Goal,
 } from '@/domain/types';
-import { Button, Card, Screen, Text, Toggle } from '@/ui';
+import { Button, Text } from '@/ui';
 
 import { ChoiceGroup } from '../components/ChoiceGroup';
 import { CuisinePicker } from '../components/CuisinePicker';
 import { HouseholdStepper } from '../components/HouseholdStepper';
+import { PreferenceCard } from '../components/PreferenceCard';
+import { SettingsPage } from '../components/SettingsPage';
+import { SettingsToggleRow } from '../components/SettingsRow';
 import { selectPreferences, toDomainGoal, toStoredGoal, usePreferencesStore } from '../deps';
 
 type TimeChoice = 'none' | `${number}`;
@@ -79,8 +82,8 @@ export function PreferencesScreen() {
   const time: TimeChoice = prefs.maxMinutes == null ? 'none' : `${prefs.maxMinutes}`;
 
   return (
-    <Screen testID="preferences-screen">
-      <Text variant="callout" tone="muted">
+    <SettingsPage title="Food preferences" pinned testID="preferences-screen">
+      <Text variant="body" tone="muted">
         These shape every recommendation. Changes save straight away.
       </Text>
 
@@ -88,6 +91,7 @@ export function PreferencesScreen() {
 
       <ChoiceGroup
         testID="prefs-diet"
+        variant="card"
         title="Diet"
         hint="Recipes must fit every diet you pick."
         options={dietOptions}
@@ -97,6 +101,7 @@ export function PreferencesScreen() {
 
       <ChoiceGroup
         testID="prefs-allergen"
+        variant="card"
         title="Allergies and intolerances"
         hint={allergenHint(prefs.allergensAnswered, prefs.allergens)}
         options={allergenOptions}
@@ -115,6 +120,7 @@ export function PreferencesScreen() {
 
       <ChoiceGroup
         testID="prefs-goal"
+        variant="card"
         title="Health goals"
         options={goalOptions}
         selected={prefs.goals.map(toDomainGoal)}
@@ -123,6 +129,7 @@ export function PreferencesScreen() {
 
       <ChoiceGroup
         testID="prefs-time"
+        variant="card"
         title="Time on a weeknight"
         single
         options={timeOptions}
@@ -134,6 +141,7 @@ export function PreferencesScreen() {
 
       <ChoiceGroup<Effort>
         testID="prefs-effort"
+        variant="card"
         title="Cooking effort"
         single
         options={effortOptions}
@@ -146,15 +154,15 @@ export function PreferencesScreen() {
         onChange={(householdSize) => store().update({ householdSize })}
       />
 
-      <Card padding="md">
-        <Toggle
+      <PreferenceCard title="Portions">
+        <SettingsToggleRow
           testID="prefs-small-appetite"
           label="Small appetite mode"
           description="Gentler dishes, half portions and smaller planned meals with snacks."
           value={prefs.smallAppetite}
           onValueChange={(smallAppetite) => store().update({ smallAppetite })}
         />
-      </Card>
-    </Screen>
+      </PreferenceCard>
+    </SettingsPage>
   );
 }

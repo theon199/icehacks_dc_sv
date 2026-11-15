@@ -90,3 +90,6 @@ export function usePersonAge(): number | null {
  * feeds) so the whole week is costed as one shopping trip.
  */
 export { CostSummary } from '@/features/grocery';
+
+/** The shared profile circle that ends every tab header. */
+export { ProfileButton } from '@/features/shell';

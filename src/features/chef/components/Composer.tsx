@@ -1,17 +1,40 @@
+import { GlassContainer } from 'expo-glass-effect';
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
   Alert,
+  Pressable,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { deviceLocale } from '@/lib/format';
 import { logger } from '@/lib/logger';
-import { IconButton, Text, maxFontSizeMultiplier, space, toast, useTheme } from '@/ui';
+import {
+  GlassIconButton,
+  GlassSurface,
+  Icon,
+  IconButton,
+  Text,
+  hasLiquidGlass,
+  maxFontSizeMultiplier,
+  space,
+  toast,
+  useTheme,
+  type Palette,
+} from '@/ui';
 
 import { useDictation } from '../hooks/useDictation';
 import { MAX_MESSAGE_LENGTH } from '../logic/conversation';
@@ -32,6 +55,13 @@ export interface ComposerProps {
    */
   limitedUntil?: number | null;
   onSend: (input: { text: string; photo: string | null }) => void;
+  /** Lets the screen open the photo choice, e.g. from the first screen's "Take a photo". */
+  ref?: Ref<ComposerHandle>;
+}
+
+export interface ComposerHandle {
+  /** Asks whether to take a photo or choose one, then attaches it to the question. */
+  choosePhoto: () => void;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -100,9 +130,13 @@ function joinDictation(base: string, spoken: string): string {
   return head ? `${head} ${spoken}` : spoken;
 }
 
-/** Question box with dictation and an optional photo. */
-export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
+/**
+ * Question box with dictation and an optional photo: a Liquid Glass photo circle and field that
+ * float over the thread. The screen keeps it above the keyboard.
+ */
+export function Composer({ busy, limitedUntil = null, onSend, ref }: ComposerProps) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
   const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -136,6 +170,8 @@ export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
     ]);
   };
 
+  useImperativeHandle(ref, () => ({ choosePhoto }));
+
   const toggleDictation = () => {
     if (dictation.listening) {
       dictation.stop();
@@ -157,24 +193,26 @@ export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
     setPhoto(null);
   };
 
+  const listeningTint: keyof Palette = 'onHighlight';
   return (
     <View
-      style={[
-        styles.container,
-        { borderTopColor: theme.colors.border, backgroundColor: theme.colors.background },
-      ]}
+      pointerEvents="box-none"
+      style={[styles.bar, { paddingBottom: insets.bottom + space.sm }]}
     >
+      {/* No backing: the bar floats, and the thread scrolls on under its glass. */}
       {limited ? (
-        <Text testID="chef-limit-note" variant="footnote" tone="muted" align="center">
-          {limitResetNote(limitedUntil, dayStart)}
-        </Text>
+        <GlassSurface radius="md" style={styles.note}>
+          <Text testID="chef-limit-note" variant="footnote" tone="muted" align="center">
+            {limitResetNote(limitedUntil, dayStart)}
+          </Text>
+        </GlassSurface>
       ) : null}
       {photo || preparing ? (
         <View style={styles.preview}>
           {photo ? (
             <Image
               source={{ uri: photo.uri }}
-              style={[styles.thumb, { borderRadius: theme.radii.sm }]}
+              style={[styles.thumb, { borderRadius: theme.radii.md }]}
               contentFit="cover"
               accessibilityLabel="Attached photo"
             />
@@ -194,82 +232,125 @@ export function Composer({ busy, limitedUntil = null, onSend }: ComposerProps) {
           ) : null}
         </View>
       ) : null}
-      <View style={styles.row}>
-        <IconButton
-          testID="chef-attach"
-          icon="camera"
-          accessibilityLabel="Add a photo"
-          variant="tinted"
-          disabled={preparing}
-          onPress={choosePhoto}
-        />
-        <View
-          style={[
-            styles.field,
-            {
-              backgroundColor: theme.colors.surfaceSunken,
-              borderRadius: theme.radii.lg,
-              borderColor: dictation.listening ? theme.colors.primary : 'transparent',
-            },
-          ]}
-        >
-          <TextInput
-            testID="chef-input"
-            value={draft}
-            onChangeText={setDraft}
-            placeholder={dictation.listening ? 'Listening…' : 'Ask Chef anything about food'}
-            placeholderTextColor={theme.colors.textSubtle}
-            selectionColor={theme.colors.primary}
-            accessibilityLabel="Message to Chef"
-            multiline
-            maxLength={MAX_MESSAGE_LENGTH}
-            maxFontSizeMultiplier={maxFontSizeMultiplier}
-            style={[styles.input, theme.typography.body, { color: theme.colors.text }]}
+      <ControlStack>
+        <View style={styles.row}>
+          <GlassIconButton
+            testID="chef-attach"
+            icon="plus"
+            accessibilityLabel="Add a photo"
+            size={BAR_HEIGHT}
+            iconColor={preparing ? 'textMuted' : 'text'}
+            disabled={preparing}
+            onPress={choosePhoto}
           />
-          <IconButton
-            testID="chef-dictate"
-            icon={dictation.listening ? 'stop.circle.fill' : 'mic'}
-            accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate'}
-            size={36}
-            color={dictation.listening ? 'primary' : 'textMuted'}
-            selected={dictation.listening}
-            onPress={toggleDictation}
-          />
+          <GlassSurface
+            radius={BAR_HEIGHT / 2}
+            tint="transparent"
+            style={[
+              styles.field,
+              hasLiquidGlass()
+                ? null
+                : {
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: theme.colors.controlBorder,
+                  },
+            ]}
+          >
+            <TextInput
+              testID="chef-input"
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={dictation.listening ? 'Listening…' : 'Ask Chef anything'}
+              placeholderTextColor={theme.colors.textMuted}
+              selectionColor={theme.colors.primary}
+              accessibilityLabel="Message to Chef"
+              multiline
+              maxLength={MAX_MESSAGE_LENGTH}
+              maxFontSizeMultiplier={maxFontSizeMultiplier}
+              style={[styles.input, theme.typography.body, { color: theme.colors.text }]}
+            />
+            <Pressable
+              testID="chef-dictate"
+              accessibilityRole="button"
+              accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate'}
+              accessibilityState={{ selected: dictation.listening }}
+              hitSlop={6}
+              onPress={toggleDictation}
+              style={[
+                styles.inner,
+                dictation.listening && { backgroundColor: theme.colors.highlight },
+              ]}
+            >
+              <Icon
+                name={dictation.listening ? 'mic.fill' : 'mic'}
+                size={20}
+                color={dictation.listening ? listeningTint : 'text'}
+              />
+            </Pressable>
+            <Pressable
+              testID="chef-send"
+              accessibilityRole="button"
+              // The limit note is plain text, so the disabled button carries the reason for VoiceOver.
+              accessibilityLabel={limited ? "Send. You've used today's Chef questions" : 'Send'}
+              accessibilityState={{ disabled: !canSend }}
+              disabled={!canSend}
+              onPress={send}
+              style={[
+                styles.inner,
+                { backgroundColor: canSend ? theme.colors.primary : theme.colors.primarySoft },
+              ]}
+            >
+              <Icon name="arrow.up" size={18} color={canSend ? 'onPrimary' : 'textMuted'} />
+            </Pressable>
+          </GlassSurface>
         </View>
-        <IconButton
-          testID="chef-send"
-          icon="arrow.up"
-          // The limit note is plain text, so the disabled button carries the reason for VoiceOver.
-          accessibilityLabel={limited ? "Send. You've used today's Chef questions" : 'Send'}
-          variant="filled"
-          disabled={!canSend}
-          onPress={send}
-        />
-      </View>
+      </ControlStack>
     </View>
   );
 }
 
+/**
+ * The photo circle and the field as one glass group, so on Liquid Glass they merge and morph
+ * together. The fallback surfaces have nothing to merge and sit plainly.
+ */
+function ControlStack({ children }: { children: ReactNode }) {
+  return hasLiquidGlass() ? (
+    <GlassContainer spacing={space.sm} style={styles.stack}>
+      {children}
+    </GlassContainer>
+  ) : (
+    <View style={styles.stack}>{children}</View>
+  );
+}
+
+/** Height of the field and of the round attach control beside it. */
+const BAR_HEIGHT = 48;
+const INNER_BUTTON = 36;
+
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: space.md,
-    paddingTop: space.sm,
-    paddingBottom: space.sm,
-    gap: space.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
+  bar: { paddingHorizontal: space.md, paddingTop: space.xs, gap: space.sm + 2 },
+  stack: { gap: space.sm + 2 },
+  note: { paddingHorizontal: space.md, paddingVertical: space.sm },
   preview: { flexDirection: 'row', alignItems: 'flex-start', gap: space.xs },
-  thumb: { width: 64, height: 64 },
+  thumb: { width: 54, height: 54 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  row: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
+  row: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm + 2 },
   field: {
     flex: 1,
+    minHeight: BAR_HEIGHT,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingLeft: space.md,
-    paddingRight: space.xxs,
-    minHeight: 40,
-    borderWidth: 1.5,
+    paddingLeft: space.md + 2,
+    paddingRight: space.sm,
+    paddingVertical: (BAR_HEIGHT - INNER_BUTTON) / 2,
+    gap: space.xs,
   },
-  input: { flex: 1, maxHeight: 132, paddingTop: 8, paddingBottom: 8 },
+  input: { flex: 1, minHeight: INNER_BUTTON, maxHeight: 132, paddingTop: 7, paddingBottom: 7 },
+  inner: {
+    width: INNER_BUTTON,
+    height: INNER_BUTTON,
+    borderRadius: INNER_BUTTON / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

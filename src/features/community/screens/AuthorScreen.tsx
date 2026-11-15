@@ -1,17 +1,28 @@
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { router, Stack } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
 
 import { reportHref } from '@/features/moderation';
-import { EmptyState, ErrorState, IconButton, Screen, Text, gutter, space, useTheme } from '@/ui';
+import {
+  GlassIconButton,
+  Screen,
+  Text,
+  errorMessageFor,
+  fontFamily,
+  gutter,
+  space,
+  useTheme,
+} from '@/ui';
 
 import { isNotFound } from '../api/rpcError';
 import type { ProfileSummary } from '../api/schemas';
 import type { Post } from '../api/types';
+import { CommunityStateCard } from '../components/CommunityStateCard';
 import { PostSkeletonList } from '../components/PostSkeleton';
 import { PostTile } from '../components/PostTile';
 import { ProfileHeader } from '../components/ProfileHeader';
+import { ScreenTopBar } from '../components/ScreenTopBar';
 import { useForgetOtherViewers, useViewer } from '../hooks/queryKeys';
 import { useBlockUser, useFollow, useProfileSummary } from '../hooks/useAuthor';
 import { useAuthorFeed } from '../hooks/useFeed';
@@ -76,6 +87,28 @@ function useAuthorMenu(profile: ProfileSummary | undefined) {
   }, [block, profile]);
 }
 
+const hideNativeBar = { headerShown: false } as const;
+
+/** The glass top bar over whatever state the profile is in. */
+function AuthorFrame({
+  title,
+  trailing,
+  children,
+}: {
+  title: string;
+  trailing?: ReactNode;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+      <Stack.Screen options={hideNativeBar} />
+      <ScreenTopBar title={title} onBack={leave} trailing={trailing} />
+      {children}
+    </View>
+  );
+}
+
 /** Someone's profile with follow/unfollow and a grid of their posts. */
 export function AuthorScreen({ authorId }: AuthorScreenProps) {
   const theme = useTheme();
@@ -93,26 +126,35 @@ export function AuthorScreen({ authorId }: AuthorScreenProps) {
 
   if (summary.isPending) {
     return (
-      <Screen>
-        <PostSkeletonList count={1} />
-      </Screen>
+      <AuthorFrame title="">
+        <Screen>
+          <PostSkeletonList count={1} />
+        </Screen>
+      </AuthorFrame>
     );
   }
   if (!profile) {
     return (
-      <Screen>
-        {isNotFound(summary.error) ? (
-          <EmptyState
-            icon="person.crop.circle.badge.xmark"
-            title="Profile not available"
-            message="This account may have been deleted, or one of you has blocked the other."
-            actionLabel="Back"
-            onAction={leave}
-          />
-        ) : (
-          <ErrorState error={summary.error} onRetry={() => void summary.refetch()} />
-        )}
-      </Screen>
+      <AuthorFrame title="">
+        <Screen>
+          {isNotFound(summary.error) ? (
+            <CommunityStateCard
+              testID="author-unavailable"
+              title="Profile not available"
+              message="This account may have been deleted, or one of you has blocked the other."
+              actions={[{ label: 'Back', onPress: leave }]}
+            />
+          ) : (
+            <CommunityStateCard
+              testID="author-error"
+              alert
+              title="This profile could not be loaded"
+              message={errorMessageFor(summary.error)}
+              actions={[{ label: 'Try again', onPress: () => void summary.refetch() }]}
+            />
+          )}
+        </Screen>
+      </AuthorFrame>
     );
   }
 
@@ -123,41 +165,49 @@ export function AuthorScreen({ authorId }: AuthorScreenProps) {
         followPending={follow.isPending}
         onToggleFollow={() => follow.mutate(!profile.is_following)}
       />
-      <Text variant="title3">{profile.is_self ? 'Your posts' : 'Posts'}</Text>
+      <Text variant="headline" style={styles.section}>
+        {profile.is_self ? 'Your posts' : 'Posts'}
+      </Text>
     </View>
   );
 
-  const empty = feed.isPending ? (
-    <ActivityIndicator color={theme.colors.primary} style={styles.loading} />
-  ) : feed.isError ? (
-    <ErrorState error={feed.error} onRetry={() => void feed.refetch()} />
-  ) : (
-    <Text variant="callout" tone="muted" style={styles.loading}>
-      {profile.is_self
-        ? "You haven't shared anything yet. Post a dish you cooked from the Community tab."
-        : 'No posts to show yet.'}
-    </Text>
+  const empty = (
+    <View style={styles.state}>
+      {feed.isPending ? (
+        <CommunityStateCard loading loadingLabel="Loading posts" message="Loading posts…" />
+      ) : feed.isError ? (
+        <CommunityStateCard
+          alert
+          title="Posts could not be loaded"
+          message={errorMessageFor(feed.error)}
+          actions={[{ label: 'Try again', onPress: () => void feed.refetch() }]}
+        />
+      ) : (
+        <CommunityStateCard
+          title="No posts yet"
+          message={
+            profile.is_self
+              ? "You haven't shared anything yet. Post a dish you cooked from the Community tab."
+              : 'No posts to show yet.'
+          }
+        />
+      )}
+    </View>
   );
 
   return (
-    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-      <Stack.Screen
-        options={{
-          title: profile.display_name,
-          ...(profile.is_self
-            ? {}
-            : {
-                headerRight: () => (
-                  <IconButton
-                    icon="ellipsis.circle"
-                    accessibilityLabel="More options for this profile"
-                    color="primary"
-                    onPress={openMenu}
-                  />
-                ),
-              }),
-        }}
-      />
+    <AuthorFrame
+      title={profile.display_name}
+      trailing={
+        profile.is_self ? undefined : (
+          <GlassIconButton
+            icon="ellipsis"
+            accessibilityLabel="More options for this profile"
+            onPress={openMenu}
+          />
+        )
+      }
+    >
       <FlashList
         data={feed.posts}
         renderItem={renderTile}
@@ -175,13 +225,19 @@ export function AuthorScreen({ authorId }: AuthorScreenProps) {
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
       />
-    </View>
+    </AuthorFrame>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { paddingHorizontal: gutter - 2, paddingTop: space.lg, paddingBottom: space.huge },
+  section: { fontFamily: fontFamily.textBold },
+  content: {
+    paddingHorizontal: gutter - 2,
+    paddingTop: space.sm,
+    paddingBottom: space.sectionLarge,
+  },
   header: { gap: space.xl, paddingBottom: space.md, paddingHorizontal: 2 },
   loading: { paddingVertical: space.xl, paddingHorizontal: 2 },
+  state: { paddingHorizontal: 2 },
 });

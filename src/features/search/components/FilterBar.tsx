@@ -34,7 +34,6 @@ export function FilterBar({ chips, onOpenFilters, onRemove, onClearAll }: Filter
           {
             borderRadius: theme.radii.pill,
             backgroundColor: count > 0 ? theme.colors.primary : theme.colors.surface,
-            borderColor: count > 0 ? theme.colors.primary : theme.colors.border,
           },
         ]}
       >
@@ -44,7 +43,7 @@ export function FilterBar({ chips, onOpenFilters, onRemove, onClearAll }: Filter
           size={16}
           color={count > 0 ? 'onPrimary' : 'text'}
         />
-        <Text variant="subhead" color={count > 0 ? 'onPrimary' : 'text'} accessible={false}>
+        <Text variant="label" color={count > 0 ? 'onPrimary' : 'text'} accessible={false}>
           {count > 0 ? `Filters · ${count}` : 'Filters'}
         </Text>
       </PressableScale>
@@ -59,15 +58,14 @@ export function FilterBar({ chips, onOpenFilters, onRemove, onClearAll }: Filter
             styles.pill,
             {
               borderRadius: theme.radii.pill,
-              backgroundColor: theme.colors.primarySoft,
-              borderColor: theme.colors.primarySoft,
+              backgroundColor: theme.colors.primary,
             },
           ]}
         >
-          <Text variant="subhead" color="onPrimarySoft" numberOfLines={1} accessible={false}>
+          <Text variant="label" color="onPrimary" numberOfLines={1} accessible={false}>
             {chip.label}
           </Text>
-          <Icon name="xmark" android="close" size={12} color="onPrimarySoft" weight="bold" />
+          <Icon name="xmark" android="close" size={12} color="onPrimary" weight="bold" />
         </PressableScale>
       ))}
       {count > 1 ? (
@@ -77,7 +75,7 @@ export function FilterBar({ chips, onOpenFilters, onRemove, onClearAll }: Filter
           onPress={onClearAll}
           style={styles.clear}
         >
-          <Text variant="subhead" tone="primary" accessible={false}>
+          <Text variant="label" tone="muted" accessible={false}>
             Clear all
           </Text>
         </PressableScale>
@@ -97,7 +95,6 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 36,
     paddingHorizontal: 14,
-    borderWidth: 1,
   },
   clear: { minHeight: minTouchTarget, justifyContent: 'center', paddingHorizontal: 8 },
 });

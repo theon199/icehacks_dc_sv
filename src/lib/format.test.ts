@@ -47,9 +47,9 @@ describe('nutrition units', () => {
   });
 
   it('formats grams with sensible precision', () => {
-    expect(formatGrams(2.46, en)).toBe('2.5 g');
-    expect(formatGrams(32.6, en)).toBe('33 g');
-    expect(formatGrams(1500, en)).toBe('1.5 kg');
+    expect(formatGrams(2.46, en)).toBe('2.5g');
+    expect(formatGrams(32.6, en)).toBe('33g');
+    expect(formatGrams(1500, en)).toBe('1.5kg');
     expect(formatGrams(undefined, en)).toBe('—');
   });
 

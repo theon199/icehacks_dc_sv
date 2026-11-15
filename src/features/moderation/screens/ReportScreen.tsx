@@ -1,11 +1,18 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
 import type { ReportReason } from '@/lib/supabase/database.types';
-import { Button, EmptyState, errorMessageFor, SheetContent, Text, TextField, toast } from '@/ui';
-import { space } from '@/ui/tokens';
+import {
+  Button,
+  EmptyState,
+  errorMessageFor,
+  GlassCard,
+  SheetContent,
+  Text,
+  TextField,
+  toast,
+} from '@/ui';
 
 import { ReasonPicker } from '../components/ReasonPicker';
 import { parseTargetRef, type TargetRef } from '../model';
@@ -19,45 +26,39 @@ export interface ReportScreenProps {
   label?: string | undefined;
 }
 
-function ReportSent({ target, label }: { target: TargetRef; label: string | undefined }) {
-  const router = useRouter();
+/** After a report about a person: the offer to block them too. */
+function BlockOffer({ target, label }: { target: TargetRef; label: string | undefined }) {
   const block = useBlockUser();
-  const canBlock = target.kind === 'user';
   const name = label?.trim() || 'this person';
   return (
-    <SheetContent
-      title="Thanks for telling us"
-      description="A moderator will look at it. The person you reported is not told who reported them."
-      footer={<Button label="Done" onPress={() => router.back()} fullWidth testID="report-done" />}
-    >
-      {canBlock ? (
-        <View style={styles.block}>
-          <Text variant="callout" tone="muted">
-            {`You can also block ${name}. You will stop seeing each other's posts, comments and profiles.`}
-          </Text>
-          <Button
-            label={block.isSuccess ? 'Blocked' : `Block ${name}`}
-            variant="secondary"
-            icon="hand.raised"
-            disabled={block.isSuccess}
-            loading={block.isPending}
-            onPress={() =>
-              block.mutate(
-                { userId: target.id, displayName: label?.trim() || 'Blocked member', handle: null },
-                {
-                  onSuccess: () => toast.success(`You blocked ${name}.`),
-                  onError: (error) => toast.error(errorMessageFor(error)),
-                },
-              )
-            }
-          />
-        </View>
-      ) : null}
-    </SheetContent>
+    <GlassCard>
+      <Text variant="callout" tone="muted">
+        {`You can also block ${name}. You will stop seeing each other's posts, comments and profiles.`}
+      </Text>
+      <Button
+        label={block.isSuccess ? 'Blocked' : `Block ${name}`}
+        variant="secondary"
+        icon="hand.raised"
+        disabled={block.isSuccess}
+        loading={block.isPending}
+        onPress={() =>
+          block.mutate(
+            { userId: target.id, displayName: label?.trim() || 'Blocked member', handle: null },
+            {
+              onSuccess: () => toast.success(`You blocked ${name}.`),
+              onError: (error) => toast.error(errorMessageFor(error)),
+            },
+          )
+        }
+      />
+    </GlassCard>
   );
 }
 
-/** Report a post, comment, person or recipe: pick a reason, add details, send. */
+/**
+ * Report a post, comment, person or recipe: pick a reason, add details, send. Every state renders
+ * the one sheet, so moving from the form to the thanks keeps it in place instead of reopening it.
+ */
 export function ReportScreen({ target: rawKind, targetId, label }: ReportScreenProps) {
   const router = useRouter();
   const target = useMemo(() => parseTargetRef(rawKind, targetId), [rawKind, targetId]);
@@ -81,7 +82,19 @@ export function ReportScreen({ target: rawKind, targetId, label }: ReportScreenP
     );
   }
 
-  if (report.isSuccess) return <ReportSent target={target} label={label} />;
+  if (report.isSuccess) {
+    return (
+      <SheetContent
+        title="Thanks for telling us"
+        description="A moderator will look at it. The person you reported is not told who reported them."
+        footer={
+          <Button label="Done" onPress={() => router.back()} fullWidth testID="report-done" />
+        }
+      >
+        {target.kind === 'user' ? <BlockOffer target={target} label={label} /> : null}
+      </SheetContent>
+    );
+  }
 
   const options = reasonsFor(target.kind);
   const problem = reportDraftProblem(target.kind, { reason, details });
@@ -103,7 +116,29 @@ export function ReportScreen({ target: rawKind, targetId, label }: ReportScreenP
     <SheetContent
       title={`Report this ${noun}`}
       description="Reports are private. Tell us what is wrong and a moderator will review it."
-      footer={
+      maxHeightRatio={0.9}
+    >
+      <GlassCard>
+        <Text variant="bodyStrong" accessibilityRole="header">
+          Reason
+        </Text>
+        <ReasonPicker options={options} value={reason} onChange={setReason} />
+      </GlassCard>
+      <GlassCard>
+        <TextField
+          label={reason === 'other' ? 'Details' : 'Details (optional)'}
+          hint="Anything that helps a moderator understand the problem."
+          value={details}
+          onChangeText={setDetails}
+          multiline
+          maxLength={DETAILS_MAX}
+          testID="report-details"
+        />
+        {touched && problem ? (
+          <Text variant="footnote" tone="danger" accessibilityLiveRegion="polite">
+            {problem}
+          </Text>
+        ) : null}
         <Button
           label="Send report"
           onPress={submit}
@@ -111,27 +146,7 @@ export function ReportScreen({ target: rawKind, targetId, label }: ReportScreenP
           fullWidth
           testID="report-submit"
         />
-      }
-    >
-      <ReasonPicker options={options} value={reason} onChange={setReason} />
-      <TextField
-        label={reason === 'other' ? 'Details' : 'Details (optional)'}
-        hint="Anything that helps a moderator understand the problem."
-        value={details}
-        onChangeText={setDetails}
-        multiline
-        maxLength={DETAILS_MAX}
-        testID="report-details"
-      />
-      {touched && problem ? (
-        <Text variant="footnote" tone="danger" accessibilityLiveRegion="polite">
-          {problem}
-        </Text>
-      ) : null}
+      </GlassCard>
     </SheetContent>
   );
 }
-
-const styles = StyleSheet.create({
-  block: { gap: space.md },
-});

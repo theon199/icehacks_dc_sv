@@ -2,12 +2,18 @@ import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
 
+import { GlassIconButton } from './GlassIconButton';
 import { Icon, type IconName } from './Icon';
 import { PressableScale } from './PressableScale';
 import { useTheme } from './ThemeProvider';
 import { minTouchTarget, type Palette } from './tokens';
 
-export type IconButtonVariant = 'plain' | 'tinted' | 'filled';
+/**
+ * `glass` is the header control: a 44 pt Liquid Glass circle (`GlassIconButton`), with a solid
+ * disc and faint hairline where glass is unavailable. Used for every round action beside a screen
+ * title (profile, filters, create, notifications).
+ */
+export type IconButtonVariant = 'plain' | 'tinted' | 'filled' | 'glass';
 
 export interface IconButtonProps {
   icon: IconName;
@@ -24,7 +30,7 @@ export interface IconButtonProps {
   style?: StyleProp<ViewStyle>;
 }
 
-const variantBg: Record<IconButtonVariant, keyof Palette | null> = {
+const variantBg: Record<Exclude<IconButtonVariant, 'glass'>, keyof Palette | null> = {
   plain: null,
   tinted: 'surfaceSunken',
   filled: 'primary',
@@ -36,7 +42,7 @@ export function IconButton({
   accessibilityLabel,
   onPress,
   variant = 'plain',
-  size = 40,
+  size,
   color,
   disabled = false,
   selected,
@@ -45,9 +51,28 @@ export function IconButton({
   style,
 }: IconButtonProps) {
   const theme = useTheme();
+  if (variant === 'glass') {
+    return (
+      <GlassIconButton
+        icon={icon}
+        accessibilityLabel={accessibilityLabel}
+        onPress={() => {
+          if (haptic) haptics.selection();
+          onPress();
+        }}
+        disabled={disabled}
+        {...(size === undefined ? {} : { size })}
+        {...(color === undefined ? {} : { iconColor: color })}
+        {...(selected === undefined ? {} : { selected })}
+        {...(testID === undefined ? {} : { testID })}
+        {...(style === undefined ? {} : { style })}
+      />
+    );
+  }
   const bg = variantBg[variant];
+  const side = size ?? 40;
   const iconColor = color ?? (variant === 'filled' ? 'onPrimary' : 'text');
-  const slop = size < minTouchTarget ? (minTouchTarget - size) / 2 : 0;
+  const slop = side < minTouchTarget ? (minTouchTarget - side) / 2 : 0;
 
   return (
     <PressableScale
@@ -64,9 +89,9 @@ export function IconButton({
       style={({ pressed }) => [
         styles.base,
         {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
+          width: side,
+          height: side,
+          borderRadius: side / 2,
           backgroundColor: bg
             ? theme.colors[bg]
             : pressed
@@ -77,7 +102,7 @@ export function IconButton({
         style,
       ]}
     >
-      <Icon name={icon} size={Math.round(size * 0.5)} color={iconColor} weight="semibold" />
+      <Icon name={icon} size={Math.round(side * 0.5)} color={iconColor} weight="semibold" />
     </PressableScale>
   );
 }

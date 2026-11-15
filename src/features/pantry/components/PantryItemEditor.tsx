@@ -1,10 +1,20 @@
 import { useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { INGREDIENT_CATEGORIES } from '@/lib/catalog';
 import type { PantryItem } from '@/stores/pantry';
-import { Button, ChoiceChip, IconButton, SheetContent, Text, TextField, space } from '@/ui';
+import {
+  Button,
+  ChoiceChip,
+  GlassSheet,
+  Text,
+  TextField,
+  space,
+  useSheetSession,
+  useSheetSubject,
+} from '@/ui';
 
+import { PANTRY_ACTION_HEIGHT } from './metrics';
 import { formFromItem, parsePantryForm, type PantryForm, type PantryPatch } from '../editForm';
 import { expiryHint, SHELF_TITLES, dueInDays } from '../shelves';
 
@@ -26,9 +36,10 @@ export interface PantryItemEditorProps {
 
 interface EditorBodyProps extends Omit<PantryItemEditorProps, 'item'> {
   item: PantryItem;
+  visible: boolean;
 }
 
-function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
+function EditorBody({ item, visible, now, onSave, onRemove, onClose }: EditorBodyProps) {
   const [form, setForm] = useState<PantryForm>(() => formFromItem(item));
   const [error, setError] = useState<{ field: string; message: string } | null>(null);
   const set = (patch: Partial<PantryForm>) => {
@@ -48,11 +59,21 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
   };
 
   return (
-    <SheetContent
+    <GlassSheet
+      visible={visible}
+      onClose={onClose}
       title="Edit item"
+      closeLabel="Close without saving"
+      testID="pantry-editor"
       footer={
         <>
-          <Button testID="pantry-editor-save" label="Save" onPress={save} fullWidth />
+          <Button
+            testID="pantry-editor-save"
+            label="Save"
+            onPress={save}
+            fullWidth
+            style={styles.action}
+          />
           <Button
             testID="pantry-editor-remove"
             label="Remove from pantry"
@@ -62,13 +83,11 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
               onClose();
             }}
             fullWidth
+            style={styles.action}
           />
         </>
       }
     >
-      <View style={styles.close}>
-        <IconButton icon="xmark" accessibilityLabel="Close without saving" onPress={onClose} />
-      </View>
       <TextField
         testID="pantry-editor-name"
         label="Name"
@@ -105,7 +124,7 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
         </View>
       </View>
       <View style={styles.group}>
-        <Text variant="subhead" tone="muted">
+        <Text variant="sectionLabel" tone="muted">
           Use by{expiry ? ` · ${expiry.label}` : ''}
         </Text>
         <View style={styles.chips} accessibilityRole="radiogroup">
@@ -127,7 +146,7 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
         </View>
       </View>
       <View style={styles.group}>
-        <Text variant="subhead" tone="muted">
+        <Text variant="sectionLabel" tone="muted">
           Shelf
         </Text>
         <View style={styles.chips} accessibilityRole="radiogroup">
@@ -143,26 +162,22 @@ function EditorBody({ item, now, onSave, onRemove, onClose }: EditorBodyProps) {
           ))}
         </View>
       </View>
-    </SheetContent>
+    </GlassSheet>
   );
 }
 
-/** Page sheet for changing an item's name, amount, use-by date and shelf, or removing it. */
+/** Glass sheet for changing an item's name, amount, use-by date and shelf, or removing it. */
 export function PantryItemEditor({ item, ...rest }: PantryItemEditorProps) {
-  return (
-    <Modal
-      visible={item != null}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={rest.onClose}
-    >
-      {item ? <EditorBody key={item.id} item={item} {...rest} /> : null}
-    </Modal>
-  );
+  const visible = item != null;
+  // The item stays on the sheet while it slides away; every opening starts from the stored item.
+  const shown = useSheetSubject(item);
+  const session = useSheetSession(visible);
+  if (!shown) return null;
+  return <EditorBody key={`${shown.id}-${session}`} item={shown} visible={visible} {...rest} />;
 }
 
 const styles = StyleSheet.create({
-  close: { position: 'absolute', top: space.sm, right: space.sm, zIndex: 1 },
+  action: { height: PANTRY_ACTION_HEIGHT },
   pair: { flexDirection: 'row', gap: space.md },
   half: { flex: 1 },
   group: { gap: space.sm },

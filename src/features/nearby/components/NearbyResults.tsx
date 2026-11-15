@@ -3,12 +3,12 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { deviceLocale } from '@/lib/format';
-import { Button, EmptyState, ErrorState, Screen, Skeleton, SkeletonGroup, gutter } from '@/ui';
+import { Button, EmptyState, ErrorState, Screen, Skeleton, SkeletonGroup, space } from '@/ui';
 
-import { AreaBar } from './AreaBar';
+import { BelowNearbyHeader, nearbyHeaderBottom } from './NearbyHeader';
 import { NearbyMap } from './NearbyMap';
 import { PlaceSheet } from './PlaceSheet';
-import { PlaceStrip } from './PlaceStrip';
+import { CARD_GAP, CARD_PEEK, PlaceStrip, STRIP_INSET } from './PlaceStrip';
 import type { NearbyLocation } from '../hooks/useNearbyLocation';
 import { SEARCH_RADIUS_M, useNearbyPlaces, type NearbyResultKind } from '../hooks/useNearbyPlaces';
 import { usePlaceSelection } from '../hooks/usePlaceSelection';
@@ -23,14 +23,12 @@ export interface NearbyResultsProps {
 }
 
 /** Height reserved for the card strip over the map. */
-const STRIP_HEIGHT = 140;
-/** How much of the next card stays visible, hinting that the strip scrolls. */
-const NEXT_CARD_VISIBLE = 36;
-const WIDEST_CARD = 340;
+const STRIP_HEIGHT = 124;
+const NARROWEST_CARD = 240;
 
-/** Card width for a screen width: as wide as fits while still showing part of the next card. */
+/** Card width for a screen width: as wide as fits while part of the next card still peeks in. */
 function cardWidthFor(screenWidth: number): number {
-  return Math.min(WIDEST_CARD, screenWidth - gutter * 2 - NEXT_CARD_VISIBLE);
+  return Math.max(NARROWEST_CARD, screenWidth - STRIP_INSET - CARD_GAP - CARD_PEEK);
 }
 
 /** Full-screen notices for searches that produced no map: nothing found, or search unavailable. */
@@ -46,29 +44,33 @@ function NoMap({
   if (kind === 'empty') {
     const radius = formatDistance(SEARCH_RADIUS_M, distanceUnitFor(deviceLocale()));
     return (
-      <Screen>
-        <EmptyState
-          icon="fork.knife"
-          title={`No ${dishName} found nearby`}
-          message={`We looked within about ${radius}. Try another area, or cook a healthier version at home.`}
-          actionLabel="Search another area"
-          onAction={onChangeArea}
-        />
-      </Screen>
+      <BelowNearbyHeader>
+        <Screen>
+          <EmptyState
+            icon="fork.knife"
+            title={`No ${dishName} found nearby`}
+            message={`We looked within about ${radius}. Try another area, or cook a healthier version at home.`}
+            actionLabel="Search another area"
+            onAction={onChangeArea}
+          />
+        </Screen>
+      </BelowNearbyHeader>
     );
   }
   return (
-    <Screen>
-      <EmptyState
-        icon="map"
-        title="Nearby search is resting"
-        message={
-          kind === 'budget'
-            ? "We've reached this month's search limit. Please try again in a few days."
-            : "Restaurant search isn't available right now. Please check back later."
-        }
-      />
-    </Screen>
+    <BelowNearbyHeader>
+      <Screen>
+        <EmptyState
+          icon="map"
+          title="Nearby search is resting"
+          message={
+            kind === 'budget'
+              ? "We've reached this month's search limit. Please try again in a few days."
+              : "Restaurant search isn't available right now. Please check back later."
+          }
+        />
+      </Screen>
+    </BelowNearbyHeader>
   );
 }
 
@@ -95,21 +97,24 @@ export function NearbyResults({ dish, origin, location }: NearbyResultsProps) {
   const hideSheet = useCallback(() => setSheetFor(null), []);
 
   const stripBottom = STRIP_HEIGHT + safeArea.bottom;
+  const headerBottom = nearbyHeaderBottom(safeArea.top);
   const mapPadding = useMemo(
-    () => ({ top: 64, right: 0, bottom: stripBottom, left: 0 }),
-    [stripBottom],
+    () => ({ top: headerBottom + space.sm, right: 0, bottom: stripBottom, left: 0 }),
+    [headerBottom, stripBottom],
   );
 
   if (search.isError && !result) {
     return (
-      <Screen>
-        <ErrorState
-          error={search.error}
-          title="Couldn't search nearby"
-          onRetry={() => void search.refetch()}
-        />
-        <Button label="Search another area" variant="ghost" onPress={location.chooseCity} />
-      </Screen>
+      <BelowNearbyHeader>
+        <Screen>
+          <ErrorState
+            error={search.error}
+            title="Couldn't search nearby"
+            onRetry={() => void search.refetch()}
+          />
+          <Button label="Search another area" variant="ghost" onPress={location.chooseCity} />
+        </Screen>
+      </BelowNearbyHeader>
     );
   }
 
@@ -128,8 +133,7 @@ export function NearbyResults({ dish, origin, location }: NearbyResultsProps) {
         onSelect={selectFromMap}
         padding={mapPadding}
       />
-      <AreaBar origin={origin} onChange={location.chooseCity} />
-      <View style={[styles.dock, { paddingBottom: safeArea.bottom + 8 }]}>
+      <View style={[styles.dock, { paddingBottom: Math.max(safeArea.bottom, space.md) }]}>
         {result ? (
           <PlaceStrip
             places={places}
@@ -140,7 +144,7 @@ export function NearbyResults({ dish, origin, location }: NearbyResultsProps) {
           />
         ) : (
           <SkeletonGroup label="Finding places" style={styles.placeholder}>
-            <Skeleton width={cardWidth} height={112} radius="lg" />
+            <Skeleton width={cardWidth} height={84} radius="tile" />
           </SkeletonGroup>
         )}
       </View>
@@ -158,5 +162,5 @@ export function NearbyResults({ dish, origin, location }: NearbyResultsProps) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   dock: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  placeholder: { paddingHorizontal: gutter, paddingVertical: 8 },
+  placeholder: { paddingHorizontal: STRIP_INSET, paddingVertical: 14 },
 });

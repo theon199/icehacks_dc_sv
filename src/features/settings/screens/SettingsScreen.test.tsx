@@ -25,6 +25,7 @@ const mockFocusListeners = new Set<() => void>();
 jest.mock('expo-router', () => {
   const { useEffect } = jest.requireActual<typeof ReactModule>('react');
   return {
+    Stack: { Screen: () => null },
     useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
     useFocusEffect: (effect: () => void) =>
       useEffect(() => {
@@ -417,7 +418,7 @@ describe('SettingsScreen', () => {
     await renderWithTheme(<SettingsScreen />);
     await user.press(screen.getByRole('button', { name: 'Terms of use' }));
     expect(mockPush).toHaveBeenCalledWith('/about/terms');
-    expect(screen.getByText(/^Version /)).toBeOnTheScreen();
+    expect(screen.getByLabelText(/^Version: /)).toBeOnTheScreen();
   });
 
   it('signs out of this device only and wipes the account’s data here', async () => {

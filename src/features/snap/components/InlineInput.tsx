@@ -9,10 +9,12 @@ export interface InlineInputProps extends Omit<
   /** Spoken label; inline inputs have no visible label of their own. */
   accessibilityLabel: string;
   width?: number;
+  /** A rounded field that stands on its own, rather than a cell inside a row. */
+  pill?: boolean;
 }
 
 /** Compact text input for editing values inside a list row. */
-export function InlineInput({ width, ...rest }: InlineInputProps) {
+export function InlineInput({ width, pill = false, ...rest }: InlineInputProps) {
   const theme = useTheme();
   return (
     <TextInput
@@ -24,10 +26,11 @@ export function InlineInput({ width, ...rest }: InlineInputProps) {
         theme.typography.callout,
         {
           color: theme.colors.text,
-          backgroundColor: theme.colors.surfaceSunken,
+          backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
         },
         width != null ? { width } : styles.grow,
+        pill ? styles.pill : null,
       ]}
       {...rest}
     />
@@ -42,4 +45,5 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   grow: { flex: 1 },
+  pill: { minHeight: 52, borderRadius: radii.pill, paddingHorizontal: space.xl, borderWidth: 0 },
 });

@@ -1,4 +1,6 @@
-import { ChipGroup } from '../components/ChipGroup';
+import { StyleSheet } from 'react-native';
+
+import { OptionList } from '../components/OptionList';
 import { StepHeader } from '../components/StepHeader';
 import { toggle } from '../onboardingModel';
 import { goalChoices } from '../options';
@@ -11,12 +13,18 @@ export function GoalsStep({ draft, onChange }: StepProps) {
         title="What are you aiming for?"
         description="Recommendations lean toward the goals you pick."
       />
-      <ChipGroup
+      <OptionList
+        multi
         items={goalChoices}
         selected={draft.goals}
-        onToggle={(id, on) => onChange({ ...draft, goals: toggle(draft.goals, id, on) })}
+        onPress={(id) =>
+          onChange({ ...draft, goals: toggle(draft.goals, id, !draft.goals.includes(id)) })
+        }
         testIDPrefix="goal"
+        style={styles.list}
       />
     </>
   );
 }
+
+const styles = StyleSheet.create({ list: { marginTop: 20 } });

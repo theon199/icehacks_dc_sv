@@ -13,6 +13,7 @@ import { useSessionStore } from '@/features/auth';
 import type { RecipeSummary, SearchPage } from '@/lib/catalog';
 import { getCuisines, searchRecipes } from '@/lib/catalog/queries';
 import { defaultPreferences, usePreferencesStore } from '@/stores/preferences';
+import type * as NativeStack from '@/test/nativeStack';
 import { renderWithTheme } from '@/test/render';
 
 import { SearchPane } from './SearchPane';
@@ -52,7 +53,15 @@ configure({ asyncUtilTimeout: 10_000 });
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => true }),
+  useRouter: () => ({
+    push: mockPush,
+    navigate: jest.fn(),
+    back: jest.fn(),
+    canGoBack: () => true,
+  }),
+  useNavigation: () => ({ getParent: () => undefined }),
+  useIsFocused: () => true,
+  Stack: jest.requireActual<typeof NativeStack>('@/test/nativeStack').mockStack,
 }));
 
 const soup = searchRecipe('mealdb:1', { title: 'Lentil soup' });

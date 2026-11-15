@@ -16,6 +16,7 @@ jest.mock('@/lib/catalog/queries', () => ({
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), back: mockBack, canGoBack: () => true }),
+  useNavigation: () => ({ addListener: () => () => undefined, canGoBack: () => true }),
 }));
 
 // Unmount, stop fetches still in flight, then empty the cache. Unmounting and settling fetches each

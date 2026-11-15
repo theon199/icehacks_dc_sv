@@ -1,25 +1,25 @@
-import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { memo, type ReactNode } from 'react';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { AllergenId } from '@/domain';
 import type { DailyTargets } from '@/domain/nutrition';
 import type { UnitSystem } from '@/domain/units';
 import type { RecipeDetail } from '@/lib/catalog';
-import { Button, Text, gutter, space } from '@/ui';
+import { Button, Text, gutter, space, useTheme } from '@/ui';
 
 import { AllergenPanel } from './AllergenPanel';
 import { IngredientRow } from './IngredientRow';
-import { MoreActions } from './MoreActions';
 import { NutritionPanel } from './NutritionPanel';
-import { RecipeActions } from './RecipeActions';
-import { RecipeIntro } from './RecipeIntro';
+import { RecipeOverviewPane } from './RecipeOverviewPane';
+import { PANE_PADDING, PANE_RADIUS, RecipePane } from './RecipePane';
+import { RecipeWhyPane } from './RecipeWhyPane';
 import { ServingsControl } from './ServingsControl';
 import { StepRow } from './StepRow';
 import { TutorialList } from './TutorialList';
 import { CostSummary } from '../deps';
 import type { useRecipeActions } from '../hooks/useRecipeActions';
 import type { RecipeFit } from '../hooks/useRecipeInsights';
-import type { DetailItem } from '../model/detailItems';
+import type { CardEdge, DetailItem } from '../model/detailItems';
 import type { BuiltRows } from '../model/ingredients';
 import type { SubstitutionSuggestion } from '../model/substitutions';
 
@@ -53,49 +53,41 @@ export const DetailRow = memo(function DetailRow({
 }) {
   const { recipe, actions } = context;
   switch (item.type) {
-    case 'intro':
+    case 'overview':
       return (
-        <View style={styles.padded}>
-          <RecipeIntro
+        <Block>
+          <RecipeOverviewPane
             recipe={recipe}
-            fitScore={context.fit?.score.fitScore ?? null}
-            reasons={context.fit?.reasons ?? EMPTY_REASONS}
-            safety={context.fit?.safety ?? null}
-            onOpenWhy={actions.openWhy}
-          />
-        </View>
-      );
-    case 'actions':
-      return (
-        <View style={[styles.padded, styles.block]}>
-          <RecipeActions
             saved={actions.saved}
             onToggleSave={actions.toggleSave}
             onPlan={actions.openPlan}
             onShop={actions.openShop}
-            onMakeHealthier={actions.makeHealthier}
           />
-        </View>
+        </Block>
       );
-    case 'heading':
+    case 'cardTitle':
       return (
-        <View style={[styles.padded, styles.heading]}>
-          <Text variant="title2" accessibilityRole="header">
+        <CardSlice edge={item.edge} style={styles.cardTitle}>
+          <Text variant="headline" accessibilityRole="header">
             {item.title}
           </Text>
-        </View>
+        </CardSlice>
       );
     case 'subheading':
       return (
-        <View style={[styles.padded, styles.subheading]}>
+        <CardSlice edge={item.edge} style={styles.subheading}>
           <Text variant="overline" tone="muted">
             {item.title}
           </Text>
-        </View>
+        </CardSlice>
       );
-    case 'servings':
+    case 'servings': {
+      const count = context.built.rows.length;
       return (
-        <View style={[styles.padded, styles.servings]}>
+        <CardSlice edge={item.edge} style={styles.servings}>
+          <Text variant="headline" accessibilityRole="header" style={styles.servingsTitle}>
+            {count === 1 ? '1 ingredient' : `${count} ingredients`}
+          </Text>
           <ServingsControl
             servings={context.servings}
             onChange={context.changeServings}
@@ -103,13 +95,14 @@ export const DetailRow = memo(function DetailRow({
             onUnitsChange={context.setUnits}
             halfPortions={context.smallAppetite}
             ownedCount={context.built.ownedCount}
-            ingredientCount={context.built.rows.length}
+            ingredientCount={count}
           />
-        </View>
+        </CardSlice>
       );
+    }
     case 'ingredient':
       return (
-        <View style={styles.padded}>
+        <CardSlice edge={item.edge}>
           <IngredientRow
             row={item.row}
             suggestions={
@@ -118,78 +111,130 @@ export const DetailRow = memo(function DetailRow({
             allergenNote={
               item.row.ingredientId ? context.allergenNotes.get(item.row.ingredientId) : undefined
             }
+            last={item.edge === 'bottom' || item.edge === 'single'}
           />
-        </View>
+        </CardSlice>
       );
     case 'step':
       return (
-        <View style={styles.padded}>
+        <CardSlice edge={item.edge}>
           <StepRow step={item.step} number={item.number} />
-        </View>
+        </CardSlice>
       );
     case 'stepsToggle':
       return (
-        <View style={[styles.padded, styles.toggle]}>
+        <CardSlice edge={item.edge} style={styles.toggle}>
           <Button
             label={item.hidden > 0 ? `Show all ${recipe.steps.length} steps` : 'Show fewer steps'}
             variant="ghost"
             icon={item.hidden > 0 ? 'chevron.down' : 'chevron.up'}
             onPress={context.toggleSteps}
           />
-        </View>
+        </CardSlice>
+      );
+    case 'tutorials':
+      return (
+        <Block>
+          <RecipePane>
+            <Text variant="headline" accessibilityRole="header">
+              Watch and learn
+            </Text>
+            <TutorialList tutorials={recipe.tutorials} />
+          </RecipePane>
+        </Block>
+      );
+    case 'allergens':
+      return (
+        <Block>
+          <AllergenPanel
+            allergens={recipe.allergens}
+            dietFlags={recipe.dietFlags}
+            declared={context.declared}
+          />
+        </Block>
+      );
+    case 'cost':
+      return (
+        <Block>
+          <CostSummary recipeId={recipe.id} servings={context.servings * context.built.portion} />
+        </Block>
       );
     case 'nutrition':
       return (
-        <View style={styles.padded}>
+        <Block>
           <NutritionPanel
             nutrition={recipe.nutrition}
             confidence={recipe.nutritionConfidence}
             targets={context.targets}
             portion={context.built.portion}
           />
-        </View>
+        </Block>
       );
-    case 'allergens':
+    case 'why':
       return (
-        <View style={styles.padded}>
-          <AllergenPanel
-            allergens={recipe.allergens}
-            dietFlags={recipe.dietFlags}
-            declared={context.declared}
+        <Block>
+          <RecipeWhyPane
+            fitScore={context.fit?.score.fitScore ?? null}
+            reasons={context.fit?.reasons ?? EMPTY_REASONS}
+            onOpenBreakdown={actions.openWhy}
           />
-        </View>
-      );
-    case 'tutorials':
-      return (
-        <View style={styles.padded}>
-          <TutorialList tutorials={recipe.tutorials} />
-        </View>
-      );
-    case 'cost':
-      return (
-        <View style={[styles.padded, styles.block]}>
-          <CostSummary recipeId={recipe.id} servings={context.servings * context.built.portion} />
-        </View>
-      );
-    case 'more':
-      return (
-        <View style={[styles.padded, styles.block]}>
-          <MoreActions
-            onCompare={actions.compare}
-            onNearby={actions.nearby}
-            onShare={actions.share}
-            onReport={actions.report}
-          />
-        </View>
+        </Block>
       );
   }
 });
 
+/** A row that is a whole card on its own: inset to the gutter, a pane's gap above it. */
+function Block({ children }: { children: ReactNode }) {
+  return <View style={[styles.padded, styles.block]}>{children}</View>;
+}
+
+/**
+ * One row's share of a white card that spans several list rows. Each row paints its own slice so
+ * the list stays virtualised; the first and last slices round the card's corners.
+ */
+function CardSlice({
+  edge,
+  style,
+  children,
+}: {
+  edge: CardEdge;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  const radius = PANE_RADIUS;
+  const top = edge === 'top' || edge === 'single';
+  const bottom = edge === 'bottom' || edge === 'single';
+  return (
+    <View style={[styles.padded, top && styles.block]}>
+      <View
+        style={[
+          styles.slice,
+          {
+            backgroundColor: theme.colors.surface,
+            borderTopLeftRadius: top ? radius : 0,
+            borderTopRightRadius: top ? radius : 0,
+            borderBottomLeftRadius: bottom ? radius : 0,
+            borderBottomRightRadius: bottom ? radius : 0,
+            paddingTop: top ? PANE_PADDING : 0,
+            paddingBottom: bottom ? PANE_PADDING : 0,
+          },
+          style,
+        ]}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  slice: { paddingHorizontal: PANE_PADDING },
   padded: { paddingHorizontal: gutter },
-  block: { paddingTop: space.lg },
-  heading: { paddingTop: space.xxl, paddingBottom: space.sm },
+  block: { paddingTop: space.md },
+  cardTitle: { paddingBottom: space.xs },
   subheading: { paddingTop: space.md, paddingBottom: space.xs },
-  servings: { paddingBottom: space.sm },
+  servings: { paddingBottom: space.sm, gap: space.sm },
+  servingsTitle: { paddingTop: space.xxs },
   toggle: { alignItems: 'flex-start' },
 });

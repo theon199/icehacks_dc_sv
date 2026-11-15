@@ -9,12 +9,6 @@ export function clampStep(index: number, stepCount: number): number {
   return Math.min(Math.max(0, Math.trunc(index)), stepCount - 1);
 }
 
-/** Share of the recipe done once the given step is on screen, in [0, 1]. */
-export function stepProgress(index: number, stepCount: number): number {
-  if (stepCount <= 0) return 0;
-  return (clampStep(index, stepCount) + 1) / stepCount;
-}
-
 export function stepTimerLabel(stepIndex: number): string {
   return `Step ${stepIndex + 1}`;
 }

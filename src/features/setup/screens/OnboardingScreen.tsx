@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Keyboard, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+} from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,9 +18,10 @@ import {
 } from '@/features/auth';
 import { haptics } from '@/lib/haptics';
 import { logger } from '@/lib/logger';
-import { Button, IconButton, Screen, Text, gutter, toast, useTheme } from '@/ui';
+import { Button, Text, space, toast, useTheme } from '@/ui';
 
-import { ProgressBar } from '../components/ProgressBar';
+import { ActionDock } from '../components/ActionDock';
+import { OnboardingHeader } from '../components/OnboardingHeader';
 import { loadPantryStarters, readSavedAnswers, saveOnboarding } from '../deps';
 import {
   STEP_IDS,
@@ -125,74 +133,54 @@ export function OnboardingScreen() {
   }, [back]);
 
   return (
-    <View
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={[styles.root, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}
     >
-      <View style={styles.bar}>
-        <View style={styles.side}>
-          {index > 0 ? (
-            <IconButton
-              testID="onboarding-back"
-              icon="chevron.left"
-              accessibilityLabel="Previous question"
-              onPress={back}
-            />
-          ) : null}
-        </View>
-        <ProgressBar step={index + 1} total={STEP_IDS.length} />
-        <View style={[styles.side, styles.trailing]}>
-          {isOptional(step) ? (
-            <Button
-              testID="onboarding-skip"
-              label="Skip"
-              variant="ghost"
-              size="sm"
-              haptic={false}
-              onPress={skip}
-            />
-          ) : null}
-        </View>
-      </View>
-
-      <Screen
+      <OnboardingHeader
+        step={index}
+        total={STEP_IDS.length}
+        onBack={index > 0 ? back : null}
+        onSkip={isOptional(step) ? skip : null}
+      />
+      <ScrollView
         key={step}
-        footer={
-          <>
-            {!ready && requiredHints[step] ? (
-              <Text variant="footnote" tone="muted" align="center">
-                {requiredHints[step]}
-              </Text>
-            ) : null}
-            <Button
-              testID="onboarding-continue"
-              label={continueLabel(step, draft, last)}
-              size="lg"
-              fullWidth
-              disabled={!ready}
-              loading={finishing}
-              onPress={next}
-            />
-          </>
-        }
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
       >
-        <Animated.View entering={FadeIn.duration(theme.motion.duration.base)} style={styles.body}>
+        <Animated.View entering={FadeIn.duration(theme.motion.duration.base)} style={styles.column}>
           <StepBody step={step} draft={draft} onChange={setDraft} onSubmit={next} isTeen={isTeen} />
         </Animated.View>
-      </Screen>
-    </View>
+      </ScrollView>
+      <ActionDock>
+        {!ready && requiredHints[step] ? (
+          <Text variant="footnote" tone="muted" align="center">
+            {requiredHints[step]}
+          </Text>
+        ) : null}
+        <Button
+          testID="onboarding-continue"
+          label={continueLabel(step, draft, last)}
+          size="lg"
+          fullWidth
+          haptic="medium"
+          disabled={!ready}
+          loading={finishing}
+          onPress={next}
+          style={styles.cta}
+        />
+      </ActionDock>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: gutter / 2,
-    minHeight: 52,
-  },
-  side: { width: 72, flexDirection: 'row' },
-  trailing: { justifyContent: 'flex-end' },
-  body: { gap: 16 },
+  scroll: { flex: 1 },
+  content: { paddingTop: space.md, paddingHorizontal: space.xl, paddingBottom: space.xl },
+  column: { width: '100%', maxWidth: 560, alignSelf: 'center' },
+  cta: { height: 52 },
 });

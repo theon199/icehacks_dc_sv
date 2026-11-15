@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { useIngredients } from '@/lib/catalog';
 import type { NewPantryItem } from '@/stores/pantry';
@@ -12,7 +12,7 @@ export interface QuickStaplesProps {
   onAdd: (input: NewPantryItem) => void;
 }
 
-/** One-tap chips for everyday staples the pantry does not have yet. */
+/** One-tap chips for everyday staples the pantry does not have yet, wrapping across the sheet. */
 export function QuickStaples({ onHand, onAdd }: QuickStaplesProps) {
   const staples = useIngredients(QUICK_STAPLE_IDS);
   const chips = useMemo(() => {
@@ -26,15 +26,10 @@ export function QuickStaples({ onHand, onAdd }: QuickStaplesProps) {
   if (chips.length === 0) return null;
   return (
     <View style={styles.container}>
-      <Text variant="subhead" tone="muted">
+      <Text variant="sectionLabel" tone="muted" accessibilityRole="header">
         Quick add staples
       </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={styles.row}>
         {chips.map((ingredient) => (
           <Chip
             key={ingredient.id}
@@ -51,12 +46,12 @@ export function QuickStaples({ onHand, onAdd }: QuickStaplesProps) {
             }
           />
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { gap: space.sm },
-  row: { gap: space.sm, paddingRight: space.lg },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

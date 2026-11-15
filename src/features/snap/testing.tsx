@@ -46,6 +46,7 @@ export function MockFlashList<T>({
 export const mockRouter = {
   push: jest.fn(),
   replace: jest.fn(),
+  navigate: jest.fn(),
   back: jest.fn(),
   canGoBack: jest.fn(() => true),
   setParams: jest.fn(),

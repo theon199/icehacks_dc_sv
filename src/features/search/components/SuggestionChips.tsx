@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
-import { Chip, Text, type IconName } from '@/ui';
+import { Icon, PressableScale, Text, fontFamily, useTheme, type IconName } from '@/ui';
+import { space } from '@/ui/tokens';
 
 export interface SuggestionChipsProps {
   title: string;
@@ -9,27 +10,45 @@ export interface SuggestionChipsProps {
   icon?: IconName;
 }
 
-/** A titled, wrapping row of tappable suggestions. */
+/** Suggestion pills are 38 pt tall; the slop brings their touch area to the 44 pt minimum. */
+const pillSlop = { top: 3, bottom: 3, left: 0, right: 0 };
+
+/** A titled, wrapping row of tappable suggestions as white capsules. */
 export function SuggestionChips({
   title,
   items,
   onPick,
   icon = 'magnifyingglass',
 }: SuggestionChipsProps) {
+  const theme = useTheme();
   if (items.length === 0) return null;
   return (
     <View style={styles.section}>
-      <Text variant="headline">{title}</Text>
+      <Text variant="title2" style={styles.heading}>
+        {title}
+      </Text>
       <View style={styles.wrap}>
         {items.map((item) => (
-          <Chip
+          <PressableScale
             key={item.key}
-            label={item.label}
-            tone="primary"
-            icon={icon}
+            accessibilityRole="button"
+            accessibilityLabel={item.label}
             onPress={() => onPick(item.key)}
-            style={styles.chip}
-          />
+            hitSlop={pillSlop}
+            style={[
+              styles.pill,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radii.pill,
+              },
+            ]}
+          >
+            <Icon name={icon} size={14} color="textMuted" weight="semibold" />
+            <Text variant="label" numberOfLines={1} accessible={false}>
+              {item.label}
+            </Text>
+          </PressableScale>
         ))}
       </View>
     </View>
@@ -37,7 +56,15 @@ export function SuggestionChips({
 }
 
 const styles = StyleSheet.create({
-  section: { gap: 10 },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8 },
+  section: { gap: space.md },
+  heading: { fontFamily: fontFamily.textBold },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs + 2,
+    minHeight: 38,
+    paddingHorizontal: space.md + 2,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
 });

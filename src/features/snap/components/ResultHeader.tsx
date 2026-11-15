@@ -13,9 +13,9 @@ export interface ResultHeaderProps {
   children?: ReactNode;
 }
 
-const THUMB = 76;
+const THUMB = 56;
 
-/** The photo that was read, with what Famara made of it. */
+/** The head of a result sheet: the photo that was read beside what Famara made of it. */
 export function ResultHeader({
   photoUri,
   title,
@@ -41,7 +41,7 @@ export function ResultHeader({
         ) : null}
         {children}
         {remaining != null ? (
-          <Text variant="caption" tone="subtle">
+          <Text variant="caption" tone="muted">
             {remaining === 1 ? '1 snap left today' : `${remaining} snaps left today`}
           </Text>
         ) : null}
@@ -52,6 +52,6 @@ export function ResultHeader({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
-  thumb: { width: THUMB, height: THUMB, borderRadius: radii.md },
+  thumb: { width: THUMB, height: THUMB, borderRadius: radii.md + 2 },
   text: { flex: 1, gap: space.xxs },
 });

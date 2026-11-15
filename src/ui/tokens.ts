@@ -4,8 +4,6 @@
  */
 import type { TextStyle } from 'react-native';
 
-import { brandColors } from './brandColors';
-
 export type ColorScheme = 'light' | 'dark';
 
 export interface Palette {
@@ -23,6 +21,8 @@ export interface Palette {
   textMuted: string;
   textSubtle: string;
   textInverse: string;
+  /** Glyphs and copy laid over photography: white in both appearances. */
+  onImage: string;
   primary: string;
   primaryPressed: string;
   onPrimary: string;
@@ -32,7 +32,11 @@ export interface Palette {
   onAccent: string;
   accentSoft: string;
   onAccentSoft: string;
+  /** Selection and the single emphasis moment on a screen (selected chips, active day). */
   highlight: string;
+  onHighlight: string;
+  highlightSoft: string;
+  onHighlightSoft: string;
   success: string;
   successSoft: string;
   onSuccessSoft: string;
@@ -46,74 +50,96 @@ export interface Palette {
   onDangerSoft: string;
   focus: string;
   scrim: string;
+  /** Hairline edge of a solid (non-glass) floating control; real glass draws its own edge. */
+  controlBorder: string;
+  /** Pressed row wash and faint dividers inside glass menus and trays. */
+  hairline: string;
+  /** Frost tint laid on glass surfaces that carry text (menus, sheets, toasts). */
+  glassFrost: string;
   skeleton: string;
   skeletonHighlight: string;
   shadow: string;
 }
 
 export const palettes: Record<ColorScheme, Palette> = {
+  /**
+   * Soft monochrome: a pale stone canvas, white cards, near-black ink for primary actions, and one
+   * lime highlight reserved for selection and the moment that matters on a screen.
+   */
   light: {
-    background: brandColors.oat,
-    surface: brandColors.cream,
-    surfaceSunken: '#F1EADF',
+    background: '#EFEFED',
+    surface: '#FFFFFF',
+    surfaceSunken: '#F5F5F2',
     surfaceRaised: '#FFFFFF',
-    border: '#E4D9C8',
-    borderStrong: '#8E8270',
-    text: brandColors.ink,
-    textMuted: '#5A5145',
-    textSubtle: '#6E6455',
-    textInverse: '#FFFDF9',
-    primary: brandColors.basil,
-    primaryPressed: brandColors.basilDeep,
+    border: '#E8E8EC',
+    borderStrong: '#8E9096',
+    text: '#17191B',
+    textMuted: '#62676D',
+    textSubtle: '#62676D',
+    textInverse: '#FFFFFF',
+    onImage: '#FFFFFF',
+    primary: '#17191B',
+    primaryPressed: '#2E3135',
     onPrimary: '#FFFFFF',
-    primarySoft: '#E2EFE7',
-    onPrimarySoft: '#1E4A36',
-    accent: brandColors.paprika,
+    primarySoft: '#E6E7E2',
+    onPrimarySoft: '#17191B',
+    accent: '#B8463A',
     onAccent: '#FFFFFF',
-    accentSoft: '#FBE6DC',
-    onAccentSoft: '#7A2E17',
-    highlight: brandColors.saffron,
-    success: '#2D6E48',
-    successSoft: '#E1F0E6',
-    onSuccessSoft: '#1D4A30',
+    accentSoft: '#F9E7E5',
+    onAccentSoft: '#7A2E25',
+    highlight: '#D0F64A',
+    onHighlight: '#17191B',
+    highlightSoft: '#EDF4DA',
+    onHighlightSoft: '#3E5200',
+    success: '#3F6E12',
+    successSoft: '#EDF4DA',
+    onSuccessSoft: '#3E5200',
     warning: '#8A5A00',
     warningSoft: '#FBEFD5',
     onWarningSoft: '#5E3D00',
     danger: '#B3261E',
     dangerPressed: '#8C1D17',
     onDanger: '#FFFFFF',
-    dangerSoft: '#FBE4E1',
+    dangerSoft: '#F9E7E5',
     onDangerSoft: '#7D1A14',
-    focus: '#2F6A4F',
-    scrim: 'rgba(20, 16, 10, 0.45)',
-    skeleton: '#EDE5D8',
-    skeletonHighlight: '#F7F2EA',
-    shadow: '#3B2A14',
+    focus: '#17191B',
+    scrim: 'rgba(20, 20, 22, 0.42)',
+    controlBorder: 'rgba(20, 20, 22, 0.08)',
+    hairline: 'rgba(20, 20, 22, 0.06)',
+    glassFrost: 'rgba(255, 255, 255, 0.52)',
+    skeleton: '#E4E4E1',
+    skeletonHighlight: '#F1F1EE',
+    shadow: '#0F0F14',
   },
+  /** The same system on a night canvas: ink and paper swap, the lime highlight stays. */
   dark: {
-    background: brandColors.night,
-    surface: '#1E1B17',
-    surfaceSunken: '#26221D',
-    surfaceRaised: '#2A2621',
-    border: '#3A342C',
-    borderStrong: '#857A6A',
-    text: '#F6F0E7',
-    textMuted: '#CFC5B6',
-    textSubtle: '#ABA090',
-    textInverse: brandColors.ink,
-    primary: brandColors.basilLight,
-    primaryPressed: '#B4E4C9',
-    onPrimary: '#0F2A1D',
-    primarySoft: '#1F3529',
-    onPrimarySoft: '#BFE8D0',
-    accent: brandColors.paprikaLight,
-    onAccent: '#3A1406',
-    accentSoft: '#3D2219',
-    onAccentSoft: '#FFD3C0',
-    highlight: brandColors.saffronLight,
-    success: '#8FD3AE',
-    successSoft: '#1F3529',
-    onSuccessSoft: '#BFE8D0',
+    background: '#111213',
+    surface: '#1F2123',
+    surfaceSunken: '#191B1D',
+    surfaceRaised: '#2A2C2F',
+    border: '#2E3134',
+    borderStrong: '#6E7378',
+    text: '#F4F4F2',
+    textMuted: '#A9AEB3',
+    textSubtle: '#A9AEB3',
+    textInverse: '#17191B',
+    onImage: '#FFFFFF',
+    primary: '#F4F4F2',
+    primaryPressed: '#D9DAD6',
+    onPrimary: '#17191B',
+    primarySoft: '#2E3134',
+    onPrimarySoft: '#F4F4F2',
+    accent: '#F08A7E',
+    onAccent: '#2A0D09',
+    accentSoft: '#3A221F',
+    onAccentSoft: '#FFC9C2',
+    highlight: '#D0F64A',
+    onHighlight: '#17191B',
+    highlightSoft: '#2B3317',
+    onHighlightSoft: '#D9F57A',
+    success: '#A8D86A',
+    successSoft: '#2B3317',
+    onSuccessSoft: '#D9F57A',
     warning: '#F2C46B',
     warningSoft: '#3A2D14',
     onWarningSoft: '#F8DDA6',
@@ -122,10 +148,13 @@ export const palettes: Record<ColorScheme, Palette> = {
     onDanger: '#3D0A06',
     dangerSoft: '#40201C',
     onDangerSoft: '#FFC9C2',
-    focus: '#8FD3AE',
+    focus: '#D0F64A',
     scrim: 'rgba(0, 0, 0, 0.6)',
-    skeleton: '#2A2621',
-    skeletonHighlight: '#353029',
+    controlBorder: 'rgba(255, 255, 255, 0.12)',
+    hairline: 'rgba(255, 255, 255, 0.08)',
+    glassFrost: 'rgba(31, 33, 35, 0.52)',
+    skeleton: '#26282B',
+    skeletonHighlight: '#303236',
     shadow: '#000000',
   },
 };
@@ -140,21 +169,43 @@ export const space = {
   lg: 16,
   xl: 20,
   xxl: 24,
+  /** Between page sections. */
+  section: 28,
   xxxl: 32,
+  /** Before a closing block, e.g. the last action on a long page. */
+  sectionLarge: 40,
   huge: 48,
   giant: 64,
 } as const;
 export type SpaceToken = keyof typeof space;
 
 /** Screen edge padding used by `Screen` and headers. */
+/**
+ * Initial discs for people without a photo. Fixed in both schemes: each pairs a muted fill with the
+ * letter colour that reads on it.
+ */
+export const avatarDiscs = [
+  { fill: '#17191B', ink: '#FFFFFF' },
+  { fill: '#9EC49A', ink: '#17191B' },
+  { fill: '#C9A2B0', ink: '#17191B' },
+  { fill: '#E9C46A', ink: '#17191B' },
+  { fill: '#62676D', ink: '#FFFFFF' },
+] as const;
+
 export const gutter = space.lg;
 
 export const radii = {
   xs: 6,
   sm: 10,
-  md: 14,
+  md: 12,
   lg: 20,
+  /** Medium tiles: list cards, thumbnails beside text. */
+  tile: 22,
   xl: 28,
+  /** Same as `xl`: feature cards, deck cards, day cards. */
+  card: 28,
+  /** Bottom sheets and full-bleed hero cards. */
+  sheet: 32,
   pill: 999,
 } as const;
 export type RadiusToken = keyof typeof radii;
@@ -162,17 +213,18 @@ export type RadiusToken = keyof typeof radii;
 /** Minimum touch target (Apple HIG). */
 export const minTouchTarget = 44;
 
-/** Font family names, matching the keys registered in `fonts.ts`. */
+/** Font family names, matching the keys registered in `fonts.ts`. One family across the product. */
 export const fontFamily = {
-  display: 'Fraunces-SemiBold',
-  displayBold: 'Fraunces-Bold',
-  text: 'Figtree-Regular',
-  textMedium: 'Figtree-Medium',
-  textSemiBold: 'Figtree-SemiBold',
-  textBold: 'Figtree-Bold',
+  display: 'PlusJakartaSans-Bold',
+  displayBold: 'PlusJakartaSans-Bold',
+  text: 'PlusJakartaSans-Regular',
+  textMedium: 'PlusJakartaSans-Medium',
+  textSemiBold: 'PlusJakartaSans-SemiBold',
+  textBold: 'PlusJakartaSans-Bold',
 } as const;
 
 export type TextVariant =
+  | 'displayLarge'
   | 'display'
   | 'title1'
   | 'title2'
@@ -185,29 +237,33 @@ export type TextVariant =
   | 'footnote'
   | 'caption'
   | 'label'
+  | 'sectionLabel'
   | 'overline';
 
 type TypeStyle = Required<Pick<TextStyle, 'fontFamily' | 'fontSize' | 'lineHeight'>> &
   Pick<TextStyle, 'letterSpacing' | 'textTransform'>;
 
 export const typography: Record<TextVariant, TypeStyle> = {
-  display: { fontFamily: fontFamily.display, fontSize: 34, lineHeight: 40, letterSpacing: -0.4 },
-  title1: { fontFamily: fontFamily.display, fontSize: 28, lineHeight: 34, letterSpacing: -0.3 },
-  title2: { fontFamily: fontFamily.display, fontSize: 22, lineHeight: 28, letterSpacing: -0.2 },
-  title3: { fontFamily: fontFamily.textBold, fontSize: 19, lineHeight: 24 },
-  headline: { fontFamily: fontFamily.textSemiBold, fontSize: 17, lineHeight: 22 },
-  body: { fontFamily: fontFamily.text, fontSize: 17, lineHeight: 24 },
-  bodyStrong: { fontFamily: fontFamily.textSemiBold, fontSize: 17, lineHeight: 24 },
-  callout: { fontFamily: fontFamily.text, fontSize: 16, lineHeight: 22 },
-  subhead: { fontFamily: fontFamily.textMedium, fontSize: 15, lineHeight: 20 },
+  displayLarge: { fontFamily: fontFamily.display, fontSize: 48, lineHeight: 56 },
+  display: { fontFamily: fontFamily.display, fontSize: 32, lineHeight: 38 },
+  title1: { fontFamily: fontFamily.display, fontSize: 24, lineHeight: 30 },
+  title2: { fontFamily: fontFamily.textSemiBold, fontSize: 19, lineHeight: 25 },
+  title3: { fontFamily: fontFamily.textSemiBold, fontSize: 17, lineHeight: 23 },
+  headline: { fontFamily: fontFamily.textSemiBold, fontSize: 16, lineHeight: 22 },
+  body: { fontFamily: fontFamily.text, fontSize: 16, lineHeight: 23 },
+  bodyStrong: { fontFamily: fontFamily.textSemiBold, fontSize: 16, lineHeight: 23 },
+  callout: { fontFamily: fontFamily.text, fontSize: 15, lineHeight: 21 },
+  subhead: { fontFamily: fontFamily.text, fontSize: 14, lineHeight: 20 },
   footnote: { fontFamily: fontFamily.text, fontSize: 13, lineHeight: 18 },
   caption: { fontFamily: fontFamily.textMedium, fontSize: 12, lineHeight: 16 },
-  label: { fontFamily: fontFamily.textSemiBold, fontSize: 16, lineHeight: 20 },
+  label: { fontFamily: fontFamily.textSemiBold, fontSize: 14, lineHeight: 18 },
+  /** A section label in sentence case. */
+  sectionLabel: { fontFamily: fontFamily.textBold, fontSize: 13, lineHeight: 18 },
   overline: {
     fontFamily: fontFamily.textBold,
     fontSize: 12,
     lineHeight: 16,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
 };
@@ -224,23 +280,24 @@ export interface Elevation {
 
 export const elevation: Record<'none' | 'low' | 'medium' | 'high', Elevation> = {
   none: { shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
+  /** Long, faint shadows: cards read as tactile paper rather than floating tiles. */
   low: {
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    shadowOpacity: 0.03,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   medium: {
-    shadowOpacity: 0.1,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    shadowOpacity: 0.035,
+    shadowRadius: 36,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 3,
   },
   high: {
-    shadowOpacity: 0.16,
-    shadowRadius: 28,
+    shadowOpacity: 0.055,
+    shadowRadius: 36,
     shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    elevation: 6,
   },
 };
 

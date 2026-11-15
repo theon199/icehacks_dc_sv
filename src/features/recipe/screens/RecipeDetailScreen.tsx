@@ -1,24 +1,27 @@
-import { AnimatedFlashList, type ListRenderItemInfo } from '@shopify/flash-list';
-import { Stack } from 'expo-router';
+import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
+import { Stack, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { UnitSystem } from '@/domain/units';
 import { useRecipe } from '@/lib/catalog';
 import { selectSmallAppetite, selectUnits, usePreferencesStore, useSettingsStore } from '@/stores';
-import { Button, EmptyState, ErrorState, gutter, space, Text, useTheme } from '@/ui';
+import { EmptyState, ErrorState, gutter, space, Text, useTheme, type GlassMenuItem } from '@/ui';
 
 import { DetailRow } from '../components/DetailRow';
 import { PlanSlotSheet } from '../components/PlanSlotSheet';
 import { RecipeDetailSkeleton } from '../components/RecipeDetailSkeleton';
-import { RecipeHero } from '../components/RecipeHero';
+import { RecipePageHeader } from '../components/RecipePageHeader';
+import { RecipePageHero } from '../components/RecipePageHero';
+import { RecipePageTiles } from '../components/RecipePageTiles';
+import { RecipeTabs } from '../components/RecipeTabs';
+import { SafetyWarning } from '../components/SafetyWarning';
 import { useDailyTargets, useDomainPreferences, usePantryIds } from '../hooks/usePersonalContext';
 import { useRecipeActions } from '../hooks/useRecipeActions';
 import { useRecipeFit, useRecipeIngredients, useSwapSuggestions } from '../hooks/useRecipeInsights';
 import { lineAllergenNotes } from '../model/allergens';
-import { buildDetailItems, type DetailItem } from '../model/detailItems';
+import { buildDetailItems, type DetailItem, type RecipeTab } from '../model/detailItems';
 import { buildIngredientRows, clampServings } from '../model/ingredients';
 import {
   plannedPortionNote,
@@ -40,13 +43,16 @@ const keyOf = (item: DetailItem) => item.key;
 const typeOf = (item: DetailItem) => item.type;
 
 /**
- * A recipe: photo, why it fits, scalable ingredients with pantry checks and swaps, method preview,
- * nutrition, allergens, tutorials and every action. The whole page is one virtualised list.
+ * A recipe: a glass back header with the dish name, the photo with "Cook it", the healthier and
+ * nearby tiles, then four tabs. Overview (introduction, save / plan / shop, method, tutorials),
+ * Ingredients (scalable lines with pantry checks and swaps, allergens, cost), Nutrition and Why it
+ * fits. The whole page under the header is one virtualised list.
  */
 export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScreenProps) {
   const theme = useTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const reduceMotion = useReducedMotion();
+  const [tab, setTab] = useState<RecipeTab>('overview');
   const query = useRecipe(recipeId || null);
   const recipe = query.data ?? null;
 
@@ -87,18 +93,9 @@ export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScr
   const items = useMemo(
     () =>
       recipe && built
-        ? buildDetailItems({ recipe, rows: built.rows, showAllSteps, tutorials })
+        ? buildDetailItems({ tab, recipe, rows: built.rows, showAllSteps, tutorials })
         : [],
-    [recipe, built, showAllSteps, tutorials],
-  );
-
-  const [scrollY] = useState(() => new Animated.Value(0));
-  const onScroll = useMemo(
-    () =>
-      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-        useNativeDriver: true,
-      }),
-    [scrollY],
+    [tab, recipe, built, showAllSteps, tutorials],
   );
   const changeServings = useCallback((next: number) => setServings(clampServings(next)), []);
   const toggleSteps = useCallback(() => setShowAllSteps((value) => !value), []);
@@ -151,92 +148,113 @@ export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScr
     [context],
   );
 
-  const header = (
-    <Stack.Screen options={{ headerTransparent: true, title: '', headerShadowVisible: false }} />
+  const back = useCallback(() => router.back(), [router]);
+  const { compare, share, report } = actions;
+  const menu = useMemo<GlassMenuItem[]>(
+    () => [
+      {
+        key: 'compare',
+        label: 'Compare versions',
+        icon: 'arrow.left.arrow.right',
+        testID: 'recipe-action-compare',
+        onPress: compare,
+      },
+      {
+        key: 'share',
+        label: 'Share or remix',
+        icon: 'square.and.arrow.up',
+        testID: 'recipe-action-share',
+        onPress: share,
+      },
+      {
+        key: 'report',
+        label: 'Report a problem',
+        icon: 'flag',
+        testID: 'recipe-action-report',
+        onPress: report,
+      },
+    ],
+    [compare, share, report],
+  );
+
+  const chrome = <Stack.Screen options={{ headerShown: false }} />;
+  const pageHeader = (title: string, withMenu: boolean) => (
+    <RecipePageHeader title={title} onBack={back} {...(withMenu ? { menu } : {})} />
   );
 
   if (query.isPending && recipeId) {
     return (
       <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-        {header}
+        {chrome}
+        {pageHeader('', false)}
         <RecipeDetailSkeleton />
       </View>
     );
   }
   if (query.isError) {
     return (
-      <View style={[styles.centre, { backgroundColor: theme.colors.background }]}>
-        {header}
-        <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+      <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+        {chrome}
+        {pageHeader('', false)}
+        <View style={styles.centre}>
+          <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+        </View>
       </View>
     );
   }
   if (!recipe || !context) {
     return (
-      <View style={[styles.centre, { backgroundColor: theme.colors.background }]}>
-        {header}
-        <EmptyState
-          title="Recipe not found"
-          message="It may have been removed from the catalog."
-          icon="fork.knife"
-        />
+      <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
+        {chrome}
+        {pageHeader('', false)}
+        <View style={styles.centre}>
+          <EmptyState
+            title="Recipe not found"
+            message="It may have been removed from the catalog."
+            icon="fork.knife"
+          />
+        </View>
       </View>
     );
   }
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-      {header}
-      <AnimatedFlashList
+      {chrome}
+      {pageHeader(recipe.title, true)}
+      <FlashList
         data={items}
         renderItem={renderItem}
         keyExtractor={keyOf}
         getItemType={typeOf}
         extraData={context}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
         contentInsetAdjustmentBehavior="never"
+        showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <RecipeHero
-            imageUrl={recipe.imageUrl}
-            title={recipe.title}
-            credit={recipe.imageCredit}
-            scrollY={scrollY}
-            reduceMotion={reduceMotion}
-          />
+          <View style={styles.top}>
+            <RecipePageHero
+              title={recipe.title}
+              imageUrl={recipe.imageUrl}
+              credit={recipe.imageCredit}
+              onCook={actions.cook}
+            />
+            <RecipePageTiles
+              title={recipe.title}
+              onMakeHealthier={actions.makeHealthier}
+              onNearby={actions.nearby}
+            />
+            {portionNote ? (
+              <Text variant="footnote" tone="muted" testID="recipe-planned-portion">
+                {portionNote}
+              </Text>
+            ) : null}
+            <SafetyWarning verdict={context.fit?.safety ?? null} />
+            <RecipeTabs active={tab} onSelect={setTab} />
+          </View>
         }
-        contentContainerStyle={{ paddingBottom: space.xxxl }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}
         testID="recipe-list"
       />
-      <View
-        style={[
-          styles.footer,
-          {
-            paddingBottom: Math.max(insets.bottom, space.lg),
-            backgroundColor: theme.colors.background,
-            borderTopColor: theme.colors.border,
-          },
-        ]}
-      >
-        {portionNote ? (
-          <Text
-            variant="footnote"
-            tone="muted"
-            style={styles.portionNote}
-            testID="recipe-planned-portion"
-          >
-            {portionNote}
-          </Text>
-        ) : null}
-        <Button
-          label="Cook now"
-          icon="frying.pan"
-          onPress={actions.cook}
-          fullWidth
-          size="lg"
-          testID="recipe-cook"
-        />
-      </View>
       <PlanSlotSheet
         visible={actions.sheet !== null}
         purpose={actions.sheet ?? 'plan'}
@@ -254,10 +272,5 @@ export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScr
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   centre: { flex: 1, justifyContent: 'center', padding: gutter },
-  footer: {
-    paddingHorizontal: gutter,
-    paddingTop: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  portionNote: { textAlign: 'center', marginBottom: space.sm },
+  top: { gap: space.md, paddingHorizontal: gutter, paddingTop: space.sm },
 });

@@ -96,6 +96,8 @@ export interface DayInfo {
   readonly weekday: string;
   /** "9" */
   readonly dayOfMonth: string;
+  /** "Nov 9" */
+  readonly monthDay: string;
   /** "Monday, November 9" — for VoiceOver and headings. */
   readonly long: string;
   readonly isToday: boolean;
@@ -106,6 +108,7 @@ export function weekDays(weekStart: IsoDate, today: IsoDate, locale = 'en-US'): 
   const short = formatter(locale, { weekday: 'short' });
   const weekday = formatter(locale, { weekday: 'long' });
   const long = formatter(locale, { weekday: 'long', month: 'long', day: 'numeric' });
+  const monthDay = formatter(locale, { month: 'short', day: 'numeric' });
   return DAY_INDICES.map((day) => {
     const date = addDays(weekStart, day);
     return {
@@ -114,6 +117,7 @@ export function weekDays(weekStart: IsoDate, today: IsoDate, locale = 'en-US'): 
       short: short.format(utc(date)),
       weekday: weekday.format(utc(date)),
       dayOfMonth: String(Number(date.slice(8))),
+      monthDay: monthDay.format(utc(date)),
       long: long.format(utc(date)),
       isToday: date === today,
       isPast: date < today,
@@ -261,4 +265,47 @@ export function defaultSlotFor(course: string): MealSlot {
 /** A week id from a route parameter, falling back to the current week when it is not a Monday. */
 export function resolveWeekParam(param: string | undefined, today: IsoDate): IsoDate {
   return param !== undefined && isValidWeekStart(param) ? param : weekStartOf(today);
+}
+
+/** The planner pages through a fixed window of weeks around the current one. */
+export const PAGER_FIRST_OFFSET = -2;
+export const PAGER_LAST_OFFSET = 3;
+export const PAGER_WEEK_COUNT = PAGER_LAST_OFFSET - PAGER_FIRST_OFFSET + 1;
+
+/** Week starts the pager shows, earliest first. */
+export function pagerWeeks(today: IsoDate): IsoDate[] {
+  const current = weekStartOf(today);
+  return Array.from({ length: PAGER_WEEK_COUNT }, (_, page) =>
+    addDays(current, (page + PAGER_FIRST_OFFSET) * 7),
+  );
+}
+
+/** Page of a week in the pager, clamped to the window. */
+export function pagerIndexOf(weekStart: IsoDate, today: IsoDate): number {
+  const offset = weekOffset(weekStart, today);
+  const clamped = Math.min(PAGER_LAST_OFFSET, Math.max(PAGER_FIRST_OFFSET, offset));
+  return clamped - PAGER_FIRST_OFFSET;
+}
+
+/**
+ * Weeks a meal in `weekStart` can move to: its own week and the next, unless the next is past the
+ * pager's last week, where the planner could never show the meal again.
+ */
+export function moveTargetWeeks(weekStart: IsoDate, today: IsoDate): IsoDate[] {
+  const next = addDays(weekStart, 7);
+  return weekOffset(next, today) <= PAGER_LAST_OFFSET ? [weekStart, next] : [weekStart];
+}
+
+/** "This week", "Next week", "2 weeks ago", "In 3 weeks". */
+export function relativeWeekTitle(offset: number): string {
+  if (offset === 0) return 'This week';
+  if (offset === 1) return 'Next week';
+  if (offset === -1) return 'Last week';
+  return offset < 0 ? `${-offset} weeks ago` : `In ${offset} weeks`;
+}
+
+/** "Nothing planned", "1 meal planned", "3 meals planned". */
+export function plannedSummary(count: number): string {
+  if (count === 0) return 'Nothing planned';
+  return count === 1 ? '1 meal planned' : `${count} meals planned`;
 }

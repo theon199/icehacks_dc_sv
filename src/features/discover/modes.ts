@@ -11,7 +11,7 @@ export interface ModeOption {
 }
 
 export const MODE_OPTIONS: readonly ModeOption[] = [
-  { value: 'forYou', label: 'For you' },
+  { value: 'forYou', label: 'For You' },
   { value: 'quick', label: 'Quick' },
   { value: 'pantry', label: 'Use my pantry' },
   { value: 'gentle', label: 'Gentle' },

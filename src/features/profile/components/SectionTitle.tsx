@@ -9,10 +9,13 @@ export interface SectionTitleProps {
   trailing?: ReactNode;
 }
 
+/** A sentence-case section label over a profile card or list. */
 export function SectionTitle({ title, trailing }: SectionTitleProps) {
   return (
     <View style={styles.row}>
-      <Text variant="title3">{title}</Text>
+      <Text variant="sectionLabel" tone="muted" accessibilityRole="header">
+        {title}
+      </Text>
       {trailing}
     </View>
   );
@@ -21,9 +24,8 @@ export function SectionTitle({ title, trailing }: SectionTitleProps) {
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: space.sm,
-    paddingTop: space.sm,
   },
 });

@@ -2,9 +2,10 @@
  * The one place Snap reaches into code owned by other areas. Everything here is a thin adapter so
  * that when a sibling module lands (or a shared shape changes) only this file moves.
  *
- * - `AiGate`: Chef's shared 18+ and AI-consent gate. Snap is a tab root, which `Stack.Protected`
- *   cannot guard, so the screen renders the gate itself. `describeAiProblem` and `waitPhrase` are
- *   Chef's wording for AI failures; Snap adds only what is specific to photos.
+ * - The 18+ and AI-consent rules (`selectCanUseAi`, `selectIsAdult`) and the consent route. Snap
+ *   is a tab root, which `Stack.Protected` cannot guard, so the screen renders its own gate on
+ *   them. `describeAiProblem` and `waitPhrase` are Chef's wording for AI failures; Snap adds only
+ *   what is specific to photos.
  * - Preference and recipe bridges: the app-wide translations from the user stores and the catalog
  *   to the domain shapes ranking and safety expect (`@/stores/domainBridge`, `@/lib/catalog`).
  *   They translate one way only (store/catalog → domain) and fail closed.
@@ -16,8 +17,14 @@
 import { useSessionStore } from '@/features/auth';
 import { useCookLogStore } from '@/stores';
 
-export { selectCanUseAi, useSessionStore } from '@/features/auth';
-export { AiGate, describeAiProblem, waitPhrase, type AiProblem } from '@/features/chef';
+export { MIN_AI_AGE, selectCanUseAi, selectIsAdult, useSessionStore } from '@/features/auth';
+export { describeAiProblem, waitPhrase, type AiProblem } from '@/features/chef';
+
+/** Where a person reviews what AI features share and turns them on (owned by settings). */
+export const AI_CONSENT_ROUTE = '/ai-consent';
+
+/** The tab bar is hidden while Snap owns the bottom edge; see `useHideTabBar`. */
+export { useHideTabBar } from '@/features/shell';
 
 // --- Account -----------------------------------------------------------------------------------
 
