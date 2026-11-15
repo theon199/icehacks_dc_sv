@@ -19,8 +19,9 @@ import { CookOwnRow } from '../components/CookOwnRow';
 import { FridgeMealsHeader } from '../components/FridgeMealsHeader';
 import { FridgeMealsState, type FridgeMealsMessage } from '../components/FridgeMealsState';
 import { MealRow } from '../components/MealRow';
+import { OwnRecipesSection } from '../components/OwnRecipesSection';
 import { TopPicks } from '../components/TopPicks';
-import { SNAP_PANTRY_HREF, useSnapAccess } from '../deps';
+import { myRecipeHref, SNAP_PANTRY_HREF, useMyRecipesForMeal, useSnapAccess } from '../deps';
 import { MEAL_LABELS } from '../mealText';
 import { useFridgeMeals } from '../useFridgeMeals';
 import { useIngredientNames } from '../useIngredientNames';
@@ -43,6 +44,7 @@ const openPantry = () => router.push('/pantry');
 const openPreferences = () => router.push('/preferences');
 const openAddRecipe = () => router.push('/my-recipes/add');
 const openRecipe = (id: string) => router.push({ pathname: '/recipe/[id]', params: { id } });
+const openOwnRecipe = (id: string) => router.push(myRecipeHref(id));
 
 /**
  * Meals for now: Breakfast · Lunch · Dinner tabs opening on the meal that fits the clock, the
@@ -60,6 +62,7 @@ export function FridgeMealsScreen() {
   const names = useIngredientNames(list, TOP_COUNT);
   const top = useMemo(() => list.slice(0, TOP_COUNT), [list]);
   const rest = useMemo(() => list.slice(TOP_COUNT), [list]);
+  const own = useMyRecipesForMeal(meal);
   const lastIndex = rest.length - 1;
 
   const renderItem = useCallback(
@@ -142,6 +145,7 @@ export function FridgeMealsScreen() {
         ListFooterComponent={
           showCookOwn ? (
             <View style={styles.foot}>
+              <OwnRecipesSection suggestions={own.recipes} onOpen={openOwnRecipe} />
               <CookOwnRow onPress={openAddRecipe} />
             </View>
           ) : null
