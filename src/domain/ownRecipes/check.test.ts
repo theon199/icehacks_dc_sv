@@ -431,6 +431,42 @@ describe('review fixes, round three', () => {
   });
 });
 
+describe('review fixes, round four: tokens', () => {
+  const unverified = (text: string, name: string, id: string, allergen: 'milk') => {
+    const safety = check([line(text, name, id)], prefs([allergen], ['vegan']));
+    expect(safety.ingredients[0]?.issues).toContainEqual({ code: 'allergen_unverified', allergen });
+    expect(isClearedForSuggestions(safety)).toBe(false);
+  };
+
+  it('reads a hyphenated word as one word', () => {
+    unverified('1 cup rice, half-and-half', 'rice', 'rice', 'milk');
+  });
+
+  it('counts amount words only next to a number or unit', () => {
+    unverified('1 cup rice, half and half', 'rice', 'rice', 'milk');
+    const ok = check([line('half a cup rice', 'rice', 'rice')], prefs(['milk']));
+    expect(ok.status).toBe('clear');
+  });
+
+  it('never matches a compound catalog item across a connector', () => {
+    unverified('1 cup almonds and milk', 'almond milk', 'almond_milk', 'milk');
+    unverified('1 cup almonds with milk', 'almond milk', 'almond_milk', 'milk');
+    unverified('1 cup almonds/milk', 'almond milk', 'almond_milk', 'milk');
+    unverified('1 cup almonds & milk', 'almond milk', 'almond_milk', 'milk');
+  });
+
+  it('still clears plain compound lines and known hyphenated preparation', () => {
+    const lines = [
+      line('1 cup almond milk', 'almond milk', 'almond_milk'),
+      line('500 g chicken thighs, cut into bite-sized pieces', 'chicken thigh', 'chicken_thigh'),
+    ];
+    expect(check(lines, prefs(['milk'])).ingredients.map((entry) => entry.verdict)).toEqual([
+      'clear',
+      'clear',
+    ]);
+  });
+});
+
 describe('ingredientKey', () => {
   it('ignores case, punctuation and plurals in the name', () => {
     expect(ingredientKey({ text: '3 Bay Leaves!', name: 'Bay leaves' })).toBe(

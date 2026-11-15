@@ -28,7 +28,7 @@ export {
   type PantryEntry,
 } from './coverage';
 export { ADVISORY_WORDS, ALLERGEN_HINTS, DIET_HINTS } from './hints';
-export { isNonFoodWord } from './nonFoodWords';
+export { isNonFoodAt, isNonFoodWord } from './nonFoodWords';
 export {
   isPlausibleMatch,
   lookupPhrases,
@@ -36,4 +36,4 @@ export {
   matchIngredients,
   type MatchableIngredient,
 } from './match';
-export { foodWords, hasSymbols, nameKey, singular, tokenize } from './words';
+export { foodWords, hasSymbols, nameKey, singular, tokenize, wordSequence } from './words';

@@ -372,3 +372,39 @@ function isAmount(word: string): boolean {
 export function isNonFoodWord(word: string): boolean {
   return isAmount(word) || NON_FOOD.has(word);
 }
+
+const NUMBER_WORD_SET = new Set(NUMBER_WORDS);
+const UNIT_SET = new Set(UNITS);
+
+/**
+ * Hyphenated words that name no food. A hyphenated word is judged whole, never by its parts, so
+ * "half-and-half" (a dairy product) is not two amounts.
+ */
+const HYPHENATED = new Set([
+  'bite-sized',
+  'bite-size',
+  'room-temperature',
+  'extra-virgin',
+  'finely-chopped',
+  'roughly-chopped',
+  'thinly-sliced',
+  'freshly-ground',
+  'well-drained',
+  'skin-on',
+  'bone-in',
+]);
+
+/**
+ * True when `words[index]` names no food where it stands. Amount words ("half", "dozen") count
+ * only next to a number or unit ("half a cup"), never alone ("half and half").
+ */
+export function isNonFoodAt(words: readonly string[], index: number): boolean {
+  const word = words[index] ?? '';
+  if (word.includes('-')) return HYPHENATED.has(word);
+  if (NUMBER_WORD_SET.has(word)) {
+    return [words[index - 1], words[index + 1]].some(
+      (near) => near !== undefined && (isAmount(near) || UNIT_SET.has(near)),
+    );
+  }
+  return isNonFoodWord(word);
+}

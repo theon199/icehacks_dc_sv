@@ -54,13 +54,38 @@ const SUFFIX_RULES: readonly (readonly [ending: string, swap: string, minStem: n
   ['s', '', 3],
 ];
 
-/** Lowercases, strips accents and splits into letter-and-digit tokens. */
-export function tokenize(text: string): string[] {
-  const folded = text
+function fold(text: string): string {
+  return text
     .normalize('NFKD')
     .replace(/\p{M}+/gu, '')
     .toLowerCase();
-  return folded.match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+/** Lowercases, strips accents and splits into letter-and-digit tokens. */
+export function tokenize(text: string): string[] {
+  return fold(text).match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+/** Stands for a separator ("/", "&", "+", ",", ";", brackets): one food may end there. */
+export const BREAK = '|';
+
+/**
+ * The line's words in order, for lining a catalog name up with what is written. Unlike
+ * `foodWords` it keeps connector words ("and", "with") and marks separators with `BREAK`, so
+ * "almonds and milk" or "almonds/milk" never reads as "almond milk". A hyphenated word stays one
+ * word ("half-and-half", "bite-sized"); other words are made singular.
+ */
+export function wordSequence(text: string): string[] {
+  const parts = fold(text).match(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*|[/&+,;()[\]]/gu) ?? [];
+  return parts.map((part) => {
+    if (!/^[\p{L}\p{N}]/u.test(part)) return BREAK;
+    return part.includes('-') ? part : singular(part);
+  });
+}
+
+/** True for a word that says nothing about which food it is ("a", "the", "fresh"). */
+export function isFiller(word: string): boolean {
+  return FILLER.has(word);
 }
 
 /**

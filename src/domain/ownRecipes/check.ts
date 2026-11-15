@@ -23,8 +23,8 @@
 import { compileSafetyRules, DIET_ALLERGEN_CHECKS, type SafetyPrefs } from '../safety';
 import { ADVISORY_WORDS, ALLERGEN_HINTS, DIET_HINTS } from './hints';
 import { isPlausibleMatch, type MatchableIngredient } from './match';
-import { isNonFoodWord } from './nonFoodWords';
-import { foodWords, hasSymbols, nameKey, tokenize } from './words';
+import { isNonFoodAt } from './nonFoodWords';
+import { BREAK, hasSymbols, isFiller, nameKey, tokenize, wordSequence } from './words';
 import type { AllergenId } from '../types/allergens';
 import { withImpliedDiets, DietFlag, type DietFlagName } from '../types/diet';
 
@@ -146,44 +146,48 @@ function withoutMatch(
   return null;
 }
 
-/** Splits a line at its allergen note: the words before it, and the note's words. */
+/** Splits a line's word sequence at its allergen note: the words before it, and the note's. */
 function splitAdvisory(text: string): { readonly body: string[]; readonly note: string[] } {
-  const tokens = tokenize(text);
-  const at = tokens.findIndex((token) => ADVISORY_WORDS.includes(token));
-  if (at < 0) return { body: foodWords(text), note: [] };
-  return {
-    body: foodWords(tokens.slice(0, at).join(' ')),
-    note: foodWords(tokens.slice(at).join(' ')),
-  };
+  const words = wordSequence(text);
+  const at = words.findIndex((word) => ADVISORY_WORDS.includes(word));
+  return at < 0 ? { body: words, note: [] } : { body: words.slice(0, at), note: words.slice(at) };
 }
+
+/** The words that can name a food: separators and filler words dropped, order kept. */
+const meaningful = (words: readonly string[]) =>
+  words.filter((word) => word !== BREAK && !isFiller(word));
 
 interface Leftover {
   /** Words the match does not account for, allergen notes included, for naming allergens. */
   readonly words: ReadonlySet<string>;
   /**
    * Something on the line may be a food the match does not cover: a leftover word that is not a
-   * known amount, unit, preparation or connector word, or a line that does not even spell out
-   * its match. The match then vouches for no allergen and no diet.
+   * known amount, unit, preparation or connector word where it stands, a symbol, or a line that
+   * does not spell out its match as one run of words (connectors and separators included).
    */
   readonly unexplained: boolean;
 }
 
 /**
  * What is left of the line, text and name, once one written run of the catalog name is taken
- * away. Allergen notes are never taken away.
+ * away. The run must appear exactly, with nothing between its words, so a compound catalog item
+ * is never matched across "and", "with" or "/". Allergen notes are never taken away.
  */
 function leftover(ingredient: OwnIngredient, catalog: CatalogFacts | null): Leftover {
   const names = catalog
     ? [catalog.name, catalog.plural, catalog.id.replace(/_/g, ' ')]
         .filter((name): name is string => Boolean(name))
-        .map(foodWords)
+        .map(wordSequence)
         .sort((a, b) => b.length - a.length)
     : [];
   const text = splitAdvisory(ingredient.text);
   const name = splitAdvisory(ingredient.name);
   const textRest = catalog ? withoutMatch(text.body, names) : text.body;
   const nameRest = catalog ? withoutMatch(name.body, names) : name.body;
-  const rest = [...(textRest ?? text.body), ...(nameRest ?? name.body), ...text.note, ...name.note];
+  const parts = [textRest ?? text.body, nameRest ?? name.body, text.note, name.note].map(
+    meaningful,
+  );
+  const rest = parts.flat();
   return {
     words: new Set(rest),
     unexplained:
@@ -191,7 +195,7 @@ function leftover(ingredient: OwnIngredient, catalog: CatalogFacts | null): Left
       nameRest === null ||
       hasSymbols(ingredient.text) ||
       hasSymbols(ingredient.name) ||
-      rest.some((word) => !isNonFoodWord(word)),
+      parts.some((words) => words.some((_, index) => !isNonFoodAt(words, index))),
   };
 }
 
