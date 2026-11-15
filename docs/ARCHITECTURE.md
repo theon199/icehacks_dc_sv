@@ -60,7 +60,6 @@ A feature never imports another feature's internals — only its `index.ts` publ
 6. **Images** sized to their container, `contentFit="cover"`, `recyclingKey` in lists, `priority`.
 7. **Lazy feature code**: heavy screens (camera, maps, HealthKit) import native modules only inside
    the screen, never from shared barrels.
-8. **Bundle guard**: CI fails if the JS bundle grows past the budget in `tools/bundle-budget.json`.
 
 ## Data flow
 

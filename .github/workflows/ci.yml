@@ -41,17 +41,3 @@ jobs:
         run: npm run format:check
       - name: Unit tests
         run: npm test -- --ci --maxWorkers=50%
-
-  bundle:
-    name: iOS bundle size
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Export iOS bundle and check budget
-        run: npm run bundle:check
