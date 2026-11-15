@@ -1691,6 +1691,24 @@ export type Database = {
       };
       resolve_food_place: { Args: { p_place_id: string }; Returns: Json };
       set_birth_year: { Args: { p_birth_year: number }; Returns: Json };
+      spend_snap_sweep_batch: {
+        Args: { p_daily_limit: number; p_sweep_id: string; p_user_id: string };
+        Returns: {
+          allowed: boolean;
+          reason: string;
+          remaining: number;
+          reset_at: string;
+        }[];
+      };
+      spend_snap_sweep_words: {
+        Args: { p_sweep_id: string; p_user_id: string };
+        Returns: {
+          allowed: boolean;
+          reason: string;
+          remaining: number;
+          reset_at: string;
+        }[];
+      };
       store_food_region_spots: {
         Args: { p_region_id: string; p_spots: Json; p_ttl_seconds: number };
         Returns: number;

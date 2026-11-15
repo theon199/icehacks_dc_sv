@@ -6,8 +6,9 @@
 import { z } from "zod";
 
 /**
- * Bounds of a fridge sweep. Mirrors `SNAP_SWEEP_LIMITS` in the app's `src/lib/api/ai.ts`; the two
- * must change together.
+ * Bounds of a fridge sweep. Mirrors `SNAP_SWEEP_LIMITS` in the app's `src/lib/api/ai.ts`, and the
+ * batch and words limits enforced by `spend_snap_sweep_*` (migration `20261115090000_snap_sweeps`);
+ * all three must change together.
  */
 export const SWEEP_LIMITS = {
   framesPerBatch: 3,

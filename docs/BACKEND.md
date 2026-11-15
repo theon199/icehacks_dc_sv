@@ -249,6 +249,8 @@ limit. Ledger rows are purged after two days.
 | --- | --- |
 | `claim_storage_purge(p_limit = 100)` → `(id, bucket_id, object_name)` | First drops queue entries whose object is referenced again (a current avatar, attached post media; account deletions excepted), then claims queued objects (hidden from other workers for 10 min; given up after 10 attempts) |
 | `complete_storage_purge(p_ids bigint[])` → int | Removes purged rows from the queue |
+| `spend_snap_sweep_batch(p_user_id, p_sweep_id, p_daily_limit)` → `(allowed, reason, remaining, reset_at)` | One frame batch of a fridge sweep (see **Fridge sweeps** under `snap`). `reason`: `paid` (first batch; `remaining`/`reset_at` are the daily `snap_pantry` allowance), `batch` (batches left, `reset_at` = the sweep's end), `daily_limit`, `refused`, `expired`, `spent` |
+| `spend_snap_sweep_words(p_user_id, p_sweep_id)` → `(allowed, reason, remaining, reset_at)` | One call of words in a sweep: `words` (calls left), `refused`, `expired`, `spent`. The daily `snap_text` is spent separately |
 
 ## Storage
 
@@ -453,6 +455,21 @@ an id the device did not offer can never come back (none when `candidates` is em
   `low ≤ estimate ≤ high`.
 - `{status: "no_food", mode, reason: "not_food" | "unclear", message}` — a 200, so the app can ask
   for another photo. The call still counts against the quota.
+
+**Fridge sweeps** (migration `20261115090000_snap_sweeps`). A sweep is one pass in front of the
+fridge, named by a client-made `sweep_id`, sending batches of 1–3 frames (`{mode: "pantry",
+sweep_id, images}`) and words (`{mode: "pantry", sweep_id, text}`). Its state lives in
+`private.snap_sweeps` (RLS on, no policies), written only by the two service-role RPCs above with
+the user id from the verified session, so nothing the app can call opens, pays or advances a sweep.
+- The first request opens the sweep for one hour from then, whatever the clock hour.
+- The first batch pays one `snap_pantry` from the daily allowance in the same transaction. If the
+  allowance is used up the sweep is marked `refused` and every later request of that sweep gets 429
+  (`details.feature: "snap_pantry"`), so a pass that could not pay never reads a frame.
+- Every request locks the sweep's row, so a batch racing the first waits for it to commit and then
+  sees the sweep paid or refused; a sweep is never read unpaid.
+- At most 4 batches (12 frames) and 2 calls of words per sweep; past that, or past the hour, 429
+  `quota_exceeded` with `details.feature: "snap_sweep"`. Words also spend `snap_text`.
+- Rows a day past their end are dropped on the member's next sweep request.
 
 **`makeover`** — input `{recipe: {title, servings, ingredients, steps}, goals, diet, allergens,
 request?}` (1–60 ingredient lines ≤ 200 chars, 1–40 steps ≤ 1000 chars, servings 1–24, `request`

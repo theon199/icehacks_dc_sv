@@ -1,14 +1,26 @@
-/** Test harness for the `snap` function: fake auth, quota counters and Claude replies. */
+/** Test harness for the `snap` function: fake auth, quota counters, sweeps and Claude replies. */
 
 import { encodeBase64 } from "@std/encoding/base64";
 import type { createClient } from "@supabase/supabase-js";
 import { createSnapHandler } from "./handler.ts";
+import { SWEEP_LIMITS, SWEEP_MAX_BATCHES } from "./schema.ts";
+
+const SERVICE_KEY = "service-key";
 
 const ENV: Record<string, string> = {
   SUPABASE_URL: "http://127.0.0.1:54321",
   SUPABASE_ANON_KEY: "anon-key",
+  SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY,
   ANTHROPIC_API_KEY: "test-key",
 };
+
+const USER_ID = "user-1";
+const DAY = 86_400;
+const SWEEP_LIFETIME_MS = 3_600_000;
+const SWEEP_MAX_WORDS = SWEEP_LIMITS.maxTextCalls;
+
+/** RPCs granted to `service_role` only: the caller's own JWT is refused, as Postgres would. */
+const SERVICE_ONLY = new Set(["spend_snap_sweep_batch", "spend_snap_sweep_words"]);
 
 export interface HarnessOptions {
   adult?: boolean;
@@ -17,40 +29,130 @@ export interface HarnessOptions {
   /** Features whose counters are already used up. */
   exhausted?: readonly string[];
   replies?: Response[];
+  /** The database's clock. Quota windows and sweep lifetimes follow it. */
+  now?: () => number;
 }
 
+export interface RpcCall {
+  fn: string;
+  args: Record<string, unknown>;
+  /** Which client made the call: the caller's JWT, or the function's service role. */
+  role: "user" | "service";
+}
+
+interface SweepRow {
+  status: "open" | "paid" | "refused";
+  batches: number;
+  textCalls: number;
+  expiresAt: number;
+}
+
+type RpcResult = { data: unknown; error: null } | {
+  data: null;
+  error: { message: string; code: string };
+};
+
 /**
- * A handler wired to fakes. Quotas behave like `consume_ai_quota`: one counter per feature, each
- * call spends a unit, and a call past the limit is refused. Counters live as long as the harness,
- * so several requests through one harness share them.
+ * A handler wired to fakes. Quotas behave like `consume_ai_quota`: fixed windows aligned to the
+ * epoch, each call spends a unit, and a call past the limit is refused. Sweeps behave like the
+ * `spend_snap_sweep_*` RPCs: one row per sweep, opened and paid in one step. State lives as long
+ * as the harness, so several requests through one harness share it.
  */
 export function harness(options: HarnessOptions = {}) {
-  const { adult = true, quotaAllowed = true } = options;
+  const { adult = true, quotaAllowed = true, now = Date.now } = options;
   const exhausted = new Set(options.exhausted ?? []);
   const replies = [...(options.replies ?? [])];
-  const rpcCalls: { fn: string; args: Record<string, unknown> }[] = [];
+  const rpcCalls: RpcCall[] = [];
   const claudeCalls: Record<string, unknown>[] = [];
   const used = new Map<string, number>();
-  const fakeCreateClient = () => ({
-    auth: { getUser: () => Promise.resolve({ data: { user: { id: "user-1" } }, error: null }) },
-    rpc: (fn: string, args: Record<string, unknown>) => {
-      rpcCalls.push({ fn, args });
-      if (fn === "is_adult") return Promise.resolve({ data: adult, error: null });
-      const feature = String(args["p_feature"]);
-      const limit = Number(args["p_limit"]);
-      const count = (used.get(feature) ?? 0) + 1;
-      used.set(feature, count);
-      const allowed = quotaAllowed && !exhausted.has(feature) && count <= limit;
-      return Promise.resolve({
-        data: [{
-          allowed,
-          remaining: allowed ? limit - count : 0,
-          reset_at: new Date(Date.now() + 60_000).toISOString(),
-        }],
-        error: null,
-      });
-    },
-  });
+  const sweeps = new Map<string, SweepRow>();
+
+  const spend = (feature: string, limit: number, windowSeconds: number) => {
+    const windowMs = windowSeconds * 1000;
+    const windowStart = Math.floor(now() / windowMs) * windowMs;
+    const key = `${feature}:${windowSeconds}:${windowStart}`;
+    const resetAt = new Date(windowStart + windowMs).toISOString();
+    const count = used.get(key) ?? 0;
+    if (!quotaAllowed || exhausted.has(feature) || count >= limit) {
+      return { allowed: false, remaining: 0, reset_at: resetAt };
+    }
+    used.set(key, count + 1);
+    return { allowed: true, remaining: limit - count - 1, reset_at: resetAt };
+  };
+
+  const openSweep = (userId: string, sweepId: string): SweepRow => {
+    const key = `${userId}:${sweepId}`;
+    const existing = sweeps.get(key);
+    if (existing) return existing;
+    const row: SweepRow = {
+      status: "open",
+      batches: 0,
+      textCalls: 0,
+      expiresAt: now() + SWEEP_LIFETIME_MS,
+    };
+    sweeps.set(key, row);
+    return row;
+  };
+
+  const dailyReset = () => new Date((Math.floor(now() / 1000 / DAY) + 1) * DAY * 1000);
+  const row = (allowed: boolean, reason: string, remaining: number, resetAt: number | string) => [{
+    allowed,
+    reason,
+    remaining,
+    reset_at: new Date(resetAt).toISOString(),
+  }];
+
+  const sweepBatch = (args: Record<string, unknown>) => {
+    const sweep = openSweep(String(args["p_user_id"]), String(args["p_sweep_id"]));
+    if (sweep.status === "refused") return row(false, "refused", 0, dailyReset().getTime());
+    if (sweep.expiresAt <= now()) return row(false, "expired", 0, sweep.expiresAt);
+    if (sweep.batches >= SWEEP_MAX_BATCHES) return row(false, "spent", 0, sweep.expiresAt);
+    if (sweep.status === "open") {
+      const paid = spend("snap_pantry", Number(args["p_daily_limit"]), DAY);
+      if (!paid.allowed) {
+        sweep.status = "refused";
+        return row(false, "daily_limit", 0, paid.reset_at);
+      }
+      sweep.status = "paid";
+      sweep.batches += 1;
+      return row(true, "paid", paid.remaining, paid.reset_at);
+    }
+    sweep.batches += 1;
+    return row(true, "batch", SWEEP_MAX_BATCHES - sweep.batches, sweep.expiresAt);
+  };
+
+  const sweepWords = (args: Record<string, unknown>) => {
+    const sweep = openSweep(String(args["p_user_id"]), String(args["p_sweep_id"]));
+    if (sweep.status === "refused") return row(false, "refused", 0, dailyReset().getTime());
+    if (sweep.expiresAt <= now()) return row(false, "expired", 0, sweep.expiresAt);
+    if (sweep.textCalls >= SWEEP_MAX_WORDS) return row(false, "spent", 0, sweep.expiresAt);
+    sweep.textCalls += 1;
+    return row(true, "words", SWEEP_MAX_WORDS - sweep.textCalls, sweep.expiresAt);
+  };
+
+  const rpc = (role: RpcCall["role"], fn: string, args: Record<string, unknown>): RpcResult => {
+    rpcCalls.push({ fn, args, role });
+    if (SERVICE_ONLY.has(fn) && role !== "service") {
+      return { data: null, error: { message: "permission denied for function", code: "42501" } };
+    }
+    if (fn === "is_adult") return { data: adult, error: null };
+    if (fn === "spend_snap_sweep_batch") return { data: sweepBatch(args), error: null };
+    if (fn === "spend_snap_sweep_words") return { data: sweepWords(args), error: null };
+    const result = spend(
+      String(args["p_feature"]),
+      Number(args["p_limit"]),
+      Number(args["p_window_seconds"]),
+    );
+    return { data: [result], error: null };
+  };
+
+  const fakeCreateClient = (_url: string, key: string) => {
+    const role: RpcCall["role"] = key === SERVICE_KEY ? "service" : "user";
+    return {
+      auth: { getUser: () => Promise.resolve({ data: { user: { id: USER_ID } }, error: null }) },
+      rpc: (fn: string, args: Record<string, unknown>) => Promise.resolve(rpc(role, fn, args)),
+    };
+  };
   const fakeFetch = (_input: string | URL | Request, init?: RequestInit) => {
     claudeCalls.push(JSON.parse(String(init?.body)));
     const reply = replies.shift();
@@ -63,7 +165,12 @@ export function harness(options: HarnessOptions = {}) {
   });
   const quotaCalls = () => rpcCalls.filter((call) => call.fn === "consume_ai_quota");
   const features = () => quotaCalls().map((call) => call.args["p_feature"]);
-  return { handler, claudeCalls, quotaCalls, features };
+  /** Daily pantry Snaps spent, however they were spent. */
+  const pantrySpent = () =>
+    [...used].filter(([key]) => key.startsWith("snap_pantry:")).reduce((sum, [, n]) => sum + n, 0);
+  /** What the signed-in person could call themselves with their own JWT. */
+  const callAsUser = (fn: string, args: Record<string, unknown>) => rpc("user", fn, args);
+  return { handler, claudeCalls, rpcCalls, quotaCalls, features, pantrySpent, callAsUser, USER_ID };
 }
 
 export function claudeJson(value: unknown, stopReason = "end_turn"): Response {

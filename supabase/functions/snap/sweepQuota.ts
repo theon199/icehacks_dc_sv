@@ -2,32 +2,27 @@
  * What each kind of Snap request costs.
  *
  * - One photo spends one pantry or dish Snap from the daily allowance.
- * - A fridge sweep spends one pantry Snap for the whole pass. Each batch spends a unit of a
- *   counter of its own (`swf_<sweep>`, four batches an hour), and the batch that finds that counter
- *   fresh is the one that pays the daily Snap. A fifth batch is turned away.
- * - Words spend `snap_text`. Words tied to a sweep also spend that pass's word counter
- *   (`swt_<sweep>`), so a pass holds at most two of them.
+ * - A fridge sweep spends one pantry Snap for the whole pass. The sweep lives in
+ *   `private.snap_sweeps`, which only the service role can write: its first batch opens it and pays
+ *   the daily Snap in one transaction, later batches wait on the sweep's row lock and pass only once
+ *   it is paid, and a sweep whose payment was refused stays refused. A sweep lasts an hour from its
+ *   first request and holds four batches of frames.
+ * - Words spend `snap_text`. Words tied to a sweep also spend one of that pass's two calls of words.
+ *
+ * The sweep RPCs take the user id from the verified session, never from the request body.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { denoEnv, type EnvReader, readEnv } from "../_shared/env.ts";
 import { HttpError } from "../_shared/http.ts";
-import {
-  AI_QUOTAS,
-  consumeQuota,
-  enforceQuota,
-  type QuotaPolicy,
-  type QuotaResult,
-} from "../_shared/quota.ts";
-import { SWEEP_LIMITS, SWEEP_MAX_BATCHES } from "./schema.ts";
+import { AI_QUOTAS, enforceQuota, type QuotaPolicy, type QuotaResult } from "../_shared/quota.ts";
+import { callRpc } from "../_shared/rpc.ts";
 
 const QUOTA_ENV = {
   pantry: "FAMARA_AI_LIMIT_SNAP_PANTRY",
   dish: "FAMARA_AI_LIMIT_SNAP_DISH",
 } as const;
-
-/** A sweep is one pass in front of the fridge; an hour is far longer than any real one takes. */
-const SWEEP_WINDOW_SECONDS = 3_600;
 
 /** Daily allowance per mode, overridable with `FAMARA_AI_LIMIT_SNAP_PANTRY` / `_DISH`. */
 export function snapQuota(mode: "pantry" | "dish", env: EnvReader = denoEnv): QuotaPolicy {
@@ -43,32 +38,92 @@ export function snapQuota(mode: "pantry" | "dish", env: EnvReader = denoEnv): Qu
   return { ...base, limit };
 }
 
-/** The sweep's UUID as 32 lowercase hex characters: quota feature names allow only `[a-z0-9_]`. */
-const sweepKey = (sweepId: string) => sweepId.replace(/-/g, "").toLowerCase();
+const SweepReason = z.enum([
+  "paid",
+  "batch",
+  "words",
+  "daily_limit",
+  "refused",
+  "expired",
+  "spent",
+]);
+type SweepReason = z.infer<typeof SweepReason>;
 
-export function sweepFramesPolicy(sweepId: string): QuotaPolicy {
-  return {
-    feature: `swf_${sweepKey(sweepId)}`,
-    limit: SWEEP_MAX_BATCHES,
-    windowSeconds: SWEEP_WINDOW_SECONDS,
-  };
+const sweepRows = z
+  .array(z.object({
+    allowed: z.boolean(),
+    reason: SweepReason,
+    remaining: z.number().int().min(0),
+    reset_at: z.string(),
+  }))
+  .length(1);
+
+/** The service-role client and the verified caller the sweep belongs to. */
+export interface SweepAccount {
+  service: SupabaseClient;
+  userId: string;
 }
 
-export function sweepWordsPolicy(sweepId: string): QuotaPolicy {
-  return {
-    feature: `swt_${sweepKey(sweepId)}`,
-    limit: SWEEP_LIMITS.maxTextCalls,
-    windowSeconds: SWEEP_WINDOW_SECONDS,
-  };
-}
+type Refusal = Exclude<SweepReason, "paid" | "batch" | "words">;
 
-function sweepSpent(result: QuotaResult, now: () => number, message: string): HttpError {
-  const retryAfter = Math.max(1, Math.ceil((result.resetAt.getTime() - now()) / 1000));
+const SWEEP_RPC = {
+  batch: {
+    fn: "spend_snap_sweep_batch",
+    spent: "This sweep has sent all its frames. Start a new one.",
+  },
+  words: {
+    fn: "spend_snap_sweep_words",
+    spent: "This sweep has already added what was said. Start a new one.",
+  },
+} as const;
+
+const DAILY_LIMIT = "You have reached today's limit for this feature. Try again later.";
+
+function refusal(
+  kind: keyof typeof SWEEP_RPC,
+  reason: Refusal,
+  resetAt: Date,
+  now: () => number,
+): HttpError {
+  const retryAfter = Math.max(1, Math.ceil((resetAt.getTime() - now()) / 1000));
+  // A sweep refused at the daily limit stays refused: the app is told it is the daily limit.
+  const daily = reason === "daily_limit" || reason === "refused";
+  const message = daily
+    ? DAILY_LIMIT
+    : reason === "expired"
+    ? "This sweep has ended. Start a new one."
+    : SWEEP_RPC[kind].spent;
   return new HttpError("quota_exceeded", message, {
     // The sweep id stays out of the details: it is the app's, and says nothing useful here.
-    details: { feature: "snap_sweep", reset_at: result.resetAt.toISOString() },
+    details: { feature: daily ? "snap_pantry" : "snap_sweep", reset_at: resetAt.toISOString() },
     headers: { "Retry-After": String(retryAfter) },
   });
+}
+
+async function spendSweep(
+  account: SweepAccount,
+  kind: keyof typeof SWEEP_RPC,
+  args: Record<string, unknown>,
+  now: () => number,
+): Promise<QuotaResult> {
+  const [row] = await callRpc(
+    account.service,
+    SWEEP_RPC[kind].fn,
+    { p_user_id: account.userId, ...args },
+    sweepRows,
+  );
+  if (!row) throw new HttpError("upstream_error", "The sweep check returned no result.");
+  const resetAt = new Date(row.reset_at);
+  if (Number.isNaN(resetAt.getTime())) {
+    throw new HttpError("upstream_error", "The sweep check returned an invalid reset time.");
+  }
+  if (!row.allowed) {
+    if (row.reason === "paid" || row.reason === "batch" || row.reason === "words") {
+      throw new HttpError("upstream_error", "The sweep check returned an inconsistent result.");
+    }
+    throw refusal(kind, row.reason, resetAt, now);
+  }
+  return { allowed: true, remaining: row.remaining, resetAt };
 }
 
 /**
@@ -76,41 +131,25 @@ function sweepSpent(result: QuotaResult, now: () => number, message: string): Ht
  * is left of it; later batches report how many batches the pass has left.
  */
 export async function spendSweepBatch(
-  client: SupabaseClient,
+  account: SweepAccount,
   sweepId: string,
   env: EnvReader = denoEnv,
   now: () => number = Date.now,
 ): Promise<QuotaResult> {
-  const policy = sweepFramesPolicy(sweepId);
-  const sweep = await consumeQuota(client, policy);
-  if (!sweep.allowed) {
-    throw sweepSpent(sweep, now, "This sweep has sent all its frames. Start a new one.");
-  }
-  if (sweep.remaining !== policy.limit - 1) return sweep;
-  try {
-    return await enforceQuota(client, snapQuota("pantry", env), now);
-  } catch (error) {
-    // The first batch was turned away, but the pass's counter is already started: later batches
-    // would pass as "not the first" without ever paying. Use the counter up so they are refused.
-    for (let left = sweep.remaining; left > 0; left -= 1) {
-      const burnt = await consumeQuota(client, policy);
-      if (!burnt.allowed) break;
-    }
-    throw error;
-  }
+  return await spendSweep(account, "batch", {
+    p_sweep_id: sweepId,
+    p_daily_limit: snapQuota("pantry", env).limit,
+  }, now);
 }
 
-/** Spends one call of words: always `snap_text`, and the sweep's own word counter when given. */
+/** Spends one call of words: always `snap_text`, and one of the sweep's own when given. */
 export async function spendWords(
   client: SupabaseClient,
-  sweepId: string | undefined,
+  sweep: { account: SweepAccount; sweepId: string } | undefined,
   now: () => number = Date.now,
 ): Promise<QuotaResult> {
-  if (sweepId !== undefined) {
-    const words = await consumeQuota(client, sweepWordsPolicy(sweepId));
-    if (!words.allowed) {
-      throw sweepSpent(words, now, "This sweep has already added what was said. Start a new one.");
-    }
+  if (sweep !== undefined) {
+    await spendSweep(sweep.account, "words", { p_sweep_id: sweep.sweepId }, now);
   }
   return await enforceQuota(client, AI_QUOTAS.snap_text, now);
 }

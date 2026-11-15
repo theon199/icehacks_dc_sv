@@ -1,10 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { sweepFramesPolicy } from "./handler.ts";
 import { claudeJson, harness, HEIC, JPEG, post, silenced, userContent, WEBP } from "./testing.ts";
 
 const SWEEP_ID = "3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b";
-const SWEEP_FEATURE = "swf_3f2b8c1e9a4d4e6f8b2a1c3d5e7f9a0b";
-const WORDS_FEATURE = "swt_3f2b8c1e9a4d4e6f8b2a1c3d5e7f9a0b";
 
 const batch = (images: string[] = [JPEG, JPEG, WEBP]) => ({
   mode: "pantry",
@@ -50,17 +47,8 @@ Deno.test("snap accepts exactly one of a photo, a sweep batch or words", async (
   assertEquals(res.status, 200);
 });
 
-Deno.test("a sweep's feature name is the UUID as 32 hex characters", () => {
-  assertEquals(sweepFramesPolicy(SWEEP_ID.toUpperCase()), {
-    feature: SWEEP_FEATURE,
-    limit: 4,
-    windowSeconds: 3600,
-  });
-  assert(/^[a-z][a-z0-9_]{1,39}$/.test(SWEEP_FEATURE));
-});
-
 Deno.test("only the first batch of a sweep spends a pantry Snap", async () => {
-  const { handler, features } = harness({
+  const { handler, pantrySpent } = harness({
     replies: [claudeJson(FOUND), claudeJson(FOUND), claudeJson(FOUND)],
   });
   const first = await silenced(() => handler(post(batch())));
@@ -71,18 +59,18 @@ Deno.test("only the first batch of a sweep spends a pantry Snap", async () => {
   assertEquals(firstBody.items.map((item: { name: string }) => item.name), ["milk", "eggs"]);
   // The daily allowance: 20 a day, one now spent.
   assertEquals(firstBody.quota.remaining, 19);
-  assertEquals(features(), [SWEEP_FEATURE, "snap_pantry"]);
+  assertEquals(pantrySpent(), 1);
 
   const second = await silenced(() => handler(post(batch([JPEG]))));
   assertEquals(second.status, 200);
   // Later batches say how many batches the pass has left.
   assertEquals((await second.json()).quota.remaining, 2);
   await silenced(() => handler(post(batch())));
-  assertEquals(features(), [SWEEP_FEATURE, "snap_pantry", SWEEP_FEATURE, SWEEP_FEATURE]);
+  assertEquals(pantrySpent(), 1);
 });
 
 Deno.test("the fifth batch of a sweep is turned away", async () => {
-  const { handler, claudeCalls, features } = harness({
+  const { handler, claudeCalls, pantrySpent } = harness({
     replies: Array.from({ length: 4 }, () => claudeJson(FOUND)),
   });
   for (let i = 0; i < 4; i += 1) {
@@ -95,7 +83,7 @@ Deno.test("the fifth batch of a sweep is turned away", async () => {
   assertEquals(body.error.details.feature, "snap_sweep");
   assert(fifth.headers.get("Retry-After"));
   assertEquals(claudeCalls.length, 4);
-  assertEquals(features().filter((feature) => feature === "snap_pantry").length, 1);
+  assertEquals(pantrySpent(), 1);
 });
 
 Deno.test("a sweep whose first batch hits the daily limit cannot carry on for free", async () => {
@@ -105,6 +93,8 @@ Deno.test("a sweep whose first batch hits the daily limit cannot carry on for fr
   assertEquals((await first.json()).error.details.feature, "snap_pantry");
   const second = await handler(post(batch()));
   assertEquals(second.status, 429);
+  // Still told it is the daily limit: the refusal belongs to the sweep now.
+  assertEquals((await second.json()).error.details.feature, "snap_pantry");
   assertEquals(claudeCalls.length, 0);
 });
 
@@ -169,7 +159,7 @@ Deno.test("words spend snap_text and go to the fast model", async () => {
 });
 
 Deno.test("words in a sweep spend that pass's word counter too, twice at most", async () => {
-  const { handler, features, claudeCalls } = harness({
+  const { handler, features, claudeCalls, rpcCalls, pantrySpent } = harness({
     replies: [claudeJson({ items: [] }), claudeJson({ items: [] })],
   });
   const said = { mode: "pantry", sweep_id: SWEEP_ID, text: "oat milk" };
@@ -177,14 +167,19 @@ Deno.test("words in a sweep spend that pass's word counter too, twice at most", 
   assertEquals(first.status, 200);
   const body = await first.json();
   assertEquals([body.status, body.reason], ["no_food", "not_food"]);
-  assertEquals(features(), [WORDS_FEATURE, "snap_text"]);
+  assertEquals(features(), ["snap_text"]);
+  const sweepCalls = rpcCalls.filter((call) => call.fn.startsWith("spend_snap_sweep"));
+  assertEquals(sweepCalls.map((call) => [call.fn, call.role]), [[
+    "spend_snap_sweep_words",
+    "service",
+  ]]);
   assertEquals((await silenced(() => handler(post(said)))).status, 200);
   const third = await handler(post(said));
   assertEquals(third.status, 429);
   assertEquals(claudeCalls.length, 2);
   // Words never touch the pass's frame budget or the pantry allowance.
-  assertEquals(features().includes(SWEEP_FEATURE), false);
-  assertEquals(features().includes("snap_pantry"), false);
+  assertEquals(rpcCalls.some((call) => call.fn === "spend_snap_sweep_batch"), false);
+  assertEquals(pantrySpent(), 0);
 });
 
 Deno.test("words stop at the daily snap_text limit", async () => {

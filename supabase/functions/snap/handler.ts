@@ -23,7 +23,7 @@ import {
   textOf,
   zodToStructuredSchema,
 } from "../_shared/anthropic.ts";
-import { type AuthDeps, requireAdult, requireUser } from "../_shared/auth.ts";
+import { type AuthDeps, createServiceClient, requireAdult, requireUser } from "../_shared/auth.ts";
 import { denoEnv, type EnvReader } from "../_shared/env.ts";
 import { createHandler, type Handler, HttpError, json } from "../_shared/http.ts";
 import { enforceQuota, type QuotaResult } from "../_shared/quota.ts";
@@ -49,7 +49,7 @@ import {
   TextModelSchema,
   TextReadSchema,
 } from "./schema.ts";
-import { snapQuota, spendSweepBatch, spendWords } from "./sweepQuota.ts";
+import { snapQuota, spendSweepBatch, spendWords, type SweepAccount } from "./sweepQuota.ts";
 
 export { normalizeDish, normalizePantry, normalizeRange } from "./normalize.ts";
 export type { NutrientRange, PantryItem, SnapDish } from "./normalize.ts";
@@ -62,7 +62,7 @@ export {
   type SnapInput,
   SnapInputSchema,
 } from "./schema.ts";
-export { snapQuota, sweepFramesPolicy } from "./sweepQuota.ts";
+export { snapQuota } from "./sweepQuota.ts";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
@@ -279,13 +279,21 @@ export function createSnapHandler(deps: SnapDeps = {}): Handler {
       ...deps.anthropic,
     });
     const reader: Reader = { client, userId: ctx.user.id };
+    // Sweep state is written by the service role only, for the user the session belongs to.
+    const sweepAccount = (): SweepAccount => ({
+      service: createServiceClient({ ...deps.auth, env }),
+      userId: ctx.user.id,
+    });
 
     if (isWords(input)) {
-      const quota = await spendWords(ctx.client, input.sweep_id);
+      const sweep = input.sweep_id === undefined
+        ? undefined
+        : { account: sweepAccount(), sweepId: input.sweep_id };
+      const quota = await spendWords(ctx.client, sweep);
       return await withAnthropicErrors(() => readWords(reader, input, quota));
     }
     if (isSweep(input)) {
-      const quota = await spendSweepBatch(ctx.client, input.sweep_id, env);
+      const quota = await spendSweepBatch(sweepAccount(), input.sweep_id, env);
       return await withAnthropicErrors(() => readSweep(reader, images, quota));
     }
     const [image] = images;
