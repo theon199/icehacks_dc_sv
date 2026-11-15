@@ -14,6 +14,7 @@
 import { useSessionStore } from '@/features/auth';
 import { useFlushPendingCooks } from '@/features/cook';
 import { NotificationBridge } from '@/features/notifications';
+import { usesFirebase } from '@/lib/firebase/config';
 
 import { usePendingInviteResume } from './usePendingInviteResume';
 
@@ -25,5 +26,5 @@ function ReadySessionEffects() {
 
 export function SignedInEffects() {
   const userId = useSessionStore((s) => (s.status === 'ready' ? s.userId : null));
-  return userId ? <ReadySessionEffects key={userId} /> : null;
+  return userId && !usesFirebase ? <ReadySessionEffects key={userId} /> : null;
 }

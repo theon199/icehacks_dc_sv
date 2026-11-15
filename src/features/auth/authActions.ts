@@ -5,6 +5,17 @@
  */
 import { z } from 'zod';
 
+import {
+  firebaseResetPassword,
+  firebaseResendVerification,
+  firebaseSignIn,
+  firebaseSignOut,
+  firebaseSignUp,
+  firebaseUpdatePassword,
+  getFirebaseSession,
+} from '@/lib/firebase/auth';
+import { usesFirebase } from '@/lib/firebase/config';
+import { firestoreWrite } from '@/lib/firebase/firestore';
 import { logger } from '@/lib/logger';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -39,6 +50,10 @@ async function attempt<T>(context: string, run: () => Promise<T>): Promise<Actio
 
 export async function signInWithEmail(email: string, password: string): Promise<ActionResult> {
   return attempt('email sign-in', async () => {
+    if (usesFirebase) {
+      await firebaseSignIn(normalizeEmail(email), password);
+      return undefined;
+    }
     const { error } = await getSupabase().auth.signInWithPassword({
       email: normalizeEmail(email),
       password,
@@ -59,6 +74,19 @@ export async function signUpWithEmail(
   acceptedAt: Date = new Date(),
 ): Promise<ActionResult<SignUpOutcome>> {
   return attempt('sign-up', async () => {
+    if (usesFirebase) {
+      const account = await firebaseSignUp(normalizeEmail(email), password);
+      await firestoreWrite(
+        `catalogTerms/${encodeURIComponent(account.userId)}`,
+        {
+          version: { stringValue: TERMS_VERSION },
+          acceptedAt: { timestampValue: acceptedAt.toISOString() },
+        },
+        account.accessToken,
+      );
+      await firebaseResendVerification(normalizeEmail(email));
+      return { needsConfirmation: true };
+    }
     const { data, error } = await getSupabase().auth.signUp({
       email: normalizeEmail(email),
       password,
@@ -76,6 +104,10 @@ export async function signUpWithEmail(
 
 export async function resendConfirmation(email: string): Promise<ActionResult> {
   return attempt('resend confirmation', async () => {
+    if (usesFirebase) {
+      await firebaseResendVerification(normalizeEmail(email));
+      return undefined;
+    }
     const { error } = await getSupabase().auth.resend({
       type: 'signup',
       email: normalizeEmail(email),
@@ -88,6 +120,10 @@ export async function resendConfirmation(email: string): Promise<ActionResult> {
 
 export async function requestPasswordReset(email: string): Promise<ActionResult> {
   return attempt('password reset request', async () => {
+    if (usesFirebase) {
+      await firebaseResetPassword(normalizeEmail(email));
+      return undefined;
+    }
     const { error } = await getSupabase().auth.resetPasswordForEmail(normalizeEmail(email), {
       redirectTo: AUTH_CALLBACK_URL,
     });
@@ -98,6 +134,10 @@ export async function requestPasswordReset(email: string): Promise<ActionResult>
 
 export async function updatePassword(password: string): Promise<ActionResult> {
   return attempt('password update', async () => {
+    if (usesFirebase) {
+      await firebaseUpdatePassword(password);
+      return undefined;
+    }
     const { error } = await getSupabase().auth.updateUser({ password });
     if (error) throw error;
     return undefined;
@@ -106,6 +146,7 @@ export async function updatePassword(password: string): Promise<ActionResult> {
 
 export async function hasSession(): Promise<boolean> {
   try {
+    if (usesFirebase) return (await getFirebaseSession()) != null;
     const { data } = await getSupabase().auth.getSession();
     return data.session != null;
   } catch {
@@ -119,6 +160,7 @@ export async function hasSession(): Promise<boolean> {
  */
 export async function sessionRejectedByServer(): Promise<boolean> {
   try {
+    if (usesFirebase) return (await getFirebaseSession()) == null;
     const { data, error } = await getSupabase().auth.getUser();
     if (!error) return data.user == null;
     return error.status === 401 || error.status === 403;
@@ -189,6 +231,10 @@ export async function signOut(options: SignOutOptions = {}): Promise<SignOutResu
     await signOutCleanup();
   } catch (error) {
     logger.error('Could not clear user data before signing out', { error: String(error) });
+  }
+  if (usesFirebase) {
+    await firebaseSignOut();
+    return { everywhere: false };
   }
   const auth = getSupabase().auth;
   if (scope === 'global') {

@@ -1,5 +1,5 @@
 import { tokenize } from '../match/normalize.ts';
-import type { Course, GoalTag, Nutrition } from '../types.ts';
+import type { Course, GoalTag, Nutrition, SourceRecipe } from '../types.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Course
@@ -34,7 +34,7 @@ const MEDLINEPLUS_COURSE: ReadonlyArray<readonly [string, Course]> = [
   ['snacks', 'snack'],
 ];
 
-export function mapCourse(source: 'mealdb' | 'medlineplus', categories: readonly string[], title: string): Course {
+export function mapCourse(source: SourceRecipe['source'], categories: readonly string[], title: string): Course {
   if (DRINK.test(title) && !NOT_A_DRINK.test(title)) return 'drink';
   if (source === 'medlineplus') {
     for (const [category, course] of MEDLINEPLUS_COURSE) if (categories.includes(category)) return course;

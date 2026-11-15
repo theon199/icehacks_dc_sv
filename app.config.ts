@@ -86,7 +86,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-build-properties',
       {
-        ios: { deploymentTarget: '18.0' },
+        ios: { deploymentTarget: '18.0', enableSceneSupport: true },
       },
     ],
     ['expo-sqlite', { enableFTS: true }],

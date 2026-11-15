@@ -1,12 +1,4 @@
-/**
- * Turns free text typed by a person into a safe FTS5 MATCH expression.
- *
- * - Input is reduced to plain word tokens (letters and digits only), each quoted, so no quote,
- *   operator, column filter or parenthesis typed by the user can reach the FTS5 parser.
- * - Every token is prefix-matched so results appear while typing.
- * - Regional and alternative ingredient names are expanded: "aubergine" also matches "eggplant".
- *   The original words are kept as an alternative, so titles that use them still match.
- */
+/** Builds a PostgreSQL full-text query with prefix matching and ingredient synonyms. */
 
 /** Regional or alternative names (left) and the name the catalog mostly uses (right). */
 const SYNONYMS: readonly (readonly [string, string])[] = [
@@ -100,16 +92,16 @@ export function phraseAlternatives(text: string): string[] {
   return whole ? [original, whole.to.join(' ')] : [original];
 }
 
-const quote = (token: string) => `"${token}"*`;
+const quote = (token: string) => `'${token}':*`;
 
 function sequence(words: readonly string[]): string {
   const parts = words.map(quote);
-  return parts.length === 1 ? (parts[0] as string) : `(${parts.join(' AND ')})`;
+  return parts.length === 1 ? (parts[0] as string) : `(${parts.join(' & ')})`;
 }
 
 /**
- * Builds the MATCH expression, or null when the text has no searchable words. Groups are joined
- * with an explicit AND: FTS5 does not allow implicit AND next to a parenthesised group.
+ * Builds a prefix tsquery, or null when the text has no searchable words. Only normalized
+ * letters and digits enter the quoted terms, so typed punctuation cannot become operators.
  */
 export function buildFtsQuery(text: string): string | null {
   const groups = expandQuery(text);
@@ -119,12 +111,7 @@ export function buildFtsQuery(text: string): string | null {
       const unique = [...new Map(alternatives.map((alt) => [alt.join(' '), alt])).values()];
       return unique.length === 1
         ? sequence(unique[0] as readonly string[])
-        : `(${unique.map(sequence).join(' OR ')})`;
+        : `(${unique.map(sequence).join(' | ')})`;
     })
-    .join(' AND ');
-}
-
-/** Escapes LIKE wildcards; pair with `ESCAPE '\'`. */
-export function escapeLike(text: string): string {
-  return text.replace(/[\\%_]/g, (char) => `\\${char}`);
+    .join(' & ');
 }

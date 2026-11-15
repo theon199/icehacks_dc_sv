@@ -35,13 +35,6 @@ const nullableNum = z.number().nullable();
 const nullableText = z.string().nullable();
 const flag = z.number().int();
 
-/** Columns selected for every recipe summary, in table order. */
-export const RECIPE_SUMMARY_COLUMNS = `r.id, r.slug, r.title, r.summary, r.cuisine, r.region, r.course,
-  r.total_minutes, r.active_minutes, r.servings, r.effort, r.image_url, r.image_credit,
-  r.source_name, r.source_url, r.license, r.kcal, r.protein_g, r.carbs_g, r.fat_g, r.sat_fat_g,
-  r.fiber_g, r.sugar_g, r.added_sugar_g, r.sodium_mg, r.nutrition_confidence, r.allergens,
-  r.diet_flags, r.goal_tags, r.gentle, r.health_score, r.family_id`;
-
 export const recipeRowSchema = z.object({
   id: z.string(),
   slug: z.string(),
@@ -227,9 +220,6 @@ export const tutorialRowSchema = z.object({
 export function toTutorial(row: z.infer<typeof tutorialRowSchema>): RecipeTutorial {
   return { kind: row.kind, url: row.url, title: row.title, publisher: row.publisher };
 }
-
-export const INGREDIENT_COLUMNS = `i.id, i.name, i.plural, i.category, i.aisle, i.fdc_id, i.allergens,
-  i.allergen_status, i.diet_flags, i.pantry_staple, i.grams_per_unit`;
 
 export const ingredientRowSchema = z.object({
   id: z.string(),

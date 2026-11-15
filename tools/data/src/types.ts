@@ -79,9 +79,9 @@ export interface SourceIngredientLine {
   /** Display text exactly as it will be shown in the app. */
   text: string;
   /** Ingredient name when the source separates it from the measure (TheMealDB). */
-  name?: string;
+  name?: string | undefined;
   /** Measure when the source separates it (TheMealDB). */
-  measure?: string;
+  measure?: string | undefined;
   section?: string;
 }
 
@@ -95,12 +95,13 @@ export interface SourceTutorial {
 /** A recipe as read from a source, before any Famara derivation. */
 export interface SourceRecipe {
   id: string;
-  source: 'mealdb' | 'medlineplus';
+  source: 'mealdb' | 'medlineplus' | 'aptiva' | 'usda';
   sourceId: string;
   title: string;
   /** Source-specific grouping hints, e.g. TheMealDB category or MedlinePlus index pages. */
   categories: string[];
   area: string | null;
+  course?: Course | undefined;
   tags: string[];
   lines: SourceIngredientLine[];
   /** Instruction blocks as published (paragraphs or list items). */

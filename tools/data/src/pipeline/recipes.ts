@@ -304,7 +304,9 @@ function tutorials(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[
 /** Derives every Famara field for one source recipe. Returns null when it cannot be shipped. */
 export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: BuildIssue[]): Omit<RecipeRow, 'slug'> | null {
   const lines = source.lines.map((_, i) => parseLine(source, i, ctx, issues));
-  const steps = splitSteps(source.instructions);
+  const steps = source.source === 'aptiva' || source.source === 'usda'
+    ? source.instructions
+    : splitSteps(source.instructions);
   const fryingOil = applyFryingAbsorption(lines, [source.title, ...steps]);
   if (lines.length === 0 || steps.length === 0) {
     issues.push({ recipe_id: source.id, kind: 'excluded', detail: lines.length === 0 ? 'no ingredient lines' : 'no instructions' });
@@ -315,7 +317,7 @@ export function buildRecipe(source: SourceRecipe, ctx: RecipeContext, issues: Bu
     else if (line.unresolved.length > 0) issues.push({ recipe_id: source.id, kind: 'unresolved_choice', detail: `${line.row.text} [${line.unresolved.join(', ')}]` });
   }
   const stepRows = steps.map((text, i) => ({ position: i + 1, text, timer_seconds: detectTimerSeconds(text) }));
-  let course = mapCourse(source.source, source.categories, source.title);
+  let course = source.course ?? mapCourse(source.source, source.categories, source.title);
   const fallbackCuisine = source.source === 'medlineplus' ? 'american' : 'international';
   const { cuisine, region } = resolveCuisine(source.area, source.title, fallbackCuisine);
   const cuisineDef = CUISINE_BY_ID.get(cuisine);

@@ -71,7 +71,7 @@ slots, archive, "plan my week" auto-fill respecting goals + time + pantry, two-d
 plan (planner), generated shopping list. Small appetite: "plan small meals".
 
 ### 7. Search (tab)
-Instant full-text search (SQLite FTS) with filters (cuisine, course, time, diet, goals, max kcal),
+Search over the hosted Cloud Firestore catalog with filters (cuisine, course, time, diet, goals, max kcal),
 recent searches, results as recycling grid. Segment switch to **Chef** (AI).
 
 ### 8. Chef — AI assistant (18+, consent)

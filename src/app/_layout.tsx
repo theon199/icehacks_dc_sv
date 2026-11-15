@@ -13,6 +13,7 @@ import { RootNavigator } from '@/features/shell/RootNavigator';
 import { ConfigErrorScreen } from '@/features/system/screens/ConfigErrorScreen';
 import { RouteErrorScreen } from '@/features/system/screens/RouteErrorScreen';
 import { readPublicEnv } from '@/lib/env';
+import { usesFirebase } from '@/lib/firebase/config';
 import { queryClient, wireQueryManagers } from '@/lib/query/client';
 import { ThemeProvider, ToastHost } from '@/ui';
 import { fontAssets } from '@/ui/fonts';
@@ -33,7 +34,8 @@ export default function RootLayout() {
 
   // Keep the splash up until fonts are in and the stored session has been read, so the first
   // frame is already the right screen. Without configuration there is no session to wait for.
-  const ready = (fontsLoaded || fontError != null) && (!env.ok || !sessionLoading);
+  const ready =
+    (fontsLoaded || fontError != null) && ((!env.ok && !usesFirebase) || !sessionLoading);
   useEffect(() => {
     if (ready) void SplashScreen.hideAsync().catch(() => undefined);
   }, [ready]);
@@ -49,7 +51,11 @@ export default function RootLayout() {
                 wins, so this one comes before the screens: a dark screen's own light status bar
                 (the welcome flow, the age gate) must outrank it even on the first frame. */}
             <StatusBar style="auto" />
-            {env.ok ? <RootNavigator /> : <ConfigErrorScreen problems={env.problems} />}
+            {usesFirebase || env.ok ? (
+              <RootNavigator />
+            ) : (
+              <ConfigErrorScreen problems={env.problems} />
+            )}
             <ToastHost />
           </QueryClientProvider>
         </ThemeProvider>

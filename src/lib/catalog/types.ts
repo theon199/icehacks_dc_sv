@@ -1,5 +1,5 @@
 /**
- * Domain types for the bundled recipe catalog. Field for field they mirror the tables in
+ * Domain types for the recipe catalog. Field for field they mirror the tables in
  * docs/DATA.md (snake_case columns become camelCase; JSON columns arrive parsed), so moving them
  * into a shared domain module later is a rename, not a redesign.
  */
@@ -250,6 +250,8 @@ export interface CandidateFilters {
   /** Only recipes tagged suitable for small appetite mode. */
   gentle?: boolean;
   excludeIds?: readonly string[];
+  /** Match core ingredients before limiting the candidate pool. */
+  pantry?: { ingredientIds: readonly string[]; minCoverage: number };
   limit: number;
 }
 

@@ -1,21 +1,12 @@
-/**
- * Typed queries over the bundled catalog. Every statement has fixed SQL text (lists are bound as
- * one JSON array and expanded with `json_each`), so each runs through a cached prepared statement.
- * The catalog is immutable for the life of a build, which makes the small LRU caches here safe.
- */
-import type { SQLiteBindValue } from 'expo-sqlite';
 import { z } from 'zod';
 
-import { catalogPreparedQuery, isCatalogError } from '../db/catalog';
-import { logger } from '../logger';
+import { CATALOG_STALE_TIME, readCatalog } from './api';
 import { LruCache } from './lru';
 import {
   candidateRowSchema,
-  INGREDIENT_COLUMNS,
   ingredientLineRowSchema,
   ingredientRowSchema,
   metaRowSchema,
-  RECIPE_SUMMARY_COLUMNS,
   recipeRowSchema,
   stepRowSchema,
   substitutionRowSchema,
@@ -29,7 +20,7 @@ import {
   toTutorial,
   tutorialRowSchema,
 } from './rows';
-import { buildFtsQuery, escapeLike, phraseAlternatives, tokenize } from './searchQuery';
+import { buildFtsQuery, expandQuery, phraseAlternatives, tokenize } from './searchQuery';
 import type {
   AllergenId,
   CandidateFilters,
@@ -46,55 +37,29 @@ import type {
   Substitution,
   SubstitutionGoal,
 } from './types';
+import type { Json } from '../supabase/database.types';
 
 export const SEARCH_PAGE_SIZE = 30;
 const MAX_CANDIDATES = 2000;
 const INGREDIENT_SEARCH_LIMIT = 20;
 
-const summaryCache = new LruCache<string, RecipeSummary>(600);
-const detailCache = new LruCache<string, RecipeDetail>(40);
-const ingredientCache = new LruCache<string, Ingredient>(400);
-let cuisinesPromise: Promise<CuisineInfo[]> | null = null;
-let metaPromise: Promise<CatalogMeta> | null = null;
-let staplesPromise: Promise<Ingredient[]> | null = null;
+// The catalog is stored on Supabase. These short-lived caches stay in memory only.
+const summaryCache = new LruCache<string, RecipeSummary>(600, CATALOG_STALE_TIME);
+const detailCache = new LruCache<string, RecipeDetail>(40, CATALOG_STALE_TIME);
+const ingredientCache = new LruCache<string, Ingredient>(400, CATALOG_STALE_TIME);
 
-/** Forgets every cached result (tests, or after the catalog file is replaced). */
+/** Forgets cached reads. */
 export function clearCatalogCaches(): void {
   summaryCache.clear();
   detailCache.clear();
   ingredientCache.clear();
-  cuisinesPromise = null;
-  metaPromise = null;
-  staplesPromise = null;
 }
 
-const jsonList = (values: readonly string[] | undefined): string | null =>
-  values && values.length > 0 ? JSON.stringify([...new Set(values)]) : null;
+const list = (values: readonly string[] | undefined): string[] | undefined =>
+  values?.length ? [...new Set(values)] : undefined;
 
-const courseList = (course: Course | readonly Course[] | undefined): string | null =>
-  course == null ? null : jsonList(typeof course === 'string' ? [course] : course);
-
-const finiteOrNull = (value: number | undefined): number | null =>
-  value != null && Number.isFinite(value) ? value : null;
-
-/**
- * Shared WHERE clauses. Each clause is disabled by binding NULL (or 0) to its first parameter, so
- * the SQL text never changes with the filters in use.
- */
-const FILTER_SQL = `
-  AND (? IS NULL OR (r.diet_flags & ?) = ?)
-  AND (? IS NULL OR r.cuisine IN (SELECT value FROM json_each(?)))
-  AND (? IS NULL OR r.course IN (SELECT value FROM json_each(?)))
-  AND (? IS NULL OR (r.total_minutes IS NOT NULL AND r.total_minutes <= ?))
-  AND (? IS NULL OR (r.kcal IS NOT NULL AND r.kcal <= ?))
-  AND (? = 0 OR r.gentle = 1)
-  AND (? IS NULL OR NOT EXISTS (
-    SELECT 1 FROM json_each(?) a
-    WHERE json_extract(r.allergens, '$.' || a.value) IS NOT 'free'))
-  AND (? IS NULL OR NOT EXISTS (
-    SELECT 1 FROM json_each(?) g
-    WHERE NOT EXISTS (SELECT 1 FROM json_each(r.goal_tags) t WHERE t.value = g.value)))
-  AND (? IS NULL OR r.id NOT IN (SELECT value FROM json_each(?)))`;
+const finite = (value: number | undefined): number | undefined =>
+  Number.isFinite(value) ? value : undefined;
 
 interface FilterValues {
   dietMask?: number | undefined;
@@ -108,39 +73,23 @@ interface FilterValues {
   excludeIds?: readonly string[] | undefined;
 }
 
-function filterParams(f: FilterValues): SQLiteBindValue[] {
-  const mask = f.dietMask != null && f.dietMask > 0 ? Math.trunc(f.dietMask) : null;
-  const cuisines = jsonList(f.cuisines);
-  const courses = courseList(f.course);
-  const maxMinutes = finiteOrNull(f.maxMinutes);
-  const maxKcal = finiteOrNull(f.maxKcal);
-  const allergens = jsonList(f.avoidAllergens);
-  const goals = jsonList(f.goals);
-  const excluded = jsonList(f.excludeIds);
-  return [
-    mask,
-    mask,
-    mask,
-    cuisines,
-    cuisines,
-    courses,
-    courses,
-    maxMinutes,
-    maxMinutes,
-    maxKcal,
-    maxKcal,
-    f.gentle ? 1 : 0,
-    allergens,
-    allergens,
-    goals,
-    goals,
-    excluded,
-    excluded,
-  ];
+function recipeFilters(f: FilterValues): Record<string, Json | undefined> {
+  const mask = finite(f.dietMask);
+  return {
+    diet: mask != null && mask > 0 ? Math.trunc(mask) : undefined,
+    cuisines: list(f.cuisines),
+    courses: typeof f.course === 'string' ? [f.course] : list(f.course),
+    max_minutes: finite(f.maxMinutes),
+    max_kcal: finite(f.maxKcal),
+    gentle: f.gentle || undefined,
+    avoid_allergens: list(f.avoidAllergens),
+    goals: list(f.goals),
+    exclude_ids: list(f.excludeIds),
+  };
 }
 
-const SUMMARY_BY_IDS_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS} FROM recipes r
-  WHERE r.id IN (SELECT value FROM json_each(?))`;
+const recipeRows = z.array(recipeRowSchema);
+const ingredientRows = z.array(ingredientRowSchema);
 
 /**
  * Looks up many ids at once, in the order asked, skipping unknown ids. Results are gathered in a
@@ -176,12 +125,13 @@ async function lookupMany<T>(
 /** Summaries for many ids in one statement, in the order asked; unknown ids are skipped. */
 export function getRecipeSummaries(ids: readonly string[]): Promise<RecipeSummary[]> {
   return lookupMany(ids, summaryCache, async (missing) => {
-    const rows = await catalogPreparedQuery(
-      SUMMARY_BY_IDS_SQL,
-      [JSON.stringify(missing)],
-      recipeRowSchema,
+    const rows = await Promise.all(
+      Array.from({ length: Math.ceil(missing.length / MAX_CANDIDATES) }, (_, index) => {
+        const batch = missing.slice(index * MAX_CANDIDATES, (index + 1) * MAX_CANDIDATES);
+        return readCatalog('catalog_recipes', { p_ids: batch, p_limit: batch.length }, recipeRows);
+      }),
     );
-    return rows.map((row) => [row.id, toRecipeSummary(row)] as const);
+    return rows.flat().map((row) => [row.id, toRecipeSummary(row)] as const);
   });
 }
 
@@ -190,52 +140,26 @@ export async function getRecipeSummary(id: string): Promise<RecipeSummary | null
   return summary ?? null;
 }
 
-/**
- * Both id lists are JSON columns the catalog build computes from each recipe's lines (matched ids,
- * and the core ones: matched, required and not a pantry staple), so this reads one row per recipe
- * instead of aggregating `recipe_ingredients` for each. `coreIngredientIdsOf` (./toDomain) applies
- * the same core rule to a loaded recipe's lines.
- */
-const CANDIDATES_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS}, r.ingredient_ids, r.core_ingredient_ids
-  FROM recipes r
-  WHERE 1 = 1 ${FILTER_SQL}
-  ORDER BY r.health_score DESC, r.id
-  LIMIT ?`;
-
-/**
- * Lightweight candidates for ranking. SQL only does coarse filtering (diet, allergens fail-closed,
- * cuisine, course, time, gentle); scoring and diversity belong to the domain layer.
- */
+/** Coarse server filtering, followed by scoring and diversity in the domain layer. */
 export async function listCandidates(filters: CandidateFilters): Promise<RecipeCandidate[]> {
-  const limit = Math.min(Math.max(Math.trunc(filters.limit), 1), MAX_CANDIDATES);
-  const rows = await catalogPreparedQuery(
-    CANDIDATES_SQL,
-    [
-      ...filterParams({
-        dietMask: filters.dietMask ?? filters.excludeDietMask,
-        cuisines: filters.cuisines,
-        course: filters.course,
-        maxMinutes: filters.maxMinutes,
-        gentle: filters.gentle,
-        avoidAllergens: filters.avoidAllergens,
-        excludeIds: filters.excludeIds,
-      }),
-      limit,
-    ],
-    candidateRowSchema,
+  const limit = Math.min(Math.max(Math.trunc(finite(filters.limit) ?? 1), 1), MAX_CANDIDATES);
+  const rows = await readCatalog(
+    'catalog_recipes',
+    {
+      p_filters: {
+        ...recipeFilters({ ...filters, dietMask: filters.dietMask ?? filters.excludeDietMask }),
+        pantry_ids: filters.pantry ? [...filters.pantry.ingredientIds] : undefined,
+        min_coverage: filters.pantry?.minCoverage,
+      },
+      p_limit: limit,
+    },
+    z.array(candidateRowSchema),
   );
-  // Not added to the summary cache: a candidate list is up to 2,000 rows and would evict the
-  // summaries screens actually show.
   return rows.map(toRecipeCandidate);
 }
 
 /** Safety filters a family lookup accepts; a `CandidateFilters` object fits as is. */
 export type FamilyFilters = Pick<CandidateFilters, 'dietMask' | 'avoidAllergens'>;
-
-// `recipes_family` indexes family_id, so this reads only the family's rows.
-const FAMILY_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS} FROM recipes r
-  WHERE r.family_id = ? ${FILTER_SQL}
-  ORDER BY r.health_score DESC, r.id`;
 
 /**
  * Every version of one dish (the recipes sharing `familyId`), healthiest first. The safety filters
@@ -246,13 +170,10 @@ export async function getRecipesByFamily(
   familyId: string,
   filters: FamilyFilters,
 ): Promise<RecipeSummary[]> {
-  const rows = await catalogPreparedQuery(
-    FAMILY_SQL,
-    [
-      familyId,
-      ...filterParams({ dietMask: filters.dietMask, avoidAllergens: filters.avoidAllergens }),
-    ],
-    recipeRowSchema,
+  const rows = await readCatalog(
+    'catalog_recipes',
+    { p_family_id: familyId, p_filters: recipeFilters(filters), p_limit: MAX_CANDIDATES },
+    recipeRows,
   );
   return rows.map((row) => {
     const summary = toRecipeSummary(row);
@@ -261,67 +182,38 @@ export async function getRecipesByFamily(
   });
 }
 
-const PANTRY_STAPLES_SQL = `SELECT ${INGREDIENT_COLUMNS} FROM ingredients i
-  WHERE i.pantry_staple = 1
-  ORDER BY i.category, i.name, i.id`;
-
-/** Ingredients most kitchens keep on hand (salt, oil and the like), by category then name. */
+/** Ingredients most kitchens keep on hand, by category then name. */
 export async function getPantryStaples(): Promise<Ingredient[]> {
-  staplesPromise ??= catalogPreparedQuery(PANTRY_STAPLES_SQL, [], ingredientRowSchema)
-    .then((rows) =>
-      rows.map((row) => {
-        const ingredient = toIngredient(row);
-        ingredientCache.set(ingredient.id, ingredient);
-        return ingredient;
-      }),
-    )
-    .catch((error: unknown) => {
-      staplesPromise = null;
-      throw error;
-    });
-  // A copy, so a caller sorting or trimming its list cannot change what the next caller gets.
-  return [...(await staplesPromise)];
+  const rows = await readCatalog('catalog_ingredients', { p_staples_only: true }, ingredientRows);
+  return rows.map(toIngredient);
 }
 
-const INGREDIENT_LINES_SQL = `SELECT position, ingredient_id, text, quantity, unit, grams, section, optional
-  FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position`;
-const STEPS_SQL = `SELECT position, text, timer_seconds FROM recipe_steps
-  WHERE recipe_id = ? ORDER BY position`;
-const TUTORIALS_SQL = `SELECT kind, url, title, publisher FROM recipe_tutorials
-  WHERE recipe_id = ? ORDER BY CASE kind WHEN 'video' THEN 0 ELSE 1 END, url`;
+const detailSchema = z
+  .object({
+    recipe: recipeRowSchema,
+    ingredients: z.array(ingredientLineRowSchema),
+    steps: z.array(stepRowSchema),
+    tutorials: z.array(tutorialRowSchema),
+  })
+  .nullable();
 
 /** Everything needed by the recipe screen and cook mode, or null for an unknown id. */
 export async function getRecipeDetail(id: string): Promise<RecipeDetail | null> {
   const cached = detailCache.get(id);
   if (cached) return cached;
-  const [summary, lines, steps, tutorials] = await Promise.all([
-    getRecipeSummary(id),
-    catalogPreparedQuery(INGREDIENT_LINES_SQL, [id], ingredientLineRowSchema),
-    catalogPreparedQuery(STEPS_SQL, [id], stepRowSchema),
-    catalogPreparedQuery(TUTORIALS_SQL, [id], tutorialRowSchema),
-  ]);
-  if (!summary) return null;
+  const row = await readCatalog('catalog_recipe_detail', { p_id: id }, detailSchema);
+  if (!row) return null;
+  const summary = toRecipeSummary(row.recipe);
   const detail: RecipeDetail = {
     ...summary,
-    ingredients: lines.map(toIngredientLine),
-    steps: steps.map(toStep),
-    tutorials: tutorials.map(toTutorial),
+    ingredients: row.ingredients.map(toIngredientLine),
+    steps: row.steps.map(toStep),
+    tutorials: row.tutorials.map(toTutorial),
   };
+  summaryCache.set(id, summary);
   detailCache.set(id, detail);
   return detail;
 }
-
-const SEARCH_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS}
-  FROM recipes_fts f JOIN recipes r ON r.id = f.recipe_id
-  WHERE recipes_fts MATCH ? ${FILTER_SQL}
-  ORDER BY bm25(recipes_fts, 0.0, 10.0, 3.0, 1.0), r.health_score DESC, r.id
-  LIMIT ? OFFSET ?`;
-
-const BROWSE_SQL = `SELECT ${RECIPE_SUMMARY_COLUMNS}
-  FROM recipes r
-  WHERE 1 = 1 ${FILTER_SQL}
-  ORDER BY r.health_score DESC, r.id
-  LIMIT ? OFFSET ?`;
 
 function searchFilterValues(filters: SearchFilters): FilterValues {
   return {
@@ -336,7 +228,7 @@ function searchFilterValues(filters: SearchFilters): FilterValues {
 }
 
 /**
- * Full-text search ranked by bm25 (title weighs most, then cuisine, then ingredients), with
+ * Full-text search ranked by PostgreSQL (title weighs most, then cuisine, then ingredients), with
  * synonyms and prefix matching. An empty query browses the filtered catalog by health score.
  * `cursor` is the offset returned as `nextCursor` by the previous page.
  */
@@ -345,30 +237,19 @@ export async function searchRecipes(
   filters: SearchFilters = {},
   cursor: number | null = 0,
 ): Promise<SearchPage> {
-  const offset = Math.max(0, Math.trunc(cursor ?? 0));
+  const offset = Math.max(0, Math.trunc(finite(cursor ?? 0) ?? 0));
   const match = buildFtsQuery(query);
-  const params = filterParams(searchFilterValues(filters));
-  let rows: z.infer<typeof recipeRowSchema>[];
-  try {
-    rows = match
-      ? await catalogPreparedQuery(
-          SEARCH_SQL,
-          [match, ...params, SEARCH_PAGE_SIZE + 1, offset],
-          recipeRowSchema,
-        )
-      : await catalogPreparedQuery(
-          BROWSE_SQL,
-          [...params, SEARCH_PAGE_SIZE + 1, offset],
-          recipeRowSchema,
-        );
-  } catch (error) {
-    // The builder only emits quoted word tokens, so this is a safety net: a search box must never
-    // surface an error for what someone typed. Only a failed MATCH statement is swallowed; rows
-    // that break the contract (`bad_rows`) are a real bug and still throw.
-    if (!match || !isCatalogError(error) || error.kind !== 'query_failed') throw error;
-    logger.warn('Full-text search failed; returning no results', { tokens: tokenize(query) });
-    return { items: [], nextCursor: null };
-  }
+  const rows = await readCatalog(
+    'catalog_recipes',
+    {
+      p_filters: recipeFilters(searchFilterValues(filters)),
+      ...(match ? { p_query: match } : {}),
+      p_limit: SEARCH_PAGE_SIZE + 1,
+      p_offset: offset,
+    },
+    recipeRows,
+    expandQuery(query),
+  );
   const items = rows.slice(0, SEARCH_PAGE_SIZE).map((row) => {
     const summary = toRecipeSummary(row);
     summaryCache.set(summary.id, summary);
@@ -380,26 +261,13 @@ export async function searchRecipes(
   };
 }
 
-const INGREDIENTS_BY_IDS_SQL = `SELECT ${INGREDIENT_COLUMNS} FROM ingredients i
-  WHERE i.id IN (SELECT value FROM json_each(?))`;
-
 /** Ingredients for the given ids, in the order asked; unknown ids are skipped. */
 export function getIngredients(ids: readonly string[]): Promise<Ingredient[]> {
   return lookupMany(ids, ingredientCache, async (missing) => {
-    const rows = await catalogPreparedQuery(
-      INGREDIENTS_BY_IDS_SQL,
-      [JSON.stringify(missing)],
-      ingredientRowSchema,
-    );
+    const rows = await readCatalog('catalog_ingredients', { p_ids: [...missing] }, ingredientRows);
     return rows.map((row) => [row.id, toIngredient(row)] as const);
   });
 }
-
-const INGREDIENT_MATCH = `(i.name LIKE ? ESCAPE '\\' OR i.plural LIKE ? ESCAPE '\\'
-    OR replace(i.id, '_', ' ') LIKE ? ESCAPE '\\')`;
-const SEARCH_INGREDIENTS_SQL = `SELECT ${INGREDIENT_COLUMNS} FROM ingredients i
-  WHERE ${INGREDIENT_MATCH} OR ${INGREDIENT_MATCH}
-  LIMIT 200`;
 
 function ingredientRank(ingredient: Ingredient, phrases: readonly string[]): number {
   const names = [ingredient.name, ingredient.plural ?? '', ingredient.id.replace(/_/g, ' ')].map(
@@ -422,13 +290,7 @@ function ingredientRank(ingredient: Ingredient, phrases: readonly string[]): num
 export async function searchIngredients(text: string): Promise<Ingredient[]> {
   const phrases = phraseAlternatives(text);
   if (phrases.length === 0) return [];
-  const first = `%${escapeLike(phrases[0] as string)}%`;
-  const second = `%${escapeLike((phrases[1] ?? phrases[0]) as string)}%`;
-  const rows = await catalogPreparedQuery(
-    SEARCH_INGREDIENTS_SQL,
-    [first, first, first, second, second, second],
-    ingredientRowSchema,
-  );
+  const rows = await readCatalog('catalog_ingredients', { p_phrases: phrases }, ingredientRows);
   return rows
     .map((row) => {
       const ingredient = toIngredient(row);
@@ -445,23 +307,18 @@ export async function searchIngredients(text: string): Promise<Ingredient[]> {
     .map((entry) => entry.ingredient);
 }
 
-const SUBSTITUTIONS_SQL = `SELECT s.from_id, s.to_id, s.ratio, s.goal, s.note FROM substitutions s
-  WHERE s.from_id IN (SELECT value FROM json_each(?))
-    AND (? IS NULL OR s.goal IN (SELECT value FROM json_each(?)))
-  ORDER BY s.from_id, s.goal, s.to_id`;
-
 /** Swaps for the given ingredients, optionally limited to some goals. */
 export async function getSubstitutions(
   ingredientIds: readonly string[],
   goals?: readonly SubstitutionGoal[],
 ): Promise<Substitution[]> {
-  const ids = jsonList(ingredientIds);
+  const ids = list(ingredientIds);
   if (!ids) return [];
-  const goalList = jsonList(goals);
-  const rows = await catalogPreparedQuery(
-    SUBSTITUTIONS_SQL,
-    [ids, goalList, goalList],
-    substitutionRowSchema,
+  const goalList = list(goals);
+  const rows = await readCatalog(
+    'catalog_substitutions',
+    { p_ids: ids, ...(goalList ? { p_goals: goalList } : {}) },
+    z.array(substitutionRowSchema),
   );
   return rows.map(toSubstitution);
 }
@@ -472,33 +329,17 @@ const cuisineRowSchema = z.object({
   recipe_count: z.number(),
 });
 
-const CUISINES_SQL = `SELECT cuisine, min(region) AS region, count(*) AS recipe_count
-  FROM recipes GROUP BY cuisine ORDER BY recipe_count DESC, cuisine`;
-
 /** Every cuisine with its region and recipe count, most common first. */
-export function getCuisines(): Promise<CuisineInfo[]> {
-  cuisinesPromise ??= catalogPreparedQuery(CUISINES_SQL, [], cuisineRowSchema)
-    .then((rows) =>
-      rows.map((row) => ({
-        cuisine: row.cuisine,
-        region: row.region,
-        recipeCount: row.recipe_count,
-      })),
-    )
-    .catch((error: unknown) => {
-      cuisinesPromise = null;
-      throw error;
-    });
-  return cuisinesPromise;
+export async function getCuisines(): Promise<CuisineInfo[]> {
+  const rows = await readCatalog('catalog_cuisines', {}, z.array(cuisineRowSchema));
+  return rows.map((row) => ({
+    cuisine: row.cuisine,
+    region: row.region,
+    recipeCount: row.recipe_count,
+  }));
 }
 
-/** Build information from the catalog's `meta` table. */
-export function getCatalogMeta(): Promise<CatalogMeta> {
-  metaPromise ??= catalogPreparedQuery('SELECT key, value FROM meta', [], metaRowSchema)
-    .then(toCatalogMeta)
-    .catch((error: unknown) => {
-      metaPromise = null;
-      throw error;
-    });
-  return metaPromise;
+/** Build information for the imported catalog. */
+export async function getCatalogMeta(): Promise<CatalogMeta> {
+  return toCatalogMeta(await readCatalog('catalog_meta', {}, z.array(metaRowSchema)));
 }

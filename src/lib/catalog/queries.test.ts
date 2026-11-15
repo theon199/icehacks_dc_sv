@@ -1,6 +1,5 @@
 import { checkRecipe, compileSafetyRules, isRecipeSafe } from '@/domain/safety';
 
-import { CATALOG_SCHEMA_VERSION, resetCatalogForTests } from '../db/catalog';
 import { describeCatalogDb, stats } from './__fixtures__/nodeCatalogDb';
 import {
   clearCatalogCaches,
@@ -20,16 +19,24 @@ import {
 } from './queries';
 import { ALLERGEN_IDS, DietFlag, dietMask, satisfiesDiets, type AllergenId } from './types';
 
-jest.mock(
-  'expo-sqlite',
-  () => jest.requireActual('./__fixtures__/nodeCatalogDb').expoSqliteFake as unknown,
-);
-jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
+jest.mock('@/lib/supabase/client', () => ({
+  supabase: jest.requireActual('./__fixtures__/nodeCatalogDb').catalogSupabaseFake,
+}));
 
 beforeEach(() => {
-  resetCatalogForTests();
   clearCatalogCaches();
 });
+
+async function browseAllRecipes(query = '') {
+  const recipes = [];
+  let cursor: number | null = 0;
+  do {
+    const page = await searchRecipes(query, {}, cursor);
+    recipes.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== null);
+  return recipes;
+}
 
 describeCatalogDb('recipe summaries', () => {
   it('maps a row into a typed summary with parsed JSON columns', async () => {
@@ -72,19 +79,17 @@ describeCatalogDb('recipe summaries', () => {
     await expect(getRecipeSummary('missing:1')).resolves.toBeNull();
   });
 
-  it('serves repeated lookups from cache without touching SQLite', async () => {
+  it('serves repeated lookups from cache without another request', async () => {
     await getRecipeSummaries(['mealdb:52764', 'mealdb:52765']);
     const before = stats.executed;
     await getRecipeSummaries(['mealdb:52765', 'mealdb:52764']);
     expect(stats.executed).toBe(before);
   });
 
-  it('reuses one prepared statement for the same query shape', async () => {
-    const before = stats.prepared;
-    await getRecipeSummary('mealdb:52764');
-    await getRecipeSummary('mealdb:52765');
+  it('batches uncached IDs in a single request', async () => {
+    const before = stats.executed;
     await getRecipeSummaries(['mealdb:52766', 'mealdb:52767', 'mealdb:52768']);
-    expect(stats.prepared - before).toBe(1);
+    expect(stats.executed - before).toBe(1);
   });
 
   it('keeps cached rows that a full cache evicts while the same batch loads', async () => {
@@ -106,6 +111,26 @@ describeCatalogDb('recipe summaries', () => {
 });
 
 describeCatalogDb('recipe detail', () => {
+  it.each([
+    ['Cheese and Corn Chowder', 'usda:chowder', 'USDA Food and Nutrition Administration'],
+    [
+      'Sardines with Chermoula Herb Marinade',
+      'aptiva:catalog-expansion-algerian-sardines-chermoula-grillees-algiers-version-1',
+      'Aptiva Culinary Research',
+    ],
+  ])('finds %s in the catalog and opens its credited recipe', async (query, id, sourceName) => {
+    const page = await searchRecipes(query);
+    expect(page.items.map((recipe) => recipe.id)).toContain(id);
+    const detail = await getRecipeDetail(id);
+    expect(detail?.sourceName).toBe(sourceName);
+    expect(detail?.license).toBeTruthy();
+    expect(detail?.ingredients.length).toBeGreaterThan(0);
+    expect(detail?.steps.map((step) => step.position)).toEqual(
+      Array.from({ length: detail?.steps.length ?? 0 }, (_, index) => index + 1),
+    );
+    expect(detail?.steps.length).toBeGreaterThan(0);
+  });
+
   it('returns ordered ingredients, steps and tutorials', async () => {
     const detail = await getRecipeDetail('mealdb:52764');
     expect(detail?.ingredients.length).toBeGreaterThan(3);
@@ -156,8 +181,7 @@ describeCatalogDb('listCandidates', () => {
   });
 
   it('shows every vegetarian-flagged recipe to vegetarians under the safety cross-check', async () => {
-    const all = await listCandidates({ limit: 2000 });
-    // The whole catalog, not just the first page of it.
+    const all = await browseAllRecipes();
     expect(all).toHaveLength((await getCatalogMeta()).recipeCount);
 
     const prefs = { allergens: [], diets: ['vegetarian' as const] };
@@ -227,7 +251,7 @@ describeCatalogDb('listCandidates', () => {
 describeCatalogDb('core ingredients', () => {
   it('leave out pantry staples and optional lines', async () => {
     // Thirteen lines: five pantry staples and one optional line among them.
-    const [candidate] = await listCandidates({ limit: 2000 }).then((all) =>
+    const [candidate] = await listCandidates({ limit: 2000, course: 'dessert' }).then((all) =>
       all.filter((c) => c.id === 'medlineplus:apple-bars'),
     );
     const detail = await getRecipeDetail('medlineplus:apple-bars');
@@ -277,12 +301,10 @@ describeCatalogDb('getPantryStaples', () => {
     expect(categories).toEqual([...categories].sort());
   });
 
-  it('reads once and hands every caller its own list', async () => {
+  it('hands every caller its own list', async () => {
     const first = await getPantryStaples();
-    const before = stats.executed;
     first.length = 0;
     const second = await getPantryStaples();
-    expect(stats.executed).toBe(before);
     expect(second.length).toBeGreaterThan(0);
   });
 });
@@ -350,12 +372,12 @@ describeCatalogDb('searchRecipes', () => {
 
   it('expands regional ingredient names', async () => {
     const [aubergine, eggplant] = await Promise.all([
-      searchRecipes('aubergine'),
-      searchRecipes('eggplant'),
+      browseAllRecipes('aubergine'),
+      browseAllRecipes('eggplant'),
     ]);
-    expect(eggplant.items.length).toBeGreaterThan(0);
-    const auberIds = new Set(aubergine.items.map((r) => r.id));
-    for (const r of eggplant.items) expect(auberIds.has(r.id)).toBe(true);
+    expect(eggplant.length).toBeGreaterThan(0);
+    const auberIds = new Set(aubergine.map((r) => r.id));
+    for (const r of eggplant) expect(auberIds.has(r.id)).toBe(true);
 
     const garbanzo = await searchRecipes('garbanzo');
     expect(garbanzo.items.length).toBeGreaterThan(0);
@@ -460,7 +482,7 @@ describeCatalogDb('catalog metadata', () => {
     expect(cuisines[0]?.recipeCount).toBeGreaterThanOrEqual(cuisines[1]?.recipeCount ?? 0);
     expect(cuisines.find((c) => c.cuisine === 'greek')?.region).toBe('southern_europe');
     const meta = await getCatalogMeta();
-    expect(meta.schemaVersion).toBe(CATALOG_SCHEMA_VERSION);
+    expect(meta.schemaVersion).toBe(2);
     expect(meta.recipeCount).toBeGreaterThan(0);
   });
 });

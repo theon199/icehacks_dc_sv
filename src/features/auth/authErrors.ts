@@ -44,6 +44,17 @@ const messages: Record<AuthFailureKind, string> = {
 };
 
 const codeKinds: Record<string, AuthFailureKind> = {
+  INVALID_LOGIN_CREDENTIALS: 'invalid_credentials',
+  INVALID_PASSWORD: 'invalid_credentials',
+  EMAIL_NOT_FOUND: 'invalid_credentials',
+  EMAIL_NOT_VERIFIED: 'email_not_confirmed',
+  EMAIL_EXISTS: 'user_exists',
+  INVALID_EMAIL: 'invalid_email',
+  WEAK_PASSWORD: 'weak_password',
+  TOO_MANY_ATTEMPTS_TRY_LATER: 'rate_limited',
+  OPERATION_NOT_ALLOWED: 'signups_disabled',
+  AUTH_SESSION_MISSING: 'session_missing',
+  CREDENTIAL_TOO_OLD_LOGIN_AGAIN: 'session_missing',
   invalid_credentials: 'invalid_credentials',
   email_not_confirmed: 'email_not_confirmed',
   over_request_rate_limit: 'rate_limited',

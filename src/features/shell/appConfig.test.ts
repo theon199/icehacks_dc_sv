@@ -23,6 +23,13 @@ describe('app.config', () => {
     expect(config.experiments?.typedRoutes).toBe(true);
   });
 
+  it('enables UIKit scene support when generating the iOS project', () => {
+    expect(config.plugins).toContainEqual([
+      'expo-build-properties',
+      expect.objectContaining({ ios: expect.objectContaining({ enableSceneSupport: true }) }),
+    ]);
+  });
+
   it('never requests background location', () => {
     const location = config.plugins?.find(
       (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-location',

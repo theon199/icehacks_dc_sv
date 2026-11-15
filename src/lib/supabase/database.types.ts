@@ -1455,6 +1455,28 @@ export type Database = {
       };
       appeal_queue: { Args: { p_limit?: number }; Returns: Json };
       block_user: { Args: { p_user_id: string }; Returns: undefined };
+      catalog_cuisines: { Args: Record<PropertyKey, never>; Returns: Json };
+      catalog_ingredients: {
+        Args: { p_ids?: string[]; p_phrases?: string[]; p_staples_only?: boolean };
+        Returns: Json;
+      };
+      catalog_meta: { Args: Record<PropertyKey, never>; Returns: Json };
+      catalog_recipe_detail: { Args: { p_id: string }; Returns: Json };
+      catalog_recipes: {
+        Args: {
+          p_family_id?: string;
+          p_filters?: Json;
+          p_ids?: string[];
+          p_limit?: number;
+          p_offset?: number;
+          p_query?: string;
+        };
+        Returns: Json;
+      };
+      catalog_substitutions: {
+        Args: { p_goals?: string[]; p_ids: string[] };
+        Returns: Json;
+      };
       claim_storage_purge: {
         Args: { p_limit?: number };
         Returns: {

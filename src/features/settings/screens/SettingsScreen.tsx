@@ -2,6 +2,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
+import { usesFirebase } from '@/lib/firebase/config';
 import { Text, space, toast, type IconName } from '@/ui';
 
 import { ABOUT_PAGE_LIST } from '../about/pages';
@@ -129,14 +130,16 @@ export function SettingsScreen() {
           disabled={signingOut}
           onPress={() => void signOutHere()}
         />
-        <SettingsRow
-          testID="settings-sign-out-everywhere"
-          label="Sign out of all devices"
-          icon="person.crop.circle.badge.xmark"
-          accessory="none"
-          disabled={signingOut}
-          onPress={confirmSignOutAll}
-        />
+        {!usesFirebase && (
+          <SettingsRow
+            testID="settings-sign-out-everywhere"
+            label="Sign out of all devices"
+            icon="person.crop.circle.badge.xmark"
+            accessory="none"
+            disabled={signingOut}
+            onPress={confirmSignOutAll}
+          />
+        )}
         <SettingsRow
           testID="settings-delete"
           label="Delete account"

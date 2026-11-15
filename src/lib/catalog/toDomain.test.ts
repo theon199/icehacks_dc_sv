@@ -1,6 +1,5 @@
 import { DEFAULT_PREFERENCES, rankRecipes } from '@/domain';
 
-import { resetCatalogForTests } from '../db/catalog';
 import { describeCatalogDb } from './__fixtures__/nodeCatalogDb';
 import {
   clearCatalogCaches,
@@ -12,11 +11,9 @@ import {
 import { coreIngredientIdsOf, toDomainRecipe } from './toDomain';
 import { ALLERGEN_IDS, type AllergenMap, type RecipeCandidate } from './types';
 
-jest.mock(
-  'expo-sqlite',
-  () => jest.requireActual('./__fixtures__/nodeCatalogDb').expoSqliteFake as unknown,
-);
-jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
+jest.mock('@/lib/supabase/client', () => ({
+  supabase: jest.requireActual('./__fixtures__/nodeCatalogDb').catalogSupabaseFake,
+}));
 
 const allFree = Object.fromEntries(ALLERGEN_IDS.map((id) => [id, 'free'])) as AllergenMap;
 
@@ -122,7 +119,6 @@ describe('coreIngredientIdsOf', () => {
 
 describeCatalogDb('core ingredients against the catalog', () => {
   beforeEach(() => {
-    resetCatalogForTests();
     clearCatalogCaches();
   });
 

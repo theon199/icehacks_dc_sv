@@ -13,7 +13,7 @@ engineering contract every contributor (human or agent) follows.
 | Routing | `expo-router` with files in `src/app`, `Stack.Protected` guards | declarative auth gating, no redirect overlays |
 | Server state | `@tanstack/react-query` v5 | caching, retries, dedupe, offline pause |
 | Client state | `zustand` v5 with selectors | no provider pyramids, no re-render fan-out |
-| Persistence | `expo-sqlite` (catalog DB read-only; user DB with `expo-sqlite/kv-store` + tables) | indexed queries, no giant JSON blobs |
+| Persistence | `expo-sqlite` (user data with `expo-sqlite/kv-store` + tables) | indexed queries, no giant JSON blobs |
 | Secrets on device | `expo-secure-store` | never hand-rolled crypto |
 | Validation | `zod` v4 at every trust boundary (network, storage, edge-function input) | |
 | Lists | `@shopify/flash-list` v2 for any list that can exceed ~20 rows | recycling |
@@ -33,7 +33,7 @@ src/
   domain/<area>/       pure TypeScript: no React, no Expo, no network, no Date.now() without injection
   lib/                 cross-cutting adapters: api client, supabase, db, storage, analytics, env, i18n
   ui/                  design system: tokens, typography, primitives (Button, Card, Sheet, ...)
-assets/                fonts, images, catalog/famara-catalog.db (built artifact)
+assets/                fonts, images, catalog/famara-catalog.db (import snapshot)
 supabase/
   migrations/          SQL migrations (one baseline + additive changes; never edit a merged migration)
   functions/_shared/   auth, cors, errors, rate limit, AI client, zod helpers — imported by every function
@@ -49,8 +49,7 @@ A feature never imports another feature's internals — only its `index.ts` publ
 
 ## Rules that keep the app fast
 
-1. **Nothing heavy at module scope.** No large JSON/TS data imports. The recipe catalog lives in
-   SQLite and is queried per screen.
+1. **Nothing heavy at module scope.** No large JSON/TS data imports. Screens request the recipes they need from Supabase.
 2. **Root layout mounts ≤ 4 providers**: `QueryClientProvider`, `GestureHandlerRootView`,
    `SafeAreaProvider`, theme/fonts. Everything else is a zustand store or a query hook.
 3. **Selectors, not whole stores**: `useStore(s => s.field)`. Never `useStore()` with no selector.
@@ -63,9 +62,9 @@ A feature never imports another feature's internals — only its `index.ts` publ
 
 ## Data flow
 
-- **Catalog** (recipes, ingredients, nutrition, allergens, tutorials): read-only SQLite file built by
-  `tools/data` and shipped in the binary. Accessed through `src/lib/catalog` typed query functions.
-  Contract: `docs/DATA.md`.
+- **Catalog** (recipes, ingredients, nutrition, allergens, tutorials) uses private Supabase tables
+  with read-only RPCs. The SQLite snapshot built by `tools/data` is the import artifact.
+  See `docs/DATA.md` for the data contract.
 - **User data** (profile, preferences, pantry, saved, plans, cook log, feedback, chef threads):
   local-first in the user DB, synced to Supabase `user_documents` with last-write-wins on
   `(updated_at, device_id)`; the server rejects stale writes. See `src/lib/sync`.

@@ -1,0 +1,9 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "catalog", "fieldPath": "json", "indexes": [] },
+    { "collectionGroup": "catalogPages", "fieldPath": "json", "indexes": [] },
+    { "collectionGroup": "catalogIndex", "fieldPath": "json", "indexes": [] },
+    { "collectionGroup": "catalogRecipes", "fieldPath": "json", "indexes": [] }
+  ]
+}

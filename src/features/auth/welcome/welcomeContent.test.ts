@@ -15,11 +15,9 @@ import {
 } from './welcomeContent';
 import { availableIds, confirmedAnswers, toWelcomeBook } from './welcomeRecipes';
 
-jest.mock(
-  'expo-sqlite',
-  () => jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').expoSqliteFake as unknown,
-);
-jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
+jest.mock('@/lib/supabase/client', () => ({
+  supabase: jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').catalogSupabaseFake,
+}));
 
 describeCatalogDb('welcome carousel picks', () => {
   it('finds every dish in the catalog, with a photo', async () => {

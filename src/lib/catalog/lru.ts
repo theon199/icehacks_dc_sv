@@ -3,9 +3,12 @@
  * every read keeps the oldest entry first and eviction is O(1).
  */
 export class LruCache<K, V> {
-  private readonly entries = new Map<K, V>();
+  private readonly entries = new Map<K, { value: V; expiresAt: number }>();
 
-  constructor(readonly capacity: number) {
+  constructor(
+    readonly capacity: number,
+    private readonly ttlMs = Infinity,
+  ) {
     if (!Number.isInteger(capacity) || capacity < 1) {
       throw new Error('LRU capacity must be a positive integer');
     }
@@ -16,20 +19,21 @@ export class LruCache<K, V> {
   }
 
   has(key: K): boolean {
-    return this.entries.has(key);
+    return this.get(key) !== undefined;
   }
 
   get(key: K): V | undefined {
-    if (!this.entries.has(key)) return undefined;
-    const value = this.entries.get(key) as V;
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
     this.entries.delete(key);
-    this.entries.set(key, value);
-    return value;
+    if (entry.expiresAt <= Date.now()) return undefined;
+    this.entries.set(key, entry);
+    return entry.value;
   }
 
   set(key: K, value: V): void {
     this.entries.delete(key);
-    this.entries.set(key, value);
+    this.entries.set(key, { value, expiresAt: Date.now() + this.ttlMs });
     while (this.entries.size > this.capacity) {
       const oldest = this.entries.keys().next();
       if (oldest.done) break;

@@ -2,6 +2,7 @@ import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { CatalogError } from './api';
 import {
   catalogKeys,
   sameSafetyFilters,
@@ -21,7 +22,6 @@ import {
   searchRecipes,
 } from './queries';
 import type { RecipeSummary, SearchFilters } from './types';
-import { CatalogError } from '../db/catalog';
 
 jest.mock('./queries', () => ({
   getPantryStaples: jest.fn(),
@@ -51,7 +51,7 @@ afterEach(() => {
 });
 
 describe('catalog hooks', () => {
-  it('loads a recipe and caches it forever', async () => {
+  it('loads a recipe and keeps fresh data in memory', async () => {
     jest.mocked(getRecipeDetail).mockResolvedValue(summary('r1') as never);
     const { client, Wrapper } = wrapper();
     const { result } = await renderHook(() => useRecipe('r1'), { wrapper: Wrapper });
@@ -72,16 +72,21 @@ describe('catalog hooks', () => {
     expect(getRecipeDetail).not.toHaveBeenCalled();
   });
 
-  it('runs while the device is offline, since the catalog is local', async () => {
+  it('pauses without a connection and loads on reconnect', async () => {
     onlineManager.setOnline(false);
     jest.mocked(listCandidates).mockResolvedValue([]);
     const { Wrapper } = wrapper();
     const { result } = await renderHook(() => useCandidates({ limit: 10 }), { wrapper: Wrapper });
+    expect(result.current.fetchStatus).toBe('paused');
+    expect(listCandidates).not.toHaveBeenCalled();
+    await act(async () => onlineManager.setOnline(true));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 
-  it('does not retry when the catalog is missing', async () => {
-    jest.mocked(getRecipeSummaries).mockRejectedValue(new CatalogError('missing', 'no catalog'));
+  it('does not retry when a response does not match the catalog schema', async () => {
+    jest
+      .mocked(getRecipeSummaries)
+      .mockRejectedValue(new CatalogError('bad_rows', 'unexpected response'));
     const { Wrapper } = wrapper();
     const { result } = await renderHook(() => useRecipes(['a']), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isError).toBe(true));

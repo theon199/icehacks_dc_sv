@@ -1,5 +1,6 @@
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
+import { usesFirebase } from '@/lib/firebase/config';
 import { Text, fontFamily, space } from '@/ui';
 
 import type { AccountIntent } from '../accountSheetState';
@@ -52,6 +53,14 @@ export function ProviderStep({
 }: ProviderStepProps) {
   const headline = HEADLINE[intent];
   const flip = INTENT_SWITCH[intent];
+  const emailButton = (
+    <NightSecondaryButton
+      testID="continue-email"
+      label="Continue with email"
+      icon="envelope"
+      onPress={onEmail}
+    />
+  );
   return (
     <View onLayout={onLayout} style={[styles.step, { paddingBottom: bottomPadding }]}>
       <SheetDragArea>
@@ -76,14 +85,12 @@ export function ProviderStep({
         </View>
       </SheetDragArea>
 
-      <ProviderButtons intent={intent}>
-        <NightSecondaryButton
-          testID="continue-email"
-          label="Continue with email"
-          icon="envelope"
-          onPress={onEmail}
-        />
-      </ProviderButtons>
+      {usesFirebase ? (
+        // Firebase builds sign in with email only; Apple and Google go through Supabase.
+        <View style={styles.emailOnly}>{emailButton}</View>
+      ) : (
+        <ProviderButtons intent={intent}>{emailButton}</ProviderButtons>
+      )}
 
       <LegalNote />
       <NightTextLink
@@ -110,4 +117,5 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.display,
     letterSpacing: -0.9,
   },
+  emailOnly: { gap: space.sm },
 });

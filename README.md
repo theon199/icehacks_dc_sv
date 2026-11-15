@@ -20,7 +20,7 @@ Requirements:
 
 ```sh
 npm ci
-cp .env.example .env.local   # then fill in your Supabase URL and publishable key
+cp .env.example .env.local   # then fill in your Firebase app API key
 npm run verify               # typecheck + lint + format check + tests
 ```
 
@@ -45,9 +45,9 @@ the project is linked to enable over-the-air updates.
 Without a valid `.env.local` the app opens a configuration screen listing what is missing.
 
 `.env.local` is git-ignored and is **not** uploaded to EAS. Before building the `preview` or
-`production` profile, add both public values as EAS environment variables for that environment
+`production` profile, add the public values for the backend you want to use as EAS environment variables
 (and for `development` if you build dev clients in the cloud). Each profile in `eas.json` reads the
-EAS environment of the same name:
+EAS environment of the same name. For a Supabase-configured build:
 
 ```sh
 npx eas-cli env:create --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value https://<project>.supabase.co --visibility plaintext
@@ -57,12 +57,54 @@ npx eas-cli env:create --environment preview --name EXPO_PUBLIC_SUPABASE_PUBLISH
 
 Otherwise the release build opens the configuration screen instead of the app.
 
-### Recipe catalog
+### IceHacks Firebase build
 
-The bundled catalog (`assets/catalog/famara-catalog.db`) is built by the data pipeline in
-`tools/data`. A fresh checkout can run without it: the bundler substitutes an empty module and the
-app shows a "catalog missing" state. Metro caches that substitution, so once the file exists
-restart the bundler with a clean cache: `npx expo start -c`.
+The IceHacks build uses `famara-icehacks` for email/password authentication and the hosted
+recipe catalog. Set `EXPO_PUBLIC_FIREBASE_PROJECT_ID` and `EXPO_PUBLIC_FIREBASE_API_KEY`
+in `.env.local` or in the corresponding EAS environment. Use the public API key from the
+**Famara Expo** Firebase app configuration. To run locally, start Metro with `npm start`.
+
+Firebase accounts confirm their email through the link that Firebase sends. The Firebase build
+keeps saved recipes, pantry data, and meal plans on the device. Supabase still powers the
+community, cloud sync, and AI features in a Supabase-configured build.
+
+See the [Firestore catalog import guide](tools/data/README.md#load-the-catalog-into-firebase) to
+publish a new snapshot.
+
+### Demo on the iPhone 18 Pro simulator
+
+Set up `.env.local` for Firebase, then run the app in Release mode with the simulator booted.
+
+```sh
+npx expo run:ios --configuration Release --device "iPhone 18 Pro"
+```
+
+The Release app embeds its JavaScript bundle and talks directly to Firebase. For the walkthrough:
+
+1. Sign in with a verified demo account.
+2. Search for **Cheese and Corn Chowder**. Show the ingredients, cooking directions, and USDA credit.
+3. Tap **Save**, then **Plan** and confirm a meal slot.
+4. Search for **Sardines with Chermoula Herb Marinade** and show the Aptiva credit.
+5. Open the cookbook to show the saved recipe and week plan.
+
+The [Devpost disclosure](docs/data/SOURCES.md#devpost-disclosure-draft) covers the catalog sources
+and the AI assistance used to build and test Famara.
+
+### Supabase recipe catalog
+
+A Supabase-configured build queries the recipe catalog in Supabase. Apply the catalog migration and load the
+checked-in data snapshot into the same Supabase project configured for the app.
+
+For local development, start Supabase with `supabase start` and load the snapshot from the
+repository root:
+
+```sh
+FAMARA_CATALOG_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+  npm --prefix tools/data run supabase:import
+```
+
+See the [catalog import instructions](tools/data/README.md#load-the-catalog-into-supabase) for
+hosted projects. Recipe lookups require a connection.
 
 ### Useful scripts
 
@@ -81,8 +123,8 @@ restart the bundler with a clean cache: `npx expo start -c`.
 ```
 src/app/        routes only (expo-router): thin files that mount feature screens
 src/features/   one folder per product area: screens, components, hooks, stores
-src/lib/        adapters: env, Supabase client, API client, query client, storage, catalog DB
+src/lib/        adapters: env, Supabase client, API client, query client, storage, catalog API
 src/ui/         design system: tokens, theme, primitives, brand mark
 tools/          brand asset generator (data pipeline in tools/data)
-assets/         icons, splash, fonts and the bundled recipe catalog
+assets/         icons, splash, fonts and the catalog import snapshot
 ```

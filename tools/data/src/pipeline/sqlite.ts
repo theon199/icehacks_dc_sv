@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs';
+import { copyFileSync, rmSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import type { SubstitutionDef } from '../knowledge/substitutions.ts';
 import type { IngredientRow, RecipeRow } from './types.ts';
@@ -95,6 +95,7 @@ CREATE VIRTUAL TABLE recipes_fts USING fts5(
 
 export interface WriteInput {
   path: string;
+  baselinePath?: string;
   builtAt: string;
   sourceDigest: string;
   ingredients: readonly IngredientRow[];
@@ -132,14 +133,16 @@ WHERE r.ingredient_ids IS NOT (
 export function writeCatalog(input: WriteInput): DbCheck {
   rmSync(input.path, { force: true });
   rmSync(`${input.path}-journal`, { force: true });
+  if (input.baselinePath) copyFileSync(input.baselinePath, input.path);
   const db = new Database(input.path);
   try {
     db.pragma('journal_mode = DELETE');
     db.pragma('foreign_keys = ON');
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
-    db.exec(SCHEMA_SQL);
+    if (!input.baselinePath) db.exec(SCHEMA_SQL);
 
-    const insertMeta = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)');
+    const insertMeta = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    const recipeCount = db.prepare('SELECT count(*) AS n FROM recipes');
     const insertIngredient = db.prepare(
       `INSERT INTO ingredients (id, name, plural, category, aisle, fdc_id, allergens, allergen_status, diet_flags, pantry_staple, grams_per_unit)
        VALUES (@id, @name, @plural, @category, @aisle, @fdc_id, @allergens, @allergen_status, @diet_flags, @pantry_staple, @grams_per_unit)`,
@@ -166,7 +169,7 @@ export function writeCatalog(input: WriteInput): DbCheck {
     db.transaction(() => {
       insertMeta.run('schema_version', String(SCHEMA_VERSION));
       insertMeta.run('built_at', input.builtAt);
-      insertMeta.run('recipe_count', String(input.recipes.length));
+      insertMeta.run('recipe_count', String((recipeCount.get() as { n: number }).n + input.recipes.length));
       insertMeta.run('source_digest', input.sourceDigest);
       for (const row of input.ingredients) {
         insertIngredient.run({

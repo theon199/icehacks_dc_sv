@@ -1,5 +1,5 @@
 /**
- * The pantry screen against the real bundled catalog (read through Node's SQLite).
+ * The pantry screen against the catalog data through the RPC adapter.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, userEvent, waitFor, within } from '@testing-library/react-native';
@@ -9,7 +9,6 @@ import type { ReactNode } from 'react';
 import { useSessionStore } from '@/features/auth';
 import { clearCatalogCaches } from '@/lib/catalog';
 import { nodeSqliteAvailable } from '@/lib/catalog/__fixtures__/nodeCatalogDb';
-import { resetCatalogForTests } from '@/lib/db/catalog';
 import { usePantryStore } from '@/stores/pantry';
 import { defaultPreferences, usePreferencesStore } from '@/stores/preferences';
 import { useSettingsStore } from '@/stores/settings';
@@ -18,11 +17,9 @@ import { useToastStore } from '@/ui';
 
 import { PantryScreen } from './PantryScreen';
 
-jest.mock(
-  'expo-sqlite',
-  () => jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').expoSqliteFake as unknown,
-);
-jest.mock('expo-asset', () => ({ Asset: { fromModule: () => ({ hash: 'feedc0ffee00' }) } }));
+jest.mock('@/lib/supabase/client', () => ({
+  supabase: jest.requireActual('@/lib/catalog/__fixtures__/nodeCatalogDb').catalogSupabaseFake,
+}));
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: {
@@ -56,7 +53,6 @@ const itemNamed = (name: string) =>
   Object.values(usePantryStore.getState().items).find((item) => item.name === name);
 
 beforeEach(() => {
-  resetCatalogForTests();
   clearCatalogCaches();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   usePantryStore.getState().reset();
