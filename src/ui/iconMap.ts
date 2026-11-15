@@ -166,6 +166,7 @@ export const iconMap: Partial<Record<SFSymbol, IoniconName>> = {
   camera: 'camera-outline',
   'camera.fill': 'camera',
   'camera.viewfinder': 'scan-outline',
+  'video.fill': 'videocam',
   /** The phone itself, e.g. mounting it for the cooking coach. */
   iphone: 'phone-portrait-outline',
   photo: 'image-outline',

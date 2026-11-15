@@ -135,7 +135,12 @@ export const SNAP_SWEEP_LIMITS = {
   textMaxChars: 600,
 } as const;
 
-/** One batch of stills from a fridge sweep. Every batch of a pass carries the same `sweep_id`. */
+/**
+ * One batch of stills from a fridge sweep. Every batch of a pass carries the same `sweep_id`; the
+ * first batch spends the daily pantry Snap and its `quota` is that daily allowance, while later
+ * batches report how many batches the pass has left. Keep these bounds in step with
+ * `SWEEP_LIMITS` in `supabase/functions/snap/schema.ts`.
+ */
 export interface SnapSweepRequest {
   mode: 'pantry';
   /** UUID the app makes when the pass starts. */
@@ -147,7 +152,10 @@ export interface SnapSweepRequest {
 /** Items the person said out loud or typed, read into the same pantry item list. */
 export interface SnapTextRequest {
   mode: 'pantry';
-  /** Set when the words belong to a sweep, so they count against that pass. */
+  /**
+   * Set when the words belong to a sweep, so they count against that pass: at most
+   * `SNAP_SWEEP_LIMITS.maxTextCalls` per sweep, each also spending the daily `snap_text` allowance.
+   */
   sweep_id?: string;
   /** Up to `SNAP_SWEEP_LIMITS.textMaxChars` characters. */
   text: string;
