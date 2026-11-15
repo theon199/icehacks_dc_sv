@@ -70,6 +70,7 @@ function tapOf(data: Record<string, unknown>) {
 }
 
 const cookTimerTap = () => tapOf({ kind: 'cook_timer', url: COOK_URL });
+const coachTimerTap = () => tapOf({ kind: 'cook_timer', url: `${COOK_URL}/coach` });
 
 function label(text: string) {
   return function StandIn() {
@@ -105,6 +106,7 @@ const routes: Record<string, ComponentType> = {
   index: label('home'),
   'cook/[id]/index': withId('cooking'),
   'cook/[id]/done': withId('finished'),
+  'cook/[id]/coach': withId('coaching'),
   'recipe/[id]': withId('recipe'),
   notifications: label('inbox'),
   profile: label('profile'),
@@ -171,6 +173,28 @@ beforeEach(() => {
 });
 
 describe('NotificationBridge tap routing', () => {
+  it('opens the cooking coach when a coach timer alert is tapped', async () => {
+    await renderAt('/');
+    await tap(coachTimerTap());
+    expect(await screen.findByText('coaching mealdb:1')).toBeOnTheScreen();
+    expect(stackNames()).toEqual(['index', 'cook/[id]/coach']);
+  });
+
+  it('stays on the coach when it is already on screen', async () => {
+    await renderAt('/', '/cook/mealdb:1/coach');
+    const before = stackNames();
+    await tap(coachTimerTap());
+    expect(screen.getByText('coaching mealdb:1')).toBeOnTheScreen();
+    expect(stackNames()).toEqual(before);
+  });
+
+  it('goes back to the coach further down the stack instead of opening a second one', async () => {
+    await renderAt('/', '/cook/mealdb:1/coach', '/recipe/mealdb:9');
+    await tap(coachTimerTap());
+    expect(await screen.findByText('coaching mealdb:1')).toBeOnTheScreen();
+    expect(stackNames()).toEqual(['index', 'cook/[id]/coach']);
+  });
+
   it('returns to the cook session when a cook timer alert is tapped', async () => {
     await renderAt('/');
     await tap(cookTimerTap());

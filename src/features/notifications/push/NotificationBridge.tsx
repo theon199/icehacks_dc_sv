@@ -4,7 +4,8 @@
  *
  * - shows pushes that arrive while Famara is open as banners and refreshes the inbox and badge;
  * - opens the right screen when a push is tapped, including the one that launched the app, and
- *   returns to the cook session when a finished cook timer's alert is tapped;
+ *   returns to the cook session (cook mode or the coach, whichever set the timer) when a finished
+ *   cook timer's alert is tapped;
  * - keeps this device's push registration in step with the OS permission and the push setting;
  * - listens for new inbox rows over realtime so the bell updates without a push;
  * - mirrors the unread count on the app icon.
@@ -24,7 +25,7 @@ import { markNotificationsRead } from '../api';
 import { usePushEnabled } from '../deps';
 import { invalidateInbox, useUnreadCount } from '../queries';
 import { syncPushRegistration } from './pushDevice';
-import { cookSessionIdFromUrl, findCookSession, resolvePushTap } from './routing';
+import { cookSessionFromUrl, findCookSession, resolvePushTap } from './routing';
 
 /** Response ids already acted on, so the launch response and its listener event route once. */
 const handledResponses = new Set<string>();
@@ -81,12 +82,16 @@ export function NotificationBridge() {
       // so another recipe's session or an unsaved finish screen would be lost: open a new screen.
       const cookUrl = cookTimerTapUrl(data);
       if (cookUrl) {
-        const id = cookSessionIdFromUrl(cookUrl);
-        if (!id) return;
+        const session = cookSessionFromUrl(cookUrl);
+        if (!session) return;
+        const { id } = session;
         const state = navigation.isReady() ? navigation.getRootState() : undefined;
-        const placement = findCookSession(state, id);
+        const placement = findCookSession(state, id, session.screen);
         if (placement === 'onScreen') return;
-        const href = { pathname: '/cook/[id]', params: { id } } as const;
+        const href =
+          session.screen === 'coach'
+            ? ({ pathname: '/cook/[id]/coach', params: { id } } as const)
+            : ({ pathname: '/cook/[id]', params: { id } } as const);
         if (placement === 'underneath') router.dismissTo(href);
         else router.push(href);
         return;

@@ -1,5 +1,5 @@
 import {
-  cookSessionIdFromUrl,
+  cookSessionFromUrl,
   findCookSession,
   parsePushData,
   resolvePushTap,
@@ -52,16 +52,30 @@ describe('parsePushData', () => {
   });
 });
 
-describe('cookSessionIdFromUrl', () => {
-  it('reads and decodes the recipe id', () => {
-    expect(cookSessionIdFromUrl('/cook/mealdb%3A1')).toBe('mealdb:1');
-    expect(cookSessionIdFromUrl('/cook/plain-id/')).toBe('plain-id');
+describe('cookSessionFromUrl', () => {
+  it('reads and decodes the recipe id of a cook mode link', () => {
+    expect(cookSessionFromUrl('/cook/mealdb%3A1')).toEqual({ id: 'mealdb:1', screen: 'cook' });
+    expect(cookSessionFromUrl('/cook/plain-id/')).toEqual({ id: 'plain-id', screen: 'cook' });
+  });
+
+  it('reads a cooking coach link', () => {
+    expect(cookSessionFromUrl('/cook/mealdb%3A1/coach')).toEqual({
+      id: 'mealdb:1',
+      screen: 'coach',
+    });
+    expect(cookSessionFromUrl('/cook/plain-id/coach/')).toEqual({
+      id: 'plain-id',
+      screen: 'coach',
+    });
   });
 
   it('rejects other routes and malformed escapes', () => {
-    expect(cookSessionIdFromUrl('/cook/mealdb%3A1/done')).toBeNull();
-    expect(cookSessionIdFromUrl('/recipe/mealdb%3A1')).toBeNull();
-    expect(cookSessionIdFromUrl('/cook/%E0%A4%A')).toBeNull();
+    expect(cookSessionFromUrl('/cook/mealdb%3A1/done')).toBeNull();
+    expect(cookSessionFromUrl('/cook/mealdb%3A1/coach/x')).toBeNull();
+    expect(cookSessionFromUrl('/cook/mealdb%3A1/coaching')).toBeNull();
+    expect(cookSessionFromUrl('/recipe/mealdb%3A1')).toBeNull();
+    expect(cookSessionFromUrl('/cook/%E0%A4%A')).toBeNull();
+    expect(cookSessionFromUrl('/cook/%E0%A4%A/coach')).toBeNull();
   });
 });
 
@@ -197,5 +211,20 @@ describe('findCookSession', () => {
   it('copes with no state yet', () => {
     expect(findCookSession(undefined, 'mealdb:1')).toBe('absent');
     expect(findCookSession({ routes: [] }, 'mealdb:1')).toBe('absent');
+  });
+
+  it('finds the coach for a coach timer, and treats cook mode as another cook screen', () => {
+    const coach = route('cook/[id]/coach', 'mealdb:1');
+    expect(findCookSession(appStack(route('(tabs)'), coach), 'mealdb:1', 'coach')).toBe('onScreen');
+    expect(
+      findCookSession(appStack(coach, route('recipe/[id]', 'mealdb:9')), 'mealdb:1', 'coach'),
+    ).toBe('underneath');
+    expect(
+      findCookSession(appStack(coach, route('cook/[id]/index', 'mealdb:2')), 'mealdb:1', 'coach'),
+    ).toBe('behindAnotherSession');
+    expect(findCookSession(appStack(coach), 'mealdb:1')).toBe('absent');
+    expect(
+      findCookSession(appStack(route('cook/[id]/done', 'mealdb:1')), 'mealdb:1', 'coach'),
+    ).toBe('onScreen');
   });
 });
