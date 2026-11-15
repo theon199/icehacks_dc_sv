@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { space, Text, useTheme } from '@/ui';
 
@@ -12,9 +13,14 @@ export interface SetupStepViewProps {
   count: number;
 }
 
-/** One mounting step: the rendered cabinet scene, a progress row and the instruction. */
+/**
+ * One mounting step: the rendered cabinet scene acting out the step, a progress row and the
+ * instruction. With Reduce Motion on, the scene holds its first frame (the finished pose) and
+ * steps change without a cross-fade.
+ */
 export function SetupStepView({ step, index, count }: SetupStepViewProps) {
   const theme = useTheme();
+  const reduceMotion = useReducedMotion();
   return (
     <View style={styles.root} testID={`setup-step-${index + 1}`}>
       <View
@@ -29,10 +35,13 @@ export function SetupStepView({ step, index, count }: SetupStepViewProps) {
         ]}
       >
         <Image
+          // Autoplay is read when the image loads, so a Reduce Motion change loads it again.
+          key={reduceMotion ? 'still' : 'animated'}
           source={SETUP_ART[step.art]}
           style={styles.image}
           contentFit="contain"
-          transition={theme.motion.duration.base}
+          autoplay={!reduceMotion}
+          transition={reduceMotion ? null : theme.motion.duration.base}
           accessibilityLabel={`Illustration: ${step.title}`}
         />
       </View>

@@ -9,7 +9,7 @@ import { renderWithTheme } from '@/test/render';
 import { CoachSetupScreen } from './CoachSetupScreen';
 
 const mockRouter = { replace: jest.fn(), back: jest.fn(), canGoBack: jest.fn(() => true) };
-jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
+jest.mock('expo-router', () => ({ useRouter: () => mockRouter, useFocusEffect: jest.fn() }));
 jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('expo-camera', () => {

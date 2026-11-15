@@ -30,9 +30,15 @@
     <script>
       /* The setup illustrations: an upper cabinet above a counter, the phone lying screen down on
          the bottom shelf with a third past the edge, a plate on its inside end, and the camera's
-         view cone onto the counter. One still per setup step, rendered at 3x the app's card size. */
+         view cone onto the counter. One short loop per setup step, rendered at 3x the app's card
+         size. Frame 0 of every loop is the step's finished pose, because the app shows that frame
+         alone when Reduce Motion is on. */
       const W = 1029;
       const H = 1020;
+      const FPS = 25;
+      const SECONDS = 2.8;
+      const DOOR_OPEN = -1.95;
+      const DOOR_CLOSED = -0.02;
       const LIME = 0xd0f64a;
       const VIEWS = [
         { tx: -26, ty: 165, tz: 30, dist: 380, az: 0.78, el: 0.14 },
@@ -250,20 +256,86 @@
         view.add(foot);
         sc.add(view);
 
-        return { sc, doorMat, phone, halo, plate, plateMat, view };
+        return { sc, doorPivot, doorMat, phone, halo, plate, plateMat, view, apex: A };
       }
 
-      function pose(s, step) {
+      const clamp01 = (x) => Math.min(1, Math.max(0, x));
+      /** 0 before `a`, 1 after `b`, linear between. */
+      const ramp = (t, a, b) => clamp01((t - a) / (b - a));
+      const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+      const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+      /** Leaves the finished pose, fades back in at the start pose: 1, down to 0, back to 1. */
+      const presence = (t) => (t < 1.3 ? 1 - ramp(t, 1.0, 1.3) : ramp(t, 1.3, 1.5));
+
+      /** Fades every material under `group` to `k` of its own opacity; drops its shadow when faint. */
+      function fade(group, k) {
+        group.visible = k > 0;
+        group.traverse((o) => {
+          if (!o.material) return;
+          const m = o.material;
+          if (m.userData.base === undefined) {
+            m.userData.base = m.opacity;
+            m.userData.transparent = m.transparent;
+          }
+          if (o.userData.cast === undefined) o.userData.cast = o.castShadow;
+          m.opacity = m.userData.base * k;
+          const transparent = m.userData.transparent || k < 1;
+          if (m.transparent !== transparent) {
+            m.transparent = transparent;
+            m.needsUpdate = true;
+          }
+          o.castShadow = o.userData.cast && k > 0.5;
+        });
+      }
+
+      /** Shared lines would fade the whole kitchen with the phone, so each moving part owns its own. */
+      function ownLines(group) {
+        group.traverse((o) => {
+          if (o.isLineSegments) o.material = o.material.clone();
+        });
+      }
+
+      /** The scene for setup step `step` (0-3) at `t` seconds into its loop. */
+      function pose(s, step, t) {
         const glow = (m, on) => {
           m.color.setHex(on ? LIME : 0xfaf9f6);
           m.emissive.setHex(on ? 0x2e3a08 : 0x000000);
         };
         glow(s.doorMat, step === 0);
-        s.phone.visible = step >= 1;
-        s.halo.visible = step === 1;
-        s.plate.visible = step >= 2;
         glow(s.plateMat, step === 2);
-        s.view.visible = step === 3;
+
+        // Step 1: the door swings shut and all the way open again.
+        const open =
+          step === 0
+            ? t < 1.8
+              ? 1 - easeInOut(ramp(t, 1.0, 1.55))
+              : easeInOut(ramp(t, 1.8, 2.8))
+            : 1;
+        s.doorPivot.rotation.y = DOOR_CLOSED + (DOOR_OPEN - DOOR_CLOSED) * open;
+
+        // Step 2: the phone comes down in front of the shelf and slides in, screen down.
+        const phoneIn = step === 1 ? presence(t) : 1;
+        const slide = step === 1 && t >= 1.3 ? 1 - easeInOut(ramp(t, 1.5, 2.5)) : 0;
+        const drop = step === 1 && t >= 1.3 ? 1 - easeOut(ramp(t, 1.5, 2.1)) : 0;
+        s.phone.position.set(-26, 150.2 + 9 * drop, 31.4 + 18 * slide);
+        fade(s.phone, step >= 1 ? phoneIn : 0);
+        const haloIn = t < 1.3 ? phoneIn : ramp(t, 2.5, 2.8);
+        s.halo.visible = step === 1 && haloIn > 0;
+        s.halo.material.opacity = 0.55 * haloIn;
+
+        // Step 3: the plate lowers onto the end of the phone inside the cabinet.
+        const plateIn = step === 2 ? presence(t) : 1;
+        const lower = step === 2 && t >= 1.3 ? 1 - easeInOut(ramp(t, 1.5, 2.5)) : 0;
+        s.plate.position.set(-26, 151.45 + 22 * lower, 21);
+        fade(s.plate, step >= 2 ? plateIn : 0);
+
+        // Step 4: the view cone fades, then reaches out from the lens down to the counter again.
+        const reach = step === 3 && t >= 1.2 ? Math.max(0.001, easeOut(ramp(t, 1.25, 2.3))) : 1;
+        const coneIn = step === 3 && t < 1.2 ? 1 - ramp(t, 0.9, 1.2) : 1;
+        const [ax, ay, az] = s.apex;
+        s.view.scale.setScalar(reach);
+        s.view.position.set(ax * (1 - reach), ay * (1 - reach), az * (1 - reach));
+        fade(s.view, step === 3 && reach > 0.01 ? coneIn : 0);
       }
 
       async function renderAll() {
@@ -281,10 +353,12 @@
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = T3.PCFSoftShadowMap;
         const s = buildScene(T3);
+        ownLines(s.phone);
+        ownLines(s.plate);
         const cam = new T3.PerspectiveCamera(30, W / H, 1, 3000);
+        const count = Math.round(SECONDS * FPS);
         out.textContent = '';
         for (let step = 0; step < 4; step++) {
-          pose(s, step);
           const v = VIEWS[step];
           cam.position.set(
             v.tx + v.dist * Math.sin(v.az) * Math.cos(v.el),
@@ -292,24 +366,37 @@
             v.tz + v.dist * Math.cos(v.az) * Math.cos(v.el),
           );
           cam.lookAt(v.tx, v.ty, v.tz);
-          renderer.render(s.sc, cam);
-          const blob = await new Promise((resolve) =>
-            renderer.domElement.toBlob(resolve, 'image/png'),
-          );
-          const name = `mount-step-${step + 1}.png`;
-          await fetch(`/save?name=${name}`, { method: 'POST', body: blob });
+          let result = null;
+          for (let index = 0; index < count; index++) {
+            pose(s, step, index / FPS);
+            renderer.render(s.sc, cam);
+            const blob = await new Promise((resolve) =>
+              renderer.domElement.toBlob(resolve, 'image/png'),
+            );
+            const query = `step=${step + 1}&index=${index}&count=${count}&fps=${FPS}`;
+            const response = await fetch(`/frame?${query}`, { method: 'POST', body: blob });
+            if (!response.ok) throw new Error(`frame ${query}: ${response.status}`);
+            if (response.status === 200) result = await response.json();
+            status.textContent = `Step ${step + 1}: frame ${index + 1} of ${count}`;
+          }
           const img = document.createElement('img');
-          img.src = URL.createObjectURL(blob);
-          out.appendChild(img);
-          status.textContent = `Saved ${step + 1} of 4`;
+          if (result) {
+            img.src = `/out/${result.name}?v=${Date.now()}`;
+            img.alt = `${result.name}, ${result.bytes} bytes`;
+            out.appendChild(img);
+          }
         }
+        status.textContent = 'Done';
+        document.title = 'Done';
       }
 
-      document.getElementById('go').addEventListener('click', () => {
+      const run = () =>
         renderAll().catch((error) => {
           document.getElementById('status').textContent = String(error);
+          document.title = `Failed: ${error}`;
         });
-      });
+      document.getElementById('go').addEventListener('click', run);
+      if (new URLSearchParams(location.search).has('auto')) run();
     </script>
   </body>
 </html>

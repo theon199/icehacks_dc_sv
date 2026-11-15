@@ -1,4 +1,4 @@
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView } from 'expo-camera';
 import { Linking, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,6 +13,8 @@ import {
   useTheme,
 } from '@/ui';
 import { palettes } from '@/ui/tokens';
+
+import { useCameraAccess } from '../hooks/useCameraAccess';
 
 export interface ViewCheckProps {
   onBack: () => void;
@@ -30,7 +32,7 @@ const CORNER = 30;
 export function ViewCheck({ onBack, onStart, coachUnavailable }: ViewCheckProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission] = useCameraAccess();
   const granted = permission?.granted === true;
   const blocked = permission !== null && !permission.granted && !permission.canAskAgain;
 
