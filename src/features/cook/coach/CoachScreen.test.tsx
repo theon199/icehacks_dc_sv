@@ -129,6 +129,19 @@ beforeEach(() => {
 });
 
 describe('CoachScreen', () => {
+  it("starts the step's own timer by tap when the coach cannot hear", async () => {
+    const deps: CoachQuestionDeps = {
+      askCoach: jest.fn<Promise<CoachResponse>, [CoachRequest, unknown]>(async () => NOT_YET),
+      isOnline: () => true,
+      profile: () => ({ diets: [], allergens: [] }),
+    };
+    await renderWithTheme(<CoachScreen recipeId="mealdb:52865" deps={deps} />);
+    await act(async () => fireEvent.press(screen.getByTestId('coach-next')));
+    await act(async () => fireEvent.press(screen.getByTestId('coach-start-step-timer')));
+    expect(screen.getByLabelText('Step 2, 2:00 left')).toBeTruthy();
+    expect(screen.queryByTestId('coach-timer-hint')).toBeNull();
+  });
+
   it('sets a timer by voice, then answers a question with a photo: "Not yet"', async () => {
     const askCoach = jest.fn<Promise<CoachResponse>, [CoachRequest, unknown]>(async () => NOT_YET);
     const deps: CoachQuestionDeps = {

@@ -114,6 +114,7 @@ export function CoachSession({ recipe, deps }: CoachSessionProps) {
           timers={ordered}
           stepSeconds={current.timerSeconds}
           notificationsOff={timers.engine.notificationsOff}
+          onStartStepTimer={coach.startStepTimer}
         />
         <CoachNotices
           mic={coach.mic.status}

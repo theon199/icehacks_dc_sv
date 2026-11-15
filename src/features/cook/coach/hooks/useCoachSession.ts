@@ -196,6 +196,11 @@ export function useCoachSession({ recipe, camera, deps }: UseCoachSessionOptions
     timers,
     next: useCallback(() => move(1), [move]),
     repeat: useCallback(() => speakStep(stepNow.current, true), [speakStep]),
+    /** Starts the step's own timer by tap, the same as saying "set a timer". */
+    startStepTimer: useCallback(
+      () => handleIntent({ type: 'set_timer', seconds: null, label: null }),
+      [handleIntent],
+    ),
     stopAlarm,
     checkAgain,
     /** Forget the step position and stop listening, before leaving for the finish screen. */
