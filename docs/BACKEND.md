@@ -518,6 +518,25 @@ They also use `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and `ANTHROPIC_FAST_MODEL` 
 Tests: `cd supabase/functions && deno test --allow-env chef snap makeover nearby-chat` (Claude is
 mocked through an injected `fetch`, Supabase through an injected client factory).
 
+### Recipe import: SSRF
+
+`recipe-import` fetches links people paste, so `recipe-import/ssrf.ts` keeps it on the public web:
+
+- http(s) on ports 80 and 443 only, no credentials in the URL, no local or internal names
+- every A and AAAA answer must be public unicast, IPv4 inside IPv6 included
+- redirects followed by hand (at most 3), each hop checked again
+- the host is looked up a second time right before each connection, and that answer must be all
+  public too
+- one 10 s deadline over every lookup, hop and the body; at most 2 MB of HTML
+
+**Residual risk (DNS rebinding):** Deno's `fetch` cannot be pinned to a checked address (no
+resolver hook, and `connectTls` has no server-name override), so it resolves the name a third
+time when it connects. A rebinding server that answers public on the first two lookups and private
+on the third gets one request through. What it can read is limited: only an HTML response is
+accepted, and only a recipe-shaped result (title, ingredient lines, steps) is returned. The edge
+platform's egress rules are the outer guard. Closing it fully needs a fetch that connects to the
+checked address, for example a fixed egress proxy.
+
 ## Commerce, places and publishing functions
 
 Four edge functions built on `_shared` (error envelope, quotas, Claude client). Each folder has

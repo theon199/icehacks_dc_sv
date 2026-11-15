@@ -1,12 +1,9 @@
-import { router } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
-import { ComingSoon } from '@/ui';
+import { MyRecipeScreen } from '@/features/myRecipes/screens/MyRecipeScreen';
+import { stringParam } from '@/lib/params';
 
-const leave = () => (router.canGoBack() ? router.back() : router.replace('/'));
-
-/** Placeholder until the screen lands; registered now so parallel work does not collide here. */
 export default function AppMyRecipeRoute() {
-  return (
-    <ComingSoon title="Recipe" description="One of your own recipes." safeTop onClose={leave} />
-  );
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  return <MyRecipeScreen id={stringParam(id) ?? null} />;
 }

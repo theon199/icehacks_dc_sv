@@ -10,6 +10,7 @@ import { useChefStore, chefSync } from './chef';
 import { useCookLogStore, cookLogSync } from './cookLog';
 import { useFeedbackStore, feedbackSync } from './feedback';
 import { useMealPlanStore, mealPlanSync } from './mealPlan';
+import { useMyRecipesStore, myRecipesSync } from './myRecipes';
 import { usePantryStore, pantrySync } from './pantry';
 import { usePersonalDetailsStore, personalDetailsSync } from './personalDetails';
 import { usePreferencesStore, preferencesSync } from './preferences';
@@ -29,6 +30,7 @@ const userStores: readonly (readonly [ResettableStore, SyncCollectionAdapter])[]
   [usePantryStore, pantrySync],
   [useSavedStore, savedSync],
   [useVariantStore, variantsSync],
+  [useMyRecipesStore, myRecipesSync],
   [useMealPlanStore, mealPlanSync],
   [useFeedbackStore, feedbackSync],
   [useCookLogStore, cookLogSync],

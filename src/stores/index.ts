@@ -6,6 +6,7 @@ export * from './personalDetails';
 export * from './pantry';
 export * from './saved';
 export * from './variants';
+export * from './myRecipes';
 export * from './mealPlan';
 export * from './feedback';
 export * from './cookLog';

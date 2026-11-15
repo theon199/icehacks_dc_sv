@@ -99,8 +99,11 @@ something not in Famara" opens My recipes.
 ### 9b. My recipes
 Bring in a recipe by link, photo of a card, saying it, or typing it (AI reads it into a title,
 servings, ingredients and steps). Every ingredient is matched to the catalog's allergen data; a
-recipe with any ingredient Famara cannot check stays out of suggestions until the person confirms
-it (fail-closed). Synced like other user data.
+recipe with any ingredient Famara cannot check stays out of suggestions (fail-closed). The person
+can confirm a line ("I checked this") only when the doubt is about a diet, or about an unknown food
+while they declare no allergens. A line that may hold an allergen they declared can never be
+confirmed by hand; it stays out until it is edited to a food Famara knows. Synced like other user
+data.
 
 ### 9c. Cooking coach
 "Cook with coach" on a recipe. Setup shows, in four 3D illustrated steps, how to mount the phone:
