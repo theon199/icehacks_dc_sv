@@ -391,7 +391,7 @@ export function createFoodMapHandler(deps: FoodMapDeps): Handler {
    * updates `regions` in place. Returns "budget" when an allowance held a fill back, and the
    * spot status of every region that still needs a fill: `unavailable` when an allowance held
    * it back, `pending` otherwise (past this request's cap, filled by another request, or the
-   * fill failed).
+   * fill failed). Units are given back only for searches that failed.
    */
   async function ensureSpots(
     regions: StoredRegion[],
@@ -448,21 +448,29 @@ export function createFoodMapHandler(deps: FoodMapDeps): Handler {
           if (!work.includes(region)) statuses.set(region.id, "unavailable");
         }
       }
-      const done = await mapWithConcurrency(work, SPOT_FILL_CONCURRENCY, async (region) => {
+      // A unit is given back only when the search itself failed. Once it answered, the search
+      // is paid for, so a failure to store its result still spends the allowance; otherwise a
+      // lasting write failure would repeat paid searches without ever reaching a limit.
+      const searched = await mapWithConcurrency(work, SPOT_FILL_CONCURRENCY, async (region) => {
+        let places;
         try {
-          const places = await searchNearby({ box: region.bbox, apiKey, fetch: deps.fetch });
+          places = await searchNearby({ box: region.bbox, apiKey, fetch: deps.fetch });
+        } catch (error) {
+          console.error("food-map spot search failed", errorCode(error));
+          return false;
+        }
+        try {
           const spots = chooseSpots(places, region.polygon);
           await service.storeSpots(region.id, spots, SPOT_TTL_SECONDS);
           region.spots = spots;
           region.spots_expires_at = new Date(deps.now() + SPOT_TTL_SECONDS * 1000).toISOString();
           statuses.set(region.id, "ready");
-          return true;
         } catch (error) {
-          console.error("food-map spot fill failed", errorCode(error));
-          return false;
+          console.error("food-map spot store failed", errorCode(error));
         }
+        return true;
       });
-      const unused = done.filter((ok) => !ok).length;
+      const unused = searched.filter((ran) => !ran).length;
       if (unused > 0) {
         await service.guards.release(member.bucket, member.period, unused).catch(() => undefined);
         await service.guards.release(global.bucket, global.period, unused).catch(() => undefined);

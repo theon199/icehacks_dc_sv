@@ -381,6 +381,27 @@ Deno.test("expired spot lists are refilled; failed fills give their units back",
   assertEquals(h.guards.usedIn("food_map_spots:global", "month"), 1);
 });
 
+Deno.test("a search that ran keeps its units even when storing the spots fails", async () => {
+  class FailingStore extends MemoryFoodMap {
+    override storeSpots(): Promise<void> {
+      return Promise.reject(new Error("write failed"));
+    }
+  }
+  const store = new FailingStore(() => NOW);
+  store.seed([{ source_ref: "osm:relation:1", spots_expires_at: null }]);
+  const h = harness({
+    store,
+    api: [() => jsonResponse({ places: [nearbyPlace("fresh", OWN.lat, OWN.lng)] })],
+  });
+  const res = await call(h);
+  assertEquals(res.status, 200);
+  assertEquals(res.body.regions[0].spots_status, "pending");
+  assertEquals(h.requests.length, 1, "the search ran");
+  assertEquals(h.guards.usedIn(`food_map_spots:user:${USER}`, "day"), 1, "member units kept");
+  assertEquals(h.guards.usedIn("food_map_spots:global", "month"), 1, "global units kept");
+  assertEquals(h.guards.leases.size, 0, "the lease is released");
+});
+
 Deno.test("an expired area is refreshed; a failed refresh serves what is stored", async () => {
   const store = new MemoryFoodMap(() => NOW);
   store.seed([{ source_ref: "osm:relation:1" }], NOW - 1);

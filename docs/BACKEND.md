@@ -740,6 +740,9 @@ totals }` for the regions centred in the caller's geohash-5 cell and its eight n
   - Ranking is rating × ln(1 + rating count), ties to more ratings, then place id. The top 5 are
     kept, with up to 3 photos each.
   - At most `FAMARA_FOOD_MAP_FILLS_PER_REQUEST` regions are filled per request, nearest first.
+  - Each search spends one unit of the member and global allowances. The unit is given back only
+    when the search itself failed; a search that answered stays spent even if storing its result
+    fails, so a lasting write failure cannot repeat paid searches without limit.
 - **`spots_status`** on each region:
   - `ready`: filled, possibly with no spots.
   - `pending`: not filled yet; a later view fills it.
