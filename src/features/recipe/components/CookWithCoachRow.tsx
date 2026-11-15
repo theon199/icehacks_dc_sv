@@ -19,11 +19,8 @@ export interface CookWithCoachRowProps {
 
 const DISC = 40;
 const SMALL_DISC = 30;
-/**
- * The phone set up over the counter, watching. The shared icon table has no phone glyph yet, so
- * this is the camera viewfinder from the same outline set.
- */
-const COACH_ICON: IconName = 'camera.viewfinder';
+/** The phone set up over the counter, watching. */
+const COACH_ICON: IconName = 'iphone';
 
 /**
  * The full-width ink row into the cooking coach: a lime disc, "Cook with coach" and how it works
