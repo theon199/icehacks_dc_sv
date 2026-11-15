@@ -1,21 +1,26 @@
 import { FlashList } from '@shopify/flash-list';
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { RecipeIngredientLine } from '@/lib/catalog';
 import { haptics } from '@/lib/haptics';
+import { selectSmallAppetite, selectUnits, usePreferencesStore, useSettingsStore } from '@/stores';
 import { GlassSheet, Icon, PressableScale, Text, space, useTheme } from '@/ui';
+
+import { cookIngredients, type CookIngredient } from '../logic/ingredients';
 
 export interface IngredientDrawerProps {
   visible: boolean;
   ingredients: readonly RecipeIngredientLine[];
+  /** Servings the recipe makes; amounts are shown for these, as on the recipe page. */
+  servings: number;
   checked: ReadonlySet<number>;
   onToggle: (position: number) => void;
   onClose: () => void;
 }
 
 interface RowProps {
-  line: RecipeIngredientLine;
+  line: CookIngredient;
   checked: boolean;
   onToggle: (position: number) => void;
 }
@@ -26,7 +31,7 @@ const IngredientRow = memo(function IngredientRow({ line, checked, onToggle }: R
     <PressableScale
       accessibilityRole="checkbox"
       accessibilityState={{ checked }}
-      accessibilityLabel={line.optional ? `${line.text}, optional` : line.text}
+      accessibilityLabel={line.label}
       pressedOpacity={0.6}
       pressedScale={1}
       onPress={() => {
@@ -46,7 +51,8 @@ const IngredientRow = memo(function IngredientRow({ line, checked, onToggle }: R
           tone={checked ? 'subtle' : 'default'}
           style={checked ? styles.checkedText : null}
         >
-          {line.text}
+          {line.amount ? <Text variant="bodyStrong">{`${line.amount} `}</Text> : null}
+          {line.name}
         </Text>
         {line.optional ? (
           <Text variant="caption" tone="muted">
@@ -60,17 +66,25 @@ const IngredientRow = memo(function IngredientRow({ line, checked, onToggle }: R
 
 /**
  * Ingredient checklist on a glass sheet over cook mode. Timers keep running underneath; ticks are
- * per session and only help the cook keep track of what is already in the pan.
+ * per session and only help the cook keep track of what is already in the pan. Amounts are scaled
+ * and written in the person's units exactly as the recipe page lists them.
  */
 export function IngredientDrawer({
   visible,
   ingredients,
+  servings,
   checked,
   onToggle,
   onClose,
 }: IngredientDrawerProps) {
+  const system = useSettingsStore(selectUnits);
+  const smallAppetite = usePreferencesStore(selectSmallAppetite);
+  const lines = useMemo(
+    () => cookIngredients({ lines: ingredients, servings, smallAppetite, system }),
+    [ingredients, servings, smallAppetite, system],
+  );
   const renderItem = useCallback(
-    ({ item }: { item: RecipeIngredientLine }) => (
+    ({ item }: { item: CookIngredient }) => (
       <IngredientRow line={item} checked={checked.has(item.position)} onToggle={onToggle} />
     ),
     [checked, onToggle],
@@ -89,7 +103,7 @@ export function IngredientDrawer({
     >
       <View style={styles.listFrame}>
         <FlashList
-          data={ingredients}
+          data={lines}
           renderItem={renderItem}
           keyExtractor={(line) => String(line.position)}
           extraData={checked}

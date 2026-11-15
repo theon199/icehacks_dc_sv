@@ -194,6 +194,7 @@ export function CookSession({ recipe }: CookSessionProps) {
       <IngredientDrawer
         visible={drawerOpen}
         ingredients={recipe.ingredients}
+        servings={recipe.servings}
         checked={checked}
         onToggle={toggleChecked}
         onClose={() => setDrawerOpen(false)}
