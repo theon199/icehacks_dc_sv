@@ -44,6 +44,23 @@ export {
   type FitReason,
   type FitReasonCode,
 } from './explain';
+export {
+  DEFAULT_MEAL_TIME_LIMIT,
+  fitsMealTime,
+  MEAL_COURSES,
+  MEAL_TIME_COURSES,
+  MEAL_TIME_LEANS,
+  MEAL_TIME_START_HOURS,
+  MEAL_TIMES,
+  mealForTime,
+  mealTimeAdjustment,
+  rankMealTimes,
+  type MealTime,
+  type MealTimeInput,
+  type MealTimeLean,
+  type MealTimePick,
+  type MealTimePicks,
+} from './mealSlot';
 export { createRandom, hashSeed, type Seed } from './random';
 export { rankRecipes, scoreCandidates, type RankedRecipe, type ScoredCandidates } from './rank';
 export { pantryCoverage, scoreRecipe, type FeatureVector, type RecipeScore } from './score';
