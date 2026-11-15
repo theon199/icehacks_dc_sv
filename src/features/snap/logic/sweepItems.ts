@@ -108,6 +108,11 @@ export function sweepItemLabel(item: SweepItem): string {
   return `${item.name}, ${amount}`;
 }
 
+/** Found by the camera, rather than in the person's words. */
+export function isFromVideo(item: { origin: string }): boolean {
+  return item.origin === 'video';
+}
+
 export function countByOrigin(items: readonly SweepItem[], origin: SweepOrigin): number {
   return items.reduce((count, item) => (item.origin === origin ? count + 1 : count), 0);
 }

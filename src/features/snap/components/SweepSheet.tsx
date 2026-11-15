@@ -12,7 +12,7 @@ import { SweepWordsBar } from './SweepWordsBar';
 import type { SweepView } from '../capture/sweepRun';
 import { useFreshKeys } from '../hooks/useSweepClock';
 import type { DictationStatus } from '../hooks/useSweepDictation';
-import { countByOrigin, type SweepItem } from '../logic/sweepItems';
+import { isFromVideo, type SweepItem } from '../logic/sweepItems';
 
 export interface SweepSheetProps {
   view: SweepView;
@@ -63,7 +63,7 @@ export function SweepSheet({
   const filming = view.status === 'filming';
   const finishing = view.status === 'finishing';
   const listening = micStatus === 'listening' || micStatus === 'starting';
-  const seen = countByOrigin(view.items, 'video');
+  const seen = view.items.filter(isFromVideo).length;
   const title = filming
     ? `Seeing ${view.items.length} ${plural(view.items.length, 'item', 'items')}`
     : `${seen} from video`;
@@ -96,7 +96,7 @@ export function SweepSheet({
         <Text variant="title3" accessibilityRole="header" testID="sweep-title">
           {title}
         </Text>
-        {filming ? <SweepTag label="Filming" tone="highlight" icon="video.fill" /> : null}
+        {filming ? <SweepTag label="Filming" tone="highlight" icon="camera.fill" /> : null}
         {listening ? <SweepTag label="Listening" tone="highlight" icon="mic.fill" /> : null}
       </View>
       {listening ? (

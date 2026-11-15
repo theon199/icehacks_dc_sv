@@ -12,6 +12,7 @@ import { useAddToPantry } from '../hooks/useAddToPantry';
 import { useIngredientMatches } from '../hooks/useIngredientMatches';
 import { snapCameraHref } from '../links';
 import { draftFromSweep, draftReducer, selectedItems, type DraftItem } from '../logic/pantryDraft';
+import { isFromVideo } from '../logic/sweepItems';
 import { nameKey } from '../logic/words';
 import type { SweepSnapResult } from '../snapSession';
 
@@ -24,8 +25,8 @@ type Row =
 
 /** "From the video", then "From what you said" (with anything typed here), each with its rows. */
 function rowsFor(items: readonly DraftItem[]): Row[] {
-  const video = items.filter((item) => item.origin === 'video');
-  const words = items.filter((item) => item.origin !== 'video');
+  const video = items.filter(isFromVideo);
+  const words = items.filter((item) => !isFromVideo(item));
   const rows: Row[] = [];
   const section = (key: string, title: string, list: DraftItem[]) => {
     if (list.length === 0) return;
