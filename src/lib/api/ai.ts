@@ -10,7 +10,7 @@
 import { z } from 'zod';
 
 import { type CallOptions, callFunction } from './client';
-import { type ApiError, isApiError } from './errors';
+import { ApiError, INVALID_REQUEST, isApiError } from './errors';
 
 /**
  * Client-side timeouts: each is a little longer than the function's own time budget, so the app
@@ -162,6 +162,31 @@ export interface SnapTextRequest {
 }
 
 export type SnapInput = SnapRequest | SnapSweepRequest | SnapTextRequest;
+
+/** A base64 image as sent: present, and within the functions' request body limit. */
+const base64ImageSchema = z.string().min(1).max(4_200_000);
+
+/**
+ * What `readSnap` may send. A sweep's 12-frame cap spans its batches, so each batch is held to
+ * `framesPerBatch` here and the pass as a whole is capped by the sweep run and the server.
+ */
+export const snapInputSchema = z.union([
+  z.strictObject({
+    mode: z.enum(['pantry', 'dish']),
+    image: base64ImageSchema,
+    note: z.string().max(200).optional(),
+  }),
+  z.strictObject({
+    mode: z.literal('pantry'),
+    sweep_id: z.uuid(),
+    images: z.array(base64ImageSchema).min(1).max(SNAP_SWEEP_LIMITS.framesPerBatch),
+  }),
+  z.strictObject({
+    mode: z.literal('pantry'),
+    sweep_id: z.uuid().optional(),
+    text: z.string().trim().min(1).max(SNAP_SWEEP_LIMITS.textMaxChars),
+  }),
+]);
 
 export const pantryUnitSchema = z.enum([
   'piece',
@@ -320,6 +345,28 @@ export const RECIPE_IMPORT_LIMITS = {
   maxSteps: 40,
 } as const;
 
+/**
+ * Only web links: `javascript:`, `file:`, `data:` and the like are refused on the device. Checked
+ * with a pattern because React Native's URL does not reliably report the scheme.
+ */
+const HTTP_URL = /^https?:\/\/[^\s/?#]+[^\s]*$/i;
+
+export const recipeImportRequestSchema = z.discriminatedUnion('source', [
+  z.strictObject({
+    source: z.literal('link'),
+    url: z
+      .string()
+      .trim()
+      .max(RECIPE_IMPORT_LIMITS.urlMaxChars)
+      .regex(HTTP_URL, 'Only http(s) links can be read.'),
+  }),
+  z.strictObject({ source: z.literal('photo'), image: base64ImageSchema }),
+  z.strictObject({
+    source: z.literal('text'),
+    text: z.string().trim().min(1).max(RECIPE_IMPORT_LIMITS.textMaxChars),
+  }),
+]);
+
 export const importedMealSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack']);
 export type ImportedMeal = z.infer<typeof importedMealSchema>;
 
@@ -383,6 +430,27 @@ export interface CoachRequest {
   allergens: AllergenId[];
 }
 
+/** What `askCoach` may send; the bounds match the `coach` function's own input check. */
+export const coachRequestSchema = z.strictObject({
+  recipe: z
+    .strictObject({
+      id: z.string().min(1).max(80),
+      title: z.string().trim().min(1).max(160),
+      step_index: z.number().int().min(0),
+      step_count: z.number().int().min(1).max(100),
+      step: z.string().trim().min(1).max(COACH_LIMITS.stepMaxChars),
+      next_step: z.string().trim().min(1).max(COACH_LIMITS.stepMaxChars).optional(),
+    })
+    .refine((recipe) => recipe.step_index < recipe.step_count, {
+      message: 'step_index must be below step_count.',
+      path: ['step_index'],
+    }),
+  question: z.string().trim().min(1).max(COACH_LIMITS.questionMaxChars),
+  image: base64ImageSchema.optional(),
+  diet: z.array(z.string().min(1).max(40)).max(10),
+  allergens: z.array(allergenIdSchema).max(10),
+});
+
 export const coachVerdictSchema = z.enum(['yes', 'not_yet', 'unsure', 'not_visible']);
 export type CoachVerdict = z.infer<typeof coachVerdictSchema>;
 
@@ -418,6 +486,23 @@ const withTimeout = (options: CallOptions | undefined, timeoutMs: number): CallO
   ...options,
 });
 
+/**
+ * Parses a request against its schema before anything is sent. A request outside the documented
+ * bounds is a bug on the device, never worth a network round trip or a retry.
+ */
+function checkRequest<S extends z.ZodType>(functionName: string, schema: S, input: unknown) {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    throw new ApiError({
+      kind: 'validation',
+      functionName,
+      code: INVALID_REQUEST,
+      cause: parsed.error,
+    });
+  }
+  return parsed.data;
+}
+
 /** The AI calls bound to a transport; `aiApi` uses the app's configured client. */
 export function createAiApi(call: CallFn) {
   return {
@@ -437,8 +522,9 @@ export function createAiApi(call: CallFn) {
       return { ...response, recipe_ids: response.recipe_ids.filter((id) => offered.has(id)) };
     },
 
-    readSnap(input: SnapInput, options?: CallOptions): Promise<SnapResponse> {
-      return call('snap', input, snapResponseSchema, withTimeout(options, AI_TIMEOUTS_MS.snap));
+    async readSnap(input: SnapInput, options?: CallOptions): Promise<SnapResponse> {
+      const body = checkRequest('snap', snapInputSchema, input);
+      return call('snap', body, snapResponseSchema, withTimeout(options, AI_TIMEOUTS_MS.snap));
     },
 
     /**
@@ -446,17 +532,22 @@ export function createAiApi(call: CallFn) {
      * maps each ingredient to the catalog and keeps the recipe out of suggestions until every one
      * is known.
      */
-    importRecipe(input: RecipeImportRequest, options?: CallOptions): Promise<RecipeImportResponse> {
+    async importRecipe(
+      input: RecipeImportRequest,
+      options?: CallOptions,
+    ): Promise<RecipeImportResponse> {
+      const body = checkRequest('recipe-import', recipeImportRequestSchema, input);
       return call(
         'recipe-import',
-        input,
+        body,
         recipeImportResponseSchema,
         withTimeout(options, AI_TIMEOUTS_MS.recipeImport),
       );
     },
 
-    askCoach(input: CoachRequest, options?: CallOptions): Promise<CoachResponse> {
-      return call('coach', input, coachResponseSchema, withTimeout(options, AI_TIMEOUTS_MS.coach));
+    async askCoach(input: CoachRequest, options?: CallOptions): Promise<CoachResponse> {
+      const body = checkRequest('coach', coachRequestSchema, input);
+      return call('coach', body, coachResponseSchema, withTimeout(options, AI_TIMEOUTS_MS.coach));
     },
 
     makeover(input: MakeoverRequest, options?: CallOptions): Promise<MakeoverResponse> {

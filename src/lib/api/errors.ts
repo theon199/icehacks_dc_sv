@@ -15,6 +15,9 @@ export type ApiErrorKind =
 /** Code used when a successful response fails schema validation. */
 export const INVALID_RESPONSE = 'invalid_response';
 
+/** Code used when a request fails its schema on the device and is never sent. */
+export const INVALID_REQUEST = 'invalid_request';
+
 export interface ApiErrorInit {
   kind: ApiErrorKind;
   /** Function name that failed, for logs. */
