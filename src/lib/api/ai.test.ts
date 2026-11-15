@@ -199,6 +199,31 @@ describe('aiApi', () => {
     expect(sent[0]?.url.endsWith('/coach')).toBe(true);
   });
 
+  it('sends the recipe facts and accepts an answer that spent no question', async () => {
+    const { api, sent } = setup(() =>
+      json({
+        verdict: 'unsure',
+        answer: "I can't tell if poultry is cooked through by looking.",
+        focus: null,
+        quota: null,
+      }),
+    );
+    const reply = await api.askCoach({
+      recipe: { id: 'r1', title: 'Chicken sausages', step_index: 0, step_count: 1, step: 'Brown' },
+      question: 'Is it done?',
+      diet: [],
+      allergens: [],
+      facts: { safety: ['poultry', 'minced_meat'], allergens: [] },
+    });
+    expect(reply.quota).toBeNull();
+    expect(sent[0]?.body).toMatchObject({
+      facts: {
+        safety: ['poultry', 'minced_meat'],
+        allergens: [],
+      },
+    });
+  });
+
   it('answers the coach faster than other AI calls', () => {
     expect(AI_TIMEOUTS_MS.coach).toBeLessThan(AI_TIMEOUTS_MS.snap);
   });

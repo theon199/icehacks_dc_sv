@@ -7,6 +7,7 @@ import { useIsFocused } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
+import type { CoachFacts } from '@/lib/api/ai';
 import type { RecipeDetail } from '@/lib/catalog';
 import { haptics } from '@/lib/haptics';
 
@@ -37,9 +38,11 @@ export interface UseCoachSessionOptions {
   recipe: RecipeDetail;
   camera: CoachCamera;
   deps?: CoachQuestionDeps;
+  /** What the catalog knows about the recipe; null until loaded, or when it has nothing. */
+  facts?: CoachFacts | null;
 }
 
-export function useCoachSession({ recipe, camera, deps }: UseCoachSessionOptions) {
+export function useCoachSession({ recipe, camera, deps, facts = null }: UseCoachSessionOptions) {
   const steps = recipe.steps;
   const { step, goTo, clear } = useStepPosition(recipe.id, steps.length);
   // Another screen on top (a notification's target, say) must not leave the microphone open.
@@ -78,7 +81,7 @@ export function useCoachSession({ recipe, camera, deps }: UseCoachSessionOptions
     recipe,
     onRing: (timer) => show(timerDoneReply(timer.label, steps, stepNow.current)),
   });
-  const question = useCoachQuestion(recipe, camera, show, deps);
+  const question = useCoachQuestion(recipe, camera, show, deps, facts);
 
   const speakStep = useCallback(
     (index: number, always = false) => {

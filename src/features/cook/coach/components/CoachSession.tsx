@@ -14,6 +14,7 @@ import { CoachStepView } from './CoachStepView';
 import { CoachTimers } from './CoachTimers';
 import { LiveTile } from './LiveTile';
 import { useCoachCamera } from '../hooks/useCoachCamera';
+import { useCoachFacts } from '../hooks/useCoachFacts';
 import type { CoachQuestionDeps } from '../hooks/useCoachQuestion';
 import { useCoachSession } from '../hooks/useCoachSession';
 
@@ -31,7 +32,13 @@ export function CoachSession({ recipe, deps }: CoachSessionProps) {
   const router = useRouter();
   const theme = useTheme();
   const lens = useCoachCamera();
-  const coach = useCoachSession({ recipe, camera: lens.camera, ...(deps ? { deps } : {}) });
+  const facts = useCoachFacts(recipe);
+  const coach = useCoachSession({
+    recipe,
+    camera: lens.camera,
+    facts,
+    ...(deps ? { deps } : {}),
+  });
   const { step, status, timers } = coach;
   const current = recipe.steps[step];
   const ordered = timers.engine.timers;

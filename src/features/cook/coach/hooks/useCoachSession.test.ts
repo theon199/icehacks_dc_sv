@@ -66,6 +66,8 @@ const NOT_YET: CoachResponse = {
   quota: { remaining: 59, reset_at: '2026-11-15T00:00:00Z' },
 };
 
+const FACTS = { safety: [], allergens: ['milk' as const] };
+
 function setup(options: { cameraOn?: boolean; online?: boolean } = {}) {
   const askCoach = jest.fn<Promise<CoachResponse>, [CoachRequest, unknown]>(async () => NOT_YET);
   const deps: CoachQuestionDeps = {
@@ -81,7 +83,7 @@ function setup(options: { cameraOn?: boolean; online?: boolean } = {}) {
 async function open(options: { cameraOn?: boolean; online?: boolean } = {}) {
   const parts = setup(options);
   const hook = await renderHook(() =>
-    useCoachSession({ recipe, camera: parts.camera, deps: parts.deps }),
+    useCoachSession({ recipe, camera: parts.camera, deps: parts.deps, facts: FACTS }),
   );
   // The first step is read out before listening begins.
   await act(async () => finishSpeaking());
@@ -186,6 +188,7 @@ describe('useCoachSession', () => {
         image: 'STILL',
         diet: ['vegetarian'],
         allergens: ['peanut'],
+        facts: FACTS,
         recipe: expect.objectContaining({ step_index: 0, step_count: 3 }),
       }),
       expect.objectContaining({ signal: expect.anything() }),

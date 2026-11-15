@@ -9,6 +9,7 @@ import {
   isAiQuotaExceeded,
   isAiRefused,
   type AllergenId,
+  type CoachFacts,
   type CoachRequest,
   type CoachResponse,
   type CoachVerdict,
@@ -130,6 +131,7 @@ export function buildCoachRequest(
   question: string,
   profile: CoachProfile,
   image: string | null,
+  facts: CoachFacts | null = null,
 ): CoachRequest {
   const steps = recipe.steps;
   const current = steps[step]?.text ?? '';
@@ -148,6 +150,7 @@ export function buildCoachRequest(
     ...(image ? { image } : {}),
     diet: [...profile.diets],
     allergens: [...profile.allergens],
+    ...(facts ? { facts } : {}),
   };
 }
 

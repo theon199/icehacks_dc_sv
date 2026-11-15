@@ -87,16 +87,50 @@ jest.mock('expo-speech-recognition', () => ({
   },
 }));
 
+const line = (position: number, ingredientId: string | null) => ({
+  position,
+  ingredientId,
+  text: ingredientId ?? 'a handful of something',
+  quantity: null,
+  unit: null,
+  grams: null,
+  section: null,
+  optional: false,
+});
 const mockRecipe = {
   id: 'mealdb:52865',
   title: 'Matar Paneer',
+  allergens: { milk: 'contains', peanut: 'free' },
+  ingredients: [line(0, 'paneer'), line(1, 'peas')],
   steps: [
     { position: 0, text: 'Fry the onion until soft', timerSeconds: null },
     { position: 1, text: 'Add the peas and simmer for 2 minutes', timerSeconds: 120 },
     { position: 2, text: 'Stir in the paneer and garam masala', timerSeconds: null },
   ],
 } as unknown as RecipeDetail;
+/** The recipe's catalog ingredients, or null while they have not loaded. */
+const mockIngredients = {
+  data: null as unknown[] | null,
+};
+const plant = (id: string, category: string, allergens: string[] = []) => ({
+  id,
+  name: id,
+  plural: null,
+  category,
+  aisle: null,
+  fdcId: null,
+  allergens,
+  allergenStatus: 'resolved',
+  dietFlags: 3,
+  pantryStaple: false,
+  gramsPerUnit: {},
+});
 jest.mock('@/lib/catalog', () => ({
+  ...jest.requireActual<object>('@/lib/catalog/types'),
+  useIngredients: () =>
+    mockIngredients.data
+      ? { data: mockIngredients.data, isSuccess: true }
+      : { data: undefined, isSuccess: false },
   useRecipe: () => ({
     data: mockRecipe,
     isSuccess: true,
@@ -125,6 +159,7 @@ async function hear(text: string) {
 
 beforeEach(() => {
   mockVoice.handlers = {};
+  mockIngredients.data = [plant('paneer', 'dairy', ['milk']), plant('peas', 'produce')];
   Storage.clearSync();
 });
 
@@ -174,6 +209,7 @@ describe('CoachScreen', () => {
         question: 'Is this stirred enough?',
         image: 'STILL',
         recipe: expect.objectContaining({ step: 'Stir in the paneer and garam masala' }),
+        facts: { safety: [], allergens: ['milk'] },
       }),
       expect.anything(),
     );
@@ -203,5 +239,23 @@ describe('CoachScreen', () => {
       pathname: '/cook/[id]/done',
       params: { id: 'mealdb:52865' },
     });
+  });
+
+  it('keeps answering when the catalog ingredients are missing, and says so to the server', async () => {
+    mockIngredients.data = null;
+    const askCoach = jest.fn<Promise<CoachResponse>, [CoachRequest, unknown]>(async () => NOT_YET);
+    const deps: CoachQuestionDeps = {
+      askCoach,
+      isOnline: () => true,
+      profile: () => ({ diets: [], allergens: [] }),
+    };
+    await renderWithTheme(<CoachScreen recipeId="mealdb:52865" deps={deps} />);
+    await act(async () => mockVoice.handlers.start?.(null));
+    await hear('Hey Famara, is this stirred enough?');
+    expect(askCoach).toHaveBeenCalledWith(
+      expect.objectContaining({ facts: { safety: ['unknown'], allergens: ['milk'] } }),
+      expect.anything(),
+    );
+    expect(screen.getByText(NOT_YET.answer)).toBeTruthy();
   });
 });

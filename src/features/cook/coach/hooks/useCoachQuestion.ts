@@ -6,7 +6,7 @@
 import { onlineManager } from '@tanstack/react-query';
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
-import { aiApi, type AiApi } from '@/lib/api/ai';
+import { aiApi, type AiApi, type CoachFacts } from '@/lib/api/ai';
 import { isApiError } from '@/lib/api/errors';
 import type { RecipeDetail } from '@/lib/catalog';
 import { usePreferencesStore } from '@/stores';
@@ -54,11 +54,13 @@ export function useCoachQuestion(
   camera: CoachCamera,
   onReply: (reply: CoachReply) => void,
   deps: CoachQuestionDeps = defaultQuestionDeps,
+  /** Catalog facts about the recipe, or null while there are none (the server then fails closed). */
+  facts: CoachFacts | null = null,
 ) {
   const inFlight = useRef<AbortController | null>(null);
-  const live = useRef({ recipe, camera, onReply, deps });
+  const live = useRef({ recipe, camera, onReply, deps, facts });
   useLayoutEffect(() => {
-    live.current = { recipe, camera, onReply, deps };
+    live.current = { recipe, camera, onReply, deps, facts };
   });
 
   const ask = useCallback(async (question: string, step: number) => {
@@ -85,6 +87,7 @@ export function useCoachQuestion(
         question,
         api.profile(),
         still?.base64 ?? null,
+        live.current.facts,
       );
       const response = await api.askCoach(request, { signal: controller.signal });
       if (controller.signal.aborted) return;

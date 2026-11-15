@@ -117,6 +117,20 @@ describe('buildCoachRequest', () => {
     expect(request.image).toBeUndefined();
     expect(request.recipe.next_step).toBeUndefined();
     expect(request.question).toHaveLength(300);
+    expect(request.facts).toBeUndefined();
+  });
+
+  it('sends the catalog facts when the app has them', () => {
+    const facts = { safety: ['egg' as const], allergens: ['milk' as const] };
+    const request = buildCoachRequest(
+      recipe,
+      0,
+      'Is it ready?',
+      { diets: [], allergens: [] },
+      null,
+      facts,
+    );
+    expect(request.facts).toEqual(facts);
   });
 });
 
