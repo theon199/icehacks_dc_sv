@@ -122,6 +122,7 @@ const ADOBO = {
       { text: "2 lb chicken thighs", name: "Chicken thighs" },
       { text: "1/3 cup Datu Puti vinegar", name: "cane vinegar" },
     ],
+    ingredient_count: 2,
     steps: ["Marinate the chicken in soy sauce and vinegar.", "Simmer for 40 minutes."],
   },
 };
@@ -392,6 +393,7 @@ Deno.test("says a recipe is too long instead of importing part of it", async () 
         { length: 61 },
         (_, i) => ({ text: `${i + 1} g rice`, name: "rice" }),
       ),
+      ingredient_count: 61,
     },
   };
   const { handler } = harness({ replies: [claudeJson(big)] });
@@ -418,3 +420,32 @@ function silencedSync<T>(fn: () => T): T {
     console.warn = warn;
   }
 }
+
+Deno.test("refuses a reply that lists fewer ingredients than the recipe has", async () => {
+  const short = { ...ADOBO, recipe: { ...ADOBO.recipe, ingredient_count: 3 } };
+  const { handler } = harness({ replies: [claudeJson(short)] });
+  const res = await silenced(() => handler(post({ source: "text", text: "adobo" })));
+  const body = await res.json();
+  assertEquals(body.status, "not_recipe");
+  assertEquals(body.reason, "unreadable");
+  assertStringIncludes(body.message, "every ingredient");
+});
+
+Deno.test("refuses a page too long to read whole, without asking the model", async () => {
+  const filler = "<p>A long story about the farm and the family.</p>".repeat(900);
+  const { handler, claudeCalls } = harness({
+    replies: [claudeJson(ADOBO)],
+    pages: {
+      "https://blog.example.com/long": htmlPage(
+        `<html><body>${filler}<ul><li>2 tbsp peanuts</li></ul></body></html>`,
+      ),
+    },
+  });
+  const res = await silenced(() =>
+    handler(post({ source: "link", url: "https://blog.example.com/long" }))
+  );
+  const body = await res.json();
+  assertEquals(body.status, "not_recipe");
+  assertStringIncludes(body.message, "too long");
+  assertEquals(claudeCalls.length, 0);
+});

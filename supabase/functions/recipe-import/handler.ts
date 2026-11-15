@@ -107,6 +107,8 @@ export const RecipeModelSchema = z.object({
     cuisine: z.string().nullable(),
     meal: z.enum(MEALS).nullable(),
     ingredients: z.array(z.object({ text: z.string(), name: z.string() })),
+    /** The model's own count of the source's ingredient lines, checked against the list. */
+    ingredient_count: z.number(),
     steps: z.array(z.string()),
   }).nullable(),
 });
@@ -193,6 +195,12 @@ export function finalizeRecipe(
   const parsed = ImportedRecipeSchema.safeParse(candidate);
   return parsed.success ? { status: "ok", recipe: parsed.data } : { status: "empty" };
 }
+
+const INCOMPLETE_MESSAGE =
+  "We couldn't read every ingredient, so nothing was imported. Try again, or paste the recipe as text.";
+
+const PAGE_TOO_LONG_MESSAGE =
+  "This page is too long for Famara to read whole. Paste just the recipe as text instead.";
 
 const TOO_LONG_MESSAGE =
   `This recipe is longer than Famara can keep (${RECIPE_IMPORT_LIMITS.maxIngredients} ingredients, ${RECIPE_IMPORT_LIMITS.maxSteps} steps, ${MAX_INGREDIENT_CHARS} characters a line). Split it into two, or type a shorter version.`;
@@ -354,6 +362,15 @@ export function createRecipeImportHandler(deps: RecipeImportDeps = {}): Handler 
         if (value.result !== "recipe" || value.recipe === null) {
           return notRecipe(value.result === "unreadable" ? "unreadable" : "no_recipe");
         }
+        // A list shorter than the model's own count means a line was left out: never imported.
+        if (value.recipe.ingredients.length !== value.recipe.ingredient_count) {
+          return json({
+            status: "not_recipe",
+            reason: "unreadable",
+            message: INCOMPLETE_MESSAGE,
+            quota: quotaBody,
+          });
+        }
         return finished(finalizeRecipe(value.recipe, sourceUrl));
       } catch (error) {
         throw anthropicErrorToHttp(error);
@@ -371,7 +388,15 @@ export function createRecipeImportHandler(deps: RecipeImportDeps = {}): Handler 
     // A page whose own recipe data is too long is not read again by the model, which would cut it.
     if (fromJsonLd && fromJsonLd.status !== "empty") return finished(fromJsonLd);
     const text = pageText(page.html);
-    if (text.length < RECIPE_IMPORT_LIMITS.minPageChars) return notRecipe("no_recipe");
-    return readWithModel(text, page.url);
+    if (!text.complete) {
+      return json({
+        status: "not_recipe",
+        reason: "unreadable",
+        message: PAGE_TOO_LONG_MESSAGE,
+        quota: quotaBody,
+      });
+    }
+    if (text.text.length < RECIPE_IMPORT_LIMITS.minPageChars) return notRecipe("no_recipe");
+    return readWithModel(text.text, page.url);
   });
 }

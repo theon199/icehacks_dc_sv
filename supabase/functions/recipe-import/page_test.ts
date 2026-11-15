@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import {
   decodeEntities,
   durationMinutes,
@@ -98,7 +98,10 @@ Deno.test("keeps only readable text, without scripts and styles", () => {
      <script>alert(1)</script><h1>Adobo</h1><ul><li>Chicken</li><li>Vinegar</li></ul>
      <p>Simmer &amp; serve.</p><footer>Copyright</footer></body></html>`,
   );
-  assertEquals(text, "Adobo\nAdobo\n- Chicken\n- Vinegar\nSimmer & serve.");
+  assertEquals(text, {
+    text: "Adobo\nAdobo\n- Chicken\n- Vinegar\nSimmer & serve.",
+    complete: true,
+  });
 });
 
 Deno.test("names the plain ingredient in a line", () => {
@@ -115,4 +118,21 @@ Deno.test("names the plain ingredient in a line", () => {
     ["1 cup butter or margarine", "butter or margarine"],
   ];
   for (const [line, name] of cases) assertEquals(ingredientName(line), name, line);
+});
+
+Deno.test("reads a long page from its ingredients when that part fits", () => {
+  const filler = "<p>A long story about the farm and the family.</p>".repeat(900);
+  const page = pageText(
+    `<html><head><title>Satay</title></head><body>${filler}<h2>Ingredients</h2>` +
+      `<ul><li>2 tbsp peanuts</li></ul><h2>Method</h2><p>Grind.</p></body></html>`,
+  );
+  assertEquals(page.complete, true);
+  assert(page.text.startsWith("Satay\nIngredients"));
+  assert(page.text.includes("2 tbsp peanuts"));
+});
+
+Deno.test("says a long page without a readable ingredients part is not complete", () => {
+  const filler = "<p>A long story about the farm and the family.</p>".repeat(900);
+  const page = pageText(`<html><body>${filler}<ul><li>2 tbsp peanuts</li></ul></body></html>`);
+  assertEquals(page.complete, false);
 });

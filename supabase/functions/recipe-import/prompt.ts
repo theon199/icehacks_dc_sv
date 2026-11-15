@@ -19,9 +19,10 @@ Only "recipe" gets a recipe; otherwise "recipe" is null. If there are several re
 - total_minutes: total time in minutes if the source states it or it adds up clearly from the steps; otherwise null.
 - cuisine: the cuisine in a word or two ("Filipino", "Middle Eastern") if it is clear; otherwise null.
 - meal: "breakfast", "lunch", "dinner" or "snack" when the dish clearly belongs to one; otherwise null.
-- ingredients: every ingredient line, in order. "text" is the line as written, quantity and preparation included ("1/3 cup cane vinegar", "2 cloves garlic, minced"), lightly tidied but never translated or converted. "name" is only the plain ingredient in lowercase, singular where natural, without quantity, unit, size or preparation ("cane vinegar", "garlic"). Keep brand-like or specific products specific ("datu puti vinegar" stays a vinegar name; "fish sauce" stays "fish sauce"). When a line offers a choice ("butter or margarine"), name both in "name" ("butter or margarine").
+- ingredients: every ingredient line, in order, however many there are. Never stop early, merge lines or leave one out. "text" is the line as written, quantity and preparation included ("1/3 cup cane vinegar", "2 cloves garlic, minced"), lightly tidied but never translated or converted. "name" is only the plain ingredient in lowercase, singular where natural, without quantity, unit, size or preparation ("cane vinegar", "garlic"). Keep brand-like or specific products specific ("datu puti vinegar" stays a vinegar name; "fish sauce" stays "fish sauce"). When a line offers a choice ("butter or margarine"), name both in "name" ("butter or margarine").
 - steps: one instruction per entry, in order, without numbering. Keep the source's wording; split long paragraphs into steps where it says to do one thing, then another.
-- At most 60 ingredients and 40 steps.
+- ingredient_count: how many ingredient lines the source has, counted on their own. It must equal the number of entries in "ingredients".
+- Include every step, however many there are.
 
 ## Always
 - Report only what the source says. Never add ingredients, quantities or steps that are not there, and never change an ingredient to make the recipe healthier or safer.

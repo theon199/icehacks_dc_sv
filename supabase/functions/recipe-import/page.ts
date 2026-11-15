@@ -217,8 +217,24 @@ export function recipeFromJsonLd(html: string): RecipeDraft | null {
 
 export const PAGE_TEXT_MAX_CHARS = 30_000;
 
-/** The page's readable text, one block per line, without scripts, styles or markup. */
-export function pageText(html: string, maxChars: number = PAGE_TEXT_MAX_CHARS): string {
+export interface PageText {
+  readonly text: string;
+  /**
+   * False when the readable text is longer than Famara sends and even its ingredients part does
+   * not fit: reading only part of the page could miss an ingredient, so it is never imported.
+   */
+  readonly complete: boolean;
+}
+
+/** A heading line that starts the ingredients ("Ingredients", "Ingredients for the sauce"). */
+const INGREDIENTS_HEADING = /^(?:-\s*)?ingredients?\b.{0,40}$/i;
+
+/**
+ * The page's readable text, one block per line, without scripts, styles or markup. A page longer
+ * than `maxChars` is read from its ingredients heading on, when that part fits; otherwise it is
+ * reported as not complete.
+ */
+export function pageText(html: string, maxChars: number = PAGE_TEXT_MAX_CHARS): PageText {
   const title = plainText(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? "");
   const body = html
     .replace(/<!--[\s\S]*?-->/g, " ")
@@ -232,8 +248,14 @@ export function pageText(html: string, maxChars: number = PAGE_TEXT_MAX_CHARS): 
     .split(/\n/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean);
-  const text = [title, ...lines].filter(Boolean).join("\n");
-  return text.length > maxChars ? text.slice(0, maxChars) : text;
+  const whole = [title, ...lines].filter(Boolean).join("\n");
+  if (whole.length <= maxChars) return { text: whole, complete: true };
+  const from = lines.findIndex((line) => INGREDIENTS_HEADING.test(line));
+  if (from >= 0) {
+    const part = [title, ...lines.slice(from)].filter(Boolean).join("\n");
+    if (part.length <= maxChars) return { text: part, complete: true };
+  }
+  return { text: whole.slice(0, maxChars), complete: false };
 }
 
 // ---------------------------------------------------------------------------------------------
