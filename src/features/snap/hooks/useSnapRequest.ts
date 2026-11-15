@@ -87,6 +87,17 @@ export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestO
     return () => clearTimeout(lift);
   }, [pause, deps]);
 
+  /** Turns snapping off for a while after another flow (a fridge sweep) hit the daily limit. */
+  const pauseFor = useCallback(
+    (problem: SnapProblem) => {
+      if (!problem.pause) return;
+      const next = { until: deps.now() + problem.pause.seconds * 1000, note: problem.pause.note };
+      pauseRef.current = next;
+      setPause(next);
+    },
+    [deps],
+  );
+
   const start = useCallback(
     async (mode: SnapMode, source: PhotoSource) => {
       const paused = pauseRef.current;
@@ -130,11 +141,7 @@ export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestO
       } catch (error) {
         if (signal.aborted) return;
         const problem = describeSnapError(error, new Date(now()));
-        if (problem?.pause) {
-          const next = { until: now() + problem.pause.seconds * 1000, note: problem.pause.note };
-          pauseRef.current = next;
-          setPause(next);
-        }
+        if (problem) pauseFor(problem);
         setPhase(
           problem
             ? { status: 'failed', mode, photoUri: source.uri, source, problem }
@@ -144,7 +151,7 @@ export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestO
         if (controllerRef.current === controller) controllerRef.current = null;
       }
     },
-    [deps, setResult],
+    [deps, pauseFor, setResult],
   );
 
   /** Stops the snap in progress (or dismisses a problem) and goes back to the camera. */
@@ -161,5 +168,5 @@ export function useSnapRequest({ onResult, deps = defaultDeps }: UseSnapRequestO
   /** Why snapping is off for now (the daily limit), or null. */
   const pausedNote = pause?.note ?? null;
 
-  return { phase, start, reset, retry, pausedNote };
+  return { phase, start, reset, retry, pausedNote, pauseFor };
 }

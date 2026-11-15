@@ -27,6 +27,9 @@ export interface CaptureControlsProps {
   /** The camera is ready and nothing is in progress. */
   canShoot: boolean;
   busy: boolean;
+  /** What the shutter does in this mode: "Take photo", or "Start filming" for a sweep. */
+  shutterLabel?: string;
+  shutterHint?: string | undefined;
 }
 
 const SHUTTER = 76;
@@ -40,6 +43,8 @@ export function CaptureControls({
   onFlip,
   canShoot,
   busy,
+  shutterLabel = 'Take photo',
+  shutterHint,
 }: CaptureControlsProps) {
   const theme = useTheme();
   return (
@@ -57,7 +62,8 @@ export function CaptureControls({
       </PressableScale>
       <PressableScale
         accessibilityRole="button"
-        accessibilityLabel="Take photo"
+        accessibilityLabel={shutterLabel}
+        {...(shutterHint ? { accessibilityHint: shutterHint } : {})}
         accessibilityState={{ disabled: !canShoot }}
         disabled={!canShoot}
         onPress={onShutter}
