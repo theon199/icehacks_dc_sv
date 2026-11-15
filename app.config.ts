@@ -149,6 +149,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         background: false,
       },
     ],
+    // Scene-based life cycle, required for apps built with the iOS 27 SDK to launch.
+    './plugins/withSceneLifecycle',
   ],
   experiments: {
     typedRoutes: true,
