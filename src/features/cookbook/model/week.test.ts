@@ -6,6 +6,7 @@ import {
   locateDate,
   mealsForDay,
   mealsPerDay,
+  moveTargetWeeks,
   pagerIndexOf,
   pagerWeeks,
   plannedSummary,
@@ -220,6 +221,12 @@ describe('week pager', () => {
     expect(pagerIndexOf('2026-11-30', TODAY)).toBe(5);
     expect(pagerIndexOf('2026-10-05', TODAY)).toBe(0);
     expect(pagerIndexOf('2027-01-04', TODAY)).toBe(5);
+  });
+
+  it('offers a move into the next week only while the pager can show it', () => {
+    expect(moveTargetWeeks(WEEK, TODAY)).toEqual([WEEK, '2026-11-16']);
+    expect(moveTargetWeeks('2026-11-23', TODAY)).toEqual(['2026-11-23', '2026-11-30']);
+    expect(moveTargetWeeks('2026-11-30', TODAY)).toEqual(['2026-11-30']);
   });
 
   it('names weeks relative to this one', () => {

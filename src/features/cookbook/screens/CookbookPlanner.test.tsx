@@ -257,6 +257,23 @@ describe('Cookbook planner', () => {
     expect(slots()['2-dinner']?.recipeId).toBe('m1');
   });
 
+  it('will not offer to move a meal past the last week the planner shows', async () => {
+    const user = userEvent.setup();
+    plannerActions.place({ week: '2026-11-30', day: 2, slot: 'dinner' }, 'm1');
+    await renderPlan();
+    for (let i = 0; i < 3; i += 1) {
+      await fireEvent(screen.getByTestId('week-dots'), 'accessibilityAction', {
+        nativeEvent: { actionName: 'increment' },
+      });
+    }
+    expect(screen.getByTestId('week-title')).toHaveTextContent('In 3 weeks');
+
+    await user.press(card('2026-12-02').getByTestId('slot-more-dinner'));
+    await user.press(screen.getByTestId('action-move'));
+    const picker = await screen.findByTestId('slot-picker', {}, AFTER_SHEET);
+    expect(within(picker).queryByRole('radio', { name: /^Dec 7/ })).not.toBeOnTheScreen();
+  });
+
   it('archives earlier weeks that still have meals', async () => {
     const user = userEvent.setup();
     plannerActions.place({ week: '2026-11-02', day: 0, slot: 'dinner' }, 'm1');

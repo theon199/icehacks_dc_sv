@@ -287,6 +287,15 @@ export function pagerIndexOf(weekStart: IsoDate, today: IsoDate): number {
   return clamped - PAGER_FIRST_OFFSET;
 }
 
+/**
+ * Weeks a meal in `weekStart` can move to: its own week and the next, unless the next is past the
+ * pager's last week, where the planner could never show the meal again.
+ */
+export function moveTargetWeeks(weekStart: IsoDate, today: IsoDate): IsoDate[] {
+  const next = addDays(weekStart, 7);
+  return weekOffset(next, today) <= PAGER_LAST_OFFSET ? [weekStart, next] : [weekStart];
+}
+
 /** "This week", "Next week", "2 weeks ago", "In 3 weeks". */
 export function relativeWeekTitle(offset: number): string {
   if (offset === 0) return 'This week';

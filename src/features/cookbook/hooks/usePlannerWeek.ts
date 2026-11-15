@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { addDays, weekStartOf, type DayIndex, type IsoDate } from '@/domain/plan';
+import { weekStartOf, type DayIndex, type IsoDate } from '@/domain/plan';
 import { useRecipes, type RecipeSummary } from '@/lib/catalog';
 import { plannedRecipeIds, usePreferencesStore } from '@/stores';
 
@@ -11,7 +11,13 @@ import {
   useWeekSlots,
 } from './usePlanner';
 import { useIsRecipeSafe } from './useSavedRecipes';
-import { initialDay, remainingDays, weekCostRecipes, weekDays } from '../model/week';
+import {
+  initialDay,
+  moveTargetWeeks,
+  remainingDays,
+  weekCostRecipes,
+  weekDays,
+} from '../model/week';
 
 /**
  * The planner's position (week and day in view) and everything the Cookbook draws for that week:
@@ -43,7 +49,7 @@ export function usePlannerWeek(today: IsoDate) {
     () => new Map<string, RecipeSummary>((planned.data ?? []).map((r) => [r.id, r])),
     [planned.data],
   );
-  const moveWeeks = useMemo(() => [weekStart, addDays(weekStart, 7)], [weekStart]);
+  const moveWeeks = useMemo(() => moveTargetWeeks(weekStart, today), [weekStart, today]);
 
   const goToWeek = useCallback(
     (week: IsoDate) => setPosition({ week, day: initialDay(week, today) }),
