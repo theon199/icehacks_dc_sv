@@ -280,3 +280,80 @@ Deno.test("fetchPage treats error statuses, network failures and timeouts as unr
     { ok: false, reason: "unreadable" },
   );
 });
+
+/** A resolver whose answer for one host turns private after `publicAnswers` A lookups. */
+function rebinding(
+  host: string,
+  publicAnswers: number,
+): { resolve: Resolver; lookups: () => number } {
+  let count = 0;
+  const resolve: Resolver = (name, type) => {
+    if (name !== host) return PUBLIC_DNS(name, type);
+    if (type !== "A") return Promise.resolve([]);
+    count += 1;
+    return Promise.resolve([count <= publicAnswers ? PUBLIC_V4 : "127.0.0.1"]);
+  };
+  return { resolve, lookups: () => count };
+}
+
+Deno.test("fetchPage looks the host up again just before connecting and refuses a rebind", async () => {
+  const { fetch, calls } = fakeFetch({ "https://rebind.example.com/": () => html("<h1>x</h1>") });
+  const { resolve, lookups } = rebinding("rebind.example.com", 1);
+  const page = await fetchPage(new URL("https://rebind.example.com/"), { resolve, fetch });
+  assertEquals(page, { ok: false, reason: "blocked" });
+  assertEquals(calls.length, 0);
+  assertEquals(lookups(), 2);
+});
+
+Deno.test("fetchPage refuses a redirect hop whose host rebinds", async () => {
+  const { fetch, calls } = fakeFetch({
+    "https://recipes.example.com/a": () => redirect("https://rebind.example.com/b"),
+    "https://rebind.example.com/b": () => html("<h1>x</h1>"),
+  });
+  const { resolve } = rebinding("rebind.example.com", 1);
+  const page = await fetchPage(new URL("https://recipes.example.com/a"), { resolve, fetch });
+  assertEquals(page, { ok: false, reason: "blocked" });
+  assertEquals(calls.map((call) => call.url), ["https://recipes.example.com/a"]);
+});
+
+Deno.test("fetchPage keeps its deadline when the resolver stalls", async () => {
+  const { fetch, calls } = fakeFetch({});
+  const stalled: Resolver = (_host, _type, signal) =>
+    new Promise((_resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hung = new Promise<"hung">((resolve) => {
+    timer = setTimeout(() => resolve("hung"), 2_000);
+  });
+  const result = await Promise.race([
+    fetchPage(new URL("https://slow.example.com/"), {
+      resolve: stalled,
+      fetch,
+      limits: { timeoutMs: 50 },
+    }),
+    hung,
+  ]);
+  clearTimeout(timer);
+  assertEquals(result, { ok: false, reason: "unreadable" });
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("fetchPage keeps its deadline even when a resolver ignores the abort signal", async () => {
+  const { fetch } = fakeFetch({});
+  const deaf: Resolver = () => new Promise(() => {});
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hung = new Promise<"hung">((resolve) => {
+    timer = setTimeout(() => resolve("hung"), 2_000);
+  });
+  const result = await Promise.race([
+    fetchPage(new URL("https://slow.example.com/"), {
+      resolve: deaf,
+      fetch,
+      limits: { timeoutMs: 50 },
+    }),
+    hung,
+  ]);
+  clearTimeout(timer);
+  assertEquals(result, { ok: false, reason: "unreadable" });
+});

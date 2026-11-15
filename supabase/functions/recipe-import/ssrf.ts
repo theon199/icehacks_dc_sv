@@ -7,13 +7,16 @@
  *   unicast. Private, loopback, link-local, CGNAT, metadata, multicast, documentation and other
  *   special ranges are refused, including IPv4 addresses embedded in IPv6 (mapped, NAT64, 6to4).
  * - Redirects are followed by hand, at most three, and every hop is checked again.
- * - One 10 s deadline covers every hop and the body; at most 2 MB of the body is read, and only
- *   HTML is accepted.
+ * - Right before each connection the host is looked up a second time, and every address in that
+ *   answer must be public too, so a name that flips to a private address between the two lookups
+ *   (DNS rebinding) is refused.
+ * - One 10 s deadline covers every lookup, every hop and the body; at most 2 MB of the body is
+ *   read, and only HTML is accepted.
  *
- * Residual risk: the platform's `fetch` resolves the host again when it connects, so a DNS answer
- * that changes between the check and the connection (rebinding) is not caught here. The window is
- * a few milliseconds and the function holds no credentials worth reaching on the internal network,
- * but the edge platform's egress rules remain the outer guard.
+ * Residual risk: the platform's `fetch` cannot be pinned to an address (Deno has no resolver or
+ * TLS server-name override for it), so it resolves the host a third time when it connects. A
+ * rebinding server that answers public twice and private on the third lookup is not caught here.
+ * See "Recipe import: SSRF" in docs/BACKEND.md.
  */
 
 export const PAGE_LIMITS = {
@@ -26,16 +29,42 @@ const ALLOWED_PORTS = new Set(["", "80", "443"]);
 const HTML_TYPES = ["text/html", "application/xhtml+xml"];
 const BLOCKED_SUFFIXES = [".localhost", ".local", ".internal", ".home.arpa", ".lan", ".intranet"];
 
-export type Resolver = (host: string, type: "A" | "AAAA") => Promise<string[]>;
+export type Resolver = (
+  host: string,
+  type: "A" | "AAAA",
+  signal?: AbortSignal,
+) => Promise<string[]>;
 
 /** The platform resolver; a name with no records of a type resolves to none. */
-export const denoResolver: Resolver = async (host, type) => {
+export const denoResolver: Resolver = async (host, type, signal) => {
   try {
-    return await Deno.resolveDns(host, type);
+    return await Deno.resolveDns(host, type, signal ? { signal } : undefined);
   } catch {
+    if (signal?.aborted) throw signal.reason;
     return [];
   }
 };
+
+/** Settles with `work`, or rejects once `signal` aborts, whether or not `work` listens to it. */
+function withinDeadline<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+/** Every address a name resolves to, IPv4 and IPv6, within the deadline. */
+function lookup(host: string, resolve: Resolver, signal?: AbortSignal): Promise<string[]> {
+  return withinDeadline(
+    Promise.all([resolve(host, "A", signal), resolve(host, "AAAA", signal)]).then((
+      [v4, v6],
+    ) => [...v4, ...v6]),
+    signal,
+  );
+}
 
 // ---------------------------------------------------------------------------------------------
 // Addresses
@@ -170,8 +199,18 @@ export function isBlockedAddress(text: string): boolean {
 
 export type TargetCheck = { ok: true } | { ok: false; reason: "blocked" | "unresolvable" };
 
+/** The host name to look up, or null when the URL names an address literal. */
+function lookupHost(url: URL): string | null {
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  return host.startsWith("[") || parseIpv4(host) ? null : host;
+}
+
 /** Whether `url` may be fetched: scheme, port, credentials, host name and every address. */
-export async function checkTarget(url: URL, resolve: Resolver): Promise<TargetCheck> {
+export async function checkTarget(
+  url: URL,
+  resolve: Resolver,
+  signal?: AbortSignal,
+): Promise<TargetCheck> {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { ok: false, reason: "blocked" };
   }
@@ -190,8 +229,7 @@ export async function checkTarget(url: URL, resolve: Resolver): Promise<TargetCh
   ) {
     return { ok: false, reason: "blocked" };
   }
-  const [v4, v6] = await Promise.all([resolve(host, "A"), resolve(host, "AAAA")]);
-  const addresses = [...v4, ...v6];
+  const addresses = await lookup(host, resolve, signal);
   if (addresses.length === 0) return { ok: false, reason: "unresolvable" };
   if (addresses.some(isBlockedAddress)) return { ok: false, reason: "blocked" };
   return { ok: true };
@@ -277,9 +315,18 @@ export async function fetchPage(start: URL, deps: PageDeps = {}): Promise<PageRe
   let url = start;
   try {
     for (let hop = 0;; hop++) {
-      const target = await checkTarget(url, resolve);
+      const target = await checkTarget(url, resolve, signal);
       if (!target.ok) {
         return { ok: false, reason: target.reason === "blocked" ? "blocked" : "unreadable" };
+      }
+      // Looked up again right before connecting: a name that now answers with anything private
+      // (or nothing) is refused rather than trusted from the first answer.
+      const host = lookupHost(url);
+      if (host !== null) {
+        const again = await lookup(host, resolve, signal);
+        if (again.length === 0 || again.some(isBlockedAddress)) {
+          return { ok: false, reason: "blocked" };
+        }
       }
       if (signal.aborted) return { ok: false, reason: "unreadable" };
       const response = await doFetch(url.href, {
