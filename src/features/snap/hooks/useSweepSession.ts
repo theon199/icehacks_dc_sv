@@ -15,7 +15,10 @@ const STILL = { quality: 0.7, exif: false, shutterSound: false } as const;
 
 export interface UseSweepSessionOptions {
   cameraRef: RefObject<CameraView | null>;
-  /** The live camera is showing; when it goes away (another tab, the background) filming stops. */
+  /**
+   * The live camera is showing; when it goes away (another tab, the background) filming and the
+   * mic both stop.
+   */
   cameraOn: boolean;
   onFinish: UseSweepOptions['onFinish'];
   onPause: UseSweepOptions['onPause'];
@@ -71,6 +74,15 @@ export function useSweepSession({
   useEffect(() => {
     if (!cameraOn && live) stop();
   }, [cameraOn, live, stop]);
+
+  // The mic has already paused filming, so `live` is false while it listens: it needs its own stop.
+  // What was heard is still added; a "Film more" waiting on it is dropped, there is no camera.
+  const micOn = dictation.listening;
+  useEffect(() => {
+    if (cameraOn || !micOn) return;
+    if (afterMic.current === 'film') afterMic.current = null;
+    if (!stopListening()) cancelListening();
+  }, [cameraOn, micOn, cancelListening, stopListening]);
 
   return {
     view: sweep.view,

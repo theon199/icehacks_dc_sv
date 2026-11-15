@@ -16,7 +16,7 @@ import { SnapScreen } from './SnapScreen';
 import { preparePhoto } from '../capture/preparePhoto';
 import { SWEEP_FRAME_INTERVAL_MS } from '../logic/sweep';
 import { useSnapSession } from '../snapSession';
-import { mockRouter, renderScreen } from '../testing';
+import { blurScreen, mockRouter, renderScreen } from '../testing';
 
 const mockTakePicture = jest.fn();
 type Listener = (event: never) => void;
@@ -220,6 +220,36 @@ describe('Fridge sweep', () => {
       'Milk',
       'Eggs',
     ]);
+  });
+
+  it('turns the mic off when the tab loses focus while it is listening', async () => {
+    answerSweep();
+    const user = await startFilming();
+    await frames(3);
+    await user.press(screen.getByRole('button', { name: 'Say what it missed' }));
+    await emitSpeech('start');
+    // The mic already paused filming, so only the mic is left running.
+    expect(screen.getByTestId('sweep-chip')).toHaveTextContent('Paused');
+    jest.mocked(ExpoSpeechRecognitionModule.stop).mockClear();
+
+    await act(async () => blurScreen());
+    expect(ExpoSpeechRecognitionModule.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('never starts the mic when the tab loses focus while permission is being asked', async () => {
+    answerSweep();
+    let grant: (value: { granted: boolean }) => void = () => {};
+    jest
+      .mocked(ExpoSpeechRecognitionModule.requestPermissionsAsync)
+      .mockImplementationOnce(() => new Promise((resolve) => (grant = resolve)) as never);
+    const user = await startFilming();
+    await frames(3);
+    jest.mocked(ExpoSpeechRecognitionModule.start).mockClear();
+    await user.press(screen.getByRole('button', { name: 'Say what it missed' }));
+
+    await act(async () => blurScreen());
+    await act(async () => grant({ granted: true }));
+    expect(ExpoSpeechRecognitionModule.start).not.toHaveBeenCalled();
   });
 
   it('stops by itself after twelve stills', async () => {

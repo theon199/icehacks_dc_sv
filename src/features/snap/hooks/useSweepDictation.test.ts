@@ -96,6 +96,50 @@ describe('useSweepDictation', () => {
     expect(onEnd).toHaveBeenCalledWith('');
   });
 
+  /** Holds the permission prompt open until the test answers it. */
+  function pendingPermission() {
+    let answer: (granted: boolean) => Promise<void> = async () => {};
+    speech.requestPermissionsAsync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = async (granted) => {
+            await act(async () => resolve({ granted } as never));
+          };
+        }) as never,
+    );
+    return (granted: boolean) => answer(granted);
+  }
+
+  it('does not start once cancelled while the permission prompt is open', async () => {
+    const answer = pendingPermission();
+    const onEnd = jest.fn();
+    const { result } = await renderHook(() => useSweepDictation(onEnd));
+    speech.start.mockClear();
+    let starting: Promise<void> = Promise.resolve();
+    await act(async () => {
+      starting = result.current.start();
+    });
+    expect(result.current.status).toBe('starting');
+    await act(async () => result.current.cancel());
+    expect(result.current.status).toBe('off');
+    await answer(true);
+    await act(() => starting);
+    expect(speech.start).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('off');
+  });
+
+  it('does not start once the screen is gone while the permission prompt is open', async () => {
+    const answer = pendingPermission();
+    const { result, unmount } = await renderHook(() => useSweepDictation(jest.fn()));
+    speech.start.mockClear();
+    await act(async () => {
+      void result.current.start();
+    });
+    await unmount();
+    await answer(true);
+    expect(speech.start).not.toHaveBeenCalled();
+  });
+
   it('shuts the microphone off when the screen goes away', async () => {
     const { unmount } = await listen();
     await unmount();

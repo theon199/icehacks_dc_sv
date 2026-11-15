@@ -73,6 +73,11 @@ export function useSweepDictation(onEnd: (phrase: string) => void) {
   const [transcript, setTranscript] = useState('');
   /** Whether this hook started a session that has not ended yet. */
   const active = useRef(false);
+  /**
+   * Bumped by every start, cancel and unmount: a start still waiting on the permission prompt
+   * carries on only while it is the latest, so a cancelled or unmounted one never opens the mic.
+   */
+  const generation = useRef(0);
   const heard = useRef('');
   const handler = useRef(onEnd);
   useLayoutEffect(() => {
@@ -111,6 +116,8 @@ export function useSweepDictation(onEnd: (phrase: string) => void) {
 
   const start = useCallback(async () => {
     if (active.current) return;
+    generation.current += 1;
+    const mine = generation.current;
     setStatus('starting');
     setTranscript('');
     heard.current = '';
@@ -120,6 +127,7 @@ export function useSweepDictation(onEnd: (phrase: string) => void) {
         return;
       }
       const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (generation.current !== mine) return;
       if (!permission.granted) {
         setStatus('denied');
         return;
@@ -135,6 +143,7 @@ export function useSweepDictation(onEnd: (phrase: string) => void) {
         contextualStrings: FOOD_HINTS,
       });
     } catch (error) {
+      if (generation.current !== mine) return;
       logger.warn('Sweep dictation could not start', describeError(error));
       active.current = false;
       setStatus('unavailable');
@@ -158,9 +167,13 @@ export function useSweepDictation(onEnd: (phrase: string) => void) {
     }
   }, []);
 
-  /** Ends listening and drops what was heard. */
+  /** Ends listening, or a start still asking for permission, and drops what was heard. */
   const cancel = useCallback(() => {
-    if (!active.current) return;
+    generation.current += 1;
+    if (!active.current) {
+      setStatus((now) => (now === 'starting' ? 'off' : now));
+      return;
+    }
     active.current = false;
     heard.current = '';
     setTranscript('');
@@ -171,6 +184,7 @@ export function useSweepDictation(onEnd: (phrase: string) => void) {
   // Leaving the camera must not leave the microphone on.
   useEffect(
     () => () => {
+      generation.current += 1;
       if (active.current) {
         active.current = false;
         abortRecognition();
