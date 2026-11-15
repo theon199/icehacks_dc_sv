@@ -33,13 +33,11 @@ export interface SearchBarProps {
   /** Where the round circle beside the field goes while the field is at rest. */
   returnTarget: ReturnTarget;
   onReturn: () => void;
-  /** The Search | Chef switch, floating above the field. */
-  accessory: ReactNode;
 }
 
 /**
- * Search's bottom bar, where the tab bar would be: the mode switch, then a glass capsule field with
- * a round glass circle beside it. At rest the circle returns to the tab the person came from;
+ * Search's bottom bar, where the tab bar would be: a glass capsule field with a round glass circle
+ * beside it. At rest the circle returns to the tab the person came from;
  * while typing it becomes a close circle that ends the search.
  */
 export function SearchBar({
@@ -51,7 +49,6 @@ export function SearchBar({
   onBlur,
   returnTarget,
   onReturn,
-  accessory,
 }: SearchBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -75,7 +72,6 @@ export function SearchBar({
         style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.background }]}
       />
       <Stack>
-        {accessory}
         <View style={styles.row}>
           {focused ? null : (
             <GlassIconButton
@@ -155,8 +151,8 @@ export function SearchBar({
 }
 
 /**
- * The switch and the field row as one glass group: on Liquid Glass they merge and morph together
- * as controls come and go; the fallback surfaces have nothing to merge, so they stack plainly.
+ * The field row as one glass group: on Liquid Glass the circles merge and morph with the field as
+ * they come and go; the fallback surfaces have nothing to merge, so they sit plainly.
  */
 function Stack({ children }: { children: ReactNode }) {
   return hasLiquidGlass() ? (

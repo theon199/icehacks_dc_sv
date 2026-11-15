@@ -10,7 +10,16 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { haptics } from '@/lib/haptics';
-import { GlassSurface, Icon, Text, fontFamily, hasLiquidGlass, space, useTheme } from '@/ui';
+import {
+  GlassSurface,
+  HEADER_TITLE_MAX_FONT_SCALE,
+  Icon,
+  Text,
+  fontFamily,
+  hasLiquidGlass,
+  space,
+  useTheme,
+} from '@/ui';
 
 import { ChefHat } from '../deps';
 import type { SearchMode } from '../searchStore';
@@ -31,7 +40,7 @@ export interface SearchModeSwitchProps {
 }
 
 /**
- * The floating "Search | Chef" switch above the bottom bar. The selected side is a pill that
+ * The "Search | Chef" switch in the middle of the Ask header, on both sides of the page. The selected side is a pill that
  * slides under the labels on the UI thread: paper under Search, ink under Chef. Reduce Motion
  * turns the slide into a cut.
  */
@@ -76,12 +85,8 @@ export function SearchModeSwitch({ mode, onChange }: SearchModeSwitchProps) {
         styles.shell,
         hasLiquidGlass()
           ? null
-          : {
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: theme.colors.controlBorder,
-              ...theme.elevation.high,
-              shadowColor: theme.colors.shadow,
-            },
+          : // Matches the header's glass circles, which draw a plain edge without real glass.
+            { borderWidth: 1, borderColor: theme.colors.controlBorder },
       ]}
     >
       <View accessibilityRole="tablist" style={styles.row} testID="search-mode">
@@ -113,7 +118,13 @@ export function SearchModeSwitch({ mode, onChange }: SearchModeSwitchProps) {
               ) : (
                 <ChefHat size={15} color={onChef ? 'highlight' : 'textMuted'} />
               )}
-              <Text variant="label" color={tint} accessible={false} style={styles.label}>
+              <Text
+                variant="label"
+                color={tint}
+                accessible={false}
+                maxFontSizeMultiplier={HEADER_TITLE_MAX_FONT_SCALE}
+                style={styles.label}
+              >
                 {option.label}
               </Text>
             </Pressable>
@@ -139,7 +150,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.xs + 2,
-    paddingHorizontal: space.md + 2,
+    paddingHorizontal: space.md,
   },
   label: { fontFamily: fontFamily.textBold },
 });

@@ -31,9 +31,9 @@ export function SearchScreen() {
       testID="search-screen"
     >
       {mode === 'search' ? (
-        <SearchPane accessory={modeSwitch} returnTarget={target} onReturn={goBack} />
+        <SearchPane modeSwitch={modeSwitch} returnTarget={target} onReturn={goBack} />
       ) : (
-        <ChefPane accessory={modeSwitch} onBack={goBack} backLabel={`Back to ${target.label}`} />
+        <ChefPane modeSwitch={modeSwitch} onBack={goBack} backLabel={`Back to ${target.label}`} />
       )}
     </View>
   );

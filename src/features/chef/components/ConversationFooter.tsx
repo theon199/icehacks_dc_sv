@@ -1,7 +1,11 @@
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { Button, Card, Chip, Icon, Text, space, useTheme } from '@/ui';
+import { Button, Icon, Text, gutter, space } from '@/ui';
 
+import { AnswerCard } from './AnswerCard';
+import { ChefBadge } from './ChefBadge';
+import { SuggestionChip } from './SuggestionChip';
+import { ThinkingDots } from './ThinkingDots';
 import type { AiProblem } from '../logic/problems';
 
 export interface ConversationFooterProps {
@@ -20,7 +24,10 @@ export interface ConversationFooterProps {
   onFollowUp: (question: string) => void;
 }
 
-/** Everything under the newest message: progress, problems with a way forward, suggestions. */
+/**
+ * Everything under the newest message: Chef's thinking card, a problem card with a way forward, and
+ * follow-up questions in one sideways row so they never push the answer up.
+ */
 export function ConversationFooter({
   sending,
   problem,
@@ -33,25 +40,28 @@ export function ConversationFooter({
   onDismissProblem,
   onFollowUp,
 }: ConversationFooterProps) {
-  const theme = useTheme();
+  const showFollowUps = !problem && !blocked && !limited && followUps.length > 0;
   return (
     <View style={styles.container}>
       {sending ? (
-        <View
-          style={styles.thinking}
-          accessible
-          accessibilityLabel="Chef is thinking"
-          accessibilityLiveRegion="polite"
-        >
-          <ActivityIndicator color={theme.colors.primary} />
-          <Text variant="callout" tone="muted" accessible={false}>
-            Chef is thinking…
-          </Text>
-        </View>
+        <AnswerCard>
+          <ChefBadge />
+          <View
+            style={styles.thinking}
+            accessible
+            accessibilityLabel="Chef is thinking"
+            accessibilityLiveRegion="polite"
+          >
+            <ThinkingDots />
+            <Text variant="callout" tone="muted" accessible={false}>
+              Thinking…
+            </Text>
+          </View>
+        </AnswerCard>
       ) : null}
 
       {problem ? (
-        <Card variant="sunken" testID="chef-problem" style={styles.problem}>
+        <AnswerCard testID="chef-problem">
           <View style={styles.problemHead}>
             <Icon
               name={problem.kind === 'daily_limit' ? 'hourglass' : 'exclamationmark.triangle'}
@@ -62,7 +72,7 @@ export function ConversationFooter({
               {problem.title}
             </Text>
           </View>
-          <Text variant="callout" tone="muted">
+          <Text variant="subhead" tone="muted">
             {problem.message}
           </Text>
           <View style={styles.actions}>
@@ -77,7 +87,7 @@ export function ConversationFooter({
             ) : null}
             <Button label="Dismiss" variant="ghost" size="sm" onPress={onDismissProblem} />
           </View>
-        </Card>
+        </AnswerCard>
       ) : null}
 
       {!sending && !problem && unanswered && !blocked && !limited ? (
@@ -92,22 +102,28 @@ export function ConversationFooter({
         />
       ) : null}
 
-      {!problem && !blocked && !limited && followUps.length > 0 ? (
-        <View style={styles.chips} accessibilityLabel="Suggested questions">
+      {showFollowUps ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          accessibilityLabel="Suggested questions"
+          style={styles.bleed}
+          contentContainerStyle={styles.chips}
+        >
           {followUps.map((question) => (
-            <Chip
+            <SuggestionChip
               key={question}
               label={question}
-              tone="primary"
               icon="arrow.turn.down.right"
               onPress={() => onFollowUp(question)}
             />
           ))}
-        </View>
+        </ScrollView>
       ) : null}
 
       {quotaNote ? (
-        <Text variant="footnote" tone="subtle" align="center">
+        <Text variant="footnote" tone="muted" align="center">
           {quotaNote}
         </Text>
       ) : null}
@@ -116,12 +132,13 @@ export function ConversationFooter({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: space.md, paddingTop: space.lg },
-  thinking: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  problem: { gap: space.sm },
-  problemHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  actions: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
+  container: { gap: space.md, paddingTop: space.md },
+  thinking: { flexDirection: 'row', alignItems: 'center', gap: space.sm + 2, minHeight: 22 },
+  problemHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm + 2 },
+  actions: { flexDirection: 'row', gap: space.xs + 2, alignItems: 'center', marginTop: space.xs },
   start: { alignSelf: 'flex-start' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  // The row runs to the screen edges while scrolling sideways.
+  bleed: { marginHorizontal: -gutter },
+  chips: { gap: space.sm, paddingHorizontal: gutter },
   flex: { flex: 1 },
 });

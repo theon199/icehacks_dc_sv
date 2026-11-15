@@ -1,15 +1,14 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { selectThreadList, useChefStore } from '@/stores';
-import { GlassIconButton, space, useTheme } from '@/ui';
+import { GlassIconButton, useTheme } from '@/ui';
 
 import { AiGate } from '../components/AiGate';
 import { AskHeader } from '../components/AskHeader';
 import { ChefWelcome } from '../components/ChefWelcome';
-import { Composer } from '../components/Composer';
+import { Composer, type ComposerHandle } from '../components/Composer';
 import { ConversationFooter } from '../components/ConversationFooter';
 import { MessageList } from '../components/MessageList';
 import { ThreadDrawer } from '../components/ThreadDrawer';
@@ -25,8 +24,8 @@ export interface ChefScreenProps {
   onBack?: () => void;
   /** Spoken name of the back circle. */
   backLabel?: string;
-  /** Floats above the question box, e.g. the Search | Chef switch on the Search tab. */
-  accessory?: ReactNode;
+  /** Takes the middle of the header in place of the title, e.g. the Search | Chef switch. */
+  switcher?: ReactNode;
 }
 
 const PURPOSE =
@@ -35,9 +34,9 @@ const PURPOSE =
 /**
  * Chef, the AI cooking assistant, on the Ask page: used as the `chef` route and embedded in the
  * Search tab. Only people who are 18+ and have turned AI features on get past the gate; everyone
- * else keeps the header and the accessory, so they can always get back.
+ * else keeps the header and its switch, so they can always get back.
  */
-export function ChefScreen({ threadId, onBack, backLabel = 'Back', accessory }: ChefScreenProps) {
+export function ChefScreen({ threadId, onBack, backLabel = 'Back', switcher }: ChefScreenProps) {
   const theme = useTheme();
   const router = useRouter();
   const canUse = useSessionStore((state) => selectCanUseAi(state));
@@ -51,28 +50,17 @@ export function ChefScreen({ threadId, onBack, backLabel = 'Back', accessory }: 
         initialThreadId={threadId ?? null}
         onBack={back}
         backLabel={backLabel}
-        accessory={accessory}
+        switcher={switcher}
       />
     );
   }
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-      <AskHeader title="Ask" onBack={back} backLabel={backLabel} />
+      <AskHeader title="Ask" switcher={switcher} onBack={back} backLabel={backLabel} />
       <AiGate feature="Chef" purpose={PURPOSE}>
         {null}
       </AiGate>
-      {accessory ? <Composerless accessory={accessory} /> : null}
-    </View>
-  );
-}
-
-/** The accessory alone at the bottom edge, while there is no question box to sit above. */
-function Composerless({ accessory }: { accessory: ReactNode }) {
-  const insets = useSafeAreaInsets();
-  return (
-    <View style={[styles.accessoryOnly, { paddingBottom: insets.bottom + space.sm }]}>
-      {accessory}
     </View>
   );
 }
@@ -87,11 +75,12 @@ interface ChefChatProps {
   initialThreadId: string | null;
   onBack: () => void;
   backLabel: string;
-  accessory: ReactNode;
+  switcher: ReactNode;
 }
 
-function ChefChat({ initialThreadId, onBack, backLabel, accessory }: ChefChatProps) {
+function ChefChat({ initialThreadId, onBack, backLabel, switcher }: ChefChatProps) {
   const theme = useTheme();
+  const composer = useRef<ComposerHandle>(null);
   const [threadId, setThreadId] = useState<string | null>(() => initialThread(initialThreadId));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const conversation = useChefConversation(threadId, setThreadId);
@@ -127,6 +116,7 @@ function ChefChat({ initialThreadId, onBack, backLabel, accessory }: ChefChatPro
     >
       <AskHeader
         title="Ask"
+        switcher={switcher}
         onBack={onBack}
         backLabel={backLabel}
         trailing={
@@ -149,7 +139,7 @@ function ChefChat({ initialThreadId, onBack, backLabel, accessory }: ChefChatPro
       />
       <View style={styles.flex}>
         {empty ? (
-          <ChefWelcome onAsk={ask} />
+          <ChefWelcome onAsk={ask} onPhoto={() => composer.current?.choosePhoto()} />
         ) : (
           <MessageList
             messages={messages}
@@ -170,7 +160,7 @@ function ChefChat({ initialThreadId, onBack, backLabel, accessory }: ChefChatPro
           />
         )}
       </View>
-      <Composer busy={busy} limitedUntil={limitedUntil} onSend={send} accessory={accessory} />
+      <Composer ref={composer} busy={busy} limitedUntil={limitedUntil} onSend={send} />
       <ThreadDrawer
         visible={drawerOpen}
         activeThreadId={threadId}
@@ -184,5 +174,4 @@ function ChefChat({ initialThreadId, onBack, backLabel, accessory }: ChefChatPro
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  accessoryOnly: { paddingTop: space.sm, alignItems: 'center' },
 });

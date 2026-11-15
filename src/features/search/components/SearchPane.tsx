@@ -31,8 +31,8 @@ import { useSearchResults } from '../useSearchResults';
 export const TOP_RESULTS = 5;
 
 export interface SearchPaneProps {
-  /** The Search | Chef switch, floating above the search field. */
-  accessory?: ReactNode;
+  /** The Search | Chef switch, in the middle of the header. Without it the header shows "Ask". */
+  modeSwitch?: ReactNode;
   returnTarget: ReturnTarget;
   /** The back circle and the round circle beside the field: back to the tab before Search. */
   onReturn: () => void;
@@ -43,7 +43,7 @@ export interface SearchPaneProps {
  * healthiest recipes. Typing in the bottom field shows recent searches, then results: the filter
  * chips, the top results as cards and the rest as rows.
  */
-export function SearchPane({ accessory, returnTarget, onReturn }: SearchPaneProps) {
+export function SearchPane({ modeSwitch, returnTarget, onReturn }: SearchPaneProps) {
   const router = useRouter();
   const query = useSearchStore((state) => state.query);
   const filters = useSearchStore((state) => state.filters);
@@ -218,6 +218,7 @@ export function SearchPane({ accessory, returnTarget, onReturn }: SearchPaneProp
     >
       <AskHeader
         title="Ask"
+        switcher={modeSwitch}
         onBack={onReturn}
         backLabel={`Back to ${returnTarget.label}`}
         trailing={
@@ -257,7 +258,6 @@ export function SearchPane({ accessory, returnTarget, onReturn }: SearchPaneProp
         onBlur={() => setFocused(false)}
         returnTarget={returnTarget}
         onReturn={onReturn}
-        accessory={accessory}
       />
     </KeyboardAvoidingView>
   );

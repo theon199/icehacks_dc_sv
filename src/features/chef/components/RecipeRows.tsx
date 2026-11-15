@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { memo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import type { RecipeSummary } from '@/lib/catalog';
 import { formatKcal, formatMinutes } from '@/lib/format';
@@ -9,8 +9,7 @@ import { Icon, PressableScale, Text, space, useTheme } from '@/ui';
 
 import { useScreenedRecipes } from '../hooks/useScreenedRecipes';
 
-const CARD_WIDTH = 168;
-const IMAGE_HEIGHT = 104;
+const THUMB = 42;
 
 function details(recipe: RecipeSummary): string {
   const parts = [
@@ -20,7 +19,7 @@ function details(recipe: RecipeSummary): string {
   return parts.filter(Boolean).join(' · ');
 }
 
-const RecipeCard = memo(function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
+const RecipeRow = memo(function RecipeRow({ recipe }: { recipe: RecipeSummary }) {
   const theme = useTheme();
   const router = useRouter();
   const meta = details(recipe);
@@ -31,16 +30,15 @@ const RecipeCard = memo(function RecipeCard({ recipe }: { recipe: RecipeSummary 
       accessibilityLabel={[recipe.title, meta].filter(Boolean).join(', ')}
       accessibilityHint="Opens the recipe"
       onPress={() => router.push({ pathname: '/recipe/[id]', params: { id: recipe.id } })}
-      style={[
-        styles.card,
-        {
-          backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
-          borderRadius: theme.radii.md,
-        },
-      ]}
+      pressedScale={0.99}
+      style={styles.row}
     >
-      <View style={[styles.image, { backgroundColor: theme.colors.surfaceSunken }]}>
+      <View
+        style={[
+          styles.thumb,
+          { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.md },
+        ]}
+      >
         {recipe.imageUrl ? (
           <Image
             source={{ uri: recipe.imageUrl }}
@@ -51,47 +49,54 @@ const RecipeCard = memo(function RecipeCard({ recipe }: { recipe: RecipeSummary 
             accessible={false}
           />
         ) : (
-          <Icon name="fork.knife" size={28} color="textSubtle" />
+          <Icon name="fork.knife" size={18} color="textMuted" />
         )}
       </View>
       <View style={styles.text}>
-        <Text variant="subhead" numberOfLines={2}>
+        <Text variant="label" numberOfLines={2} accessible={false}>
           {recipe.title}
         </Text>
         {meta ? (
-          <Text variant="caption" tone="subtle" numberOfLines={1}>
+          <Text variant="caption" tone="muted" numberOfLines={1} accessible={false}>
             {meta}
           </Text>
         ) : null}
       </View>
+      <Icon name="chevron.right" size={16} color="textMuted" />
     </PressableScale>
   );
 });
 
 /**
- * Recipes Chef recommended in one reply. Ids are screened again here against the person's current
- * allergens and diet, so a card only shows while the recipe is safe for them.
+ * Recipes Chef recommended in one reply, as compact rows under a hairline inside the answer card.
+ * Ids are screened again here against the person's current allergens and diet, so a row only shows
+ * while the recipe is safe for them; with none left, nothing renders, divider included.
  */
-export const RecipeCardRow = memo(function RecipeCardRow({ ids }: { ids: readonly string[] }) {
+export const RecipeRows = memo(function RecipeRows({ ids }: { ids: readonly string[] }) {
+  const theme = useTheme();
   const recipes = useScreenedRecipes(ids);
   if (recipes.length === 0) return null;
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
+    <View
       accessibilityLabel="Recipes Chef suggested"
+      style={[styles.list, { borderTopColor: theme.colors.hairline }]}
     >
       {recipes.map((recipe) => (
-        <RecipeCard key={recipe.id} recipe={recipe} />
+        <RecipeRow key={recipe.id} recipe={recipe} />
       ))}
-    </ScrollView>
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
-  row: { gap: space.sm, paddingVertical: space.xs },
-  card: { width: CARD_WIDTH, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  image: { height: IMAGE_HEIGHT, alignItems: 'center', justifyContent: 'center' },
-  text: { padding: space.sm, gap: 2 },
+  list: { marginTop: space.xs, paddingTop: space.xs, borderTopWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm - 1 },
+  thumb: {
+    width: THUMB,
+    height: THUMB,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: { flex: 1, minWidth: 0, gap: 1 },
 });

@@ -4,8 +4,8 @@ import { StyleSheet, View } from 'react-native';
 import { ChefChat } from '../deps';
 
 export interface ChefPaneProps {
-  /** The Search | Chef switch, floating above Chef's question box. */
-  accessory: ReactNode;
+  /** The Search | Chef switch, in the middle of Chef's header. */
+  modeSwitch: ReactNode;
   onBack: () => void;
   backLabel: string;
 }
@@ -14,10 +14,10 @@ export interface ChefPaneProps {
  * The Chef side of the Ask page. The chat brings its own AI gate, so people who may not use AI yet
  * see why and, when old enough, how to turn it on, without leaving the Search tab.
  */
-export function ChefPane({ accessory, onBack, backLabel }: ChefPaneProps) {
+export function ChefPane({ modeSwitch, onBack, backLabel }: ChefPaneProps) {
   return (
     <View style={styles.flex} testID="chef-pane">
-      <ChefChat accessory={accessory} onBack={onBack} backLabel={backLabel} />
+      <ChefChat switcher={modeSwitch} onBack={onBack} backLabel={backLabel} />
     </View>
   );
 }

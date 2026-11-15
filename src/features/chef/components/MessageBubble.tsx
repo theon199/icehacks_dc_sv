@@ -2,13 +2,18 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { ChefMessage } from '@/stores';
-import { Icon, Text, space, useTheme } from '@/ui';
+import { Icon, Text, fontFamily, space, useTheme } from '@/ui';
 
-import { RecipeCardRow } from './RecipeCardRow';
+import { AnswerCard } from './AnswerCard';
+import { ChefBadge } from './ChefBadge';
+import { RecipeRows } from './RecipeRows';
 import { ReplyText } from './ReplyText';
 import { readPhotoMark } from '../logic/conversation';
 
-/** One turn of a Chef thread: the person's question on the right, Chef's answer on the left. */
+/**
+ * One turn of a Chef thread: the person's question as an ink bubble on the right, Chef's answer as
+ * one white card with its recipes inside it.
+ */
 export const MessageBubble = memo(function MessageBubble({ message }: { message: ChefMessage }) {
   const theme = useTheme();
   if (message.role === 'user') {
@@ -20,8 +25,8 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
             styles.user,
             {
               backgroundColor: theme.colors.primary,
-              borderRadius: theme.radii.card,
-              borderBottomRightRadius: theme.radii.md,
+              borderRadius: theme.radii.lg,
+              borderBottomRightRadius: theme.radii.sm,
             },
           ]}
         >
@@ -33,7 +38,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
               </Text>
             </View>
           ) : null}
-          <Text variant="bodyStrong" color="onPrimary" selectable>
+          <Text variant="callout" color="onPrimary" selectable style={styles.userText}>
             {text}
           </Text>
         </View>
@@ -41,24 +46,22 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
     );
   }
   return (
-    <View style={styles.assistant}>
-      <View style={styles.reply}>
-        <ReplyText text={message.text} />
-      </View>
-      {message.recipeIds.length > 0 ? <RecipeCardRow ids={message.recipeIds} /> : null}
-    </View>
+    <AnswerCard>
+      <ChefBadge />
+      <ReplyText text={message.text} />
+      {message.recipeIds.length > 0 ? <RecipeRows ids={message.recipeIds} /> : null}
+    </AnswerCard>
   );
 });
 
 const styles = StyleSheet.create({
   userRow: { alignItems: 'flex-end' },
   user: {
-    maxWidth: '88%',
-    paddingHorizontal: space.xl,
-    paddingVertical: space.md,
+    maxWidth: '86%',
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md - 1,
     gap: space.xs,
   },
-  reply: { gap: space.xs },
-  assistant: { gap: space.sm, maxWidth: '100%' },
+  userText: { fontFamily: fontFamily.textSemiBold },
   photoTag: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
 });

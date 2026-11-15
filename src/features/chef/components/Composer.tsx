@@ -1,7 +1,15 @@
 import { GlassContainer } from 'expo-glass-effect';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -49,8 +57,13 @@ export interface ComposerProps {
    */
   limitedUntil?: number | null;
   onSend: (input: { text: string; photo: string | null }) => void;
-  /** Sits above the field, e.g. the Search | Chef switch on the Search tab. */
-  accessory?: ReactNode;
+  /** Lets the screen open the photo choice, e.g. from the first screen's "Take a photo". */
+  ref?: Ref<ComposerHandle>;
+}
+
+export interface ComposerHandle {
+  /** Asks whether to take a photo or choose one, then attaches it to the question. */
+  choosePhoto: () => void;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -120,7 +133,7 @@ function joinDictation(base: string, spoken: string): string {
 }
 
 /** Question box with dictation and an optional photo. */
-export function Composer({ busy, limitedUntil = null, onSend, accessory }: ComposerProps) {
+export function Composer({ busy, limitedUntil = null, onSend, ref }: ComposerProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
@@ -155,6 +168,8 @@ export function Composer({ busy, limitedUntil = null, onSend, accessory }: Compo
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
+
+  useImperativeHandle(ref, () => ({ choosePhoto }));
 
   const toggleDictation = () => {
     if (dictation.listening) {
@@ -224,7 +239,6 @@ export function Composer({ busy, limitedUntil = null, onSend, accessory }: Compo
         </View>
       ) : null}
       <ControlStack>
-        {accessory}
         <View style={styles.row}>
           <GlassIconButton
             testID="chef-attach"
@@ -252,7 +266,7 @@ export function Composer({ busy, limitedUntil = null, onSend, accessory }: Compo
               testID="chef-input"
               value={draft}
               onChangeText={setDraft}
-              placeholder={dictation.listening ? 'Listening…' : 'Ask Chef anything about food'}
+              placeholder={dictation.listening ? 'Listening…' : 'Ask Chef anything'}
               placeholderTextColor={theme.colors.textMuted}
               selectionColor={theme.colors.primary}
               accessibilityLabel="Message to Chef"
@@ -302,8 +316,8 @@ export function Composer({ busy, limitedUntil = null, onSend, accessory }: Compo
 }
 
 /**
- * The mode switch and the field row as one glass group, so on Liquid Glass they merge and morph
- * together. The fallback surfaces have nothing to merge and stack plainly.
+ * The photo circle and the field as one glass group, so on Liquid Glass they merge and morph
+ * together. The fallback surfaces have nothing to merge and sit plainly.
  */
 function ControlStack({ children }: { children: ReactNode }) {
   return hasLiquidGlass() ? (
@@ -316,7 +330,7 @@ function ControlStack({ children }: { children: ReactNode }) {
 }
 
 /** Height of the field and of the round attach control beside it. */
-const BAR_HEIGHT = 52;
+const BAR_HEIGHT = 48;
 const INNER_BUTTON = 36;
 const FADE_HEIGHT = 44;
 

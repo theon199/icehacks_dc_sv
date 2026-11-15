@@ -17,7 +17,10 @@ import {
 } from '@/ui';
 
 export interface AskHeaderProps {
-  title: string;
+  /** Large title on the left. Left out when a `switcher` takes the middle instead. */
+  title?: string;
+  /** Sits in the middle of the row in place of the title, e.g. the Search | Chef switch. */
+  switcher?: ReactNode;
   onBack: () => void;
   /** Spoken name of the back circle, e.g. "Back to Discover". */
   backLabel: string;
@@ -27,12 +30,13 @@ export interface AskHeaderProps {
 }
 
 /**
- * The header of the Ask page (Search and Chef): a glass back circle, then a large title on the
- * same pixels the tab titles use, and optional glass circles on the right. It owns the top safe
- * area.
+ * The header of the Ask page (Search and Chef): a glass back circle, then either a large title on
+ * the same pixels the tab titles use or a centred switch, and optional glass circles on the right.
+ * It owns the top safe area.
  */
 export function AskHeader({
   title,
+  switcher,
   onBack,
   backLabel,
   trailing,
@@ -48,24 +52,33 @@ export function AskHeader({
         { paddingTop: insets.top + HEADER_TOP_OFFSET, backgroundColor: theme.colors.background },
       ]}
     >
-      <View style={styles.row}>
+      <View style={[styles.row, switcher ? styles.rowTight : null]}>
         <GlassIconButton
           icon="chevron.left"
           accessibilityLabel={backLabel}
           onPress={onBack}
           testID={`${testID}-back`}
         />
-        <Text
-          variant="title1"
-          accessibilityRole="header"
-          numberOfLines={1}
-          maxFontSizeMultiplier={HEADER_TITLE_MAX_FONT_SCALE}
-          style={styles.title}
-          testID={`${testID}-title`}
-        >
-          {title}
-        </Text>
-        {trailing === undefined ? null : hasLiquidGlass() ? (
+        {switcher ? (
+          <View style={styles.middle}>{switcher}</View>
+        ) : (
+          <Text
+            variant="title1"
+            accessibilityRole="header"
+            numberOfLines={1}
+            maxFontSizeMultiplier={HEADER_TITLE_MAX_FONT_SCALE}
+            style={styles.title}
+            testID={`${testID}-title`}
+          >
+            {title}
+          </Text>
+        )}
+        {trailing === undefined ? (
+          // Balances the back circle so a lone switch sits in the middle of the screen.
+          switcher ? (
+            <View style={styles.balance} />
+          ) : null
+        ) : hasLiquidGlass() ? (
           <GlassContainer spacing={0} style={styles.trailing}>
             {trailing}
           </GlassContainer>
@@ -85,7 +98,11 @@ const styles = StyleSheet.create({
     gap: space.md,
     height: HEADER_CONTROL_SIZE,
   },
+  // The switch shares the row with up to three circles, so the gaps tighten to leave it room.
+  rowTight: { gap: space.sm },
   title: { flex: 1 },
+  middle: { flex: 1, minWidth: 0, alignItems: 'center' },
+  balance: { width: HEADER_CONTROL_SIZE },
   trailing: {
     flexDirection: 'row',
     alignItems: 'center',
