@@ -1,10 +1,10 @@
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
 
 import { space, Text, useTheme } from '@/ui';
 
 import { SETUP_ART, SETUP_ART_ASPECT } from '../art';
+import { useReduceMotion } from '../hooks/useReduceMotion';
 import type { SetupStep } from '../logic/setupSteps';
 
 export interface SetupStepViewProps {
@@ -20,7 +20,7 @@ export interface SetupStepViewProps {
  */
 export function SetupStepView({ step, index, count }: SetupStepViewProps) {
   const theme = useTheme();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useReduceMotion();
   return (
     <View style={styles.root} testID={`setup-step-${index + 1}`}>
       <View
