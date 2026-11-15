@@ -11,9 +11,11 @@
  * - in a recipe with meat, poultry, fish, shellfish or eggs, or one of leftovers being reheated,
  *   no answer says it is done or safe: a "yes" (or an answer that calls it cooked or safe, or
  *   quotes a temperature) becomes the fixed thermometer reading for the strictest kind present.
- *   Missing or unknown catalog facts count as meat.
- * - an answer that names one of the person's allergens is replaced with a fixed reminder unless
- *   the catalog says the recipe already contains it; a question that names one gets the reminder.
+ *   Catalog facts can only add kinds: missing facts, an empty list or an unknown ingredient
+ *   count as meat. Kinds named in the recipe text, the question or the model's answer add more.
+ * - an answer that names one of the person's allergens (read with hidden characters removed) is
+ *   replaced with a fixed reminder unless the catalog says the recipe already contains it; a
+ *   question that names one gets the reminder.
  * When the fixed answer is certain from the question alone (a doneness question in such a
  * recipe, or a question naming an allergen) it is returned without calling the model, and no
  * question is spent.
@@ -244,15 +246,18 @@ const SAFE_ANSWERS: Readonly<Record<SafetyKind, string>> = {
 };
 
 /**
- * The strictest temperature kind for the recipe being cooked, or null for one with no meat,
- * poultry, fish, shellfish or eggs that is not being reheated.
+ * The strictest temperature kind for the recipe being cooked, from its catalog facts, its title,
+ * the step, the question and `also` (the model's answer, once there is one). Facts can only add
+ * kinds: missing facts, or facts listing none, count as unknown, which is treated as meat. Words
+ * add kinds on top, so "reheated rice" or chicken named in a beef stew raises the reading.
  */
-export function recipeSafetyKind(input: CoachInput): SafetyKind | null {
+export function recipeSafetyKind(input: CoachInput, also = ""): SafetyKind | null {
+  const listed = input.facts?.safety ?? [];
   const kinds = new Set<SafetyKind>(
-    input.facts ? input.facts.safety.map((category) => CATEGORY_KIND[category]) : ["unknown"],
+    listed.length > 0 ? listed.map((category) => CATEGORY_KIND[category]) : ["unknown"],
   );
-  const recipeText = `${input.recipe.title}\n${input.recipe.step}`.toLowerCase();
-  const words = `${recipeText}\n${input.question.toLowerCase()}`;
+  const words = [input.recipe.title, input.recipe.step, input.question, also].join("\n")
+    .toLowerCase();
   for (const [kind, pattern] of SAFETY_TERMS) if (pattern.test(words)) kinds.add(kind);
   if (REHEAT.test(words)) kinds.add("reheat");
   return SAFETY_KINDS.find((kind) => kinds.has(kind)) ?? null;
@@ -269,12 +274,27 @@ export function allergenNotice(allergens: readonly AllergenId[]): string {
   return `That contains ${list}, which you've said you avoid.`;
 }
 
+/**
+ * Text as the allergen check reads it: compatibility forms folded (full-width letters become
+ * plain ones), invisible format characters such as zero-width spaces and joiners, soft hyphens
+ * and byte order marks removed, lowercased and with runs of white space collapsed. So a word
+ * split by a hidden character still matches.
+ */
+export function allergenText(text: string): string {
+  return text.normalize("NFKC").replace(/\p{Cf}/gu, "").toLowerCase().replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Declared allergens that `texts` name. */
+function namedAllergens(texts: readonly string[], input: CoachInput): AllergenId[] {
+  return findAllergenConflicts(texts.map(allergenText), input.allergens)
+    .map((conflict) => conflict.allergen);
+}
+
 /** Declared allergens that `texts` name, beyond what the catalog says the recipe contains. */
 function newAllergens(texts: readonly string[], input: CoachInput): AllergenId[] {
   const known = new Set<AllergenId>(input.facts?.allergens ?? []);
-  return findAllergenConflicts(texts, input.allergens)
-    .map((conflict) => conflict.allergen)
-    .filter((allergen) => !known.has(allergen));
+  return namedAllergens(texts, input).filter((allergen) => !known.has(allergen));
 }
 
 function allergenReply(allergens: readonly AllergenId[]): CoachAnswer {
@@ -289,8 +309,7 @@ function allergenReply(allergens: readonly AllergenId[]): CoachAnswer {
  * eggs or reheated leftovers gets the thermometer reading.
  */
 export function presetAnswer(input: CoachInput): CoachAnswer | null {
-  const asked = findAllergenConflicts([input.question], input.allergens)
-    .map((conflict) => conflict.allergen);
+  const asked = namedAllergens([input.question], input);
   if (asked.length > 0) return allergenReply(asked);
   const kind = recipeSafetyKind(input);
   if (kind !== null && DONENESS.test(input.question.toLowerCase())) {
@@ -316,7 +335,7 @@ export function coachAnswer(
   const answer = finalizeAnswer(raw, hasPhoto);
   const fresh = newAllergens([answer.answer], input);
   if (fresh.length > 0) return allergenReply(fresh);
-  const kind = recipeSafetyKind(input);
+  const kind = recipeSafetyKind(input, answer.answer);
   if (kind === null) return answer;
   if (raw.verdict !== "yes" && !VOUCHES.test(answer.answer.toLowerCase())) return answer;
   return { verdict: "unsure", answer: SAFE_ANSWERS[kind], focus: answer.focus };

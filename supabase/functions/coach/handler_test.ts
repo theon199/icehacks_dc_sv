@@ -344,7 +344,7 @@ Deno.test("allergenNotice names every allergen with its spoken label", () => {
 
 Deno.test("an allergen the recipe's catalog data lists is not a new suggestion", async () => {
   const { handler } = harness({
-    replies: [claudeJson({ verdict: "yes", answer: "The paneer is coated.", focus: null })],
+    replies: [claudeJson({ verdict: "unsure", answer: "The paneer is coated.", focus: null })],
   });
   const res = await silenced(() => handler(post({ ...INPUT, allergens: ["milk"] })));
   assertEquals((await res.json()).answer, "The paneer is coated.");
@@ -461,11 +461,59 @@ const safetyInput = (
 
 const YES = { verdict: "yes" as const, answer: "Yes, it's ready.", focus: null };
 
-Deno.test("a vegetarian recipe keeps the model's yes", () => {
+Deno.test("empty safety facts count as unknown, like missing ones", () => {
+  // The catalog listing no kinds is not proof there are none: facts can only add kinds.
   const good = { verdict: "yes" as const, answer: "Every piece is coated.", focus: null };
   const input = safetyInput("Matar Paneer", "Stir in the paneer", "is this stirred enough?");
-  assertEquals(coachAnswer(good, input, true), good);
-  assertEquals(presetAnswer(safetyInput("Tomato pasta", "Boil", "is the pasta done?")), null);
+  const result = coachAnswer(good, input, true);
+  assertEquals(result.verdict, "unsure");
+  assertStringIncludes(result.answer, "74°C (165°F)");
+  const pasta = presetAnswer(safetyInput("Tomato pasta", "Boil", "is the pasta done?"));
+  assertStringIncludes(pasta?.answer ?? "", "74°C (165°F)");
+  // A cautious answer still stands.
+  const notYet = { verdict: "not_yet" as const, answer: "A few more stirs.", focus: null };
+  assertEquals(coachAnswer(notYet, input, true), notYet);
+});
+
+Deno.test("kinds named in the model's answer raise the reading too", () => {
+  const stew = safetyInput("Beef stew", "Simmer the stew", "how does it look?", ["whole_meat"]);
+  for (
+    const [answer, reading] of [
+      ["Yes, the chicken in there looks tender.", "74°C (165°F)"],
+      ["Yes, the reheated rice looks good.", "74°C (165°F)"],
+      ["Yes, it looks rich and glossy.", "63°C (145°F)"],
+    ] as const
+  ) {
+    const result = coachAnswer({ verdict: "yes", answer, focus: null }, stew, true);
+    assertStringIncludes(result.answer, reading, answer);
+  }
+});
+
+Deno.test("hidden characters cannot split an allergen word", async () => {
+  // Zero-width space, zero-width joiner, a soft hyphen, a byte order mark and full-width letters.
+  for (
+    const question of [
+      "Can I add pea\u200Bnut butter?",
+      "Can I add pe\u200Danut butter?",
+      "Can I add pea\u00ADnut butter?",
+      "Can I add \uFEFFpeanut butter?",
+      "Can I add \uFF50\uFF45\uFF41\uFF4E\uFF55\uFF54 butter?",
+    ]
+  ) {
+    const { handler } = harness({
+      replies: [claudeJson({ verdict: "unsure", answer: "Sure, a spoonful.", focus: null })],
+    });
+    const body = await (await silenced(() => handler(post({ ...INPUT, question })))).json();
+    assertEquals(body.answer, "That contains peanut, which you've said you avoid.", question);
+  }
+  const { handler } = harness({
+    replies: [
+      claudeJson({ verdict: "unsure", answer: "Stir in some pea\u200Bnut  butter.", focus: null }),
+    ],
+  });
+  const body = await (await silenced(() => handler(post({ ...INPUT, question: "what next?" }))))
+    .json();
+  assertEquals(body.answer, "That contains peanut, which you've said you avoid.");
 });
 
 Deno.test("any yes in a recipe with meat, fish or eggs becomes the thermometer answer", () => {
@@ -621,40 +669,93 @@ Deno.test("words in the photo cannot talk the coach past its safety checks", asy
   assertEquals(swap.answer, "That contains peanut, which you've said you avoid.");
 });
 
+/** A PNG signature and a complete IHDR chunk (length, type, 13 data bytes, CRC). */
+function pngBytes(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(40);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  bytes.set([8, 2, 0, 0, 0], 24);
+  return bytes;
+}
+
+/** A RIFF/WEBP file whose first chunk is `chunk` with `body`, sizes filled in, padded to 40 bytes. */
+function webpBytes(chunk: string, body: number[]): Uint8Array {
+  const bytes = new Uint8Array(40);
+  const view = new DataView(bytes.buffer);
+  bytes.set([0x52, 0x49, 0x46, 0x46]);
+  view.setUint32(4, bytes.length - 8, true);
+  bytes.set([0x57, 0x45, 0x42, 0x50], 8);
+  bytes.set([...chunk].map((c) => c.charCodeAt(0)), 12);
+  view.setUint32(16, bytes.length - 20, true);
+  bytes.set(body, 20);
+  return bytes;
+}
+
+const VP8 = [0, 0, 0, 0x9d, 0x01, 0x2a, 0x00, 0x04, 0x00, 0x03];
+const lossless = (w: number, h: number) => {
+  const bits = (w - 1) | ((h - 1) << 14);
+  return [0x2f, bits & 0xff, (bits >> 8) & 0xff, (bits >> 16) & 0xff, bits >>> 24];
+};
+const VP8X = [0, 0, 0, 0, 0x3f, 0x1f, 0x00, 0xff, 0x0f, 0x00];
+
 Deno.test("imageSize reads JPEG, PNG and WebP headers", () => {
   assertEquals(imageSize(jpegBytes(768, 1024)), { width: 768, height: 1024 });
-  const png = new Uint8Array(24);
-  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
-  png.set([0, 0, 0x1f, 0x41, 0, 0, 0x03, 0xe8], 16);
-  assertEquals(imageSize(png), { width: 8001, height: 1000 });
-  const riff = (chunk: string, body: number[]) => {
-    const bytes = new Uint8Array(30);
-    bytes.set([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
-    bytes.set([...chunk].map((c) => c.charCodeAt(0)), 12);
-    bytes.set(body, 20);
-    return bytes;
-  };
+  assertEquals(imageSize(pngBytes(8001, 1000)), { width: 8001, height: 1000 });
   // Lossy: frame tag, start code, then 14-bit width and height.
-  assertEquals(
-    imageSize(riff("VP8 ", [0, 0, 0, 0x9d, 0x01, 0x2a, 0x00, 0x04, 0x00, 0x03])),
-    { width: 1024, height: 768 },
-  );
+  assertEquals(imageSize(webpBytes("VP8 ", VP8)), { width: 1024, height: 768 });
   // Lossless: signature, then width - 1 and height - 1 in 14 bits each.
-  const w = 640 - 1, h = 480 - 1;
-  const bits = w | (h << 14);
-  assertEquals(
-    imageSize(
-      riff("VP8L", [0x2f, bits & 0xff, (bits >> 8) & 0xff, (bits >> 16) & 0xff, bits >> 24]),
-    ),
-    { width: 640, height: 480 },
-  );
+  assertEquals(imageSize(webpBytes("VP8L", lossless(640, 480))), { width: 640, height: 480 });
   // Extended: flags, reserved, then 24-bit canvas width - 1 and height - 1.
-  assertEquals(
-    imageSize(riff("VP8X", [0, 0, 0, 0, 0x3f, 0x1f, 0x00, 0xff, 0x0f, 0x00])),
-    { width: 8000, height: 4096 },
-  );
+  assertEquals(imageSize(webpBytes("VP8X", VP8X)), { width: 8000, height: 4096 });
   assertEquals(imageSize(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46])), null);
   assertEquals(imageSize(new Uint8Array([1, 2, 3])), null);
+});
+
+/** Truncated or inconsistent headers, each of which must not be measured. */
+function truncatedHeaders(): [string, Uint8Array][] {
+  const png = pngBytes(640, 480);
+  const badLength = pngBytes(640, 480);
+  badLength[11] = 12;
+  const jpeg = jpegBytes(640, 480);
+  const shortSof = jpegBytes(640, 480);
+  shortSof[23] = 0x07; // SOF length 7 cannot hold precision, size and component count
+  const longSof = jpegBytes(640, 480);
+  longSof[23] = 0x40; // SOF length runs past the end of the data
+  const chunkTooSmall = webpBytes("VP8 ", VP8);
+  new DataView(chunkTooSmall.buffer).setUint32(16, 4, true);
+  const riffTooSmall = webpBytes("VP8X", VP8X);
+  new DataView(riffTooSmall.buffer).setUint32(4, 12, true);
+  return [
+    ["24-byte PNG", png.slice(0, 24)],
+    ["PNG cut inside IHDR", png.slice(0, 28)],
+    ["PNG with a wrong IHDR length", badLength],
+    // SOI then a SOF0 that declares 17 bytes but stops after the size.
+    ["11-byte JPEG", new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0, 0x11, 8, 0x01, 0xe0, 0x02, 0x80])],
+    ["JPEG cut inside the SOF", jpeg.slice(0, 28)],
+    ["JPEG with a short SOF", shortSof],
+    ["JPEG whose SOF runs past the end", longSof],
+    ["WebP cut inside the VP8 header", webpBytes("VP8 ", VP8).slice(0, 28)],
+    ["WebP cut inside the VP8L header", webpBytes("VP8L", lossless(640, 480)).slice(0, 23)],
+    ["WebP cut inside the VP8X header", webpBytes("VP8X", VP8X).slice(0, 29)],
+    ["WebP chunk smaller than its header", chunkTooSmall],
+    ["WebP RIFF size smaller than its chunk", riffTooSmall],
+  ];
+}
+
+Deno.test("imageSize refuses truncated or inconsistent headers", () => {
+  for (const [name, bytes] of truncatedHeaders()) assertEquals(imageSize(bytes), null, name);
+});
+
+Deno.test("coach refuses a truncated photo with 400 before quota", async () => {
+  for (const [name, bytes] of truncatedHeaders()) {
+    const { handler, quotaCalls, claudeCalls } = harness({ replies: [claudeJson(NOT_YET)] });
+    const res = await silenced(() => handler(post({ ...INPUT, image: encodeBase64(bytes) })));
+    assertEquals(res.status, 400, name);
+    assertEquals(quotaCalls().length, 0, name);
+    assertEquals(claudeCalls.length, 0, name);
+  }
 });
 
 Deno.test("coach refuses a photo it cannot measure or one past 8000 px, before quota", async () => {
