@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, userEvent, waitFor } from '@testing-library/react-native';
+import { screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import type { ComponentType, ReactNode, createElement as CreateElementFn } from 'react';
 import type { TextProps } from 'react-native';
 
@@ -246,6 +246,19 @@ describe('RecipeDetailScreen', () => {
       { pathname: '/cook/[id]', params: { id: recipe.id } },
       { pathname: '/recipe/[id]/why', params: { id: recipe.id } },
     ]);
+  });
+
+  it('opens the cooking coach setup from the row under the photo', async () => {
+    await renderScreen();
+    const user = userEvent.setup();
+    const row = screen.getByRole('button', { name: 'Cook Chickpea curry with coach' });
+    expect(within(row).getByText('Cook with coach')).toBeOnTheScreen();
+    expect(within(row).getByText('Set your phone up and talk')).toBeOnTheScreen();
+    await user.press(row);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/cook/[id]/setup',
+      params: { id: recipe.id },
+    });
   });
 
   it('opens nearby from its tile and compare from the header menu', async () => {

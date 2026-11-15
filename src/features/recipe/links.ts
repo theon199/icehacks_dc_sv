@@ -15,6 +15,11 @@ export function cookHref(recipeId: string): Href {
   return { pathname: '/cook/[id]', params: { id: recipeId } };
 }
 
+/** The cooking coach starts by showing how to set the phone up over the counter. */
+export function coachSetupHref(recipeId: string): Href {
+  return { pathname: '/cook/[id]/setup', params: { id: recipeId } };
+}
+
 /** Compare a recipe with its healthier version; `to` is chosen on the compare screen when absent. */
 export function compareHref(from: string, to?: string): Href {
   return { pathname: '/compare', params: to ? { from, to } : { from } };

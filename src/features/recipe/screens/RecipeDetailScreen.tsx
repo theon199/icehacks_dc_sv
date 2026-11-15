@@ -9,6 +9,7 @@ import { useRecipe } from '@/lib/catalog';
 import { selectSmallAppetite, selectUnits, usePreferencesStore, useSettingsStore } from '@/stores';
 import { EmptyState, ErrorState, gutter, space, Text, useTheme, type GlassMenuItem } from '@/ui';
 
+import { CookWithCoachRow } from '../components/CookWithCoachRow';
 import { DetailRow } from '../components/DetailRow';
 import { PlanSlotSheet } from '../components/PlanSlotSheet';
 import { RecipeDetailSkeleton } from '../components/RecipeDetailSkeleton';
@@ -43,10 +44,10 @@ const keyOf = (item: DetailItem) => item.key;
 const typeOf = (item: DetailItem) => item.type;
 
 /**
- * A recipe: a glass back header with the dish name, the photo with "Cook it", the healthier and
- * nearby tiles, then four tabs. Overview (introduction, save / plan / shop, method, tutorials),
- * Ingredients (scalable lines with pantry checks and swaps, allergens, cost), Nutrition and Why it
- * fits. The whole page under the header is one virtualised list.
+ * A recipe: a glass back header with the dish name, the photo with "Cook it", the "Cook with
+ * coach" row, the healthier and nearby tiles, then four tabs. Overview (introduction, save / plan
+ * / shop, method, tutorials), Ingredients (scalable lines with pantry checks and swaps, allergens,
+ * cost), Nutrition and Why it fits. The whole page under the header is one virtualised list.
  */
 export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScreenProps) {
   const theme = useTheme();
@@ -238,6 +239,7 @@ export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScr
               credit={recipe.imageCredit}
               onCook={actions.cook}
             />
+            <CookWithCoachRow title={recipe.title} onPress={actions.cookWithCoach} />
             <RecipePageTiles
               title={recipe.title}
               onMakeHealthier={actions.makeHealthier}
