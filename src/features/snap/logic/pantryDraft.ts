@@ -6,6 +6,7 @@ import type { SnapPantryItem } from '@/lib/api/ai';
 import type { IngredientCategory } from '@/lib/catalog/types';
 import type { NewPantryItem, PantryItem } from '@/stores/pantry';
 
+import type { SweepItem } from './sweepItems';
 import { capitalize, nameKey } from './words';
 
 /** Items the AI is at least this sure about start ticked; the rest wait for the person. */
@@ -35,6 +36,12 @@ export function limitUnit(unit: string | null): string | null {
   return unit.trimStart().slice(0, MAX_UNIT_LENGTH);
 }
 
+/**
+ * Where an item came from: one photo, the video of a sweep, words the AI read during a sweep, or
+ * typed straight into the review by the person.
+ */
+export type DraftOrigin = 'photo' | 'video' | 'said' | 'added';
+
 export interface DraftItem {
   /** Stable key for list rendering and edits. */
   key: string;
@@ -44,6 +51,7 @@ export interface DraftItem {
   /** 0..1 from the AI; 1 for items the person added. */
   confidence: number;
   selected: boolean;
+  origin: DraftOrigin;
 }
 
 export type DraftAction =
@@ -65,6 +73,26 @@ export function draftFromDetections(items: readonly SnapPantryItem[]): DraftItem
       unit: qty == null ? null : limitUnit(item.unit),
       confidence: item.confidence,
       selected: item.confidence >= AUTO_SELECT_CONFIDENCE,
+      origin: 'photo',
+    };
+  });
+}
+
+/** The review list of a sweep: video finds first, then what was said, each in the order found. */
+export function draftFromSweep(items: readonly SweepItem[]): DraftItem[] {
+  const ordered = [...items].sort((a, b) =>
+    a.origin === b.origin ? a.foundAt - b.foundAt : a.origin === 'video' ? -1 : 1,
+  );
+  return ordered.map((item) => {
+    const qty = roundQty(item.quantity);
+    return {
+      key: `${item.origin}-${item.key}`,
+      name: item.name.slice(0, MAX_NAME_LENGTH),
+      qty,
+      unit: qty == null ? null : limitUnit(item.unit),
+      confidence: item.confidence,
+      selected: item.confidence >= AUTO_SELECT_CONFIDENCE,
+      origin: item.origin,
     };
   });
 }
@@ -101,7 +129,15 @@ export function draftReducer(items: DraftItem[], action: DraftAction): DraftItem
       if (!name || items.some((item) => item.key === action.key)) return items;
       return [
         ...items,
-        { key: action.key, name, qty: null, unit: null, confidence: 1, selected: true },
+        {
+          key: action.key,
+          name,
+          qty: null,
+          unit: null,
+          confidence: 1,
+          selected: true,
+          origin: 'added',
+        },
       ];
     }
     case 'selectAll':

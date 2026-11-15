@@ -31,7 +31,11 @@ const qtyText = (qty: number | null) => (qty == null ? '' : String(roundQty(qty)
 
 function matchLine(item: DraftItem, matchName: string | null | undefined): string {
   const source =
-    item.confidence >= 1 ? 'Added by you' : CONFIDENCE_LABELS[confidenceBand(item.confidence)];
+    item.origin === 'added' || (item.origin !== 'said' && item.confidence >= 1)
+      ? 'Added by you'
+      : item.origin === 'said'
+        ? 'You said'
+        : CONFIDENCE_LABELS[confidenceBand(item.confidence)];
   if (matchName === undefined) return `${source} · matching…`;
   if (matchName === null) return `${source} · kept as written`;
   return `${source} · matches ${matchName}`;
