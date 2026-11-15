@@ -72,7 +72,7 @@ function PageBody({ title, subtitle, back = true, footer, children, testID }: Ac
                 testID="account-page-back"
               />
             ) : null}
-            <Wordmark size={28} />
+            <Wordmark height={20} />
           </View>
           <View style={styles.intro}>
             <Text variant="display" style={styles.title}>

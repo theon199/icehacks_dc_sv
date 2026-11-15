@@ -108,15 +108,15 @@ hosted projects. Recipe lookups require a connection.
 
 ### Useful scripts
 
-| Script                 | What it does                                                              |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `npm run typegen`      | Generates expo-router typed-route declarations into `.expo/types`         |
-| `npm run typecheck`    | `tsc --noEmit` with strict settings (run `typegen` first for route types) |
-| `npm run lint`         | ESLint (Expo flat config + React hooks rules), zero warnings allowed      |
-| `npm run format`       | Prettier write (`format:check` verifies)                                  |
-| `npm test`             | Jest with `jest-expo` and React Native Testing Library                    |
-| `npm run verify`       | All of the above, as CI runs it                                           |
-| `npm run brand:assets` | Re-renders the app icon, splash and favicon from the vector logo          |
+| Script                 | What it does                                                               |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `npm run typegen`      | Generates expo-router typed-route declarations into `.expo/types`          |
+| `npm run typecheck`    | `tsc --noEmit` with strict settings (run `typegen` first for route types)  |
+| `npm run lint`         | ESLint (Expo flat config + React hooks rules), zero warnings allowed       |
+| `npm run format`       | Prettier write (`format:check` verifies)                                   |
+| `npm test`             | Jest with `jest-expo` and React Native Testing Library                     |
+| `npm run verify`       | All of the above, as CI runs it                                            |
+| `npm run brand:assets` | Re-renders the app icon, splash, favicon and wordmark from the master logo |
 
 ### Project layout
 

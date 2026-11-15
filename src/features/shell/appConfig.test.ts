@@ -9,7 +9,7 @@ describe('app.config', () => {
     expect(configColors).toEqual({
       basil: brandColors.basil,
       oat: brandColors.oat,
-      night: brandColors.night,
+      black: brandColors.black,
     });
   });
 

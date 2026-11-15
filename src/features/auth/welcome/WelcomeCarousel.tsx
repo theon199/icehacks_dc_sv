@@ -33,7 +33,7 @@ const SWIPE_DISTANCE = 40;
 const SWIPE_VELOCITY = 600;
 /** Room kept under the pager for the buttons before the first layout. */
 const ESTIMATED_CHROME = 260;
-const WORDMARK_SIZE = 28;
+const WORDMARK_HEIGHT = 22;
 
 /**
  * The welcome carousel: wordmark and page indicator on top, four collages that cross-fade in
@@ -116,7 +116,7 @@ function CarouselBody({
           { width: stageWidth, paddingLeft: px(DESIGN.headlineInset), paddingRight: px(4) },
         ]}
       >
-        <Wordmark size={WORDMARK_SIZE} />
+        <Wordmark height={WORDMARK_HEIGHT} />
         <PageDots
           count={count}
           index={index}
