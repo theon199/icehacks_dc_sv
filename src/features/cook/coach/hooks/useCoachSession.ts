@@ -3,6 +3,7 @@
  * each phrase the coach hears. Timers, step changes and "how long is left" are handled here on
  * the device; only questions go to the AI, with one still from the camera.
  */
+import { useIsFocused } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
@@ -41,6 +42,8 @@ export interface UseCoachSessionOptions {
 export function useCoachSession({ recipe, camera, deps }: UseCoachSessionOptions) {
   const steps = recipe.steps;
   const { step, goTo, clear } = useStepPosition(recipe.id, steps.length);
+  // Another screen on top (a notification's target, say) must not leave the microphone open.
+  const focused = useIsFocused();
   const [muted, setMuted] = useState(false);
   const [status, setStatus] = useState<CoachStatus>(READY);
   const [heard, setHeard] = useState<string | null>(null);
@@ -138,6 +141,7 @@ export function useCoachSession({ recipe, camera, deps }: UseCoachSessionOptions
   useLayoutEffect(() => {
     handlers.current = {
       phrase: (text) => {
+        if (!focused) return;
         const awake = Date.now() < awakeUntil.current;
         const { addressed, intent } = parseCoachUtterance(text, { awake });
         setHeard(null);
@@ -147,6 +151,7 @@ export function useCoachSession({ recipe, camera, deps }: UseCoachSessionOptions
           setStatus((current) => (current.kind === 'listening' ? READY : current));
       },
       partial: (text) => {
+        if (!focused) return;
         if (saysWakePhrase(text) || Date.now() < awakeUntil.current) setHeard(text);
       },
     };
@@ -162,15 +167,25 @@ export function useCoachSession({ recipe, camera, deps }: UseCoachSessionOptions
     return () => clearTimeout(timeout);
   }, [heard, status]);
 
-  // Listening starts with the screen; the first step is read out once.
-  const { start: startMic } = mic;
+  // Listening runs only while the coach is the screen in front (the microphone hook also stops it
+  // while Famara is in the background). Leaving it stops listening, the voice and any question in
+  // flight; the first step is read out once, not on every return.
+  const { start: startMic, stop: stopMic } = mic;
+  const { cancel: cancelQuestion } = question;
   const opened = useRef(false);
   useEffect(() => {
+    if (!focused) return undefined;
     void startMic();
-    if (opened.current) return;
-    opened.current = true;
-    speakStep(stepNow.current);
-  }, [speakStep, startMic]);
+    if (!opened.current) {
+      opened.current = true;
+      speakStep(stepNow.current);
+    }
+    return () => {
+      stopMic();
+      voice.silence();
+      cancelQuestion();
+    };
+  }, [cancelQuestion, focused, speakStep, startMic, stopMic, voice]);
 
   const ringing = timers.ringing.size > 0;
   const last = step === steps.length - 1;

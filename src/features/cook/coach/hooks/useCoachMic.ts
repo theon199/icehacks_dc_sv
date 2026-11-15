@@ -62,6 +62,11 @@ export function useCoachMic(handlers: CoachMicHandlers) {
   const wanted = useRef(false);
   const paused = useRef(false);
   const failures = useRef(0);
+  /**
+   * Bumped by every start, stop and unmount. A start that was waiting on the permission prompt
+   * goes on only if nothing happened since, so a late answer never reopens the microphone.
+   */
+  const generation = useRef(0);
   const restartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** The latest words of the current phrase that have not been handed over as finished. */
   const pending = useRef('');
@@ -147,6 +152,9 @@ export function useCoachMic(handlers: CoachMicHandlers) {
 
   const start = useCallback(async () => {
     if (wanted.current) return;
+    generation.current += 1;
+    const mine = generation.current;
+    const stillMine = () => generation.current === mine;
     setStatus('starting');
     try {
       if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
@@ -154,11 +162,13 @@ export function useCoachMic(handlers: CoachMicHandlers) {
         return;
       }
       const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!stillMine()) return;
       if (!permission.granted) {
         setStatus('denied');
         return;
       }
     } catch (error) {
+      if (!stillMine()) return;
       logger.warn('Coach listening is unavailable', describeError(error));
       setStatus('unavailable');
       return;
@@ -169,6 +179,7 @@ export function useCoachMic(handlers: CoachMicHandlers) {
   }, [begin]);
 
   const stop = useCallback(() => {
+    generation.current += 1;
     wanted.current = false;
     clearRestart();
     pending.current = '';
@@ -204,6 +215,7 @@ export function useCoachMic(handlers: CoachMicHandlers) {
 
   useEffect(
     () => () => {
+      generation.current += 1;
       wanted.current = false;
       clearRestart();
       abortRecognition();

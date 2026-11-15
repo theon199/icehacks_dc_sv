@@ -10,6 +10,8 @@ import type { RecipeDetail } from '@/lib/catalog';
 import type { CoachCamera, CoachQuestionDeps } from './useCoachQuestion';
 import { AWAKE_WINDOW_MS, useCoachSession } from './useCoachSession';
 
+const mockScreen = { focused: true };
+jest.mock('expo-router', () => ({ useIsFocused: () => mockScreen.focused }));
 jest.mock('expo-speech', () => ({ speak: jest.fn(), stop: jest.fn(() => Promise.resolve()) }));
 jest.mock('expo-image-manipulator', () => ({}));
 jest.mock('expo-notifications', () => ({
@@ -104,6 +106,7 @@ async function say(text: string) {
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date(2026, 10, 14, 18, 0) });
   mockVoice.handlers = {};
+  mockScreen.focused = true;
   // The step on screen is remembered between visits; every test starts at the top.
   Storage.clearSync();
 });
@@ -310,5 +313,31 @@ describe('useCoachSession', () => {
     await act(async () => result.current.finish());
     expect(signal.signal.aborted).toBe(true);
     expect(result.current.mic.status).toBe('off');
+  });
+
+  it('stops listening and drops a question while another screen is on top', async () => {
+    const { result, askCoach, rerender } = await open();
+    askCoach.mockImplementationOnce(() => new Promise(() => undefined));
+    await say('Hey Famara, is this stirred enough?');
+    const signal = askCoach.mock.calls[0]?.[1] as { signal: AbortSignal };
+
+    mockVoice.module.abort.mockClear();
+    mockScreen.focused = false;
+    await act(async () => rerender({}));
+    expect(mockVoice.module.abort).toHaveBeenCalled();
+    expect(signal.signal.aborted).toBe(true);
+    expect(result.current.mic.status).toBe('off');
+
+    // A phrase the recogniser had already finished does not reach the AI off screen.
+    await say('Hey Famara, does the onion look soft');
+    expect(askCoach).toHaveBeenCalledTimes(1);
+
+    mockVoice.module.start.mockClear();
+    mockScreen.focused = true;
+    await act(async () => rerender({}));
+    await settle();
+    expect(mockVoice.module.start).toHaveBeenCalledTimes(1);
+    // Coming back does not read the step out again.
+    expect(spoken().filter((line) => line.startsWith('Step 1'))).toHaveLength(1);
   });
 });

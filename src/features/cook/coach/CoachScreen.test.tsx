@@ -10,7 +10,7 @@ import { CoachScreen } from './CoachScreen';
 import type { CoachQuestionDeps } from './hooks/useCoachQuestion';
 
 const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn(), canGoBack: () => true };
-jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
+jest.mock('expo-router', () => ({ useRouter: () => mockRouter, useIsFocused: () => true }));
 jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('expo-speech', () => ({ speak: jest.fn(), stop: jest.fn(() => Promise.resolve()) }));
 jest.mock('expo-notifications', () => ({
