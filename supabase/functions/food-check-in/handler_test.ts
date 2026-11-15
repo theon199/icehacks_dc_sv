@@ -30,6 +30,8 @@ const spot: KnownPlace = {
   primary_type: "salad_shop",
   types: [],
   spot_region_ids: [REGION_ID],
+  // A spot fetched 29 days ago: its content may be kept one more day.
+  cached_until: new Date(NOW + 86_400_000).toISOString(),
 };
 
 const region = (id: string, half: number, name = "Ocean Park"): RegionCandidate => ({
@@ -121,6 +123,7 @@ Deno.test("a check-in at a known spot is recorded with the place's own position"
     placeName: "Bay Bowls",
     placeLat: PLACE.lat,
     placeLng: PLACE.lng,
+    placeCachedUntil: new Date(NOW + 86_400_000).toISOString(),
     regionId: REGION_ID,
     healthy: true,
   }]);
@@ -194,6 +197,11 @@ Deno.test("an unknown place is looked up once and cached; non-healthy types are 
   assertEquals(h.cached[0]!.cache_key, "food_place:v1:ChIJabc");
   assertEquals(h.cached[0]!.payload.places[0]!.name, "Burger Barn");
   assertEquals(Date.parse(h.cached[0]!.expires_at), NOW + 30 * 86_400_000);
+  assertEquals(
+    h.records[0]!.placeCachedUntil,
+    h.cached[0]!.expires_at,
+    "a fresh lookup is kept as long as its cached copy",
+  );
   assertEquals(h.guards.usedIn(`food_place_lookup:user:${USER}`, "day"), 1);
 });
 

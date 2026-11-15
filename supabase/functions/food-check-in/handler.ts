@@ -6,7 +6,8 @@
  *
  *   1. The place's own position comes from the food map's spots, then from fresh places-search
  *      results, then from one Place Details call (behind the member's daily and the global
- *      monthly allowances; the answer is cached for 30 days in `places_cache`).
+ *      monthly allowances; the answer is cached for 30 days in `places_cache`). The check-in
+ *      keeps the name and position only until that source copy expires.
  *   2. The device must be within 200 m + min(accuracy, 100 m) of the place (422 `too_far`).
  *   3. The region is the smallest live region containing the place, preferring one that lists
  *      the place as a spot.
@@ -48,6 +49,8 @@ export function allowedDistance(accuracyM: number): number {
   return CHECK_IN_RADIUS_M + Math.min(Math.max(accuracyM, 0), CHECK_IN_MAX_ACCURACY_BONUS_M);
 }
 
+const isoTime = z.string().refine((s) => !Number.isNaN(Date.parse(s)), "Expected a timestamp.");
+
 export const knownPlaceSchema = z.object({
   source: z.enum(["spot", "places_cache"]),
   name: z.string().min(1),
@@ -56,6 +59,8 @@ export const knownPlaceSchema = z.object({
   primary_type: z.string().nullable(),
   types: z.array(z.string()),
   spot_region_ids: z.array(z.uuid()),
+  /** When the copy this content came from must be dropped (30 days after Google returned it). */
+  cached_until: isoTime,
 });
 export type KnownPlace = z.output<typeof knownPlaceSchema>;
 
@@ -66,8 +71,6 @@ export const regionCandidatesSchema = z.array(z.object({
   area_m2: z.number(),
 }));
 export type RegionCandidate = z.output<typeof regionCandidatesSchema>[number];
-
-const isoTime = z.string().refine((s) => !Number.isNaN(Date.parse(s)), "Expected a timestamp.");
 
 export const checkInResultSchema = z.discriminatedUnion("status", [
   z.object({
@@ -98,6 +101,8 @@ export interface CheckInRecord {
   placeName: string;
   placeLat: number;
   placeLng: number;
+  /** The source copy's own expiry, so the check-in never keeps the content longer. */
+  placeCachedUntil: string;
   regionId: string | null;
   healthy: boolean;
 }
@@ -188,6 +193,7 @@ export function createFoodCheckInHandler(deps: FoodCheckInDeps): Handler {
       placeName: place.name,
       placeLat: place.lat,
       placeLng: place.lng,
+      placeCachedUntil: place.cached_until,
       regionId: region?.id ?? null,
       healthy,
     });
@@ -256,6 +262,7 @@ export function createFoodCheckInHandler(deps: FoodCheckInDeps): Handler {
     if (!details) throw notFound;
 
     const now = deps.now();
+    const cachedUntil = new Date(now + PLACE_CACHE_TTL_MS).toISOString();
     await service.cachePlace({
       cache_key: `food_place:v1:${placeId}`.slice(0, 200),
       query: "food_place",
@@ -272,7 +279,7 @@ export function createFoodCheckInHandler(deps: FoodCheckInDeps): Handler {
         }],
       },
       fetched_at: new Date(now).toISOString(),
-      expires_at: new Date(now + PLACE_CACHE_TTL_MS).toISOString(),
+      expires_at: cachedUntil,
     }).catch((error) =>
       console.error("place cache write failed", error instanceof Error ? error.name : "unknown")
     );
@@ -284,6 +291,7 @@ export function createFoodCheckInHandler(deps: FoodCheckInDeps): Handler {
       primary_type: details.primary_type,
       types: details.types,
       spot_region_ids: [],
+      cached_until: cachedUntil,
     };
   }
 }
@@ -321,6 +329,7 @@ export function supabaseCheckInService(service: SupabaseClient): CheckInService 
         p_place_name: record.placeName,
         p_place_lat: record.placeLat,
         p_place_lng: record.placeLng,
+        p_place_cached_until: record.placeCachedUntil,
         p_region_id: record.regionId,
         p_healthy: record.healthy,
       }, checkInResultSchema);

@@ -6,7 +6,8 @@
 --     Place content is kept for at most 30 days (Places terms); expired rows are purged hourly.
 --   * food_check_ins: where a member checked in. Private to the member, who may delete them. The
 --     device position is never stored; place_lat / place_lng are the place's own coordinates.
---     The place name and position are Google content, cleared after 30 days; the check-in stays.
+--     The place name and position are Google content, kept only as long as the copy they came
+--     from (at most 30 days after Google returned it), then cleared; the check-in stays.
 --   * food_region_claims: a member claimed a region by checking in at every current spot. A claim
 --     is permanent: a later change to the region's spot list never removes it.
 --   * private.food_map_cells: which geohash-5 cells have had their regions filled, and until when.
@@ -134,8 +135,9 @@ create table public.food_check_ins (
   id uuid default gen_random_uuid() primary key,
   user_id uuid not null references auth.users on delete cascade,
   place_id text not null constraint food_check_ins_place_length check (char_length(place_id) between 1 and 300),
-  -- place_name, place_lat and place_lng are Google place content: kept until place_cached_until
-  -- (30 days, the Places caching limit), then cleared by the hourly purge. The check-in itself
+  -- place_name, place_lat and place_lng are Google place content: kept until place_cached_until,
+  -- the expiry of the copy they were taken from (a spot or a places-search result, at most 30
+  -- days after Google returned it), then cleared by the hourly purge. The check-in itself
   -- (place id, region, healthy, time) is kept, so visits, progress and claims never change.
   place_name text constraint food_check_ins_name_length check (char_length(place_name) between 1 and 200),
   -- The place's coordinates, never the device's.
@@ -444,6 +446,8 @@ $$;
 
 -- What is known about a place without calling Google: a current spot (with the regions that
 -- list it), else the freshest places-search result that contains it. Null when unknown.
+-- cached_until is when that copy must be dropped; a check-in that copies the content keeps it no
+-- longer.
 create function public.resolve_food_place(p_place_id text)
 returns jsonb
 language plpgsql
@@ -454,12 +458,13 @@ as $$
 declare
   v_spot record;
   v_place jsonb;
+  v_place_until timestamptz;
 begin
   if p_place_id is null or char_length(p_place_id) not between 1 and 300 then
     raise exception 'invalid_place' using errcode = '22023', detail = 'place_id is required.';
   end if;
 
-  select s.name, s.lat, s.lng, s.primary_type into v_spot
+  select s.name, s.lat, s.lng, s.primary_type, s.expires_at into v_spot
   from public.food_region_spots s
   join public.food_regions r on r.id = s.region_id
   where s.place_id = p_place_id and s.expires_at > now() and r.retired_at is null
@@ -473,6 +478,7 @@ begin
       'lng', v_spot.lng,
       'primary_type', v_spot.primary_type,
       'types', '[]'::jsonb,
+      'cached_until', v_spot.expires_at,
       'spot_region_ids', (
         select coalesce(jsonb_agg(distinct s.region_id), '[]'::jsonb)
         from public.food_region_spots s
@@ -482,7 +488,7 @@ begin
     );
   end if;
 
-  select p.value into v_place
+  select p.value, least(c.expires_at, c.fetched_at + interval '30 days') into v_place, v_place_until
   from public.places_cache c
   cross join lateral jsonb_array_elements(
     case when jsonb_typeof(c.payload -> 'places') = 'array' then c.payload -> 'places' else '[]'::jsonb end
@@ -505,6 +511,7 @@ begin
     'lng', v_place -> 'lng',
     'primary_type', case when jsonb_typeof(v_place -> 'primary_type') = 'string' then v_place -> 'primary_type' end,
     'types', case when jsonb_typeof(v_place -> 'types') = 'array' then v_place -> 'types' else '[]'::jsonb end,
+    'cached_until', v_place_until,
     'spot_region_ids', '[]'::jsonb
   );
 end;
@@ -553,12 +560,17 @@ $$;
 -- {status: 'ok', check_in_id, visits_here, total_check_ins, healthy, region, claimed_now}, where
 -- region is {id, name, done, total, claimed} or null. The region is claimed when it has current
 -- spots and the member has checked in at every one of them.
+--
+-- p_place_cached_until is when the copy the place content came from must be dropped (from
+-- resolve_food_place, or 30 days after a fresh Place Details answer). The check-in keeps the
+-- content until then, and never more than 30 days from now; content already past it is not stored.
 create function public.record_food_check_in(
   p_user_id uuid,
   p_place_id text,
   p_place_name text,
   p_place_lat double precision,
   p_place_lng double precision,
+  p_place_cached_until timestamptz,
   p_region_id uuid,
   p_healthy boolean
 )
@@ -572,6 +584,8 @@ declare
   c_daily_window constant interval := interval '24 hours';
   c_daily_limit constant integer := 12;
   v_name text := btrim(coalesce(p_place_name, ''));
+  v_cached_until timestamptz := least(p_place_cached_until, now() + interval '30 days');
+  v_keep boolean;
   v_last timestamptz;
   v_used integer;
   v_cooldown_until timestamptz;
@@ -599,6 +613,10 @@ begin
   if p_healthy is null then
     raise exception 'invalid_input' using errcode = '22023', detail = 'healthy is required.';
   end if;
+  if p_place_cached_until is null then
+    raise exception 'invalid_input' using errcode = '22023', detail = 'place_cached_until is required.';
+  end if;
+  v_keep := v_cached_until > now();
 
   perform private.rate_lock(p_user_id, 'food_check_in');
 
@@ -643,7 +661,11 @@ begin
     user_id, place_id, place_name, place_lat, place_lng, place_cached_until, region_id, healthy
   )
   values (
-    p_user_id, p_place_id, v_name, p_place_lat, p_place_lng, now() + interval '30 days', v_region_id, p_healthy
+    p_user_id, p_place_id,
+    case when v_keep then v_name end,
+    case when v_keep then p_place_lat end,
+    case when v_keep then p_place_lng end,
+    v_cached_until, v_region_id, p_healthy
   )
   returning id into v_check_in_id;
   perform private.record_rate(p_user_id, 'food_check_in');
@@ -998,7 +1020,7 @@ grant execute on function public.store_food_region_spots(uuid, jsonb, integer) t
 grant execute on function public.resolve_food_place(text) to service_role;
 grant execute on function public.food_regions_containing(text[], double precision, double precision) to service_role;
 grant execute on function
-  public.record_food_check_in(uuid, text, text, double precision, double precision, uuid, boolean)
+  public.record_food_check_in(uuid, text, text, double precision, double precision, timestamptz, uuid, boolean)
   to service_role;
 grant execute on function
   public.food_map_mine(uuid[], text[], double precision, double precision, double precision, double precision)

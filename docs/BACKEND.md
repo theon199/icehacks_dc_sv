@@ -678,7 +678,7 @@ functions. Product decisions are in `docs/FOOD_MAP.md`; the app calls the functi
 | --- | --- | --- |
 | `food_regions` | `id`, `source` osm\|grid, `source_ref` (unique: `osm:relation:<id>`, `osm:way:<id>`, `grid:<geohash6>`), `name`, `geohash5` (cell of the centroid), `polygon` (jsonb rings `[[[lng, lat], …]]`, outline first, closed, at most 200 points, checked by a constraint), `bbox_*`, `area_m2`, `expires_at` (90 days), `retired_at`, `spots_fetched_at`, `spots_expires_at` | members read; service role writes |
 | `food_region_spots` | (`region_id`, `place_id`), `name`, `lat`, `lng`, `primary_type`, `rank` 1–5 (unique per region), `photos` (≤ 3 `{name, width, height, attributions}`), `expires_at` (30 days) | members read unexpired rows; service role writes |
-| `food_check_ins` | `id`, `user_id`, `place_id`, `place_name`, `place_lat`, `place_lng` (the place's position, never the device's), `place_cached_until` (30 days), `region_id`, `healthy`, `created_at` | owner reads and deletes; inserts only through `record_food_check_in` |
+| `food_check_ins` | `id`, `user_id`, `place_id`, `place_name`, `place_lat`, `place_lng` (the place's position, never the device's), `place_cached_until` (the expiry of the copy the content came from, at most 30 days), `region_id`, `healthy`, `created_at` | owner reads and deletes; inserts only through `record_food_check_in` |
 | `food_region_claims` | (`user_id`, `region_id`), `claimed_at` | owner reads; inserts only through `record_food_check_in` |
 | `private.food_map_cells` | `geohash5`, `fetched_at`, `expires_at` | RPCs only: which cells have had their regions filled |
 | `private.food_check_in_cooldowns` | (`user_id`, `place_id`), `last_at` | RPCs only: when the member last checked in at the place, for the 4-hour cooldown. Members cannot read or delete it, so deleting a check-in never lifts the cooldown. Rows past the cooldown are purged hourly |
@@ -686,8 +686,10 @@ functions. Product decisions are in `docs/FOOD_MAP.md`; the app calls the functi
 - Regions are retired, never deleted, so claims and check-ins always keep their region. A refresh
   upserts on `source_ref`, so a region keeps its id across refreshes.
 - A claim is permanent: a later change to the region's spot list never removes it.
-- `place_name`, `place_lat` and `place_lng` are Google place content. They are cleared by the purge
-  job once `place_cached_until` passes. The check-in itself is kept, so visits, progress and claims
+- `place_name`, `place_lat` and `place_lng` are Google place content. `place_cached_until` is the
+  expiry of the copy they were taken from (a spot, a places-search result or a fresh Place Details
+  answer), so a check-in never extends how long Google content is kept. They are cleared by the
+  purge job once it passes. The check-in itself is kept, so visits, progress and claims
   never change.
 - Account deletion cascades to check-ins and claims; `export_my_data` includes both.
 
@@ -700,10 +702,10 @@ All are `security definer` with `search_path = ''`.
 | `food_map_area(p_cells text[])` | service role | For 1–9 geohash-5 cells: `{cells: [{geohash5, expires_at}], regions: [... , spots]}`. Only live regions, and only unexpired spots, best first |
 | `store_food_regions(p_cells, p_regions jsonb, p_ttl_seconds)` | service role | Upserts the regions found for the cells (each must be centred in one of them), retires live regions of those cells that the fill no longer returned, and marks the cells filled. A changed outline clears the spot fill. Returns `{stored, retired}` |
 | `store_food_region_spots(p_region_id, p_spots jsonb, p_ttl_seconds)` | service role | Replaces a region's spot list (≤ 5, ranked in order) and records the fill. An empty list is a valid result |
-| `resolve_food_place(p_place_id)` | service role | `{source: spot\|places_cache, name, lat, lng, primary_type, types, spot_region_ids}` from a current spot, else a fresh `places_cache` result, else null |
+| `resolve_food_place(p_place_id)` | service role | `{source: spot\|places_cache, name, lat, lng, primary_type, types, spot_region_ids, cached_until}` from a current spot, else a fresh `places_cache` result, else null. `cached_until` is when that copy must be dropped: the spot's `expires_at`, or the cache row's `expires_at` capped at 30 days after its `fetched_at` |
 | `food_regions_containing(p_cells, p_lat, p_lng)` | service role | Live regions whose box contains the point, smallest first; the function runs point-in-polygon |
-| `record_food_check_in(p_user_id, p_place_id, p_place_name, p_place_lat, p_place_lng, p_region_id, p_healthy)` | service role | Locks per member. Cooldown of 4 hours per place (from `private.food_check_in_cooldowns`, so deleting check-ins never lifts it). 12 check-ins per 24 hours, counted in `private.rate_events` so deleting check-ins never frees allowance. A refusal returns `{status: "rate_limited", reason: "cooldown"\|"daily", retry_at}` (the later of the two when both apply) and records nothing. Otherwise it stores the check-in with fresh place content, claims the region when it has current spots and the member has checked in at every one, and returns `{status: "ok", check_in_id, visits_here, total_check_ins, healthy, region: {id, name, done, total, claimed}\|null, claimed_now}` |
-| `food_map_mine(p_region_ids, p_place_ids, p_min_lng, p_min_lat, p_max_lng, p_max_lat)` | members (own rows only) | The caller's check-ins per place (latest region and healthy flag, visits, ≤ 20 times newest first) for places in the box, in `p_place_ids` or in `p_region_ids`; their claims on `p_region_ids`; totals over all their data. Name and position come from a current spot, else a fresh `places_cache` result, else the caller's own copy while it is younger than 30 days, else null. It is security definer because members cannot read `places_cache` |
+| `record_food_check_in(p_user_id, p_place_id, p_place_name, p_place_lat, p_place_lng, p_place_cached_until, p_region_id, p_healthy)` | service role | Locks per member. Cooldown of 4 hours per place (from `private.food_check_in_cooldowns`, so deleting check-ins never lifts it). 12 check-ins per 24 hours, counted in `private.rate_events` so deleting check-ins never frees allowance. A refusal returns `{status: "rate_limited", reason: "cooldown"\|"daily", retry_at}` (the later of the two when both apply) and records nothing. Otherwise it stores the check-in, keeping the place content until `p_place_cached_until` (the source copy's expiry, capped at 30 days from now; content already past it is not stored), claims the region when it has current spots and the member has checked in at every one, and returns `{status: "ok", check_in_id, visits_here, total_check_ins, healthy, region: {id, name, done, total, claimed}\|null, claimed_now}` |
+| `food_map_mine(p_region_ids, p_place_ids, p_min_lng, p_min_lat, p_max_lng, p_max_lat)` | members (own rows only) | The caller's check-ins per place (latest region and healthy flag, visits, ≤ 20 times newest first) for places in the box, in `p_place_ids` or in `p_region_ids`; their claims on `p_region_ids`; totals over all their data. Name and position come from a current spot, else a fresh `places_cache` result, else the caller's own copy until its `place_cached_until`, else null. It is security definer because members cannot read `places_cache` |
 
 Tests: `supabase/tests/10_food_map.test.sql`.
 
@@ -780,6 +782,8 @@ and never stored or logged.
      Pro;
    - is behind a member daily and a global monthly allowance;
    - is cached 30 days in `places_cache` as `food_place:v1:<id>`.
+
+   The check-in keeps the name and position until the source copy expires (`cached_until`).
 
    Unknown ids return 404 `not_found`. Without the key, a place that is not already known also
    returns 404. A spent allowance returns 503 with `details.reason: "budget"`.

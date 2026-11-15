@@ -79,7 +79,7 @@ returns jsonb
 language sql
 as $fn$
   select public.record_food_check_in(
-    p_user, p_place, 'Place ' || p_place, 34.01, -118.49,
+    p_user, p_place, 'Place ' || p_place, 34.01, -118.49, now() + interval '30 days',
     (select r.id from public.food_regions r where r.source_ref = 'osm:relation:1'), true
   );
 $fn$;
@@ -276,13 +276,13 @@ select is(
 
 -- A check-in outside any region has no region.
 select is(
-  public.record_food_check_in('bbbbbbbb-0000-4000-8000-000000000002', 'place-z', 'Far Cafe', 35, -119, null, false)
+  public.record_food_check_in('bbbbbbbb-0000-4000-8000-000000000002', 'place-z', 'Far Cafe', 35, -119, now() + interval '30 days', null, false)
     -> 'region',
   'null'::jsonb,
   'a check-in without a region reports no region'
 );
 select throws_ok(
-  $$select public.record_food_check_in('dddddddd-0000-4000-8000-000000000009', 'place-a', 'X', 0, 0, null, true)$$,
+  $$select public.record_food_check_in('dddddddd-0000-4000-8000-000000000009', 'place-a', 'X', 0, 0, now() + interval '30 days', null, true)$$,
   'PT404', 'user_not_found', 'an unknown account is refused'
 );
 
@@ -510,7 +510,7 @@ values ('v1:test', 'salad restaurant', 34.01, -118.49,
         now() + interval '1 hour');
 set local role service_role;
 select is(
-  public.resolve_food_place('place-p') - 'spot_region_ids' - 'types',
+  public.resolve_food_place('place-p') - 'spot_region_ids' - 'types' - 'cached_until',
   '{"source": "places_cache", "name": "Cached Cafe", "lat": 34.02, "lng": -118.47, "primary_type": "cafe"}'::jsonb,
   'a place from a fresh places search resolves from the cache'
 );
@@ -549,14 +549,14 @@ select public.store_food_region_spots(
   2592000
 );
 select is(
-  public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-x', 'Spot X', 34.02, -118.47,
+  public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-x', 'Spot X', 34.02, -118.47, now() + interval '30 days',
     (select id from public.food_regions where source_ref = 'osm:relation:3'), true) ->> 'status',
   'ok',
   'dan checks in at the first spot'
 );
-select public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-gone', 'Gone Grill', 34.021, -118.471,
+select public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-gone', 'Gone Grill', 34.021, -118.471, now() + interval '30 days',
   (select id from public.food_regions where source_ref = 'osm:relation:3'), false);
-select public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-p', 'Cached Cafe', 34.02, -118.47, null, true);
+select public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-p', 'Cached Cafe', 34.02, -118.47, now() + interval '30 days', null, true);
 reset role;
 select is(
   (select bool_and(place_cached_until = now() + interval '30 days') from public.food_check_ins
@@ -583,7 +583,7 @@ select throws_ok(
 
 set local role service_role;
 select is(
-  (public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-y', 'Spot Y', 34.02, -118.47,
+  (public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-y', 'Spot Y', 34.02, -118.47, now() + interval '30 days',
     (select id from public.food_regions where source_ref = 'osm:relation:3'), true) - 'check_in_id' - 'region'),
   '{"status": "ok", "visits_here": 1, "total_check_ins": 4, "healthy": true, "claimed_now": true}'::jsonb,
   'a check-in whose place content was cleared still counts toward the claim'
@@ -607,6 +607,57 @@ select is(
   'cleared check-ins still count in the totals'
 );
 reset role;
+
+-- ---------------------------------------------------------------------------------------------
+-- A check-in keeps place content no longer than the copy it came from
+-- ---------------------------------------------------------------------------------------------
+
+-- place-x's spot was fetched 29 days ago, so its content may be kept one more day.
+update public.food_region_spots
+set fetched_at = now() - interval '29 days', expires_at = now() + interval '1 day'
+where place_id = 'place-x';
+-- A places-search result fetched 29 days ago, cached longer than the Places limit allows.
+insert into public.places_cache (cache_key, query, lat_rounded, lng_rounded, payload, fetched_at, expires_at)
+values ('v1:test-old', 'salad restaurant', 34.01, -118.49,
+        '{"places": [{"id": "place-q", "name": "Old Cafe", "lat": 34.02, "lng": -118.47}]}',
+        now() - interval '29 days', now() + interval '60 days');
+set local role service_role;
+select is(
+  (public.resolve_food_place('place-x') ->> 'cached_until')::timestamptz,
+  now() + interval '1 day',
+  'a spot reports when its content must be dropped'
+);
+select is(
+  (public.resolve_food_place('place-p') ->> 'cached_until')::timestamptz,
+  now() + interval '1 hour',
+  'a places-search result reports its cache expiry'
+);
+select is(
+  (public.resolve_food_place('place-q') ->> 'cached_until')::timestamptz,
+  now() + interval '1 day',
+  'a places-search result is never kept past 30 days from its fetch'
+);
+select public.record_food_check_in('eeeeeeee-0000-4000-8000-000000000005', 'place-x', 'Spot X', 34.02, -118.47,
+  (public.resolve_food_place('place-x') ->> 'cached_until')::timestamptz, null, true);
+select public.record_food_check_in('eeeeeeee-0000-4000-8000-000000000005', 'place-q', 'Old Cafe', 34.02, -118.47,
+  now() + interval '60 days', null, true);
+select public.record_food_check_in('eeeeeeee-0000-4000-8000-000000000005', 'place-r', 'Late Cafe', 34.02, -118.47,
+  now() - interval '1 second', null, true);
+select throws_ok(
+  $$select public.record_food_check_in('eeeeeeee-0000-4000-8000-000000000005', 'place-s', 'S', 34.02, -118.47, null, null, true)$$,
+  '22023', 'invalid_input', 'the source expiry is required'
+);
+reset role;
+select is(
+  (select jsonb_object_agg(place_id, jsonb_build_array(place_cached_until - now(), place_name))
+   from public.food_check_ins where user_id = 'eeeeeeee-0000-4000-8000-000000000005'),
+  jsonb_build_object(
+    'place-x', jsonb_build_array(interval '1 day', 'Spot X'),
+    'place-q', jsonb_build_array(interval '30 days', 'Old Cafe'),
+    'place-r', jsonb_build_array(interval '-1 second', null)
+  ),
+  'a check-in keeps the content until its source expires, at most 30 days, and not at all once expired'
+);
 
 -- ---------------------------------------------------------------------------------------------
 -- The account export includes the food map

@@ -1640,6 +1640,7 @@ export type Database = {
       record_food_check_in: {
         Args: {
           p_healthy: boolean;
+          p_place_cached_until: string;
           p_place_id: string;
           p_place_lat: number;
           p_place_lng: number;
