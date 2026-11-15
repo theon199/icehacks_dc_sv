@@ -45,7 +45,7 @@ export function CoachHeader({ title, onClose, speaking, onToggleSpeaking }: Coac
         {title}
       </Text>
       <GlassIconButton
-        icon="waveform"
+        icon={speaking ? 'speaker.wave.2' : 'speaker.slash'}
         accessibilityLabel="Spoken answers"
         accessibilityHint={speaking ? 'Mutes the coach’s voice.' : 'The coach reads answers aloud.'}
         selected={speaking}
