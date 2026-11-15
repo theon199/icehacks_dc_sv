@@ -1,7 +1,8 @@
 /**
  * Words that may be left on an ingredient line once its catalog match is taken away, because
  * they name no food: amounts, units, sizes, preparation, connectors and the words of an allergen
- * note. Anything else left over could be a food Famara has not checked, so the line cannot clear
+ * note. Words that point at a food without naming it ("fillet", "portion", "see the recipe
+ * above", "your choice") are deliberately missing. Anything else left over could be a food Famara has not checked, so the line cannot clear
  * for a declared allergen (see `checkOwnRecipe`). This is an allowlist on purpose: a word missing
  * here only makes a line need a check, never makes one look safe.
  *
@@ -99,7 +100,6 @@ const UNITS = [
   'drizzle',
   'knob',
   'sheet',
-  'fillet',
   'strip',
   'wedge',
   'ring',
@@ -109,8 +109,6 @@ const UNITS = [
   'dice',
   'round',
   'loaf',
-  'portion',
-  'serving',
   'scoop',
   'shot',
   'glass',
@@ -243,9 +241,6 @@ const PREPARATION = [
   'squeezed',
   'separated',
   'reserved',
-  'prepared',
-  'ready',
-  'leftover',
   'day',
   'old',
   'ripe',
@@ -295,34 +290,9 @@ const CONNECTORS = [
   'greasing',
   'frying',
   'cooking',
-  'such',
-  'like',
-  'eg',
-  'e',
-  'other',
-  'any',
-  'your',
-  'choice',
-  'favorite',
-  'favourite',
-  'kind',
-  'type',
-  'brand',
   'good',
   'quality',
   'best',
-  'store',
-  'bought',
-  'shop',
-  'ready',
-  'made',
-  'own',
-  'note',
-  'see',
-  'below',
-  'above',
-  'recipe',
-  'link',
   'about',
   'approx',
   'total',
@@ -333,19 +303,6 @@ const CONNECTORS = [
   'without',
   'only',
   'can',
-  'use',
-  'used',
-  'substitute',
-  'swap',
-  'instead',
-  'it',
-  'them',
-  'this',
-  'that',
-  'these',
-  'those',
-  'is',
-  'are',
 ];
 
 /** The words of an allergen note ("may contain", "traces of", "made in a facility that..."). */
@@ -382,10 +339,36 @@ const NON_FOOD = new Set([
   ...ADVISORY,
 ]);
 
-/** An amount such as "2", "½", "500g" or "1lb". */
-const AMOUNT = /^\p{N}+(?:[a-z]{1,4})?$/u;
+/** Unit letters that may be written straight after a number ("500g", "2lb", "250ml"). */
+const AMOUNT_UNITS = new Set([
+  'g',
+  'kg',
+  'mg',
+  'ml',
+  'cl',
+  'dl',
+  'l',
+  'oz',
+  'lb',
+  'tbsp',
+  'tsp',
+  'cm',
+  'mm',
+  'in',
+  'pt',
+  'qt',
+  'x',
+]);
+
+/** True for an amount such as "2", "½", "500g" or "1lb", and nothing else glued to a number. */
+function isAmount(word: string): boolean {
+  const match = /^(\p{N}+)(\p{L}*)$/u.exec(word);
+  if (!match) return false;
+  const unit = match[2] ?? '';
+  return unit === '' || AMOUNT_UNITS.has(unit);
+}
 
 /** True when the word names no food, so it may be left over on a cleared line. */
 export function isNonFoodWord(word: string): boolean {
-  return AMOUNT.test(word) || NON_FOOD.has(word);
+  return isAmount(word) || NON_FOOD.has(word);
 }

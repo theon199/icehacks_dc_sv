@@ -387,6 +387,16 @@ export function createRecipeImportHandler(deps: RecipeImportDeps = {}): Handler 
     const fromJsonLd = structured ? finalizeRecipe(structured, page.url) : null;
     // A page whose own recipe data is too long is not read again by the model, which would cut it.
     if (fromJsonLd && fromJsonLd.status !== "empty") return finished(fromJsonLd);
+    // A download cut at the byte cap is read only through recipe data that closed before the cut
+    // (above); its visible text could be missing ingredients, so the model never sees it.
+    if (page.truncated) {
+      return json({
+        status: "not_recipe",
+        reason: "unreadable",
+        message: PAGE_TOO_LONG_MESSAGE,
+        quota: quotaBody,
+      });
+    }
     const text = pageText(page.html);
     if (!text.complete) {
       return json({

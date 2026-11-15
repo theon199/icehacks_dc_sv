@@ -449,3 +449,23 @@ Deno.test("refuses a page too long to read whole, without asking the model", asy
   assertStringIncludes(body.message, "too long");
   assertEquals(claudeCalls.length, 0);
 });
+
+Deno.test("never reads a page cut at the download cap, unless its JSON-LD was read whole", async () => {
+  const cut = harness({
+    replies: [claudeJson(ADOBO)],
+    pages: {
+      "https://blog.example.com/huge": htmlPage(
+        `<html><body><h1>Adobo</h1><p>${
+          "Chicken thighs, vinegar, garlic and bay leaves, simmered slowly. ".repeat(3)
+        }</p>${"<style>a{}</style>".repeat(150_000)}<ul><li>2 tbsp peanuts</li></ul></body></html>`,
+      ),
+    },
+  });
+  const res = await silenced(() =>
+    cut.handler(post({ source: "link", url: "https://blog.example.com/huge" }))
+  );
+  const body = await res.json();
+  assertEquals(body.status, "not_recipe");
+  assertStringIncludes(body.message, "too long");
+  assertEquals(cut.claudeCalls.length, 0);
+});

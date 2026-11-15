@@ -136,3 +136,21 @@ Deno.test("says a long page without a readable ingredients part is not complete"
   const page = pageText(`<html><body>${filler}<ul><li>2 tbsp peanuts</li></ul></body></html>`);
   assertEquals(page.complete, false);
 });
+
+Deno.test("refuses the ingredients fallback when ingredients appear before the heading", () => {
+  const filler = "<p>A long story about the farm and the family.</p>".repeat(900);
+  const page = pageText(
+    `<html><body><h3>For the sauce</h3><ul><li>2 tbsp peanut butter</li></ul>${filler}` +
+      `<h2>Ingredients</h2><ul><li>1 cup rice</li></ul></body></html>`,
+  );
+  assertEquals(page.complete, false);
+});
+
+Deno.test("refuses the ingredients fallback when there are two ingredient headings", () => {
+  const filler = "<p>A long story about the farm and the family.</p>".repeat(900);
+  const page = pageText(
+    `<html><body><h2>Ingredients for the sauce</h2><p>Peanut butter, soy</p>${filler}` +
+      `<h2>Ingredients</h2><ul><li>1 cup rice</li></ul></body></html>`,
+  );
+  assertEquals(page.complete, false);
+});

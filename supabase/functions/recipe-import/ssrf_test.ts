@@ -139,6 +139,7 @@ Deno.test("fetchPage reads a public HTML page without following redirects automa
     ok: true,
     url: "https://recipes.example.com/adobo",
     html: "<h1>Adobo</h1>",
+    truncated: false,
   });
   assertEquals(calls[0]?.init?.redirect, "manual");
 });
@@ -183,7 +184,12 @@ Deno.test("fetchPage follows up to three public redirects, relative ones include
     resolve: PUBLIC_DNS,
     fetch,
   });
-  assertEquals(page, { ok: true, url: "https://cdn.example.com/d", html: "done" });
+  assertEquals(page, {
+    ok: true,
+    url: "https://cdn.example.com/d",
+    html: "done",
+    truncated: false,
+  });
 });
 
 Deno.test("fetchPage gives up after the third redirect", async () => {
@@ -244,6 +250,7 @@ Deno.test("fetchPage reads at most the byte cap", async () => {
   });
   assert(page.ok);
   assertEquals(page.html.length, 4196);
+  assertEquals(page.truncated, true);
   assert(pulled <= 7, `read ${pulled} chunks`);
 });
 

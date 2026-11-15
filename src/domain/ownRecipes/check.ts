@@ -24,7 +24,7 @@ import { compileSafetyRules, DIET_ALLERGEN_CHECKS, type SafetyPrefs } from '../s
 import { ADVISORY_WORDS, ALLERGEN_HINTS, DIET_HINTS } from './hints';
 import { isPlausibleMatch, type MatchableIngredient } from './match';
 import { isNonFoodWord } from './nonFoodWords';
-import { foodWords, nameKey, tokenize } from './words';
+import { foodWords, hasSymbols, nameKey, tokenize } from './words';
 import type { AllergenId } from '../types/allergens';
 import { withImpliedDiets, DietFlag, type DietFlagName } from '../types/diet';
 
@@ -187,7 +187,11 @@ function leftover(ingredient: OwnIngredient, catalog: CatalogFacts | null): Left
   return {
     words: new Set(rest),
     unexplained:
-      textRest === null || nameRest === null || rest.some((word) => !isNonFoodWord(word)),
+      textRest === null ||
+      nameRest === null ||
+      hasSymbols(ingredient.text) ||
+      hasSymbols(ingredient.name) ||
+      rest.some((word) => !isNonFoodWord(word)),
   };
 }
 

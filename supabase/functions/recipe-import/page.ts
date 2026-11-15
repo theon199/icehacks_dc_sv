@@ -226,6 +226,11 @@ export interface PageText {
   readonly complete: boolean;
 }
 
+/** A line that may be an ingredient: a list item, or a line that starts with an amount ("2 tbsp", "½ cup"). */
+function looksLikeIngredient(line: string): boolean {
+  return /^-\s/.test(line) || /^\p{N}/u.test(line);
+}
+
 /** A heading line that starts the ingredients ("Ingredients", "Ingredients for the sauce"). */
 const INGREDIENTS_HEADING = /^(?:-\s*)?ingredients?\b.{0,40}$/i;
 
@@ -250,8 +255,11 @@ export function pageText(html: string, maxChars: number = PAGE_TEXT_MAX_CHARS): 
     .filter(Boolean);
   const whole = [title, ...lines].filter(Boolean).join("\n");
   if (whole.length <= maxChars) return { text: whole, complete: true };
-  const from = lines.findIndex((line) => INGREDIENTS_HEADING.test(line));
-  if (from >= 0) {
+  // Read from the ingredients heading only when it is the page's one ingredients heading and
+  // nothing before it looks like an ingredient line (a sauce listed above the story, say).
+  const headings = lines.flatMap((line, index) => (INGREDIENTS_HEADING.test(line) ? [index] : []));
+  const from = headings.length === 1 ? headings[0] ?? -1 : -1;
+  if (from >= 0 && !lines.slice(0, from).some(looksLikeIngredient)) {
     const part = [title, ...lines.slice(from)].filter(Boolean).join("\n");
     if (part.length <= maxChars) return { text: part, complete: true };
   }

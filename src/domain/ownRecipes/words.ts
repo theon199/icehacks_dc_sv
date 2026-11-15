@@ -63,6 +63,14 @@ export function tokenize(text: string): string[] {
   return folded.match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
+/**
+ * True when the text holds a pictograph or symbol that `tokenize` drops (🥜, 🥛, ™). Such a mark
+ * may stand for a food, so it can never be explained away.
+ */
+export function hasSymbols(text: string): boolean {
+  return /[\p{Extended_Pictographic}\p{So}]/u.test(text);
+}
+
 /** Singular of one lowercase word. */
 export function singular(word: string): string {
   const known = IRREGULAR[word];

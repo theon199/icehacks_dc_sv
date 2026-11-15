@@ -11,7 +11,7 @@
  *   answer must be public too, so a name that flips to a private address between the two lookups
  *   (DNS rebinding) is refused.
  * - One 10 s deadline covers every lookup, every hop and the body; at most 2 MB of the body is
- *   read, and only HTML is accepted.
+ *   read (a longer body is reported as `truncated`), and only HTML is accepted.
  *
  * Residual risk: the platform's `fetch` cannot be pinned to an address (Deno has no resolver or
  * TLS server-name override for it), so it resolves the host a third time when it connects. A
@@ -252,7 +252,8 @@ export interface PageDeps {
 }
 
 export type PageResult =
-  | { ok: true; url: string; html: string }
+  /** `truncated` is true when the body was longer than the byte cap and only its start was read. */
+  | { ok: true; url: string; html: string; truncated: boolean }
   | { ok: false; reason: "blocked" | "unreadable" | "not_html" };
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
@@ -267,20 +268,30 @@ function charsetOf(contentType: string | null): string {
   return match?.[1] ?? "utf-8";
 }
 
-/** Reads at most `maxBytes` of the body and stops the download there. */
-async function readCapped(response: Response, maxBytes: number): Promise<Uint8Array> {
-  if (!response.body) return new Uint8Array();
+/** Reads at most `maxBytes` of the body and stops the download there, saying if it was cut. */
+async function readCapped(
+  response: Response,
+  maxBytes: number,
+): Promise<{ bytes: Uint8Array; truncated: boolean }> {
+  if (!response.body) return { bytes: new Uint8Array(), truncated: false };
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let truncated = false;
   try {
     while (size < maxBytes) {
       const step = await reader.read();
       if (step.done) break;
       const room = maxBytes - size;
+      if (step.value.byteLength > room) truncated = true;
       const chunk = step.value.byteLength > room ? step.value.subarray(0, room) : step.value;
       chunks.push(chunk);
       size += chunk.byteLength;
+    }
+    // At the cap exactly: one more read says whether anything was left unread.
+    if (!truncated && size >= maxBytes) {
+      const next = await reader.read();
+      truncated = !next.done && next.value.byteLength > 0;
     }
   } finally {
     await reader.cancel().catch(() => {});
@@ -291,7 +302,7 @@ async function readCapped(response: Response, maxBytes: number): Promise<Uint8Ar
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return bytes;
+  return { bytes, truncated };
 }
 
 function decode(bytes: Uint8Array, contentType: string | null): string {
@@ -358,8 +369,8 @@ export async function fetchPage(start: URL, deps: PageDeps = {}): Promise<PageRe
         await discard(response);
         return { ok: false, reason: "not_html" };
       }
-      const bytes = await readCapped(response, limits.maxBytes);
-      return { ok: true, url: url.href, html: decode(bytes, contentType) };
+      const { bytes, truncated } = await readCapped(response, limits.maxBytes);
+      return { ok: true, url: url.href, html: decode(bytes, contentType), truncated };
     }
   } catch {
     // Timeouts, refused connections and TLS failures all mean the page could not be read.

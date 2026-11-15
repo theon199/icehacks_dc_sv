@@ -402,6 +402,35 @@ describe('review fixes, round two: only known non-food words may be left over', 
   });
 });
 
+describe('review fixes, round three', () => {
+  const blocked = (text: string, name = 'rice', id: string | null = 'rice') => {
+    const safety = check([line(text, name, id)], prefs(['peanut']));
+    expect(safety.ingredients[0]?.issues).toContainEqual({
+      code: 'allergen_unverified',
+      allergen: 'peanut',
+    });
+    expect(isClearedForSuggestions(safety)).toBe(false);
+  };
+
+  it('accepts only known unit suffixes on an amount', () => {
+    blocked('1 cup rice 1egg');
+    blocked('1 cup rice, 1nut');
+    expect(check([line('500g rice', 'rice', 'rice')], prefs(['peanut'])).status).toBe('clear');
+  });
+
+  it('counts a food emoji or symbol as an unexplained word', () => {
+    blocked('1 cup rice 🥜');
+    blocked('1 cup rice + 🥛');
+  });
+
+  it('does not clear a line that points at another recipe or an unnamed food', () => {
+    blocked('1 cup rice (see recipe above)');
+    blocked('1 cup rice, use the sauce below');
+    blocked('2 fillets, with rice');
+    blocked('1 portion rice of your choice');
+  });
+});
+
 describe('ingredientKey', () => {
   it('ignores case, punctuation and plurals in the name', () => {
     expect(ingredientKey({ text: '3 Bay Leaves!', name: 'Bay leaves' })).toBe(

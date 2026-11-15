@@ -36,4 +36,4 @@ export {
   matchIngredients,
   type MatchableIngredient,
 } from './match';
-export { foodWords, nameKey, singular, tokenize } from './words';
+export { foodWords, hasSymbols, nameKey, singular, tokenize } from './words';
