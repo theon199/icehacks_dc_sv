@@ -35,3 +35,6 @@ tools/data/.cache
 npm-debug.*
 .DS_Store
 *.tsbuildinfo
+
+# XcodeBuildMCP machine-local session defaults (simulator UDID)
+.xcodebuildmcp/
