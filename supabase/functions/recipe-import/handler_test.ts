@@ -324,7 +324,7 @@ Deno.test("maps a truncated model reply to an upstream error", async () => {
 });
 
 Deno.test("finalizeRecipe bounds every field and drops empty lines", () => {
-  const recipe = finalizeRecipe({
+  const result = finalizeRecipe({
     title: `  ${"T".repeat(200)} `,
     servings: 120,
     total_minutes: 0,
@@ -333,22 +333,74 @@ Deno.test("finalizeRecipe bounds every field and drops empty lines", () => {
     ingredients: [
       "   ",
       { text: "1 cup rice", name: "" },
-      ...Array.from({ length: 70 }, (_, i) => `${i} eggs`),
+      ...Array.from({ length: 58 }, (_, i) => `${i} eggs`),
     ],
     steps: ["", "x".repeat(1_500)],
   }, null);
-  assert(recipe);
+  assertEquals(result.status, "ok");
+  if (result.status !== "ok") return;
+  const { recipe } = result;
   assertEquals(recipe.title.length, 160);
   assertEquals(recipe.servings, 24);
   assertEquals(recipe.total_minutes, null);
   assertEquals(recipe.cuisine, null);
-  assertEquals(recipe.ingredients.length, 60);
+  assertEquals(recipe.ingredients.length, 59);
   assertEquals(recipe.ingredients[0], { text: "1 cup rice", name: "rice" });
   assertEquals(recipe.steps, ["x".repeat(1_000)]);
   assertEquals(
-    finalizeRecipe({ ...recipe, ingredients: [], steps: ["Cook."] } as never, null),
-    null,
+    finalizeRecipe({ ...recipe, ingredients: [], steps: ["Cook."] } as never, null).status,
+    "empty",
   );
+});
+
+const LONG_BASE = {
+  title: "Big curry",
+  servings: 4,
+  total_minutes: 60,
+  cuisine: null,
+  meal: null,
+  steps: ["Cook."],
+};
+
+Deno.test("finalizeRecipe never drops an ingredient: too many fails the import", () => {
+  const ingredients = [
+    ...Array.from({ length: 60 }, (_, i) => `${i + 1} g rice`),
+    "2 tbsp peanut butter",
+  ];
+  assertEquals(finalizeRecipe({ ...LONG_BASE, ingredients }, null).status, "too_long");
+});
+
+Deno.test("finalizeRecipe never cuts an ingredient line short", () => {
+  const ingredients = [`1 cup rice ${"(rinsed well) ".repeat(16)}contains peanuts`];
+  assertEquals(finalizeRecipe({ ...LONG_BASE, ingredients }, null).status, "too_long");
+});
+
+Deno.test("finalizeRecipe never drops a step", () => {
+  const steps = Array.from({ length: 41 }, (_, i) => `Step ${i + 1}.`);
+  assertEquals(
+    finalizeRecipe({ ...LONG_BASE, ingredients: ["1 cup rice"], steps }, null).status,
+    "too_long",
+  );
+});
+
+Deno.test("says a recipe is too long instead of importing part of it", async () => {
+  const big = {
+    ...ADOBO,
+    recipe: {
+      ...ADOBO.recipe,
+      ingredients: Array.from(
+        { length: 61 },
+        (_, i) => ({ text: `${i + 1} g rice`, name: "rice" }),
+      ),
+    },
+  };
+  const { handler } = harness({ replies: [claudeJson(big)] });
+  const res = await silenced(() => handler(post({ source: "text", text: "big curry" })));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.status, "not_recipe");
+  assertEquals(body.reason, "unreadable");
+  assertStringIncludes(body.message, "60 ingredients");
 });
 
 Deno.test("quota defaults to recipe_import and accepts a valid override", () => {

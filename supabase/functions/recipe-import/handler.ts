@@ -143,24 +143,42 @@ export interface DraftIngredient {
   name?: string;
 }
 
-/** Bounds and cleans a draft into the response shape; null when no usable recipe is left. */
+const MAX_INGREDIENT_CHARS = 200;
+
+/**
+ * - `ok`: the bounded recipe.
+ * - `too_long`: more ingredients or steps than Famara keeps, or an ingredient line longer than it
+ *   keeps. Never imported in part: a dropped or cut line could be the one with the allergen.
+ * - `empty`: no usable recipe is left.
+ */
+export type FinalizedRecipe =
+  | { readonly status: "ok"; readonly recipe: ImportedRecipe }
+  | { readonly status: "too_long" }
+  | { readonly status: "empty" };
+
+/** Bounds and cleans a draft into the response shape, without dropping anything it reads. */
 export function finalizeRecipe(
   draft: Omit<RecipeDraft, "ingredients"> & { ingredients: readonly (string | DraftIngredient)[] },
   sourceUrl: string | null,
-): ImportedRecipe | null {
-  const ingredients = draft.ingredients
+): FinalizedRecipe {
+  const lines = draft.ingredients
     .map((entry) => {
       const line = typeof entry === "string" ? { text: entry } : entry;
-      const text = clip(line.text, 200);
+      const text = plainText(line.text);
       const named = line.name === undefined ? "" : clip(line.name, 80).toLowerCase();
       return { text, name: named !== "" ? named : clip(ingredientName(text), 80) };
     })
-    .filter((line) => line.text !== "" && line.name !== "")
-    .slice(0, RECIPE_IMPORT_LIMITS.maxIngredients);
-  const steps = draft.steps
-    .map((step) => clip(step, 1000))
-    .filter((step) => step !== "")
-    .slice(0, RECIPE_IMPORT_LIMITS.maxSteps);
+    .filter((line) => line.text !== "" && line.name !== "");
+  // Long steps are only shortened: steps are not read for allergens, ingredient lines are.
+  const steps = draft.steps.map((step) => clip(step, 1000)).filter((step) => step !== "");
+  if (
+    lines.length > RECIPE_IMPORT_LIMITS.maxIngredients ||
+    steps.length > RECIPE_IMPORT_LIMITS.maxSteps ||
+    lines.some((line) => line.text.length > MAX_INGREDIENT_CHARS)
+  ) {
+    return { status: "too_long" };
+  }
+  const ingredients = lines;
   const cuisine = draft.cuisine === null ? "" : clip(draft.cuisine, 40);
   const candidate = {
     title: clip(draft.title, 160),
@@ -173,8 +191,11 @@ export function finalizeRecipe(
     source_url: sourceUrl,
   };
   const parsed = ImportedRecipeSchema.safeParse(candidate);
-  return parsed.success ? parsed.data : null;
+  return parsed.success ? { status: "ok", recipe: parsed.data } : { status: "empty" };
 }
+
+const TOO_LONG_MESSAGE =
+  `This recipe is longer than Famara can keep (${RECIPE_IMPORT_LIMITS.maxIngredients} ingredients, ${RECIPE_IMPORT_LIMITS.maxSteps} steps, ${MAX_INGREDIENT_CHARS} characters a line). Split it into two, or type a shorter version.`;
 
 // ---------------------------------------------------------------------------------------------
 // Handler
@@ -292,7 +313,20 @@ export function createRecipeImportHandler(deps: RecipeImportDeps = {}): Handler 
 
     const notRecipe = (reason: NotRecipeReason) =>
       json({ status: "not_recipe", reason, message: MESSAGES[source][reason], quota: quotaBody });
-    const ok = (recipe: ImportedRecipe) => json({ status: "ok", recipe, quota: quotaBody });
+    const finished = (result: FinalizedRecipe) => {
+      if (result.status === "ok") {
+        return json({ status: "ok", recipe: result.recipe, quota: quotaBody });
+      }
+      if (result.status === "too_long") {
+        return json({
+          status: "not_recipe",
+          reason: "unreadable",
+          message: TOO_LONG_MESSAGE,
+          quota: quotaBody,
+        });
+      }
+      return notRecipe("no_recipe");
+    };
 
     const readWithModel = async (
       content: ImageBlockParam | string,
@@ -320,8 +354,7 @@ export function createRecipeImportHandler(deps: RecipeImportDeps = {}): Handler 
         if (value.result !== "recipe" || value.recipe === null) {
           return notRecipe(value.result === "unreadable" ? "unreadable" : "no_recipe");
         }
-        const recipe = finalizeRecipe(value.recipe, sourceUrl);
-        return recipe ? ok(recipe) : notRecipe("no_recipe");
+        return finished(finalizeRecipe(value.recipe, sourceUrl));
       } catch (error) {
         throw anthropicErrorToHttp(error);
       }
@@ -335,7 +368,8 @@ export function createRecipeImportHandler(deps: RecipeImportDeps = {}): Handler 
     if (!page.ok) return notRecipe(page.reason === "blocked" ? "blocked_source" : "unreadable");
     const structured = recipeFromJsonLd(page.html);
     const fromJsonLd = structured ? finalizeRecipe(structured, page.url) : null;
-    if (fromJsonLd) return ok(fromJsonLd);
+    // A page whose own recipe data is too long is not read again by the model, which would cut it.
+    if (fromJsonLd && fromJsonLd.status !== "empty") return finished(fromJsonLd);
     const text = pageText(page.html);
     if (text.length < RECIPE_IMPORT_LIMITS.minPageChars) return notRecipe("no_recipe");
     return readWithModel(text, page.url);
