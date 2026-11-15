@@ -29,7 +29,7 @@ require age 18+ and AI consent.
 ## Areas
 
 ### 1. Auth & account
-- Email/password (min 8 chars, email confirmation), Sign in with Apple, Google OAuth.
+- Email/password (min 8 chars, no email confirmation: people go straight to setup), Sign in with Apple, Google OAuth.
 - Forgot/reset password via deep link. Session in SecureStore.
 - Account screen: change email/password, export my data (JSON), delete account (server RPC deletes
   everything, signs out).

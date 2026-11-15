@@ -44,6 +44,21 @@ describe('CreateAccountForm', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/check-email');
   });
 
+  it('goes straight on without a confirmation step when sign-up returns a session', async () => {
+    mockRouter.push.mockClear();
+    signUp.mockResolvedValue({ ok: true, value: { needsConfirmation: false } });
+    await renderWithTheme(<CreateAccountForm />);
+    await fill('new@example.com', 'long enough');
+    const user = userEvent.setup();
+    await user.press(
+      screen.getByRole('checkbox', { name: 'I agree to the Terms and Privacy Policy' }),
+    );
+    await user.press(screen.getByRole('button', { name: 'Create account' }));
+    expect(signUp).toHaveBeenCalledWith('new@example.com', 'long enough');
+    // The session guard moves the person on to setup; nothing waits on an email.
+    expect(mockRouter.push).not.toHaveBeenCalledWith('/check-email');
+  });
+
   it('shows rate limiting from the server', async () => {
     signUp.mockResolvedValue({ ok: false, failure: authFailure('rate_limited') });
     await renderWithTheme(<CreateAccountForm />);

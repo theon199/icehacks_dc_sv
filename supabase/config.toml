@@ -73,7 +73,8 @@ token_verifications = 30
 [auth.email]
 enabled = true
 double_confirm_changes = true
-enable_confirmations = true
+# No confirmation link: people use the app as soon as they sign up (David, 2026-11-15).
+enable_confirmations = false
 secure_password_change = true
 max_frequency = "1m0s"
 otp_length = 6
