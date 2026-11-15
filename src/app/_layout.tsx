@@ -45,9 +45,12 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider>
           <QueryClientProvider client={queryClient}>
+            {/* The app-wide default. Status bars merge in mount order and the last one mounted
+                wins, so this one comes before the screens: a dark screen's own light status bar
+                (the welcome flow, the age gate) must outrank it even on the first frame. */}
+            <StatusBar style="auto" />
             {env.ok ? <RootNavigator /> : <ConfigErrorScreen problems={env.problems} />}
             <ToastHost />
-            <StatusBar style="auto" />
           </QueryClientProvider>
         </ThemeProvider>
       </SafeAreaProvider>
