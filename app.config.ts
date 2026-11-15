@@ -21,15 +21,15 @@ const easProjectId = process.env.EAS_PROJECT_ID;
 
 const permissions = {
   camera:
-    'Famara uses the camera when you snap your pantry or a dish so it can suggest recipes and estimate nutrition.',
+    'Famara uses the camera when you snap or film your fridge or a dish, and when you ask the cooking coach a question, so it can suggest recipes, estimate nutrition and check your cooking.',
   photos:
     'Famara opens your photo library only when you choose a picture to share, snap, or use as your avatar.',
   location:
     'Famara uses your location while you are using the app to find nearby restaurants that serve a dish.',
   microphone:
-    'Famara listens through the microphone only while you dictate a message or say "next" in cook mode.',
+    'Famara listens through the microphone while you dictate, say "next" in cook mode, or talk to the cooking coach.',
   speech:
-    'Famara turns your voice into text on this device so you can dictate messages and control cook mode hands-free.',
+    'Famara turns your voice into text on this device so you can dictate, control cook mode and talk to the cooking coach hands-free.',
   healthRead:
     'Famara reads your workouts, sleep and blood glucose, if you allow it, to tailor meal suggestions to your day. This stays on your device unless you choose to sync.',
   healthWrite:
