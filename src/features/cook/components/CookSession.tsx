@@ -19,6 +19,7 @@ import { TutorialVideo } from './TutorialVideo';
 import { VoiceBanner } from './VoiceBanner';
 import { useCookControls } from '../hooks/useCookControls';
 import { useStepPosition } from '../hooks/useStepPosition';
+import type { CookSize } from '../logic/ingredients';
 import { pickTutorialVideo } from '../logic/session';
 import { stepTimerId } from '../logic/timers';
 
@@ -29,10 +30,12 @@ const PILL_CLEARANCE = 88;
 
 export interface CookSessionProps {
   recipe: RecipeDetail;
+  /** The size the recipe page was showing, when cook mode was opened from it. */
+  size?: CookSize | undefined;
 }
 
 /** Full-screen, step-by-step cooking for one recipe with at least one step. */
-export function CookSession({ recipe }: CookSessionProps) {
+export function CookSession({ recipe, size }: CookSessionProps) {
   useKeepAwake(KEEP_AWAKE_TAG);
   const router = useRouter();
   const theme = useTheme();
@@ -194,6 +197,9 @@ export function CookSession({ recipe }: CookSessionProps) {
       <IngredientDrawer
         visible={drawerOpen}
         ingredients={recipe.ingredients}
+        baseServings={recipe.servings}
+        servings={size?.servings ?? recipe.servings}
+        halfPortions={size?.halfPortions}
         checked={checked}
         onToggle={toggleChecked}
         onClose={() => setDrawerOpen(false)}

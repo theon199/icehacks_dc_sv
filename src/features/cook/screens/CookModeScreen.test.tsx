@@ -2,6 +2,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { Alert, type AlertButton } from 'react-native';
 
 import type { RecipeDetail } from '@/lib/catalog';
+import { usePreferencesStore, useSettingsStore } from '@/stores';
 import { renderWithTheme } from '@/test/render';
 
 import { CookModeScreen } from './CookModeScreen';
@@ -242,8 +243,37 @@ describe('CookModeScreen', () => {
     await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
     await act(async () => fireEvent.press(screen.getByTestId('cook-ingredients-open')));
     expect(screen.getByText('0 of 1 ready')).toBeTruthy();
-    await act(async () => fireEvent.press(screen.getByLabelText('1 cup red lentils')));
+    await act(async () => fireEvent.press(screen.getByLabelText('1 cup Red lentils')));
     expect(screen.getByText('1 of 1 ready')).toBeTruthy();
+  });
+
+  it('lists ingredient amounts as the recipe page does, in the chosen units and portion', async () => {
+    useSettingsStore.getState().setUnits('metric');
+    usePreferencesStore.getState().update({ smallAppetite: true });
+    try {
+      await renderWithTheme(<CookModeScreen recipeId="mealdb:1" />);
+      await act(async () => fireEvent.press(screen.getByTestId('cook-ingredients-open')));
+      // Half of a US cup, in millilitres; never the catalog's raw "1 cup red lentils".
+      expect(screen.getByLabelText(/^1\d\d ml Red lentils$/)).toBeTruthy();
+      expect(screen.queryByLabelText('1 cup red lentils')).toBeNull();
+    } finally {
+      useSettingsStore.getState().reset();
+      usePreferencesStore.getState().reset();
+    }
+  });
+
+  it('lists amounts at the size the recipe page was showing, over the setting', async () => {
+    // Small appetite is on, but the page showed a full-portion plan scaled to eight servings.
+    usePreferencesStore.getState().update({ smallAppetite: true });
+    try {
+      await renderWithTheme(
+        <CookModeScreen recipeId="mealdb:1" size={{ servings: 8, halfPortions: false }} />,
+      );
+      await act(async () => fireEvent.press(screen.getByTestId('cook-ingredients-open')));
+      expect(screen.getByLabelText('2 cups Red lentils')).toBeTruthy();
+    } finally {
+      usePreferencesStore.getState().reset();
+    }
   });
 
   it('says so when the recipe does not exist', async () => {

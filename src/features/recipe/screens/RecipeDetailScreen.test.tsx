@@ -243,9 +243,28 @@ describe('RecipeDetailScreen', () => {
     await openTab('why');
     await user.press(await screen.findByTestId('recipe-fit', {}, SLOW));
     expect(mockPush.mock.calls.map(([href]) => href)).toEqual([
-      { pathname: '/cook/[id]', params: { id: recipe.id } },
+      {
+        pathname: '/cook/[id]',
+        params: { id: recipe.id, servings: String(recipe.servings), portion: '1' },
+      },
       { pathname: '/recipe/[id]/why', params: { id: recipe.id } },
     ]);
+  });
+
+  it('hands cook mode the servings and portion the page is showing', async () => {
+    // Small appetite is on, but the meal was planned at full size and then cut to two servings.
+    usePreferencesStore.setState({ prefs: prefs({ allergens: ['milk'], smallAppetite: true }) });
+    await renderScreen(1);
+    await openTab('ingredients');
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: 'Fewer servings' }));
+    await user.press(screen.getByRole('button', { name: 'Fewer servings' }));
+    await waitFor(() => expect(screen.getByTestId('recipe-servings')).toHaveTextContent('2'));
+    await user.press(screen.getByTestId('recipe-cook'));
+    expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: '/cook/[id]',
+      params: { id: recipe.id, servings: '2', portion: '1' },
+    });
   });
 
   it('opens the cooking coach setup from the row under the photo', async () => {

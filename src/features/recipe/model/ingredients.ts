@@ -3,15 +3,11 @@
  * whole-item rounding and small-appetite half portions), written in the person's unit system, and
  * marked when the person already has the ingredient at home.
  */
-import { scaleRecipe, type ScaledLine } from '@/domain/portions';
-import {
-  formatAmount,
-  formatQuantity,
-  lookupUnit,
-  parseAmount,
-  type UnitSystem,
-} from '@/domain/units';
+import { lineWording, scaleRecipe } from '@/domain/portions';
+import type { UnitSystem } from '@/domain/units';
 import type { RecipeIngredientLine } from '@/lib/catalog';
+
+export { formatLineAmount, ingredientName } from '@/domain/portions';
 
 export const MIN_SERVINGS = 1;
 export const MAX_SERVINGS = 20;
@@ -37,56 +33,6 @@ export interface IngredientRow {
   readonly owned: boolean;
   /** Rounding to a usable amount moved it by more than 10% from the exact scaled value. */
   readonly rounded: boolean;
-}
-
-const LEADING_WORD = /^\s*([A-Za-z]+\.?)(?![-'’\w])\s*/;
-/** A package-size note right after the leading number: the "(400g)" in "1 (400g) tin tomatoes". */
-const PACKAGE_NOTE = /^[^A-Za-z(]*(\([^)]*\))/;
-
-function capitalise(text: string): string {
-  return text.length === 0 ? text : text[0]!.toUpperCase() + text.slice(1);
-}
-
-/**
- * The ingredient part of a catalog line. Lines start with an amount ("2 cups flour") or, in some
- * sources, with a bare unit word ("pinch chopped parsley"); both are removed so the amount column
- * is the only place an amount appears. A package size given with the amount is kept with the name
- * ("1 (400g) tin tomatoes" → "Tomatoes (400g)"), since it says how big each tin or pack is and does
- * not change with servings.
- */
-export function ingredientName(text: string): string {
-  const parsed = parseAmount(text);
-  let rest = parsed.rest;
-  if (parsed.quantity !== null) {
-    const note = PACKAGE_NOTE.exec(text)?.[1];
-    if (note) {
-      const name = rest.trim();
-      rest = `${name.startsWith(note) ? name.slice(note.length).trim() : name} ${note}`;
-    }
-  } else {
-    const word = LEADING_WORD.exec(rest);
-    if (word && lookupUnit(word[1]) !== null) {
-      rest = rest
-        .slice(word[0].length)
-        .replace(/^of\b\s*/i, '')
-        .trim();
-    }
-  }
-  return capitalise(rest.trim() || text.trim());
-}
-
-/** Readable amount for one scaled line in the chosen system, or null when it has none. */
-export function formatLineAmount(
-  scaled: Pick<ScaledLine, 'quantity' | 'unit'> & { line: { unit: string | null } },
-  system: UnitSystem,
-): string | null {
-  const { quantity, unit } = scaled;
-  if (quantity === null || !Number.isFinite(quantity) || quantity <= 0) return null;
-  if (unit !== null) return formatAmount(quantity, unit, { system });
-  // Counted items ("2 onions") and unit words we cannot convert keep kitchen fractions.
-  const count = formatQuantity(quantity, { system: 'us' });
-  const word = scaled.line.unit?.trim();
-  return word ? `${count} ${word}` : count;
 }
 
 export interface BuildRowsInput {
@@ -125,13 +71,12 @@ export function buildIngredientRows(input: BuildRowsInput): BuiltRows {
     const line = entry.line;
     const owned = line.ingredientId !== null && input.pantry.has(line.ingredientId);
     if (owned) ownedCount += 1;
-    const amount = formatLineAmount(entry, input.system);
+    const { amount, name } = lineWording(entry, input.system);
     return {
       key: `line-${line.position}`,
       ingredientId: line.ingredientId,
       amount,
-      // A line without an amount reads best exactly as written ("Salt to taste").
-      name: amount === null ? capitalise(line.text.trim()) : ingredientName(line.text),
+      name,
       text: line.text,
       section: line.section,
       optional: line.optional,

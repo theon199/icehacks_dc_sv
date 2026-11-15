@@ -16,6 +16,7 @@ import {
   cookbookHref,
   cookHref,
   makeoverHref,
+  type CookSize,
   recipeNearbyHref,
   reportHref,
   shoppingHref,
@@ -23,7 +24,11 @@ import {
 } from '../links';
 import { DAY_SHORT, MEAL_LABELS } from '../model/planSlot';
 
-export function useRecipeActions(recipe: Pick<RecipeSummary, 'id' | 'title'> | null) {
+/** `cookSize` is what the page is showing, handed to cook mode so its amounts match. */
+export function useRecipeActions(
+  recipe: Pick<RecipeSummary, 'id' | 'title'> | null,
+  cookSize?: CookSize,
+) {
   const router = useRouter();
   const id = recipe?.id ?? '';
   const title = recipe?.title ?? '';
@@ -32,6 +37,8 @@ export function useRecipeActions(recipe: Pick<RecipeSummary, 'id' | 'title'> | n
   const recordFeedback = useFeedbackStore((state) => state.record);
   const canUseAi = useCanUseAi();
   const [sheet, setSheet] = useState<PlanSheetPurpose | null>(null);
+  const cookServings = cookSize?.servings;
+  const cookHalf = cookSize?.halfPortions;
 
   const toggleSave = useCallback(() => {
     if (!id) return;
@@ -74,7 +81,15 @@ export function useRecipeActions(recipe: Pick<RecipeSummary, 'id' | 'title'> | n
       openShop: () => setSheet('shop'),
       closeSheet: () => setSheet(null),
       onPlanned,
-      cook: () => go(cookHref(id)),
+      cook: () =>
+        go(
+          cookHref(
+            id,
+            cookServings === undefined || cookHalf === undefined
+              ? undefined
+              : { servings: cookServings, halfPortions: cookHalf },
+          ),
+        ),
       cookWithCoach: () => go(coachSetupHref(id)),
       openWhy: () => go(whyHref(id)),
       compare: () => go(compareHref(id)),
@@ -83,5 +98,5 @@ export function useRecipeActions(recipe: Pick<RecipeSummary, 'id' | 'title'> | n
       share: () => go(composeHref(id)),
       report: () => go(reportHref({ id, title })),
     };
-  }, [id, title, router, canUseAi, saved, sheet, toggleSave, onPlanned]);
+  }, [id, title, router, canUseAi, saved, sheet, toggleSave, onPlanned, cookServings, cookHalf]);
 }

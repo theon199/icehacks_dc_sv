@@ -74,7 +74,7 @@ export function RecipeDetailScreen({ recipeId, plannedPortion }: RecipeDetailScr
   const ingredients = useRecipeIngredients(recipe);
   const suggestions = useSwapSuggestions(ingredients.ids, ingredients.byId);
   const fit = useRecipeFit(recipe, ingredients.byId);
-  const actions = useRecipeActions(recipe);
+  const actions = useRecipeActions(recipe, { servings, halfPortions: smallAppetite });
 
   const built = useMemo(
     () =>
