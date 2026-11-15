@@ -7,7 +7,7 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 export const configColors = {
   basil: '#2F6A4F',
   oat: '#FAF6EF',
-  night: '#151310',
+  black: '#000000',
 } as const;
 
 /**
@@ -79,8 +79,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         image: './assets/images/splash-icon.png',
         imageWidth: 168,
         resizeMode: 'contain',
-        backgroundColor: configColors.oat,
-        dark: { image: './assets/images/splash-icon.png', backgroundColor: configColors.night },
+        // The logo is drawn on black, and launch hands off to the black welcome screen.
+        backgroundColor: configColors.black,
       },
     ],
     [

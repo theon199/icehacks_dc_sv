@@ -39,7 +39,7 @@ function GateBody({ children, footer, testID }: NightGateProps) {
       ]}
     >
       <View style={styles.brand}>
-        <Wordmark size={28} />
+        <Wordmark height={22} />
       </View>
       <ScrollView
         contentContainerStyle={styles.content}

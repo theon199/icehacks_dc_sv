@@ -20,6 +20,8 @@ export const brandColors = {
   /** Near-black warm canvas for dark mode. */
   night: '#151310',
   ink: '#1F1A14',
+  /** The canvas the logo is drawn on: app icon and launch screen. */
+  black: '#000000',
 } as const;
 
 export type BrandColor = keyof typeof brandColors;

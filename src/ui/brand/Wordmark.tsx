@@ -1,40 +1,38 @@
-import { StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
+import { View } from 'react-native';
 
-import { Text } from '../Text';
 import { useTheme } from '../ThemeProvider';
-import { LogoMark } from './LogoMark';
+
+/**
+ * The "famara" lettering from the master logo, rendered by `tools/brand/generate.mjs` as white
+ * glyphs on transparent so it can take the text colour of either appearance. Metro turns the
+ * require into an asset id.
+ */
+const lettering: number = require('../../../assets/images/wordmark.png');
+
+/** Width over height of `assets/images/wordmark.png`. */
+export const WORDMARK_ASPECT = 462 / 120;
 
 export interface WordmarkProps {
-  /** Height of the mark; the name scales with it. */
-  size?: number;
+  /** Rendered height of the lettering; the width follows. */
+  height?: number;
 }
 
 /**
- * Mark plus the "famara" name set in the display face. The name is live text (not outlined) so it
- * stays crisp at every size and is read correctly by VoiceOver.
+ * The Famara name as it appears in app headers. The illustrated mark lives only on the app icon
+ * and launch screen, so in-app headers carry the lettering alone.
  */
-export function Wordmark({ size = 40 }: WordmarkProps) {
+export function Wordmark({ height = 22 }: WordmarkProps) {
   const theme = useTheme();
   return (
-    <View style={styles.row} accessible accessibilityRole="header" accessibilityLabel="Famara">
-      <LogoMark size={size} decorative />
-      <Text
+    <View accessible accessibilityRole="header" accessibilityLabel="Famara">
+      <Image
+        source={lettering}
+        tintColor={theme.colors.text}
+        contentFit="contain"
+        style={{ height, width: Math.round(height * WORDMARK_ASPECT) }}
         accessible={false}
-        maxFontSizeMultiplier={1.2}
-        style={{
-          fontFamily: theme.typography.display.fontFamily,
-          fontSize: size * 0.82,
-          lineHeight: size,
-          letterSpacing: -0.5,
-          color: theme.colors.text,
-        }}
-      >
-        famara
-      </Text>
+      />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-});
