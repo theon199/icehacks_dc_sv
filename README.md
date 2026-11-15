@@ -81,7 +81,7 @@ npx expo run:ios --configuration Release --device "iPhone 18 Pro"
 
 The Release app embeds its JavaScript bundle and talks directly to Firebase. For the walkthrough:
 
-1. Sign in with a verified demo account.
+1. Sign in with a demo account, or create one: no email confirmation is needed.
 2. Search for **Cheese and Corn Chowder**. Show the ingredients, cooking directions, and USDA credit.
 3. Tap **Save**, then **Plan** and confirm a meal slot.
 4. Search for **Sardines with Chermoula Herb Marinade** and show the Aptiva credit.
