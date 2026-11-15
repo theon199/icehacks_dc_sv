@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useTheme } from '@/ui';
@@ -7,6 +8,13 @@ import { ChefPane } from '../components/ChefPane';
 import { SearchModeSwitch } from '../components/SearchModeSwitch';
 import { SearchPane } from '../components/SearchPane';
 import { useSearchStore } from '../searchStore';
+
+/** The switch bound to the store, so the header item that hosts it never has to change. */
+function StoreModeSwitch() {
+  const mode = useSearchStore((state) => state.mode);
+  const setMode = useSearchStore((state) => state.setMode);
+  return <SearchModeSwitch mode={mode} onChange={setMode} />;
+}
 
 /**
  * The Search tab, drawn as the Ask page: instant recipe search with Chef one switch away. The tab
@@ -22,17 +30,22 @@ import { useSearchStore } from '../searchStore';
 export function SearchScreen() {
   const theme = useTheme();
   const mode = useSearchStore((state) => state.mode);
-  const setMode = useSearchStore((state) => state.setMode);
+  // Built once: new toolbar children rebuild the header item, and iOS then adds a second custom
+  // view beside the old one instead of replacing it. The switch follows the mode on its own.
+  const leading = useMemo(
+    () => (
+      <Stack.Toolbar.View hidesSharedBackground>
+        <StoreModeSwitch />
+      </Stack.Toolbar.View>
+    ),
+    [],
+  );
   return (
     <View
       style={[styles.flex, { backgroundColor: theme.colors.background }]}
       testID="search-screen"
     >
-      <Stack.Toolbar placement="left">
-        <Stack.Toolbar.View hidesSharedBackground>
-          <SearchModeSwitch mode={mode} onChange={setMode} />
-        </Stack.Toolbar.View>
-      </Stack.Toolbar>
+      <Stack.Toolbar placement="left">{leading}</Stack.Toolbar>
       {mode === 'search' ? <SearchPane /> : <ChefPane />}
     </View>
   );
