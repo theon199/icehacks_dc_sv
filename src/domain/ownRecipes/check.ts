@@ -15,12 +15,11 @@
  * Only recipes whose status is `clear` may appear in any suggestion list.
  */
 import { compileSafetyRules, DIET_ALLERGEN_CHECKS, type SafetyPrefs } from '../safety';
-import type { AllergenId } from '../types/allergens';
-import { withImpliedDiets, DietFlag, type DietFlagName } from '../types/diet';
-
 import { ALLERGEN_HINTS, DIET_HINTS } from './hints';
 import { isPlausibleMatch, type MatchableIngredient } from './match';
 import { foodWords, nameKey, tokenize } from './words';
+import type { AllergenId } from '../types/allergens';
+import { withImpliedDiets, DietFlag, type DietFlagName } from '../types/diet';
 
 /** The catalog data safety reads for one matched ingredient. */
 export interface CatalogFacts extends MatchableIngredient {
