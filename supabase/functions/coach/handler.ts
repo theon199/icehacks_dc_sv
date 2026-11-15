@@ -4,18 +4,28 @@
  * never a stream; nothing is stored here.
  *
  * The answer is short enough to be read aloud, carries a verdict (yes, not yet, unsure, not
- * visible) and optionally the spot in the photo it is about. Two guards run in code after the
- * model, so nothing the model was told (by the person, the recipe or text in the photo) can get
- * past them: a question about whether meat, poultry, fish or eggs are cooked always gets the
- * fixed thermometer reading, and an answer that names one of the person's allergens (beyond what
- * the recipe being cooked already uses) is replaced with a fixed reminder of that allergen.
+ * visible) and optionally the spot in the photo it is about. The app also sends what the catalog
+ * knows about the recipe: which kinds of meat, fish or egg its ingredients include, and which
+ * allergens it contains. Two guards run in code, so nothing the model was told (by the person,
+ * the recipe or text in the photo) can get past them:
+ * - in a recipe with meat, poultry, fish, shellfish or eggs, or one of leftovers being reheated,
+ *   no answer says it is done or safe: a "yes" (or an answer that calls it cooked or safe, or
+ *   quotes a temperature) becomes the fixed thermometer reading for the strictest kind present.
+ *   Missing or unknown catalog facts count as meat.
+ * - an answer that names one of the person's allergens is replaced with a fixed reminder unless
+ *   the catalog says the recipe already contains it; a question that names one gets the reminder.
+ * When the fixed answer is certain from the question alone (a doneness question in such a
+ * recipe, or a question naming an allergen) it is returned without calling the model, and no
+ * question is spent.
  */
 
 import { z } from "zod";
+import { decodeBase64 } from "@std/encoding";
 import {
   AnthropicClient,
   type AnthropicClientOptions,
   anthropicErrorToHttp,
+  type ImageBlockParam,
   type Message,
   zodToStructuredSchema,
 } from "../_shared/anthropic.ts";
@@ -31,6 +41,7 @@ import {
   findAllergenConflicts,
 } from "../makeover/allergens.ts";
 import { decodeSnapImage, readStructured, SNAP_LIMITS } from "../snap/handler.ts";
+import { imageSize } from "./imageSize.ts";
 import { buildCoachPrompt, COACH_SYSTEM_PROMPT } from "./prompt.ts";
 
 export const COACH_LIMITS = {
@@ -43,6 +54,8 @@ export const COACH_LIMITS = {
   /** The photo rules are Snap's: one downscaled JPEG, PNG or WebP of at most 3 MB decoded. */
   maxImageBytes: SNAP_LIMITS.maxImageBytes,
   maxBodyBytes: SNAP_LIMITS.maxBodyBytes,
+  /** Claude refuses images larger than 8000 px on either side. */
+  maxImageEdge: 8_000,
   /** Someone is standing at the stove waiting; the app gives up at 30 s. */
   timeoutMs: 25_000,
   maxTokens: 2_000,
@@ -59,6 +72,25 @@ const QUOTA_ENV = "FAMARA_AI_LIMIT_COACH";
 const oneLine = (value: string) => value.replace(/\s+/g, " ").trim();
 const line = (max: number) => z.string().max(max).transform(oneLine).pipe(z.string().min(1));
 const SlugSchema = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "Use a lowercase identifier.");
+
+/** Kinds of meat, fish and egg the catalog found in the recipe's ingredients. */
+export const SAFETY_CATEGORIES = [
+  "poultry",
+  "minced_meat",
+  "whole_meat",
+  "fish",
+  "shellfish",
+  "egg",
+  /** An ingredient the catalog could not classify: treated as meat. */
+  "unknown",
+] as const;
+export type SafetyCategory = (typeof SAFETY_CATEGORIES)[number];
+
+export const CoachFactsSchema = z.strictObject({
+  safety: z.array(z.enum(SAFETY_CATEGORIES)).max(SAFETY_CATEGORIES.length),
+  /** Allergens the catalog says the recipe contains. */
+  allergens: z.array(z.enum(ALLERGEN_IDS)).max(ALLERGEN_IDS.length),
+});
 
 export const CoachInputSchema = z.strictObject({
   recipe: z.strictObject({
@@ -77,6 +109,8 @@ export const CoachInputSchema = z.strictObject({
   image: z.string().min(1).max(COACH_LIMITS.maxBodyBytes).optional(),
   diet: z.array(SlugSchema).max(10).default([]),
   allergens: z.array(z.enum(ALLERGEN_IDS)).max(10).default([]),
+  /** Catalog facts about the recipe. Without them it is treated as meat with no known allergens. */
+  facts: CoachFactsSchema.optional(),
 });
 
 export type CoachInput = z.output<typeof CoachInputSchema>;
@@ -153,62 +187,75 @@ export function finalizeAnswer(raw: CoachModelReply, hasPhoto: boolean): CoachAn
 // Food safety
 // ---------------------------------------------------------------------------------------------
 
-type SafetyKind = "poultry" | "minced" | "egg" | "whole";
+/** What sets the temperature to check for, strictest first. */
+const SAFETY_KINDS = ["reheat", "poultry", "unknown", "minced", "egg", "whole", "seafood"] as const;
+type SafetyKind = (typeof SAFETY_KINDS)[number];
 
+const CATEGORY_KIND: Readonly<Record<SafetyCategory, SafetyKind>> = {
+  poultry: "poultry",
+  minced_meat: "minced",
+  whole_meat: "whole",
+  fish: "seafood",
+  shellfish: "seafood",
+  egg: "egg",
+  unknown: "unknown",
+};
+
+/**
+ * Words that add a kind on top of the catalog facts (a recipe title saying chicken, say). They
+ * only ever make the coach more careful: the catalog facts decide whether meat is present.
+ */
 const SAFETY_TERMS: ReadonlyArray<readonly [SafetyKind, RegExp]> = [
   ["poultry", /\b(chicken|turkey|duck|goose|poultry|quail|wings?|drumsticks?|thighs?)\b/],
   ["minced", /\b(mince|minced|ground (?:beef|pork|lamb|meat)|burgers?|meatballs?|sausages?)\b/],
-  ["egg", /\b(eggs?|omelett?e|frittata|quiche|custard|scrambled)\b/],
+  ["egg", /\b(eggs?|omelett?e|frittata|quiche|custard|scrambled|shakshuka)\b/],
+  ["whole", /\b(beef|pork|lamb|steak|veal|meat|chops?)\b/],
   [
-    "whole",
-    /\b(beef|pork|lamb|steak|veal|meat|chops?|roast|fish|salmon|tuna|cod|prawns?|shrimp|scallops?|seafood|mussels|clams)\b/,
+    "seafood",
+    /\b(fish|salmon|tuna|cod|haddock|prawns?|shrimp|scallops?|seafood|mussels|clams|crab|lobster)\b/,
   ],
 ];
 
-const DONENESS = /\b(done|cooked|ready|safe|through|finished|raw|pink|undercooked|set)\b/;
+const REHEAT = /\b(leftovers?|reheat|reheated|reheating)\b/;
+
+/** A question about whether it is done or safe: certain enough to answer without the model. */
+const DONENESS =
+  /\b(done|cooked|ready|safe|through|finished|raw|pink|undercooked|set|serve|eat|long enough|hot enough)\b/;
+
+/** An answer that vouches for doneness or safety, whatever its verdict. */
+const VOUCHES =
+  /\d\s*°|\bdegrees\b|\bsafe\b|cooked (?:through|enough)|\bdone\b|\bready to (?:eat|serve)\b|\b(?:fine|okay|ok|good) to (?:eat|serve)\b|\bserve\b/;
 
 const SAFE_ANSWERS: Readonly<Record<SafetyKind, string>> = {
+  reheat: "I can't tell if leftovers are hot enough by looking. Check the middle with a " +
+    "thermometer: reheated food should read 74°C (165°F).",
   poultry: "I can't tell if poultry is cooked through by looking. Check the thickest part " +
     "with a thermometer: it should read 74°C (165°F).",
+  unknown: "I can't tell if it's cooked through by looking. Check the thickest part with a " +
+    "thermometer: 74°C (165°F) is safe for any meat, fish or eggs.",
   minced: "I can't tell if minced meat is cooked through by looking. Check it with a " +
     "thermometer: it should read 71°C (160°F).",
   egg: "I can't tell if eggs are cooked through by looking. Egg dishes should reach " +
     "71°C (160°F) on a thermometer.",
-  whole: "I can't tell if it's cooked through by looking. Check it with a thermometer: " +
-    "63°C (145°F) for whole cuts of beef, pork or lamb and for fish.",
-};
-
-/** Safe internal temperature per kind, used to pick the strictest when several match. */
-const SAFE_CELSIUS: Readonly<Record<SafetyKind, number>> = {
-  poultry: 74,
-  minced: 71,
-  egg: 71,
-  whole: 63,
+  whole: "I can't tell if it's cooked through by looking. Whole cuts of beef, pork, lamb or " +
+    "veal should read 63°C (145°F) on a thermometer, then rest for 3 minutes.",
+  seafood: "I can't tell if fish or seafood is cooked through by looking. Check it with a " +
+    "thermometer: it should read 63°C (145°F).",
 };
 
 /**
- * The kind of meat, poultry, fish or egg the words are about, if any. When several match
- * ("chicken sausages" is poultry and minced) the one with the highest safe temperature wins.
+ * The strictest temperature kind for the recipe being cooked, or null for one with no meat,
+ * poultry, fish, shellfish or eggs that is not being reheated.
  */
-export function safetyKind(text: string): SafetyKind | null {
-  const lower = text.toLowerCase();
-  let strictest: SafetyKind | null = null;
-  for (const [kind, pattern] of SAFETY_TERMS) {
-    if (!pattern.test(lower)) continue;
-    if (strictest === null || SAFE_CELSIUS[kind] > SAFE_CELSIUS[strictest]) strictest = kind;
-  }
-  return strictest;
-}
-
-/**
- * The fixed answer to a doneness question about meat, poultry, fish or eggs, or null when the
- * question is about something else. The question says it is a doneness check; the recipe title,
- * the step and the question together say what is being cooked.
- */
-export function foodSafetyAnswer(input: CoachInput): string | null {
-  if (!DONENESS.test(input.question.toLowerCase())) return null;
-  const kind = safetyKind([input.recipe.title, input.recipe.step, input.question].join("\n"));
-  return kind === null ? null : SAFE_ANSWERS[kind];
+export function recipeSafetyKind(input: CoachInput): SafetyKind | null {
+  const kinds = new Set<SafetyKind>(
+    input.facts ? input.facts.safety.map((category) => CATEGORY_KIND[category]) : ["unknown"],
+  );
+  const recipeText = `${input.recipe.title}\n${input.recipe.step}`.toLowerCase();
+  const words = `${recipeText}\n${input.question.toLowerCase()}`;
+  for (const [kind, pattern] of SAFETY_TERMS) if (pattern.test(words)) kinds.add(kind);
+  if (REHEAT.test(words)) kinds.add("reheat");
+  return SAFETY_KINDS.find((kind) => kinds.has(kind)) ?? null;
 }
 
 /** How an allergen is said aloud: its prompt label without the bracketed detail. */
@@ -222,45 +269,57 @@ export function allergenNotice(allergens: readonly AllergenId[]): string {
   return `That contains ${list}, which you've said you avoid.`;
 }
 
-/**
- * Defence in depth: an answer that names one of the person's allergens is replaced with a fixed
- * reminder, unless the recipe being cooked (its title, this step or the next) already uses it.
- * The question never counts: asking "can I add peanut butter?" must not make a "yes" safe.
- */
-export function screenAllergens(answer: CoachAnswer, input: CoachInput): CoachAnswer {
-  const allergens: readonly AllergenId[] = input.allergens;
-  if (allergens.length === 0) return answer;
-  const known = new Set(
-    findAllergenConflicts(
-      [input.recipe.title, input.recipe.step, input.recipe.next_step ?? ""],
-      allergens,
-    ).map((conflict) => conflict.allergen),
-  );
-  const fresh = findAllergenConflicts([answer.answer], allergens)
+/** Declared allergens that `texts` name, beyond what the catalog says the recipe contains. */
+function newAllergens(texts: readonly string[], input: CoachInput): AllergenId[] {
+  const known = new Set<AllergenId>(input.facts?.allergens ?? []);
+  return findAllergenConflicts(texts, input.allergens)
     .map((conflict) => conflict.allergen)
     .filter((allergen) => !known.has(allergen));
-  if (fresh.length === 0) return answer;
-  console.warn(JSON.stringify({ event: "coach_allergen_conflict", allergens: fresh }));
-  return { verdict: "unsure", answer: allergenNotice(fresh), focus: null };
+}
+
+function allergenReply(allergens: readonly AllergenId[]): CoachAnswer {
+  console.warn(JSON.stringify({ event: "coach_allergen_conflict", allergens }));
+  return { verdict: "unsure", answer: allergenNotice(allergens), focus: null };
 }
 
 /**
- * The model's reply as the person hears it. A photo can't show that meat, poultry, fish or eggs
- * are safe to eat, so a doneness question about them is always answered "unsure" with the fixed
- * thermometer reading, whatever the model's verdict or wording (a reading it quoted could be
- * wrong), with or without a photo. Every other answer is clamped, then screened for allergens.
+ * The answer when it is certain from the request alone, so the model is not asked and no
+ * question is spent: a question naming one of the person's allergens (even one the recipe
+ * contains) gets the allergen reminder, and a doneness question in a recipe with meat, fish,
+ * eggs or reheated leftovers gets the thermometer reading.
+ */
+export function presetAnswer(input: CoachInput): CoachAnswer | null {
+  const asked = findAllergenConflicts([input.question], input.allergens)
+    .map((conflict) => conflict.allergen);
+  if (asked.length > 0) return allergenReply(asked);
+  const kind = recipeSafetyKind(input);
+  if (kind !== null && DONENESS.test(input.question.toLowerCase())) {
+    return { verdict: "unsure", answer: SAFE_ANSWERS[kind], focus: null };
+  }
+  return null;
+}
+
+/**
+ * The model's reply as the person hears it: clamped, then screened. An answer naming an allergen
+ * the catalog does not list for this recipe is replaced (recipe words never count, so a step
+ * saying "do not add peanuts" exempts nothing). In a recipe with meat, fish, eggs or reheated
+ * leftovers, a "yes", or any answer that vouches for doneness or safety or quotes a temperature,
+ * becomes "unsure" with the fixed thermometer reading. A photo can't show food is safe to eat.
  */
 export function coachAnswer(
   raw: CoachModelReply,
   input: CoachInput,
   hasPhoto: boolean,
 ): CoachAnswer {
-  const safe = foodSafetyAnswer(input);
-  if (safe !== null) {
-    const focus = hasPhoto && raw.verdict !== "not_visible" ? clampFocus(raw.focus) : null;
-    return { verdict: "unsure", answer: safe, focus };
-  }
-  return screenAllergens(finalizeAnswer(raw, hasPhoto), input);
+  const preset = presetAnswer(input);
+  if (preset !== null) return preset;
+  const answer = finalizeAnswer(raw, hasPhoto);
+  const fresh = newAllergens([answer.answer], input);
+  if (fresh.length > 0) return allergenReply(fresh);
+  const kind = recipeSafetyKind(input);
+  if (kind === null) return answer;
+  if (raw.verdict !== "yes" && !VOUCHES.test(answer.answer.toLowerCase())) return answer;
+  return { verdict: "unsure", answer: SAFE_ANSWERS[kind], focus: answer.focus };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -301,6 +360,20 @@ function logUsage(message: Message, hasPhoto: boolean): void {
   }));
 }
 
+/** Refuses a photo whose size can't be read from its header, or one Claude would refuse. */
+function checkImageSize(image: ImageBlockParam): void {
+  const size = imageSize(decodeBase64(image.source.data));
+  if (size === null) {
+    throw new HttpError("invalid_request", "We couldn't read that photo. Try again.");
+  }
+  if (Math.max(size.width, size.height) > COACH_LIMITS.maxImageEdge) {
+    throw new HttpError(
+      "payload_too_large",
+      `Photos must be at most ${COACH_LIMITS.maxImageEdge} pixels on each side.`,
+    );
+  }
+}
+
 export function createCoachHandler(deps: CoachDeps = {}): Handler {
   const env = deps.env ?? denoEnv;
   return createHandler(async (req) => {
@@ -308,6 +381,10 @@ export function createCoachHandler(deps: CoachDeps = {}): Handler {
     await requireAdult(ctx);
     const input = await parseBody(req, CoachInputSchema, { maxBytes: COACH_LIMITS.maxBodyBytes });
     const image = input.image === undefined ? null : decodeSnapImage(input.image);
+    if (image) checkImageSize(image);
+    const preset = presetAnswer(input);
+    // Certain without the model, so it costs the person nothing.
+    if (preset !== null) return json({ ...preset, quota: null });
     const client = AnthropicClient.fromEnv(env, {
       timeoutMs: COACH_LIMITS.timeoutMs,
       ...deps.anthropic,
