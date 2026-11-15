@@ -3,7 +3,7 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { RecipeSummary } from '@/lib/catalog';
-import { Icon, PressableScale, space, Text, useTheme } from '@/ui';
+import { PressableScale, space, Text, useTheme } from '@/ui';
 
 import { cardMeta } from './SavedRecipeRow';
 
@@ -22,10 +22,11 @@ export const RecipePickRow = memo(function RecipePickRow({ recipe, onPick }: Rec
       accessibilityLabel={`${recipe.title}, ${meta}`}
       accessibilityHint="Adds it to this meal"
       onPress={() => onPick(recipe)}
-      pressedOpacity={0.7}
-      pressedScale={1}
       testID={`pick-${recipe.id}`}
-      style={styles.row}
+      style={[
+        styles.row,
+        { backgroundColor: theme.colors.surfaceSunken, borderRadius: theme.radii.lg },
+      ]}
     >
       <Image
         source={recipe.imageUrl ? { uri: recipe.imageUrl } : null}
@@ -33,25 +34,24 @@ export const RecipePickRow = memo(function RecipePickRow({ recipe, onPick }: Rec
         contentFit="cover"
         style={[
           styles.thumb,
-          { borderRadius: theme.radii.sm, backgroundColor: theme.colors.surfaceSunken },
+          { borderRadius: theme.radii.md, backgroundColor: theme.colors.surface },
         ]}
         accessible={false}
       />
       <View style={styles.text}>
-        <Text variant="subhead" numberOfLines={2}>
+        <Text variant="headline" numberOfLines={2}>
           {recipe.title}
         </Text>
         <Text variant="caption" tone="muted" numberOfLines={1}>
           {meta}
         </Text>
       </View>
-      <Icon name="plus.circle" size={22} color="primary" />
     </PressableScale>
   );
 });
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm },
-  thumb: { width: 52, height: 52 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.sm },
+  thumb: { width: 48, height: 48 },
   text: { flex: 1, gap: space.xxs },
 });

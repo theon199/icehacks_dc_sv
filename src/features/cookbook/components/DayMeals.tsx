@@ -238,7 +238,8 @@ export function DayMeals({
       />
       {adding ? (
         <AddMealSheet
-          title={`${info.short} ${SLOT_LABELS[adding].toLowerCase()}`}
+          slot={SLOT_LABELS[adding].toLowerCase()}
+          dayLabel={`${info.weekday} ${info.monthDay}`}
           onClose={() => setAdding(null)}
           onPick={(recipe) => {
             setAdding(null);
