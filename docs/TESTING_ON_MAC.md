@@ -97,7 +97,9 @@ It should end with every suite passing.
 7. Auth (Authentication → URL Configuration) *(check in the dashboard)*:
    - Set **Site URL** to `famara://`.
    - Add `famara://auth/callback` to the redirect URLs.
-   - Keep email confirmation on. Open each confirmation link on the device that runs the app.
+   - Turn email confirmation off (Authentication → Sign In / Providers → Email → **Confirm email**)
+     *(check in the dashboard)*. Famara does not ask people to confirm their address. If it stays on, new
+     accounts still work but must open a confirmation link before they can use the app.
    - Supabase's built-in email service is meant for trying things out: it may only deliver to
      addresses of your Supabase organization's members and sends only a few messages an hour. For a
      second test account, invite that address to the organization or set up custom SMTP
@@ -194,7 +196,7 @@ See the README for the other build profiles.
 Work through these in order with a fresh account. Each line is one check.
 
 **Account and onboarding**
-- [ ] Create an account with email; confirm the email; sign in.
+- [ ] Create an account with email; you go straight to the birth-year step; sign out and back in.
 - [ ] Birth year: an adult year continues; AI features are available only at 18+.
 - [ ] Onboarding: answer every question. Allergens cannot be skipped ("No food allergies" must be
       chosen explicitly). Finish and land on Discover.

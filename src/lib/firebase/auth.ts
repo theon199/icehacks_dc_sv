@@ -27,16 +27,11 @@ const refreshResponse = z.object({
   refresh_token: z.string(),
   expires_in: z.coerce.number(),
 });
-const lookupResponse = z.object({
-  users: z.array(z.object({ emailVerified: z.boolean().optional() })).min(1),
-});
-
 const nativeStorage = createChunkedSecureStorage();
 const listeners = new Set<(session: FirebaseSession | null) => void>();
 let session: FirebaseSession | null = null;
 let restore: Promise<void> | undefined;
 let refresh: Promise<void> | undefined;
-let pendingVerification: FirebaseSession | null = null;
 let persistence = Promise.resolve();
 
 const sessionKey = () => `famara.firebase.${getFirebaseConfig().projectId}`;
@@ -159,34 +154,28 @@ export async function getFirebaseSession(): Promise<FirebaseSession | null> {
 
 export async function firebaseSignIn(email: string, password: string) {
   await restoreSession();
+  // No email verification: Famara lets people in as soon as the password checks out.
   const next = parseSession(
     await authPost('signInWithPassword', { email, password, returnSecureToken: true }),
   );
-  const account = lookupResponse.parse(await authPost('lookup', { idToken: next.accessToken }));
-  if (!account.users[0]?.emailVerified) {
-    pendingVerification = next;
-    throw new FirebaseRequestError(403, 'EMAIL_NOT_VERIFIED');
-  }
-  pendingVerification = null;
   await updateSession(next);
 }
 
 export async function firebaseSignUp(email: string, password: string) {
   await restoreSession();
-  pendingVerification = parseSession(
-    await authPost('signUp', { email, password, returnSecureToken: true }),
-  );
-  return pendingVerification;
+  // The new account is signed in straight away; nobody has to confirm their email first.
+  const next = parseSession(await authPost('signUp', { email, password, returnSecureToken: true }));
+  await updateSession(next);
+  return next;
 }
 
 export async function firebaseResendVerification(email: string) {
-  if (pendingVerification?.email.toLowerCase() !== email.toLowerCase()) {
+  // Verification is optional now; this only sends a link for a signed-in account that asks.
+  const current = await getFirebaseSession();
+  if (current?.email.toLowerCase() !== email.toLowerCase()) {
     throw new FirebaseRequestError(401, 'AUTH_SESSION_MISSING');
   }
-  await authPost('sendOobCode', {
-    requestType: 'VERIFY_EMAIL',
-    idToken: pendingVerification.accessToken,
-  });
+  await authPost('sendOobCode', { requestType: 'VERIFY_EMAIL', idToken: current.accessToken });
 }
 
 export async function firebaseResetPassword(email: string) {
@@ -204,7 +193,6 @@ export async function firebaseUpdatePassword(password: string) {
 
 export async function firebaseSignOut() {
   await restoreSession();
-  pendingVerification = null;
   await updateSession(null);
 }
 

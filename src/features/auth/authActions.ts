@@ -84,8 +84,8 @@ export async function signUpWithEmail(
         },
         account.accessToken,
       );
-      await firebaseResendVerification(normalizeEmail(email));
-      return { needsConfirmation: true };
+      // Signed in already: no confirmation email, straight on to setup.
+      return { needsConfirmation: false };
     }
     const { data, error } = await getSupabase().auth.signUp({
       email: normalizeEmail(email),
