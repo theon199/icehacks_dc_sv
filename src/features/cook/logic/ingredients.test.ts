@@ -1,6 +1,6 @@
 import type { RecipeIngredientLine } from '@/lib/catalog';
 
-import { cookIngredients } from './ingredients';
+import { cookIngredients, cookSizeFromParams } from './ingredients';
 
 function line(
   position: number,
@@ -33,6 +33,7 @@ describe('cookIngredients', () => {
   it('splits each line into the amount and name the recipe page shows', () => {
     const out = cookIngredients({
       lines: steamedFish,
+      baseServings: 2,
       servings: 2,
       smallAppetite: false,
       system: 'us',
@@ -49,6 +50,7 @@ describe('cookIngredients', () => {
   it('halves the amounts in small appetite mode, as the recipe page does', () => {
     const out = cookIngredients({
       lines: steamedFish,
+      baseServings: 2,
       servings: 2,
       smallAppetite: true,
       system: 'us',
@@ -58,9 +60,16 @@ describe('cookIngredients', () => {
 
   it('writes measured amounts in the chosen unit system', () => {
     const stock = [line(0, '500ml chicken stock', 500, 'ml')];
-    const us = cookIngredients({ lines: stock, servings: 4, smallAppetite: false, system: 'us' });
+    const us = cookIngredients({
+      lines: stock,
+      baseServings: 4,
+      servings: 4,
+      smallAppetite: false,
+      system: 'us',
+    });
     const metric = cookIngredients({
       lines: stock,
+      baseServings: 4,
       servings: 4,
       smallAppetite: false,
       system: 'metric',
@@ -71,8 +80,41 @@ describe('cookIngredients', () => {
 
   it('keeps ticks keyed by the catalog position and reads amount and name together', () => {
     const lines = [{ ...line(7, '1 tsp salt', 1, 'tsp'), optional: true }];
-    const [salt] = cookIngredients({ lines, servings: 2, smallAppetite: false, system: 'us' });
+    const [salt] = cookIngredients({
+      lines,
+      baseServings: 2,
+      servings: 2,
+      smallAppetite: false,
+      system: 'us',
+    });
     expect(salt?.position).toBe(7);
     expect(salt?.label).toBe('1 tsp Salt, optional');
+  });
+});
+
+describe('cookIngredients at the size the recipe page showed', () => {
+  it('scales to the servings chosen on the page', () => {
+    const [soy] = cookIngredients({
+      lines: [line(0, '2 tblsp Soy Sauce', 2, 'tbsp')],
+      baseServings: 2,
+      servings: 4,
+      smallAppetite: false,
+      system: 'us',
+    });
+    expect(soy?.amount).toBe('¼ cup');
+  });
+});
+
+describe('cookSizeFromParams', () => {
+  it('reads the servings and portion the recipe page wrote', () => {
+    expect(cookSizeFromParams('4', '1')).toEqual({ servings: 4, halfPortions: false });
+    expect(cookSizeFromParams(['2'], '0.5')).toEqual({ servings: 2, halfPortions: true });
+  });
+
+  it('leaves out what is missing or malformed, so the recipe and setting decide', () => {
+    expect(cookSizeFromParams(undefined, undefined)).toEqual({});
+    expect(cookSizeFromParams('0', '2')).toEqual({});
+    expect(cookSizeFromParams('21', 'half')).toEqual({});
+    expect(cookSizeFromParams('3.5', undefined)).toEqual({});
   });
 });

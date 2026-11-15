@@ -12,8 +12,12 @@ import { cookIngredients, type CookIngredient } from '../logic/ingredients';
 export interface IngredientDrawerProps {
   visible: boolean;
   ingredients: readonly RecipeIngredientLine[];
-  /** Servings the recipe makes; amounts are shown for these, as on the recipe page. */
+  /** Servings the catalog quantities make. */
+  baseServings: number;
+  /** Servings being cooked: what the recipe page showed, else the recipe's own. */
   servings: number;
+  /** Each serving is a half portion; undefined follows the small-appetite setting. */
+  halfPortions?: boolean | undefined;
   checked: ReadonlySet<number>;
   onToggle: (position: number) => void;
   onClose: () => void;
@@ -72,16 +76,19 @@ const IngredientRow = memo(function IngredientRow({ line, checked, onToggle }: R
 export function IngredientDrawer({
   visible,
   ingredients,
+  baseServings,
   servings,
+  halfPortions,
   checked,
   onToggle,
   onClose,
 }: IngredientDrawerProps) {
   const system = useSettingsStore(selectUnits);
-  const smallAppetite = usePreferencesStore(selectSmallAppetite);
+  const smallAppetiteSetting = usePreferencesStore(selectSmallAppetite);
+  const smallAppetite = halfPortions ?? smallAppetiteSetting;
   const lines = useMemo(
-    () => cookIngredients({ lines: ingredients, servings, smallAppetite, system }),
-    [ingredients, servings, smallAppetite, system],
+    () => cookIngredients({ lines: ingredients, baseServings, servings, smallAppetite, system }),
+    [ingredients, baseServings, servings, smallAppetite, system],
   );
   const renderItem = useCallback(
     ({ item }: { item: CookIngredient }) => (

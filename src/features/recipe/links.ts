@@ -11,8 +11,27 @@ export function whyHref(recipeId: string): Href {
   return { pathname: '/recipe/[id]/why', params: { id: recipeId } };
 }
 
-export function cookHref(recipeId: string): Href {
-  return { pathname: '/cook/[id]', params: { id: recipeId } };
+/** The size the recipe page is showing, so cook mode lists the same amounts. */
+export interface CookSize {
+  servings: number;
+  /** Each serving is a half portion (small appetite, or a meal planned at half size). */
+  halfPortions: boolean;
+}
+
+/**
+ * Cook mode for a recipe. With a size, cook mode scales its ingredient list exactly as the recipe
+ * page did; without one (other entry points) it uses the recipe's own servings and the setting.
+ */
+export function cookHref(recipeId: string, size?: CookSize): Href {
+  if (!size) return { pathname: '/cook/[id]', params: { id: recipeId } };
+  return {
+    pathname: '/cook/[id]',
+    params: {
+      id: recipeId,
+      servings: String(size.servings),
+      portion: size.halfPortions ? '0.5' : '1',
+    },
+  };
 }
 
 /** The cooking coach starts by showing how to set the phone up over the counter. */

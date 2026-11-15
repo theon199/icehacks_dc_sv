@@ -7,13 +7,16 @@ import { EmptyState, ErrorState, Skeleton, SkeletonGroup, gutter, space, useThem
 import { CookHeader } from '../components/CookHeader';
 import { CookSession } from '../components/CookSession';
 import { useFlushPendingCooks } from '../hooks/useFlushPendingCooks';
+import type { CookSize } from '../logic/ingredients';
 
 export interface CookModeScreenProps {
   recipeId: string;
+  /** The servings and portion the recipe page was showing; its ingredient list matches them. */
+  size?: CookSize | undefined;
 }
 
 /** Cook mode for one recipe: loads it, then hands over to the step-by-step session. */
-export function CookModeScreen({ recipeId }: CookModeScreenProps) {
+export function CookModeScreen({ recipeId, size }: CookModeScreenProps) {
   const router = useRouter();
   const theme = useTheme();
   const recipe = useRecipe(recipeId || null);
@@ -83,7 +86,7 @@ export function CookModeScreen({ recipeId }: CookModeScreenProps) {
       </View>
     );
   }
-  return <CookSession recipe={recipe.data} />;
+  return <CookSession recipe={recipe.data} size={size} />;
 }
 
 const styles = StyleSheet.create({

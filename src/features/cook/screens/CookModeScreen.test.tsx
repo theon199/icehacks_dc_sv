@@ -262,6 +262,20 @@ describe('CookModeScreen', () => {
     }
   });
 
+  it('lists amounts at the size the recipe page was showing, over the setting', async () => {
+    // Small appetite is on, but the page showed a full-portion plan scaled to eight servings.
+    usePreferencesStore.getState().update({ smallAppetite: true });
+    try {
+      await renderWithTheme(
+        <CookModeScreen recipeId="mealdb:1" size={{ servings: 8, halfPortions: false }} />,
+      );
+      await act(async () => fireEvent.press(screen.getByTestId('cook-ingredients-open')));
+      expect(screen.getByLabelText('2 cups Red lentils')).toBeTruthy();
+    } finally {
+      usePreferencesStore.getState().reset();
+    }
+  });
+
   it('says so when the recipe does not exist', async () => {
     mockRecipeResult = { data: null, isSuccess: true };
     await renderWithTheme(<CookModeScreen recipeId="nope" />);
