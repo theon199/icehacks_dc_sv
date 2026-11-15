@@ -166,6 +166,9 @@ export const iconMap: Partial<Record<SFSymbol, IoniconName>> = {
   camera: 'camera-outline',
   'camera.fill': 'camera',
   'camera.viewfinder': 'scan-outline',
+  'video.fill': 'videocam',
+  /** The phone itself, e.g. mounting it for the cooking coach. */
+  iphone: 'phone-portrait-outline',
   photo: 'image-outline',
   'photo.fill': 'image',
   'photo.on.rectangle': 'images-outline',
@@ -180,6 +183,8 @@ export const iconMap: Partial<Record<SFSymbol, IoniconName>> = {
   'mic.fill': 'mic',
   'mic.slash': 'mic-off-outline',
   waveform: 'pulse-outline',
+  'speaker.wave.2': 'volume-high-outline',
+  'speaker.slash': 'volume-mute-outline',
 
   // Places, contact and health
   map: 'map-outline',

@@ -1,5 +1,6 @@
 /**
- * Typed wrappers for Famara's AI edge functions: `chef`, `snap`, `makeover` and `nearby-chat`.
+ * Typed wrappers for Famara's AI edge functions: `chef`, `snap`, `makeover`, `nearby-chat`,
+ * `recipe-import` and `coach`.
  *
  * Request and response bodies use the functions' wire format (snake_case). Every response is
  * parsed with the zod schemas below, so a screen only ever sees data in the documented shape.
@@ -9,7 +10,7 @@
 import { z } from 'zod';
 
 import { type CallOptions, callFunction } from './client';
-import { type ApiError, isApiError } from './errors';
+import { ApiError, INVALID_REQUEST, isApiError } from './errors';
 
 /**
  * Client-side timeouts: each is a little longer than the function's own time budget, so the app
@@ -21,6 +22,9 @@ export const AI_TIMEOUTS_MS = {
   snap: 70_000,
   makeover: 150_000,
   nearbyChat: 40_000,
+  recipeImport: 100_000,
+  /** Kept short: someone is standing at the stove waiting for the answer. */
+  coach: 30_000,
 } as const;
 
 // ---------------------------------------------------------------------------------------------
@@ -118,6 +122,71 @@ export interface SnapRequest {
   /** Optional hint from the person, up to 200 characters. */
   note?: string;
 }
+
+/**
+ * Bounds of a fridge sweep, shared with the `snap` function. A sweep is one slow pass with the
+ * camera: the app sends stills in batches as it films, and the whole pass costs one pantry Snap.
+ */
+export const SNAP_SWEEP_LIMITS = {
+  framesPerBatch: 3,
+  maxFrames: 12,
+  /** Dictated additions ("what did the video miss?") a sweep may send. */
+  maxTextCalls: 2,
+  textMaxChars: 600,
+} as const;
+
+/**
+ * One batch of stills from a fridge sweep. Every batch of a pass carries the same `sweep_id`; the
+ * first batch spends the daily pantry Snap and its `quota` is that daily allowance, while later
+ * batches report how many batches the pass has left. Keep these bounds in step with
+ * `SWEEP_LIMITS` in `supabase/functions/snap/schema.ts`.
+ */
+export interface SnapSweepRequest {
+  mode: 'pantry';
+  /** UUID the app makes when the pass starts. */
+  sweep_id: string;
+  /** 1–3 base64 JPEGs, each at most 3 MB decoded. */
+  images: string[];
+}
+
+/** Items the person said out loud or typed, read into the same pantry item list. */
+export interface SnapTextRequest {
+  mode: 'pantry';
+  /**
+   * Set when the words belong to a sweep, so they count against that pass: at most
+   * `SNAP_SWEEP_LIMITS.maxTextCalls` per sweep, each also spending the daily `snap_text` allowance.
+   */
+  sweep_id?: string;
+  /** Up to `SNAP_SWEEP_LIMITS.textMaxChars` characters. */
+  text: string;
+}
+
+export type SnapInput = SnapRequest | SnapSweepRequest | SnapTextRequest;
+
+/** A base64 image as sent: present, and within the functions' request body limit. */
+const base64ImageSchema = z.string().min(1).max(4_200_000);
+
+/**
+ * What `readSnap` may send. A sweep's 12-frame cap spans its batches, so each batch is held to
+ * `framesPerBatch` here and the pass as a whole is capped by the sweep run and the server.
+ */
+export const snapInputSchema = z.union([
+  z.strictObject({
+    mode: z.enum(['pantry', 'dish']),
+    image: base64ImageSchema,
+    note: z.string().max(200).optional(),
+  }),
+  z.strictObject({
+    mode: z.literal('pantry'),
+    sweep_id: z.uuid(),
+    images: z.array(base64ImageSchema).min(1).max(SNAP_SWEEP_LIMITS.framesPerBatch),
+  }),
+  z.strictObject({
+    mode: z.literal('pantry'),
+    sweep_id: z.uuid().optional(),
+    text: z.string().trim().min(1).max(SNAP_SWEEP_LIMITS.textMaxChars),
+  }),
+]);
 
 export const pantryUnitSchema = z.enum([
   'piece',
@@ -257,6 +326,151 @@ export const nearbyChatResponseSchema = z.object({
 export type NearbyChatResponse = z.infer<typeof nearbyChatResponseSchema>;
 
 // ---------------------------------------------------------------------------------------------
+// Recipe import
+// ---------------------------------------------------------------------------------------------
+
+/** Where a recipe the person brings in comes from. */
+export type RecipeImportRequest =
+  | { source: 'link'; /** http(s) URL of a recipe page, up to 2000 characters. */ url: string }
+  | {
+      source: 'photo';
+      /** Base64 JPEG of a recipe card or page, at most 3 MB decoded. */ image: string;
+    }
+  | { source: 'text'; /** What the person typed or said, up to 6000 characters. */ text: string };
+
+export const RECIPE_IMPORT_LIMITS = {
+  urlMaxChars: 2000,
+  textMaxChars: 6000,
+  maxIngredients: 60,
+  maxSteps: 40,
+} as const;
+
+/**
+ * Only web links: `javascript:`, `file:`, `data:` and the like are refused on the device. Checked
+ * with a pattern because React Native's URL does not reliably report the scheme.
+ */
+const HTTP_URL = /^https?:\/\/[^\s/?#]+[^\s]*$/i;
+
+export const recipeImportRequestSchema = z.discriminatedUnion('source', [
+  z.strictObject({
+    source: z.literal('link'),
+    url: z
+      .string()
+      .trim()
+      .max(RECIPE_IMPORT_LIMITS.urlMaxChars)
+      .regex(HTTP_URL, 'Only http(s) links can be read.'),
+  }),
+  z.strictObject({ source: z.literal('photo'), image: base64ImageSchema }),
+  z.strictObject({
+    source: z.literal('text'),
+    text: z.string().trim().min(1).max(RECIPE_IMPORT_LIMITS.textMaxChars),
+  }),
+]);
+
+export const importedMealSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack']);
+export type ImportedMeal = z.infer<typeof importedMealSchema>;
+
+export const importedIngredientSchema = z.object({
+  /** The line as written, e.g. "1/3 cup cane vinegar". */
+  text: z.string().min(1).max(200),
+  /** The plain ingredient, e.g. "cane vinegar": what the device matches to the catalog. */
+  name: z.string().min(1).max(80),
+});
+export type ImportedIngredient = z.infer<typeof importedIngredientSchema>;
+
+export const importedRecipeSchema = z.object({
+  title: z.string().min(1).max(160),
+  servings: z.number().int().min(1).max(24),
+  total_minutes: z.number().int().min(1).max(1440).nullable(),
+  cuisine: z.string().min(1).max(40).nullable(),
+  meal: importedMealSchema.nullable(),
+  ingredients: z.array(importedIngredientSchema).min(1).max(RECIPE_IMPORT_LIMITS.maxIngredients),
+  steps: z.array(z.string().min(1).max(1000)).min(1).max(RECIPE_IMPORT_LIMITS.maxSteps),
+  source_url: z.string().url().nullable(),
+});
+export type ImportedRecipe = z.infer<typeof importedRecipeSchema>;
+
+export const recipeImportResponseSchema = z.union([
+  z.object({ status: z.literal('ok'), recipe: importedRecipeSchema, quota: aiQuotaSchema }),
+  z.object({
+    /** The page, photo or words did not hold a recipe Famara could read. */
+    status: z.literal('not_recipe'),
+    reason: z.enum(['no_recipe', 'unreadable', 'blocked_source']),
+    message: z.string(),
+    quota: aiQuotaSchema,
+  }),
+]);
+export type RecipeImportResponse = z.infer<typeof recipeImportResponseSchema>;
+
+// ---------------------------------------------------------------------------------------------
+// Coach
+// ---------------------------------------------------------------------------------------------
+
+export const COACH_LIMITS = {
+  questionMaxChars: 300,
+  stepMaxChars: 1000,
+  answerMaxChars: 400,
+} as const;
+
+export interface CoachRequest {
+  recipe: {
+    id: string;
+    title: string;
+    /** Zero-based index of the step on screen. */
+    step_index: number;
+    step_count: number;
+    step: string;
+    next_step?: string;
+  };
+  /** What the person asked, as heard. */
+  question: string;
+  /** Base64 JPEG from the mounted phone, taken when the question was asked. Never a stream. */
+  image?: string;
+  diet: string[];
+  allergens: AllergenId[];
+}
+
+/** What `askCoach` may send; the bounds match the `coach` function's own input check. */
+export const coachRequestSchema = z.strictObject({
+  recipe: z
+    .strictObject({
+      id: z.string().min(1).max(80),
+      title: z.string().trim().min(1).max(160),
+      step_index: z.number().int().min(0),
+      step_count: z.number().int().min(1).max(100),
+      step: z.string().trim().min(1).max(COACH_LIMITS.stepMaxChars),
+      next_step: z.string().trim().min(1).max(COACH_LIMITS.stepMaxChars).optional(),
+    })
+    .refine((recipe) => recipe.step_index < recipe.step_count, {
+      message: 'step_index must be below step_count.',
+      path: ['step_index'],
+    }),
+  question: z.string().trim().min(1).max(COACH_LIMITS.questionMaxChars),
+  image: base64ImageSchema.optional(),
+  diet: z.array(z.string().min(1).max(40)).max(10),
+  allergens: z.array(allergenIdSchema).max(10),
+});
+
+export const coachVerdictSchema = z.enum(['yes', 'not_yet', 'unsure', 'not_visible']);
+export type CoachVerdict = z.infer<typeof coachVerdictSchema>;
+
+export const coachResponseSchema = z.object({
+  verdict: coachVerdictSchema,
+  /** One or two short sentences, written to be read aloud. */
+  answer: z.string().min(1).max(COACH_LIMITS.answerMaxChars),
+  /** Where in the photo the answer is about, as fractions of its width and height. */
+  focus: z
+    .object({
+      x: z.number().min(0).max(1),
+      y: z.number().min(0).max(1),
+      r: z.number().min(0.02).max(0.5),
+    })
+    .nullable(),
+  quota: aiQuotaSchema,
+});
+export type CoachResponse = z.infer<typeof coachResponseSchema>;
+
+// ---------------------------------------------------------------------------------------------
 // Calls
 // ---------------------------------------------------------------------------------------------
 
@@ -271,6 +485,23 @@ const withTimeout = (options: CallOptions | undefined, timeoutMs: number): CallO
   timeoutMs,
   ...options,
 });
+
+/**
+ * Parses a request against its schema before anything is sent. A request outside the documented
+ * bounds is a bug on the device, never worth a network round trip or a retry.
+ */
+function checkRequest<S extends z.ZodType>(functionName: string, schema: S, input: unknown) {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    throw new ApiError({
+      kind: 'validation',
+      functionName,
+      code: INVALID_REQUEST,
+      cause: parsed.error,
+    });
+  }
+  return parsed.data;
+}
 
 /** The AI calls bound to a transport; `aiApi` uses the app's configured client. */
 export function createAiApi(call: CallFn) {
@@ -291,8 +522,32 @@ export function createAiApi(call: CallFn) {
       return { ...response, recipe_ids: response.recipe_ids.filter((id) => offered.has(id)) };
     },
 
-    readSnap(input: SnapRequest, options?: CallOptions): Promise<SnapResponse> {
-      return call('snap', input, snapResponseSchema, withTimeout(options, AI_TIMEOUTS_MS.snap));
+    async readSnap(input: SnapInput, options?: CallOptions): Promise<SnapResponse> {
+      const body = checkRequest('snap', snapInputSchema, input);
+      return call('snap', body, snapResponseSchema, withTimeout(options, AI_TIMEOUTS_MS.snap));
+    },
+
+    /**
+     * Reads a recipe from a link, a photo or words. Allergen safety is not decided here: the app
+     * maps each ingredient to the catalog and keeps the recipe out of suggestions until every one
+     * is known.
+     */
+    async importRecipe(
+      input: RecipeImportRequest,
+      options?: CallOptions,
+    ): Promise<RecipeImportResponse> {
+      const body = checkRequest('recipe-import', recipeImportRequestSchema, input);
+      return call(
+        'recipe-import',
+        body,
+        recipeImportResponseSchema,
+        withTimeout(options, AI_TIMEOUTS_MS.recipeImport),
+      );
+    },
+
+    async askCoach(input: CoachRequest, options?: CallOptions): Promise<CoachResponse> {
+      const body = checkRequest('coach', coachRequestSchema, input);
+      return call('coach', body, coachResponseSchema, withTimeout(options, AI_TIMEOUTS_MS.coach));
     },
 
     makeover(input: MakeoverRequest, options?: CallOptions): Promise<MakeoverResponse> {

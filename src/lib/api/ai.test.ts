@@ -123,6 +123,148 @@ describe('aiApi', () => {
     expect(sent.map((request) => request.url.split('/').pop())).toEqual(['snap', 'snap', 'snap']);
   });
 
+  it('sends sweep batches and dictated text through snap', async () => {
+    const { api, sent } = setup(() =>
+      json({
+        status: 'ok',
+        mode: 'pantry',
+        items: [{ name: 'Paneer', quantity: 1, unit: 'pack', confidence: 0.9 }],
+        quota,
+      }),
+    );
+    const sweepId = '3f1c2b9e-6a0d-4f6e-9b5a-1c2d3e4f5a6b';
+    await api.readSnap({ mode: 'pantry', sweep_id: sweepId, images: ['AAAA', 'BBBB'] });
+    await api.readSnap({ mode: 'pantry', sweep_id: sweepId, text: 'paneer in the freezer' });
+    expect(sent.map((request) => request.body)).toEqual([
+      { mode: 'pantry', sweep_id: sweepId, images: ['AAAA', 'BBBB'] },
+      { mode: 'pantry', sweep_id: sweepId, text: 'paneer in the freezer' },
+    ]);
+  });
+
+  it('parses both recipe import outcomes', async () => {
+    let call = 0;
+    const { api, sent } = setup(() => {
+      call += 1;
+      return call === 1
+        ? json({
+            status: 'ok',
+            recipe: {
+              title: "Mom's chicken adobo",
+              servings: 4,
+              total_minutes: 45,
+              cuisine: 'filipino',
+              meal: 'dinner',
+              ingredients: [{ text: '1/3 cup cane vinegar', name: 'cane vinegar' }],
+              steps: ['Simmer everything for 30 minutes.'],
+              source_url: null,
+            },
+            quota,
+          })
+        : json({ status: 'not_recipe', reason: 'no_recipe', message: 'No recipe here.', quota });
+    });
+    const ok = await api.importRecipe({ source: 'text', text: 'Adobo: chicken, vinegar...' });
+    expect(ok.status === 'ok' && ok.recipe.ingredients[0]?.name).toBe('cane vinegar');
+    const none = await api.importRecipe({ source: 'link', url: 'https://example.com/about' });
+    expect(none.status).toBe('not_recipe');
+    expect(sent.map((request) => request.url.split('/').pop())).toEqual([
+      'recipe-import',
+      'recipe-import',
+    ]);
+  });
+
+  it('asks the coach and parses where the answer points', async () => {
+    const { api, sent } = setup(() =>
+      json({
+        verdict: 'not_yet',
+        answer: 'Some garam masala on the left has not mixed in. A few more stirs.',
+        focus: { x: 0.3, y: 0.4, r: 0.1 },
+        quota,
+      }),
+    );
+    const reply = await api.askCoach({
+      recipe: {
+        id: 'mealdb:52865',
+        title: 'Matar Paneer',
+        step_index: 1,
+        step_count: 3,
+        step: 'Stir in the paneer and sprinkle over the garam masala.',
+      },
+      question: 'Is this stirred enough?',
+      image: 'AAAA',
+      diet: [],
+      allergens: [],
+    });
+    expect(reply.verdict).toBe('not_yet');
+    expect(reply.focus?.x).toBe(0.3);
+    expect(sent[0]?.url.endsWith('/coach')).toBe(true);
+  });
+
+  it('answers the coach faster than other AI calls', () => {
+    expect(AI_TIMEOUTS_MS.coach).toBeLessThan(AI_TIMEOUTS_MS.snap);
+  });
+
+  describe('checks requests before sending them', () => {
+    const neverCalled = () => {
+      throw new Error('the request should not reach the network');
+    };
+    const sweepId = '3f1c2b9e-6a0d-4f6e-9b5a-1c2d3e4f5a6b';
+    const step = {
+      id: 'mealdb:52865',
+      title: 'Matar Paneer',
+      step_index: 1,
+      step_count: 3,
+      step: 'Stir in the paneer.',
+    };
+
+    async function rejected(send: () => Promise<unknown>) {
+      const error = await send().catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).kind).toBe('validation');
+      expect((error as ApiError).retryable).toBe(false);
+    }
+
+    it('refuses a sweep batch with too many frames or a bad sweep id', async () => {
+      const { api, sent } = setup(neverCalled);
+      await rejected(() =>
+        api.readSnap({ mode: 'pantry', sweep_id: sweepId, images: ['A', 'B', 'C', 'D'] }),
+      );
+      await rejected(() => api.readSnap({ mode: 'pantry', sweep_id: 'not-a-uuid', images: ['A'] }));
+      await rejected(() => api.readSnap({ mode: 'pantry', sweep_id: sweepId, images: [] }));
+      await rejected(() => api.readSnap({ mode: 'pantry', text: 'x'.repeat(601) }));
+      expect(sent).toHaveLength(0);
+    });
+
+    it('refuses recipe links that are not http(s)', async () => {
+      const { api, sent } = setup(neverCalled);
+      await rejected(() => api.importRecipe({ source: 'link', url: 'javascript:alert(1)' }));
+      await rejected(() => api.importRecipe({ source: 'link', url: 'ftp://example.com/r' }));
+      await rejected(() => api.importRecipe({ source: 'text', text: '   ' }));
+      expect(sent).toHaveLength(0);
+    });
+
+    it('refuses an oversized coach question and a step past the end', async () => {
+      const { api, sent } = setup(neverCalled);
+      await rejected(() =>
+        api.askCoach({ recipe: step, question: 'q'.repeat(301), diet: [], allergens: [] }),
+      );
+      await rejected(() =>
+        api.askCoach({
+          recipe: { ...step, step_index: 9, step_count: 1 },
+          question: 'Is this done?',
+          diet: [],
+          allergens: [],
+        }),
+      );
+      expect(sent).toHaveLength(0);
+    });
+
+    it('still sends requests within the bounds', async () => {
+      const { api, sent } = setup(() => json({ status: 'ok', mode: 'pantry', items: [], quota }));
+      await api.readSnap({ mode: 'pantry', sweep_id: sweepId, images: ['A', 'B', 'C'] });
+      expect(sent).toHaveLength(1);
+    });
+  });
+
   it('rejects a response that does not match the contract', async () => {
     const { api } = setup(() => json({ tips: ['only one'], quota }));
     const error = await api

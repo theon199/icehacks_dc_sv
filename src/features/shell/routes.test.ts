@@ -38,7 +38,15 @@ describe('app routes', () => {
 
   it('gates exactly the AI screens and leaves the consent sheet open', () => {
     const gated = appScreens.filter((s) => s.ai).map((s) => s.name);
-    expect(gated.sort()).toEqual(['chef', 'makeover', 'snap/dish', 'snap/pantry']);
+    expect(gated.sort()).toEqual([
+      'chef',
+      'cook/[id]/coach',
+      'makeover',
+      'my-recipes/add',
+      'my-recipes/review',
+      'snap/dish',
+      'snap/pantry',
+    ]);
     expect(appScreens.find((s) => s.name === 'ai-consent')?.ai).toBeUndefined();
   });
 

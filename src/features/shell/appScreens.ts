@@ -44,9 +44,15 @@ export const appScreens: readonly AppScreen[] = [
   },
   { name: 'cook/[id]/index', options: () => fullScreen },
   { name: 'cook/[id]/done', options: () => fullScreen },
+  // Mounting the phone in a cabinet for the coach: no AI until the view check.
+  { name: 'cook/[id]/setup', options: () => fullScreen },
+  { name: 'cook/[id]/coach', options: () => fullScreen, ai: true },
 
   // Planning, pantry and shopping
   { name: 'pantry', options: titled('Pantry', { headerShown: false }) },
+  { name: 'meals', options: titled('From your fridge', { headerShown: false }) },
+  { name: 'my-recipes/index', options: titled('My recipes', { headerShown: false }) },
+  { name: 'my-recipes/[id]', options: titled('Recipe', { headerShown: false }) },
   { name: 'shopping', options: titled('Shopping list', { headerShown: false }) },
   { name: 'nearby/[dish]', options: titled('Nearby', { headerShown: false }) },
 
@@ -54,6 +60,8 @@ export const appScreens: readonly AppScreen[] = [
   { name: 'chef', options: titled('Chef', { headerShown: false }), ai: true },
   { name: 'snap/dish', options: titled('Your dish', { headerShown: false }), ai: true },
   { name: 'snap/pantry', options: titled('Pantry photo', { headerShown: false }), ai: true },
+  { name: 'my-recipes/add', options: titled('Add a recipe', { headerShown: false }), ai: true },
+  { name: 'my-recipes/review', options: titled('Review', { headerShown: false }), ai: true },
 
   // Community
   { name: 'post/[id]', options: titled('Post', { headerShown: false }) },
