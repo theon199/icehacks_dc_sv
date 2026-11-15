@@ -46,8 +46,12 @@ const ok: CheckInResult = {
   visits_here: 1,
   total_check_ins: 35,
   healthy: true,
-  region: { id: REGION_ID, name: "Ocean Park", done: 3, total: 3, claimed: true },
+  region: { id: SMALL_ID, name: "Pier Row", done: 3, total: 3, claimed: true },
   claimed_now: true,
+  claimed_regions: [
+    { id: SMALL_ID, name: "Pier Row" },
+    { id: REGION_ID, name: "Ocean Park" },
+  ],
 };
 
 function harness(options: {
@@ -111,8 +115,12 @@ Deno.test("a check-in at a known spot is recorded with the place's own position"
       visits_here: 1,
       total_check_ins: 35,
       healthy: true,
-      region: { id: REGION_ID, name: "Ocean Park", done: 3, total: 3, claimed: true },
+      region: { id: SMALL_ID, name: "Pier Row", done: 3, total: 3, claimed: true },
       claimed_now: true,
+      claimed_regions: [
+        { id: SMALL_ID, name: "Pier Row" },
+        { id: REGION_ID, name: "Ocean Park" },
+      ],
     });
   } finally {
     console.error = original;
@@ -175,7 +183,7 @@ Deno.test("an unknown place is looked up once and cached; non-healthy types are 
   const h = harness({
     known: null,
     regions: [],
-    result: { ...ok, healthy: false, region: null, claimed_now: false },
+    result: { ...ok, healthy: false, region: null, claimed_now: false, claimed_regions: [] },
     api: [() =>
       jsonResponse({
         id: "ChIJabc",

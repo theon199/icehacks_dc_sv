@@ -91,6 +91,7 @@ select tests.create_user('bbbbbbbb-0000-4000-8000-000000000002', 'ben');
 select tests.create_user('cccccccc-0000-4000-8000-000000000003', 'cara');
 select tests.create_user('dddddddd-0000-4000-8000-000000000004', 'dan');
 select tests.create_user('eeeeeeee-0000-4000-8000-000000000005', 'eve');
+select tests.create_user('ffffffff-0000-4000-8000-000000000006', 'fay');
 
 -- ---------------------------------------------------------------------------------------------
 -- Cache fills run as the service role
@@ -209,7 +210,8 @@ set local role service_role;
 
 select is(
   tests.check_in('aaaaaaaa-0000-4000-8000-000000000001', 'place-a') - 'check_in_id' - 'region',
-  '{"status": "ok", "visits_here": 1, "total_check_ins": 1, "healthy": true, "claimed_now": false}'::jsonb,
+  '{"status": "ok", "visits_here": 1, "total_check_ins": 1, "healthy": true, "claimed_now": false,
+    "claimed_regions": []}'::jsonb,
   'the first check-in is recorded'
 );
 select is(
@@ -585,7 +587,9 @@ set local role service_role;
 select is(
   (public.record_food_check_in('dddddddd-0000-4000-8000-000000000004', 'place-y', 'Spot Y', 34.02, -118.47, now() + interval '30 days',
     (select id from public.food_regions where source_ref = 'osm:relation:3'), true) - 'check_in_id' - 'region'),
-  '{"status": "ok", "visits_here": 1, "total_check_ins": 4, "healthy": true, "claimed_now": true}'::jsonb,
+  jsonb_build_object('status', 'ok', 'visits_here', 1, 'total_check_ins', 4, 'healthy', true, 'claimed_now', true,
+    'claimed_regions', jsonb_build_array(jsonb_build_object(
+      'id', (select id from public.food_regions where source_ref = 'osm:relation:3'), 'name', 'Main Street'))),
   'a check-in whose place content was cleared still counts toward the claim'
 );
 
@@ -660,6 +664,69 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------------------------
+-- A check-in completes every region that lists the place, not only the one it is filed under
+-- ---------------------------------------------------------------------------------------------
+
+-- Pier Row lies inside Harbor District and covers under a quarter of it, so both are kept, and
+-- both list place-shared. The function files a check-in there under the smaller Pier Row.
+set local role service_role;
+select public.store_food_regions(
+  array['9q5c9'],
+  jsonb_build_array(
+    tests.region('osm:relation:10', 'Harbor District', '9q5c9', -118.40, 34.05)
+      || jsonb_build_object('polygon', tests.square(-118.40, 34.05, 0.01),
+                            'bbox', jsonb_build_array(-118.41, 34.04, -118.39, 34.06),
+                            'area_m2', 4000000),
+    tests.region('osm:relation:11', 'Pier Row', '9q5c9', -118.40, 34.05)
+      || jsonb_build_object('polygon', tests.square(-118.40, 34.05, 0.002),
+                            'bbox', jsonb_build_array(-118.402, 34.048, -118.398, 34.052),
+                            'area_m2', 160000)
+  ),
+  7776000
+);
+select public.store_food_region_spots(
+  (select id from public.food_regions where source_ref = 'osm:relation:10'),
+  jsonb_build_array(tests.spot('place-shared', 'Pier Greens'), tests.spot('place-harbor', 'Harbor Bowls')),
+  2592000
+);
+select public.store_food_region_spots(
+  (select id from public.food_regions where source_ref = 'osm:relation:11'),
+  jsonb_build_array(tests.spot('place-shared', 'Pier Greens'), tests.spot('place-pier', 'Pier Salads')),
+  2592000
+);
+select is(
+  (public.record_food_check_in('ffffffff-0000-4000-8000-000000000006', 'place-harbor', 'Harbor Bowls',
+    34.01, -118.49, now() + interval '30 days', (select id from public.food_regions where source_ref = 'osm:relation:10'), true)
+    -> 'region') - 'id',
+  '{"name": "Harbor District", "done": 1, "total": 2, "claimed": false}'::jsonb,
+  'fay checks in at one Harbor District spot'
+);
+select is(
+  (select r - 'check_in_id' - 'visits_here' - 'total_check_ins' - 'healthy'
+   from public.record_food_check_in('ffffffff-0000-4000-8000-000000000006', 'place-shared', 'Pier Greens',
+     34.01, -118.49, now() + interval '30 days', (select id from public.food_regions where source_ref = 'osm:relation:11'), true) r),
+  jsonb_build_object(
+    'status', 'ok',
+    'region', jsonb_build_object(
+      'id', (select id from public.food_regions where source_ref = 'osm:relation:11'),
+      'name', 'Pier Row', 'done', 1, 'total', 2, 'claimed', false),
+    'claimed_now', true,
+    'claimed_regions', jsonb_build_array(jsonb_build_object(
+      'id', (select id from public.food_regions where source_ref = 'osm:relation:10'),
+      'name', 'Harbor District'))
+  ),
+  'the shared spot, filed under Pier Row, completes Harbor District too'
+);
+select is(
+  (select array_agg(r.source_ref order by r.source_ref)
+   from public.food_region_claims k join public.food_regions r on r.id = k.region_id
+   where k.user_id = 'ffffffff-0000-4000-8000-000000000006'),
+  array['osm:relation:10'],
+  'fay claims Harbor District, the region her progress shows as done'
+);
+reset role;
+
+-- ---------------------------------------------------------------------------------------------
 -- The account export includes the food map
 -- ---------------------------------------------------------------------------------------------
 
@@ -714,7 +781,7 @@ select is(
   0,
   'her claims are gone'
 );
-select is((select count(*)::integer from public.food_regions), 3, 'shared regions stay');
+select is((select count(*)::integer from public.food_regions), 5, 'shared regions stay');
 
 select * from finish();
 rollback;

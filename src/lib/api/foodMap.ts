@@ -242,6 +242,8 @@ export const checkInResponseSchema = z
       })
       .nullable(),
     claimed_now: z.boolean(),
+    /** Every region this check-in completed, possibly a larger one around `region`. */
+    claimed_regions: z.array(z.object({ id: z.uuid(), name: z.string() })),
   })
   .transform((r) => ({
     visitsHere: r.visits_here,
@@ -249,6 +251,7 @@ export const checkInResponseSchema = z
     healthy: r.healthy,
     region: r.region,
     claimedNow: r.claimed_now,
+    claimedRegions: r.claimed_regions,
   }));
 export type CheckInResponse = z.output<typeof checkInResponseSchema>;
 

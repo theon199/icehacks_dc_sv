@@ -557,9 +557,16 @@ $$;
 --     never frees allowance.
 -- A refused check-in returns {status: 'rate_limited', reason: 'cooldown' | 'daily', retry_at}
 -- (the later of the two when both apply) and records nothing. Otherwise the result is
--- {status: 'ok', check_in_id, visits_here, total_check_ins, healthy, region, claimed_now}, where
--- region is {id, name, done, total, claimed} or null. The region is claimed when it has current
--- spots and the member has checked in at every one of them.
+-- {status: 'ok', check_in_id, visits_here, total_check_ins, healthy, region, claimed_now,
+-- claimed_regions}, where region is the check-in's own region as {id, name, done, total,
+-- claimed} or null.
+--
+-- A region is claimed when it has current spots and the member has checked in at every one of
+-- them, wherever those check-ins were filed. That is how the map counts progress, so every region
+-- this check-in can complete is evaluated: its own region and every live region that lists the
+-- place as a current spot (a small region inside a larger one may list the same place).
+-- claimed_regions lists the regions claimed by this check-in as {id, name}; claimed_now is true
+-- when there is at least one.
 --
 -- p_place_cached_until is when the copy the place content came from must be dropped (from
 -- resolve_food_place, or 30 days after a fresh Place Details answer). The check-in keeps the
@@ -593,9 +600,13 @@ declare
   v_region_id uuid;
   v_region_name text;
   v_check_in_id uuid;
+  v_candidate record;
   v_total integer;
   v_done integer;
-  v_inserted integer := 0;
+  v_region_total integer;
+  v_region_done integer;
+  v_inserted integer;
+  v_claimed jsonb := '[]'::jsonb;
 begin
   if p_user_id is null or not exists (select 1 from auth.users u where u.id = p_user_id) then
     raise exception 'user_not_found' using errcode = 'PT404', detail = 'That account does not exist.';
@@ -673,7 +684,16 @@ begin
   values (p_user_id, p_place_id, now())
   on conflict (user_id, place_id) do update set last_at = excluded.last_at;
 
-  if v_region_id is not null then
+  for v_candidate in
+    select r.id, r.name
+    from public.food_regions r
+    where r.id = v_region_id
+       or (r.retired_at is null and exists (
+         select 1 from public.food_region_spots s
+         where s.region_id = r.id and s.place_id = p_place_id and s.expires_at > now()
+       ))
+    order by r.id
+  loop
     select
       count(*)::integer,
       (count(*) filter (where exists (
@@ -681,15 +701,22 @@ begin
       )))::integer
     into v_total, v_done
     from public.food_region_spots s
-    where s.region_id = v_region_id and s.expires_at > now();
+    where s.region_id = v_candidate.id and s.expires_at > now();
 
     if v_total > 0 and v_done = v_total then
       insert into public.food_region_claims (user_id, region_id)
-      values (p_user_id, v_region_id)
+      values (p_user_id, v_candidate.id)
       on conflict (user_id, region_id) do nothing;
       get diagnostics v_inserted = row_count;
+      if v_inserted > 0 then
+        v_claimed := v_claimed || jsonb_build_array(jsonb_build_object('id', v_candidate.id, 'name', v_candidate.name));
+      end if;
     end if;
-  end if;
+    if v_candidate.id = v_region_id then
+      v_region_total := v_total;
+      v_region_done := v_done;
+    end if;
+  end loop;
 
   return jsonb_build_object(
     'status', 'ok',
@@ -702,13 +729,14 @@ begin
     'region', case when v_region_id is null then null else jsonb_build_object(
       'id', v_region_id,
       'name', v_region_name,
-      'done', v_done,
-      'total', v_total,
+      'done', v_region_done,
+      'total', v_region_total,
       'claimed', exists (
         select 1 from public.food_region_claims k where k.user_id = p_user_id and k.region_id = v_region_id
       )
     ) end,
-    'claimed_now', v_inserted > 0
+    'claimed_now', jsonb_array_length(v_claimed) > 0,
+    'claimed_regions', v_claimed
   );
 end;
 $$;

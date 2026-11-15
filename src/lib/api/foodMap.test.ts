@@ -400,6 +400,10 @@ describe('checkInAtPlace', () => {
         healthy: true,
         region: { id: REGION_ID, name: 'Main Street', done: 3, total: 3, claimed: true },
         claimed_now: true,
+        claimed_regions: [
+          { id: REGION_ID, name: 'Main Street' },
+          { id: OTHER_REGION_ID, name: 'Harbor District' },
+        ],
       }),
     ).toEqual({
       visitsHere: 3,
@@ -407,6 +411,10 @@ describe('checkInAtPlace', () => {
       healthy: true,
       region: { id: REGION_ID, name: 'Main Street', done: 3, total: 3, claimed: true },
       claimedNow: true,
+      claimedRegions: [
+        { id: REGION_ID, name: 'Main Street' },
+        { id: OTHER_REGION_ID, name: 'Harbor District' },
+      ],
     });
     expect(
       checkInResponseSchema.parse({
@@ -415,6 +423,7 @@ describe('checkInAtPlace', () => {
         healthy: false,
         region: null,
         claimed_now: false,
+        claimed_regions: [],
       }).region,
     ).toBeNull();
   });

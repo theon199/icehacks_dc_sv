@@ -44,7 +44,8 @@ healthy spot in it. Screens follow the A3a mockup; this document is the backend 
   Without `GOOGLE_PLACES_API_KEY` it answers the same shape with `configured: false` and empty spot lists.
 - **`food-check-in`**: `POST { place_id, lat, lng, accuracy_m }`.
   - Steps: verify distance, rate limit (once per place per 4 hours, 12 per day), insert the check-in, evaluate the claim.
-  - Returns `{ visits_here, region: { id, done, total, claimed }, claimed_now }`.
+  - Claims every region the check-in completes, including a larger region around its own that lists the same place.
+  - Returns `{ visits_here, region: { id, done, total, claimed }, claimed_now, claimed_regions }`.
 - **`place-photo`**: `POST { photo_name, max_width }`.
   - Returns a short-lived photo URL from the Places Photos API with `skipHttpRedirect`, so the API key stays on the server.
   - Has a per-user daily quota.

@@ -704,7 +704,7 @@ All are `security definer` with `search_path = ''`.
 | `store_food_region_spots(p_region_id, p_spots jsonb, p_ttl_seconds)` | service role | Replaces a region's spot list (≤ 5, ranked in order) and records the fill. An empty list is a valid result |
 | `resolve_food_place(p_place_id)` | service role | `{source: spot\|places_cache, name, lat, lng, primary_type, types, spot_region_ids, cached_until}` from a current spot, else a fresh `places_cache` result, else null. `cached_until` is when that copy must be dropped: the spot's `expires_at`, or the cache row's `expires_at` capped at 30 days after its `fetched_at` |
 | `food_regions_containing(p_cells, p_lat, p_lng)` | service role | Live regions whose box contains the point, smallest first; the function runs point-in-polygon |
-| `record_food_check_in(p_user_id, p_place_id, p_place_name, p_place_lat, p_place_lng, p_place_cached_until, p_region_id, p_healthy)` | service role | Locks per member. Cooldown of 4 hours per place (from `private.food_check_in_cooldowns`, so deleting check-ins never lifts it). 12 check-ins per 24 hours, counted in `private.rate_events` so deleting check-ins never frees allowance. A refusal returns `{status: "rate_limited", reason: "cooldown"\|"daily", retry_at}` (the later of the two when both apply) and records nothing. Otherwise it stores the check-in, keeping the place content until `p_place_cached_until` (the source copy's expiry, capped at 30 days from now; content already past it is not stored), claims the region when it has current spots and the member has checked in at every one, and returns `{status: "ok", check_in_id, visits_here, total_check_ins, healthy, region: {id, name, done, total, claimed}\|null, claimed_now}` |
+| `record_food_check_in(p_user_id, p_place_id, p_place_name, p_place_lat, p_place_lng, p_place_cached_until, p_region_id, p_healthy)` | service role | Locks per member. Cooldown of 4 hours per place (from `private.food_check_in_cooldowns`, so deleting check-ins never lifts it). 12 check-ins per 24 hours, counted in `private.rate_events` so deleting check-ins never frees allowance. A refusal returns `{status: "rate_limited", reason: "cooldown"\|"daily", retry_at}` (the later of the two when both apply) and records nothing. Otherwise it stores the check-in, keeping the place content until `p_place_cached_until` (the source copy's expiry, capped at 30 days from now; content already past it is not stored). It then evaluates every region the check-in can complete: its own region and every live region that lists the place as a current spot (a small region inside a larger one may list the same place). Each is claimed when it has current spots and the member has checked in at every one, wherever those check-ins were filed, which is how the map counts progress. Returns `{status: "ok", check_in_id, visits_here, total_check_ins, healthy, region: {id, name, done, total, claimed}\|null, claimed_now, claimed_regions: [{id, name}]}`, where `region` is the check-in's own region and `claimed_regions` every region it claimed |
 | `food_map_mine(p_region_ids, p_place_ids, p_min_lng, p_min_lat, p_max_lng, p_max_lat)` | members (own rows only) | The caller's check-ins per place (latest region and healthy flag, visits, ≤ 20 times newest first) for places in the box, in `p_place_ids` or in `p_region_ids`; their claims on `p_region_ids`; totals over all their data. Name and position come from a current spot, else a fresh `places_cache` result, else the caller's own copy until its `place_cached_until`, else null. It is security definer because members cannot read `places_cache` |
 
 Tests: `supabase/tests/10_food_map.test.sql`.
@@ -774,7 +774,7 @@ include a contact URL or email before launch. Calls happen only on a cache miss 
 ### `food-check-in`
 
 `POST { place_id, lat, lng, accuracy_m }` returns `{ visits_here, total_check_ins, healthy,
-region, claimed_now }`. `lat` and `lng` are the device position, used only for the distance check
+region, claimed_now, claimed_regions }`. `lat` and `lng` are the device position, used only for the distance check
 and never stored or logged.
 
 1. **Place position.** It comes from `resolve_food_place`, else one Place Details call. That call:
@@ -791,7 +791,8 @@ and never stored or logged.
    using haversine with R = 6,371,008.8 m. Otherwise 422 `too_far` with
    `details: {distance_m, allowed_m}`.
 3. **Region.** The smallest live region containing the place, preferring one that lists it as a
-   spot.
+   spot. The check-in is filed under it, but the claim is evaluated for every region listing the
+   place (see `record_food_check_in`).
 4. **Healthy.** Spots count as healthy-leaning. Other places are classified with the types rule.
 5. **Record.** `record_food_check_in` runs, and a refusal returns 429 `rate_limited` with
    `details: {retry_at, reason}` and `Retry-After`.

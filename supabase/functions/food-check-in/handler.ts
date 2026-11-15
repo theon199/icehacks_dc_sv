@@ -12,7 +12,8 @@
  *   3. The region is the smallest live region containing the place, preferring one that lists
  *      the place as a spot.
  *   4. `record_food_check_in` applies the 4-hour cooldown per place and 12 check-ins per 24
- *      hours (429 `rate_limited`), stores the check-in and evaluates the region claim.
+ *      hours (429 `rate_limited`), stores the check-in and claims every region it completes:
+ *      its own region and any other live region that lists the place as a spot.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -91,6 +92,7 @@ export const checkInResultSchema = z.discriminatedUnion("status", [
       claimed: z.boolean(),
     }).nullable(),
     claimed_now: z.boolean(),
+    claimed_regions: z.array(z.object({ id: z.uuid(), name: z.string() })),
   }),
 ]);
 export type CheckInResult = z.output<typeof checkInResultSchema>;
@@ -150,6 +152,11 @@ export interface CheckInResponse {
   healthy: boolean;
   region: { id: string; name: string; done: number; total: number; claimed: boolean } | null;
   claimed_now: boolean;
+  /**
+   * Every region this check-in completed, which can include a larger region around `region`
+   * that lists the same place.
+   */
+  claimed_regions: Array<{ id: string; name: string }>;
 }
 
 /** The smallest containing region, preferring one that lists the place as a spot. */
@@ -217,6 +224,7 @@ export function createFoodCheckInHandler(deps: FoodCheckInDeps): Handler {
       healthy: result.healthy,
       region: result.region,
       claimed_now: result.claimed_now,
+      claimed_regions: result.claimed_regions,
     };
     return json(body);
   });
