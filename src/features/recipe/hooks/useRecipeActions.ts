@@ -10,6 +10,7 @@ import type { PlannedSlot, PlanSheetPurpose } from '../components/PlanSlotSheet'
 import { useCanUseAi } from '../deps';
 import {
   aiConsentHref,
+  coachSetupHref,
   compareHref,
   composeHref,
   cookbookHref,
@@ -74,6 +75,7 @@ export function useRecipeActions(recipe: Pick<RecipeSummary, 'id' | 'title'> | n
       closeSheet: () => setSheet(null),
       onPlanned,
       cook: () => go(cookHref(id)),
+      cookWithCoach: () => go(coachSetupHref(id)),
       openWhy: () => go(whyHref(id)),
       compare: () => go(compareHref(id)),
       makeHealthier: () => go(canUseAi ? makeoverHref(id) : aiConsentHref),
