@@ -96,7 +96,7 @@ export function SweepSheet({
         <Text variant="title3" accessibilityRole="header" testID="sweep-title">
           {title}
         </Text>
-        {filming ? <SweepTag label="Filming" tone="highlight" icon="camera.fill" /> : null}
+        {filming ? <SweepTag label="Filming" tone="highlight" icon="video.fill" /> : null}
         {listening ? <SweepTag label="Listening" tone="highlight" icon="mic.fill" /> : null}
       </View>
       {listening ? (
