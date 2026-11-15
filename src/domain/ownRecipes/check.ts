@@ -5,9 +5,10 @@
  * - Every ingredient line must be matched to a catalog ingredient whose allergen data is resolved.
  *   An unmatched line, a store-bought product whose contents vary, or a line that mentions an
  *   allergen or meat word the match does not account for all make the recipe "needs a check".
- * - Anything left on the line once the match is taken away is still read: a second mention of an
- *   allergen, an allergen note ("may contain milk"), or another food made of other foods ("cooked
- *   in vegetable stock") the match cannot vouch for.
+ * - The match vouches only for its own name, written on the line. Every other word on the line,
+ *   allergen notes ("may contain milk") included, must be a known amount, unit, preparation or
+ *   connector word (`nonFoodWords.ts`); any other word could be a food, so the line is unverified
+ *   for every declared allergen and diet. Allergen hint words still name the likely allergen.
  * - The person can confirm a line that is only in doubt for a diet, or for an unknown food when
  *   they declare no allergens ("I checked this"). A line that may hold an allergen they declared is
  *   never confirmable: it stays `unverifiable` until it is edited to a food Famara knows. A
@@ -20,8 +21,9 @@
  * Only recipes whose status is `clear` may appear in any suggestion list.
  */
 import { compileSafetyRules, DIET_ALLERGEN_CHECKS, type SafetyPrefs } from '../safety';
-import { ADVISORY_WORDS, ALLERGEN_HINTS, COMPOUND_FOODS, DIET_HINTS } from './hints';
+import { ADVISORY_WORDS, ALLERGEN_HINTS, DIET_HINTS } from './hints';
 import { isPlausibleMatch, type MatchableIngredient } from './match';
+import { isNonFoodWord } from './nonFoodWords';
 import { foodWords, nameKey, tokenize } from './words';
 import type { AllergenId } from '../types/allergens';
 import { withImpliedDiets, DietFlag, type DietFlagName } from '../types/diet';
@@ -125,8 +127,14 @@ function hasDiet(flags: number, diet: DietFlagName): boolean {
   return (withImpliedDiets(flags) & DietFlag[diet]) !== 0;
 }
 
-/** Removes one occurrence of the first catalog name found as a run of words, else each word once. */
-function withoutMatch(words: readonly string[], names: readonly (readonly string[])[]): string[] {
+/**
+ * The words with one run of a catalog name taken out, or null when no name of the match is
+ * written there as a run of words.
+ */
+function withoutMatch(
+  words: readonly string[],
+  names: readonly (readonly string[])[],
+): string[] | null {
   for (const name of names) {
     if (name.length === 0) continue;
     for (let start = 0; start + name.length <= words.length; start += 1) {
@@ -135,12 +143,7 @@ function withoutMatch(words: readonly string[], names: readonly (readonly string
       }
     }
   }
-  const rest = [...words];
-  for (const word of names[0] ?? []) {
-    const at = rest.indexOf(word);
-    if (at >= 0) rest.splice(at, 1);
-  }
-  return rest;
+  return null;
 }
 
 /** Splits a line at its allergen note: the words before it, and the note's words. */
@@ -155,26 +158,36 @@ function splitAdvisory(text: string): { readonly body: string[]; readonly note: 
 }
 
 interface Leftover {
-  /** Words the match does not account for, allergen notes included. */
+  /** Words the match does not account for, allergen notes included, for naming allergens. */
   readonly words: ReadonlySet<string>;
-  /** A food made of other foods is left over, so the match cannot vouch for any allergen. */
-  readonly compound: boolean;
+  /**
+   * Something on the line may be a food the match does not cover: a leftover word that is not a
+   * known amount, unit, preparation or connector word, or a line that does not even spell out
+   * its match. The match then vouches for no allergen and no diet.
+   */
+  readonly unexplained: boolean;
 }
 
-/** What is left of the line once the catalog match is taken away, each matched word only once. */
+/**
+ * What is left of the line, text and name, once one written run of the catalog name is taken
+ * away. Allergen notes are never taken away.
+ */
 function leftover(ingredient: OwnIngredient, catalog: CatalogFacts | null): Leftover {
   const names = catalog
     ? [catalog.name, catalog.plural, catalog.id.replace(/_/g, ' ')]
         .filter((name): name is string => Boolean(name))
         .map(foodWords)
+        .sort((a, b) => b.length - a.length)
     : [];
   const text = splitAdvisory(ingredient.text);
   const name = splitAdvisory(ingredient.name);
-  const rest = [...withoutMatch(text.body, names), ...withoutMatch(name.body, names)];
-  const words = new Set([...rest, ...text.note, ...name.note]);
+  const textRest = catalog ? withoutMatch(text.body, names) : text.body;
+  const nameRest = catalog ? withoutMatch(name.body, names) : name.body;
+  const rest = [...(textRest ?? text.body), ...(nameRest ?? name.body), ...text.note, ...name.note];
   return {
-    words,
-    compound: catalog !== null && rest.some((word) => COMPOUND_FOODS.includes(word)),
+    words: new Set(rest),
+    unexplained:
+      textRest === null || nameRest === null || rest.some((word) => !isNonFoodWord(word)),
   };
 }
 
@@ -193,12 +206,12 @@ export function ingredientIssues(
   else if (catalog.allergenStatus !== 'resolved') unsure.push({ code: 'composition_unknown' });
   const contains = new Set(catalog?.allergens ?? []);
   const resolved = catalog?.allergenStatus === 'resolved';
-  const { words, compound } = leftover(ingredient, catalog);
+  const { words, unexplained } = leftover(ingredient, catalog);
   // An allergen is clear only when the line is matched, the match is resolved and does not hold
-  // it, nothing else on the line hints at it, and no other made-up food is on the line.
+  // it, and every other word on the line is a known non-food word.
   const allergenState = (allergen: AllergenId): 'contains' | 'unknown' | 'free' => {
     if (contains.has(allergen)) return 'contains';
-    if (!resolved || compound || mentions(words, ALLERGEN_HINTS[allergen])) return 'unknown';
+    if (!resolved || unexplained || mentions(words, ALLERGEN_HINTS[allergen])) return 'unknown';
     return 'free';
   };
 
@@ -218,6 +231,7 @@ export function ingredientIssues(
     } else if (
       !catalog ||
       bitMissing ||
+      unexplained ||
       states.includes('unknown') ||
       mentions(words, DIET_HINTS[diet])
     ) {

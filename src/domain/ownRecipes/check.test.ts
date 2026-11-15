@@ -298,7 +298,7 @@ describe('review fixes', () => {
 
     it('still lets a diet-only doubt be confirmed', () => {
       const rice = line('1 cup rice with bacon bits', 'rice', 'rice');
-      const person = prefs(['milk'], ['vegetarian']);
+      const person = prefs([], ['vegetarian']);
       expect(check([rice], person).ingredients[0]?.issues).toEqual([
         { code: 'diet_unverified', diet: 'vegetarian' },
       ]);
@@ -348,6 +348,56 @@ describe('review fixes', () => {
       expect(
         check([line('1 cup almond milk', 'almond milk', 'almond_milk')], prefs(['milk'])).status,
       ).toBe('clear');
+    });
+  });
+});
+
+describe('review fixes, round two: only known non-food words may be left over', () => {
+  const unverified = (text: string, name: string, id: string | null, allergen: 'milk' | 'soy') => {
+    const safety = check([line(text, name, id)], prefs([allergen]));
+    expect(safety.ingredients[0]?.issues).toContainEqual({ code: 'allergen_unverified', allergen });
+    expect(isClearedForSuggestions(safety)).toBe(false);
+  };
+
+  it('subtracts only a catalog name actually written in the line', () => {
+    unverified('1 cup milk', 'almond milk', 'almond_milk', 'milk');
+  });
+
+  it('does not clear a food it has no word for', () => {
+    unverified('1 cup rice with gochujang', 'rice', 'rice', 'soy');
+    unverified('1 cup rice with mascarpone', 'rice', 'rice', 'milk');
+  });
+
+  it('reads every word of an allergen note', () => {
+    unverified('1 cup rice (may contain vegetable stock)', 'rice', 'rice', 'soy');
+  });
+
+  it('flags the extra food in the name as well as the text', () => {
+    unverified('1 cup rice', 'rice and mascarpone', 'rice', 'milk');
+  });
+
+  it('still clears lines whose only extra words are amounts, units and preparation', () => {
+    const lines = [
+      line('2 1/2 cups cooked rice, rinsed and drained', 'rice', 'rice'),
+      line('6 large cloves garlic, peeled and finely minced', 'garlic', 'garlic'),
+      line('1 head garlic, roughly chopped (optional)', 'garlic', 'garlic'),
+      line('Salt, to taste', 'salt', 'salt'),
+      line('1/3 cup soy sauce, divided', 'soy sauce', 'soy_sauce'),
+      line(
+        '500 g boneless chicken thighs, cut into bite-sized pieces',
+        'chicken thigh',
+        'chicken_thigh',
+      ),
+    ];
+    const safety = check(lines, prefs(['peanut']));
+    expect(safety.ingredients.map((entry) => entry.verdict)).toEqual(lines.map(() => 'clear'));
+  });
+
+  it('makes a diet unverified too when an unknown food is left over', () => {
+    const safety = check([line('1 cup rice with gochujang', 'rice', 'rice')], prefs([], ['vegan']));
+    expect(safety.ingredients[0]?.issues).toContainEqual({
+      code: 'diet_unverified',
+      diet: 'vegan',
     });
   });
 });
