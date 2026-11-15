@@ -203,6 +203,18 @@ describe('SearchScreen', () => {
     expect(screen.getByTestId('chef-screen')).toBeOnTheScreen();
   });
 
+  it('keeps the search in the field after a trip to Chef and back', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+    await fireEvent.changeText(screen.getByTestId('search-input'), 'chicken');
+    await user.press(screen.getByRole('tab', { name: 'Chef' }));
+    expect(screen.queryByTestId('search-input')).not.toBeOnTheScreen();
+
+    await user.press(screen.getByRole('tab', { name: 'Search' }));
+    expect(screen.getByTestId('search-input')).toHaveDisplayValue('chicken');
+    expect(useSearchStore.getState().query).toBe('chicken');
+  });
+
   it('opens Chef from the card above the browse grid', async () => {
     await renderScreen();
     await userEvent.setup().press(screen.getByRole('button', { name: 'Ask Chef' }));

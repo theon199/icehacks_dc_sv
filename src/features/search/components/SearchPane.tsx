@@ -1,5 +1,5 @@
 import { Stack, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode, type RefObject } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import type { SearchBarCommands } from 'react-native-screens';
 
@@ -45,7 +45,25 @@ export function SearchPane() {
   const resetFilters = useSearchStore((state) => state.resetFilters);
   const results = useSearchResults();
   const [focused, setFocused] = useState(false);
-  const field = useRef<SearchBarCommands>(null);
+  // The native field starts empty each time this pane mounts, while the store keeps the search
+  // across a trip to Chef. The field arrives through the header a render after the pane mounts, so
+  // the stored text is written in the first time it attaches; later re-attachments keep the typing.
+  const [field] = useState<RefObject<SearchBarCommands | null>>(() => {
+    let handle: SearchBarCommands | null = null;
+    let restored = false;
+    return {
+      get current() {
+        return handle;
+      },
+      set current(next) {
+        handle = next;
+        if (!next || restored) return;
+        restored = true;
+        const stored = useSearchStore.getState().query;
+        if (stored.length > 0) next.setText(stored);
+      },
+    };
+  });
 
   const ownerId = useSearchOwnerId();
   const recentTerms = useRecentSearches(ownerId);
@@ -69,7 +87,7 @@ export function SearchPane() {
       field.current?.setText(term);
       remember(term);
     },
-    [setQuery, remember],
+    [setQuery, remember, field],
   );
 
   // The list shows results for the settled text, which can lag behind what is still being typed;
