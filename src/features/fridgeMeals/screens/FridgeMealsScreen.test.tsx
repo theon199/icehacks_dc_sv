@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 
 import { useSessionStore } from '@/features/auth';
+import type { MyRecipeSuggestion } from '@/features/myRecipes';
 import { clearCatalogCaches } from '@/lib/catalog';
 import { getIngredients, listCandidates } from '@/lib/catalog/queries';
 import { usePantryStore } from '@/stores/pantry';
@@ -30,6 +31,14 @@ jest.mock('@/lib/catalog/queries', () => ({
   ...jest.requireActual<Record<string, unknown>>('@/lib/catalog/queries'),
   listCandidates: jest.fn(),
   getIngredients: jest.fn(),
+}));
+let mockOwn: readonly MyRecipeSuggestion[] = [];
+jest.mock('@/features/myRecipes', () => ({
+  ...jest.requireActual<Record<string, unknown>>('@/features/myRecipes'),
+  useMyRecipesForMeal: (meal: string) => ({
+    recipes: mockOwn.filter((suggestion) => suggestion.recipe.meal === meal),
+    status: 'ready',
+  }),
 }));
 jest.mock('@shopify/flash-list/dist/recyclerview/utils/measureLayout', () => {
   const actual = jest.requireActual<Record<string, unknown>>(
@@ -174,6 +183,36 @@ describe('FridgeMealsScreen', () => {
     expect(router.push).toHaveBeenCalledWith('/my-recipes/add');
     await user.press(screen.getByRole('button', { name: 'Your pantry' }));
     expect(router.push).toHaveBeenCalledWith('/pantry');
+  });
+
+  it("lists the person's own cleared recipes for this meal and opens them", async () => {
+    stock('paneer', 'pea', 'tomato', 'egg');
+    mockOwn = [
+      {
+        recipe: {
+          id: 'own-adobo',
+          title: "Mom's chicken adobo",
+          meal: 'dinner',
+          cuisine: 'Filipino',
+          minutes: 45,
+        },
+        coverage: { lines: [], total: 7, have: 6, missing: ['bay leaves'], ready: false },
+      } as unknown as MyRecipeSuggestion,
+    ];
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const section = await screen.findByTestId('fridge-meals-own', {}, SLOW);
+    expect(within(section).getByText('Your recipes')).toBeOnTheScreen();
+    const row = screen.getByRole('button', {
+      name: "Mom's chicken adobo, your recipe, Filipino · 45 min, Need bay leaves",
+    });
+    await user.press(row);
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/my-recipes/[id]',
+      params: { id: 'own-adobo' },
+    });
+    mockOwn = [];
   });
 
   it('offers another meal when the fridge covers nothing for this one', async () => {

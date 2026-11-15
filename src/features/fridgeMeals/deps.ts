@@ -8,6 +8,8 @@ import type { Href } from 'expo-router';
 import { selectCanUseAi, selectIsAdult, useSessionStore } from '@/features/auth';
 import { snapCameraHref } from '@/features/snap';
 
+export { myRecipeHref, useMyRecipesForMeal, type MyRecipeSuggestion } from '@/features/myRecipes';
+
 export { toDomainRecipe as toRankRecipe } from '@/lib/catalog';
 export { toUserPreferences as toRankPreferences } from '@/stores/domainBridge';
 
