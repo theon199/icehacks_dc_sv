@@ -133,8 +133,12 @@ function numberValue(word: string): number | null {
   return NUMBER_WORDS.get(word) ?? null;
 }
 
-const isNumberish = (word: string) =>
+/** A spoken number or fraction ("five", "20", "half"). */
+export const isNumberish = (word: string) =>
   numberValue(word) !== null || word === 'half' || word === 'quarter';
+
+/** A unit of time a duration can end in ("minutes", "secs", "hour"). */
+export const isTimeUnit = (word: string) => UNIT_SECONDS[word] !== undefined;
 
 /**
  * Reads a spoken duration: "5 minutes", "twenty five seconds", "an hour and a half",

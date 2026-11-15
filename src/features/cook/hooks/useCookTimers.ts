@@ -61,6 +61,8 @@ export interface UseCookTimersOptions {
   recipeTitle: string;
   /** The person's "cook timer" notification setting. */
   notificationsEnabled: boolean;
+  /** Route a tapped background notification returns to; cook mode for this recipe by default. */
+  notificationUrl?: string;
   /**
    * Called once when a timer runs out. `notified` is true only when it ended while Famara was in
    * the background and a local notification had actually been scheduled for it, i.e. the person
@@ -100,6 +102,7 @@ export function useCookTimers({
   recipeId,
   recipeTitle,
   notificationsEnabled,
+  notificationUrl,
   onFinish,
   notifier = expoTimerNotifier,
   appState = rnAppState,
@@ -109,10 +112,11 @@ export function useCookTimers({
   const [timers, dispatch] = useReducer(reducer, {});
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
 
-  const live = useRef({ timers, onFinish, notifier, notificationsEnabled, recipeId, recipeTitle });
+  const url = notificationUrl ?? `/cook/${encodeURIComponent(recipeId)}`;
+  const live = useRef({ timers, onFinish, notifier, notificationsEnabled, url, recipeTitle });
   // Callbacks run from intervals and app-state events read the latest render's values here.
   useLayoutEffect(() => {
-    live.current = { timers, onFinish, notifier, notificationsEnabled, recipeId, recipeTitle };
+    live.current = { timers, onFinish, notifier, notificationsEnabled, url, recipeTitle };
   });
   const scheduled = useRef(new Map<string, Promise<string | null>>());
   /** Timers whose background notification is confirmed scheduled during the current absence. */
@@ -180,7 +184,7 @@ export function useCookTimers({
                 title: `${timer.label} timer is done`,
                 body: `${live.current.recipeTitle}: time to check on it.`,
                 seconds,
-                url: `/cook/${encodeURIComponent(live.current.recipeId)}`,
+                url: live.current.url,
               })
             : null,
         )
