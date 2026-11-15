@@ -58,7 +58,7 @@ export function DonePhotoAsk({ title, celebrating, picker, onPhoto, onSkip }: Do
       ) : null}
 
       <PhotoGlassPanel radius={radii.card} style={styles.viewfinder}>
-        <Icon name="camera" size={30} color="onImage" />
+        <Icon name="camera.fill" size={30} color="onImage" />
         <Text variant="title2" align="center" style={{ color: photoOverlay.text }}>
           Take a photo of your dish
         </Text>
@@ -75,7 +75,7 @@ export function DonePhotoAsk({ title, celebrating, picker, onPhoto, onSkip }: Do
       <View style={styles.actions}>
         <Button
           label="Take a photo"
-          icon="camera"
+          icon="camera.fill"
           variant="highlight"
           fullWidth
           disabled={picker.busy}
@@ -90,7 +90,7 @@ export function DonePhotoAsk({ title, celebrating, picker, onPhoto, onSkip }: Do
           style={styles.secondary}
           testID="cook-done-choose-photo"
         >
-          <Icon name="photo" size={18} color="onImage" />
+          <Icon name="photo.fill" size={18} color="onImage" />
           <Text variant="headline" style={{ color: photoOverlay.text }} accessible={false}>
             Choose from library
           </Text>

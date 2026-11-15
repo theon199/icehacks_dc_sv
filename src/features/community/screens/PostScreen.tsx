@@ -3,11 +3,21 @@ import { router, Stack } from 'expo-router';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { EmptyState, ErrorState, Screen, Text, fontFamily, gutter, space, useTheme } from '@/ui';
+import {
+  ErrorState,
+  Screen,
+  Text,
+  errorMessageFor,
+  fontFamily,
+  gutter,
+  space,
+  useTheme,
+} from '@/ui';
 
 import type { Comment } from '../api/types';
 import { CommentComposer } from '../components/CommentComposer';
 import { CommentItem } from '../components/CommentItem';
+import { CommunityStateCard } from '../components/CommunityStateCard';
 import { PostCard } from '../components/PostCard';
 import { PostSkeletonList } from '../components/PostSkeleton';
 import { BasedOn, RemixList } from '../components/RemixLineage';
@@ -117,7 +127,13 @@ export function PostScreen({ postId, focusComments = false }: PostScreenProps) {
     return (
       <PostFrame>
         <Screen>
-          <ErrorState error={post.error} onRetry={() => void post.refetch()} />
+          <CommunityStateCard
+            testID="post-error"
+            alert
+            title="This post could not be loaded"
+            message={errorMessageFor(post.error)}
+            actions={[{ label: 'Try again', onPress: () => void post.refetch() }]}
+          />
         </Screen>
       </PostFrame>
     );
@@ -127,12 +143,11 @@ export function PostScreen({ postId, focusComments = false }: PostScreenProps) {
     return (
       <PostFrame>
         <Screen>
-          <EmptyState
-            icon="eye.slash"
+          <CommunityStateCard
+            testID="post-unavailable"
             title="This post isn't available"
             message="It may have been deleted or removed, or you can't see it from your account."
-            actionLabel="Back to Community"
-            onAction={leave}
+            actions={[{ label: 'Back to Community', onPress: leave }]}
           />
         </Screen>
       </PostFrame>

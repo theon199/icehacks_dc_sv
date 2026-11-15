@@ -8,7 +8,10 @@ import { useToastStore } from '@/ui';
 import { AiConsentScreen } from './AiConsentScreen';
 
 const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn() };
-jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
+jest.mock('expo-router', () => ({
+  useRouter: () => mockRouter,
+  useNavigation: () => ({ addListener: () => () => undefined, canGoBack: () => true }),
+}));
 jest.mock('@/features/settings', () => ({
   setAiConsent: jest.fn(),
   useAiConsentSync: () => undefined,

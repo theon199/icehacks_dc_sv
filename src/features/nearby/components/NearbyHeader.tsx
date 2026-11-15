@@ -76,6 +76,8 @@ export const NearbyHeader = memo(function NearbyHeader({
         <GlassIconButton
           icon="location"
           accessibilityLabel={subtitle ? `${subtitle}. Change area` : 'Change area'}
+          // Pinned to the app's appearance so the material does not drift with the map tiles.
+          scheme={theme.scheme}
           onPress={onChangeArea}
           testID="nearby-area"
         />

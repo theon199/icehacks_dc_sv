@@ -13,6 +13,7 @@ export {
   type GlassButtonGroupItem,
   type GlassButtonGroupProps,
 } from './GlassButtonGroup';
+export { GlassCard, glassCardTint, type GlassCardProps, type GlassCardTone } from './GlassCard';
 export { GlassControl, type GlassControlProps } from './GlassControl';
 export { GlassIconButton, type GlassBadge, type GlassIconButtonProps } from './GlassIconButton';
 export {
@@ -23,6 +24,14 @@ export {
   type GlassMenuItem,
   type GlassMenuProps,
 } from './GlassMenu';
+export {
+  GlassSheet,
+  SHEET_DISMISS_FALLBACK_MS,
+  useSheetSession,
+  useSheetSubject,
+  type GlassSheetProps,
+} from './GlassSheet';
+export { GlassSheetPanel, type GlassSheetPanelProps } from './GlassSheetPanel';
 export { GlassSurface, type GlassScheme, type GlassSurfaceProps } from './GlassSurface';
 export { Header, type HeaderProps } from './Header';
 export { Icon, type IconName, type IconProps } from './Icon';
@@ -43,6 +52,13 @@ export { ProgressRing, type ProgressRingProps } from './ProgressRing';
 export { Screen, type ScreenProps } from './Screen';
 export { SegmentedControl, type Segment, type SegmentedControlProps } from './SegmentedControl';
 export { SheetContent, type SheetContentProps } from './SheetContent';
+export {
+  SHEET_CLOSE_MS,
+  SHEET_MAX_HEIGHT_RATIO,
+  SHEET_OPEN_MS,
+  shouldDismissSheet,
+  type SheetRelease,
+} from './sheetMotion';
 export { Skeleton, SkeletonGroup, type SkeletonProps } from './Skeleton';
 export { TabHeader, useTabHeaderHeight, type TabHeaderProps } from './TabHeader';
 export { Text, type TextProps, type TextTone } from './Text';

@@ -1,6 +1,13 @@
 import { Stack, useRouter, type Href } from 'expo-router';
-import { useCallback, type ReactElement, type ReactNode } from 'react';
-import { StyleSheet, View, type RefreshControlProps } from 'react-native';
+import { useCallback, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+  type RefreshControlProps,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -23,7 +30,10 @@ export interface SettingsPageProps {
   heading?: string;
   /** Where Back goes when the page was opened without history, e.g. from a link. */
   fallbackHref?: Href;
-  /** Pinned below the content: the page's primary action. */
+  /**
+   * The page's primary action, on a glass bar pinned to the bottom edge. The cards scroll under
+   * the bar, and the scroll ends far enough down that the last card clears it.
+   */
   footer?: ReactNode;
   refreshControl?: ReactElement<RefreshControlProps>;
   /**
@@ -61,6 +71,11 @@ export function SettingsPage({
     else router.replace(fallbackHref);
   }, [router, fallbackHref]);
 
+  const [footerHeight, setFooterHeight] = useState(FOOTER_ESTIMATE);
+  const measureFooter = useCallback((event: LayoutChangeEvent) => {
+    setFooterHeight(event.nativeEvent.layout.height);
+  }, []);
+
   const backButton = (
     <GlassIconButton
       icon="chevron.left"
@@ -75,35 +90,65 @@ export function SettingsPage({
       style={[styles.frame, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}
     >
       <Stack.Screen options={{ headerShown: false }} />
-      <Screen
-        contentContainerStyle={[styles.content, pinned && styles.pinnedContent]}
-        {...(footer === undefined ? {} : { footer })}
-        {...(refreshControl === undefined ? {} : { refreshControl })}
-        {...(testID === undefined ? {} : { testID })}
+      {/*
+        The bar rides the keyboard: the avoiding view pads itself, which shrinks the body inside
+        it, and the bar is pinned to the body's bottom (absolute children ignore padding).
+      */}
+      <KeyboardAvoidingView
+        style={styles.frame}
+        behavior={Platform.OS === 'ios' && footer !== undefined ? 'padding' : undefined}
       >
-        {pinned ? null : (
-          <View style={styles.header}>
-            <View style={styles.row}>
-              {backButton}
-              <Text
-                variant="title2"
-                accessibilityRole="header"
-                numberOfLines={2}
-                maxFontSizeMultiplier={HEADER_TITLE_MAX_FONT_SCALE}
-                style={styles.title}
+        <View style={styles.frame}>
+          <Screen
+            contentContainerStyle={[
+              styles.content,
+              pinned && styles.pinnedContent,
+              footer === undefined ? null : { paddingBottom: footerHeight + space.xl },
+            ]}
+            {...(refreshControl === undefined ? {} : { refreshControl })}
+            {...(testID === undefined ? {} : { testID })}
+          >
+            {pinned ? null : (
+              <View style={styles.header}>
+                <View style={styles.row}>
+                  {backButton}
+                  <Text
+                    variant="title2"
+                    accessibilityRole="header"
+                    numberOfLines={2}
+                    maxFontSizeMultiplier={HEADER_TITLE_MAX_FONT_SCALE}
+                    style={styles.title}
+                  >
+                    {title}
+                  </Text>
+                </View>
+                {heading ? (
+                  <Text variant="title1" accessibilityRole="header">
+                    {heading}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+            {children}
+          </Screen>
+          {footer === undefined ? null : (
+            <View style={styles.footerAnchor} onLayout={measureFooter}>
+              <GlassSurface
+                radius={0}
+                style={[
+                  styles.footer,
+                  {
+                    borderTopColor: theme.colors.border,
+                    paddingBottom: Math.max(FOOTER_MIN_BOTTOM, insets.bottom + space.md),
+                  },
+                ]}
               >
-                {title}
-              </Text>
+                {footer}
+              </GlassSurface>
             </View>
-            {heading ? (
-              <Text variant="title1" accessibilityRole="header">
-                {heading}
-              </Text>
-            ) : null}
-          </View>
-        )}
-        {children}
-      </Screen>
+          )}
+        </View>
+      </KeyboardAvoidingView>
       {pinned ? (
         <View pointerEvents="box-none" style={[styles.pinnedBar, { top: insets.top }]}>
           {backButton}
@@ -127,8 +172,20 @@ export function SettingsPage({
   );
 }
 
+/** Room left for the footer bar before it has been measured: one large button and its padding. */
+const FOOTER_ESTIMATE = 110;
+/** The bar's bottom padding on phones without a home indicator. */
+const FOOTER_MIN_BOTTOM = 30;
+
 const styles = StyleSheet.create({
   frame: { flex: 1 },
+  footerAnchor: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  footer: {
+    paddingTop: 14,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   content: { paddingTop: HEADER_TOP_OFFSET, paddingBottom: space.xl, gap: space.md },
   pinnedContent: {
     paddingTop: HEADER_CONTROL_SIZE + space.xl,

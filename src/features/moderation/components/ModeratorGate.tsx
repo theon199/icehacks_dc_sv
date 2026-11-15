@@ -2,11 +2,12 @@ import type { Href } from 'expo-router';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { EmptyState, ErrorState, Skeleton, SkeletonGroup, useTheme } from '@/ui';
-import { gutter } from '@/ui/tokens';
+import { Skeleton, SkeletonGroup, errorMessageFor } from '@/ui';
+import { space } from '@/ui/tokens';
 
 import { useIsModerator } from '../queries';
 import { ModerationPage } from './ModerationPage';
+import { ModerationStateCard } from './ModerationStateCard';
 
 export interface ModeratorGateProps {
   children: ReactNode;
@@ -25,16 +26,17 @@ export interface ModeratorGateProps {
 export function ModeratorGate({ children, frame }: ModeratorGateProps) {
   const { isModerator, isLoading, error, retry } = useIsModerator();
   if (isModerator) return <>{children}</>;
-  const state = <GateState isLoading={isLoading} error={error} retry={retry} />;
-  if (!frame) return state;
+  if (!frame) {
+    // Inside a page that lays out its own list: the state takes the page's gutter itself.
+    return (
+      <View style={styles.padded}>
+        <GateState isLoading={isLoading} error={error} retry={retry} />
+      </View>
+    );
+  }
   return (
-    <ModerationPage
-      eyebrow={frame.eyebrow}
-      title={frame.title}
-      fallbackHref={frame.fallbackHref}
-      scroll={false}
-    >
-      {state}
+    <ModerationPage eyebrow={frame.eyebrow} title={frame.title} fallbackHref={frame.fallbackHref}>
+      <GateState isLoading={isLoading} error={error} retry={retry} />
     </ModerationPage>
   );
 }
@@ -44,42 +46,34 @@ function GateState({
   error,
   retry,
 }: Pick<ReturnType<typeof useIsModerator>, 'isLoading' | 'error' | 'retry'>) {
-  const theme = useTheme();
   if (isLoading) {
     return (
-      <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-        <SkeletonGroup label="Checking access" style={styles.padded}>
-          <Skeleton height={44} radius="pill" />
-          <Skeleton height={120} radius="md" />
-        </SkeletonGroup>
-      </View>
+      <SkeletonGroup label="Checking access">
+        <Skeleton height={44} radius="pill" />
+        <Skeleton height={120} radius="card" />
+      </SkeletonGroup>
     );
   }
   if (error) {
     return (
-      <View
-        style={[styles.flex, { backgroundColor: theme.colors.background }]}
+      <ModerationStateCard
+        alert
         testID="moderator-gate-error"
-      >
-        <ErrorState error={error} title="Couldn't check your access" onRetry={retry} />
-      </View>
+        title="Couldn't check your access"
+        message={errorMessageFor(error)}
+        action={{ label: 'Try again', onPress: retry }}
+      />
     );
   }
   return (
-    <View
-      style={[styles.flex, { backgroundColor: theme.colors.background }]}
+    <ModerationStateCard
       testID="moderator-gate-denied"
-    >
-      <EmptyState
-        icon="lock.shield"
-        title="For moderators only"
-        message="The review queue is available to Famara community moderators."
-      />
-    </View>
+      title="For moderators only"
+      message="The review queue is available to Famara community moderators."
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  padded: { padding: gutter },
+  padded: { paddingHorizontal: space.xl },
 });

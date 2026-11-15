@@ -167,6 +167,7 @@ export const iconMap: Partial<Record<SFSymbol, IoniconName>> = {
   'camera.fill': 'camera',
   'camera.viewfinder': 'scan-outline',
   photo: 'image-outline',
+  'photo.fill': 'image',
   'photo.on.rectangle': 'images-outline',
   'bolt.fill': 'flash',
   'bolt.badge.automatic': 'flash-outline',

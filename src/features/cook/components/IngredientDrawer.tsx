@@ -1,20 +1,10 @@
 import { FlashList } from '@shopify/flash-list';
 import { memo, useCallback } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
 
 import type { RecipeIngredientLine } from '@/lib/catalog';
 import { haptics } from '@/lib/haptics';
-import {
-  GlassIconButton,
-  GlassSurface,
-  Icon,
-  PressableScale,
-  Text,
-  radii,
-  space,
-  useTheme,
-} from '@/ui';
+import { GlassSheet, Icon, PressableScale, Text, space, useTheme } from '@/ui';
 
 export interface IngredientDrawerProps {
   visible: boolean;
@@ -69,7 +59,7 @@ const IngredientRow = memo(function IngredientRow({ line, checked, onToggle }: R
 });
 
 /**
- * Ingredient checklist that slides over cook mode. Timers keep running underneath; ticks are
+ * Ingredient checklist on a glass sheet over cook mode. Timers keep running underneath; ticks are
  * per session and only help the cook keep track of what is already in the pan.
  */
 export function IngredientDrawer({
@@ -79,8 +69,6 @@ export function IngredientDrawer({
   onToggle,
   onClose,
 }: IngredientDrawerProps) {
-  const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const renderItem = useCallback(
     ({ item }: { item: RecipeIngredientLine }) => (
       <IngredientRow line={item} checked={checked.has(item.position)} onToggle={onToggle} />
@@ -89,72 +77,33 @@ export function IngredientDrawer({
   );
 
   return (
-    <Modal
+    <GlassSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      onClose={onClose}
+      title="Ingredients"
+      description={`${checked.size} of ${ingredients.length} ready`}
+      closeLabel="Close ingredients"
+      heightRatio={SHEET_HEIGHT}
+      scroll={false}
+      testID="cook-ingredient-drawer"
     >
-      <View style={styles.container}>
-        <Pressable
-          style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.scrim }]}
-          accessibilityRole="button"
-          accessibilityLabel="Close ingredients"
-          onPress={onClose}
+      <View style={styles.listFrame}>
+        <FlashList
+          data={ingredients}
+          renderItem={renderItem}
+          keyExtractor={(line) => String(line.position)}
+          extraData={checked}
         />
-        <View accessibilityViewIsModal style={styles.sheet} testID="cook-ingredient-drawer">
-          <GlassSurface radius="sheet" fallbackColor="surface" style={styles.surface}>
-            <View style={[styles.grabber, { backgroundColor: theme.colors.borderStrong }]} />
-            <View style={styles.header}>
-              <View style={styles.headerText}>
-                <Text variant="title2">Ingredients</Text>
-                <Text variant="subhead" tone="muted">
-                  {checked.size} of {ingredients.length} ready
-                </Text>
-              </View>
-              <GlassIconButton
-                icon="xmark"
-                accessibilityLabel="Close ingredients"
-                onPress={onClose}
-              />
-            </View>
-            <View style={styles.listFrame}>
-              <FlashList
-                data={ingredients}
-                renderItem={renderItem}
-                keyExtractor={(line) => String(line.position)}
-                extraData={checked}
-                contentContainerStyle={{
-                  ...styles.list,
-                  paddingBottom: insets.bottom + theme.radii.sheet + space.lg,
-                }}
-              />
-            </View>
-          </GlassSurface>
-        </View>
       </View>
-    </Modal>
+    </GlassSheet>
   );
 }
 
+/** Tall enough for a long recipe without covering the step's heading behind it. */
+const SHEET_HEIGHT = 0.74;
+
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'flex-end' },
-  // The foot hangs below the screen edge so only the top corners show rounded.
-  sheet: { height: '74%', marginBottom: -radii.sheet },
-  surface: { flex: 1 },
-  grabber: { width: 44, height: 5, borderRadius: 3, alignSelf: 'center', marginTop: space.sm },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    paddingHorizontal: space.xl,
-    paddingTop: space.md,
-    paddingBottom: space.sm,
-  },
-  headerText: { flex: 1, gap: space.xxs },
   listFrame: { flex: 1 },
-  list: { paddingHorizontal: space.xl },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

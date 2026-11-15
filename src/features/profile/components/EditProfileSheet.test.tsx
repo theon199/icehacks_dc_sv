@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import { ApiError } from '@/lib/api/errors';
@@ -79,15 +79,16 @@ describe('EditProfileSheet', () => {
   it('closes without a request when nothing changed', async () => {
     const onClose = await renderSheet();
     await save();
-    expect(onClose).toHaveBeenCalled();
+    // The sheet slides away first; the owner hears once it has gone.
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(update).not.toHaveBeenCalled();
   });
 
   it('cancels straight away when nothing was edited', async () => {
     const alert = jest.spyOn(Alert, 'alert');
     const onClose = await renderSheet();
-    await fireEvent.press(screen.getByTestId('edit-profile-cancel'));
-    expect(onClose).toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId('edit-profile-sheet-close'));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(alert).not.toHaveBeenCalled();
   });
 
@@ -95,7 +96,7 @@ describe('EditProfileSheet', () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const onClose = await renderSheet();
     await fireEvent.changeText(screen.getByTestId('edit-bio'), 'Soup season');
-    await fireEvent.press(screen.getByTestId('edit-profile-cancel'));
+    await fireEvent.press(screen.getByTestId('edit-profile-sheet-close'));
 
     expect(onClose).not.toHaveBeenCalled();
     expect(alert).toHaveBeenCalledWith(
@@ -104,8 +105,8 @@ describe('EditProfileSheet', () => {
       expect.any(Array),
     );
     const buttons = alert.mock.calls[0]?.[2] ?? [];
-    buttons.find((button) => button.text === 'Discard')?.onPress?.();
-    expect(onClose).toHaveBeenCalled();
+    await act(async () => buttons.find((button) => button.text === 'Discard')?.onPress?.());
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
   it('shows a taken handle next to the handle field', async () => {

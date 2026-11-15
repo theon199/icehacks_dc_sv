@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import type { NewPantryItem } from '@/stores/pantry';
-import { Button, GlassIconButton, SheetContent, space } from '@/ui';
+import { Button, GlassSheet } from '@/ui';
 
 import { PANTRY_ACTION_HEIGHT } from './metrics';
 import { PantryAddBar } from './PantryAddBar';
@@ -29,42 +29,30 @@ export function PantryAddSheet({ visible, onHand, onAdd, onClose }: PantryAddShe
     [onAdd, onClose],
   );
   return (
-    <Modal
+    <GlassSheet
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onClose={onClose}
+      title="Add an ingredient"
+      description="Search for an ingredient, or add anything as you write it."
+      closeLabel="Close"
+      testID="pantry-add-sheet"
+      footer={
+        <Button
+          testID="pantry-add-done"
+          label="Done"
+          variant="secondary"
+          onPress={onClose}
+          fullWidth
+          style={styles.action}
+        />
+      }
     >
-      <SheetContent
-        title="Add an ingredient"
-        description="Search for an ingredient, or add anything as you write it."
-        footer={
-          <Button
-            testID="pantry-add-done"
-            label="Done"
-            variant="secondary"
-            onPress={onClose}
-            fullWidth
-            style={styles.action}
-          />
-        }
-      >
-        <View style={styles.close}>
-          <GlassIconButton
-            icon="xmark"
-            accessibilityLabel="Close"
-            onPress={onClose}
-            testID="pantry-add-close"
-          />
-        </View>
-        <PantryAddBar onAdd={addAndClose} />
-        <QuickStaples onHand={onHand} onAdd={onAdd} />
-      </SheetContent>
-    </Modal>
+      <PantryAddBar onAdd={addAndClose} />
+      <QuickStaples onHand={onHand} onAdd={onAdd} />
+    </GlassSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  close: { position: 'absolute', top: space.md, right: space.md, zIndex: 1 },
   action: { height: PANTRY_ACTION_HEIGHT },
 });

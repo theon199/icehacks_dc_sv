@@ -5,11 +5,10 @@ import { ActionSheetIOS, ActivityIndicator, Alert, Platform, StyleSheet, View } 
 
 import { reportHref } from '@/features/moderation';
 import {
-  EmptyState,
-  ErrorState,
   GlassIconButton,
   Screen,
   Text,
+  errorMessageFor,
   fontFamily,
   gutter,
   space,
@@ -19,6 +18,7 @@ import {
 import { isNotFound } from '../api/rpcError';
 import type { ProfileSummary } from '../api/schemas';
 import type { Post } from '../api/types';
+import { CommunityStateCard } from '../components/CommunityStateCard';
 import { PostSkeletonList } from '../components/PostSkeleton';
 import { PostTile } from '../components/PostTile';
 import { ProfileHeader } from '../components/ProfileHeader';
@@ -138,15 +138,20 @@ export function AuthorScreen({ authorId }: AuthorScreenProps) {
       <AuthorFrame title="">
         <Screen>
           {isNotFound(summary.error) ? (
-            <EmptyState
-              icon="person.crop.circle.badge.xmark"
+            <CommunityStateCard
+              testID="author-unavailable"
               title="Profile not available"
               message="This account may have been deleted, or one of you has blocked the other."
-              actionLabel="Back"
-              onAction={leave}
+              actions={[{ label: 'Back', onPress: leave }]}
             />
           ) : (
-            <ErrorState error={summary.error} onRetry={() => void summary.refetch()} />
+            <CommunityStateCard
+              testID="author-error"
+              alert
+              title="This profile could not be loaded"
+              message={errorMessageFor(summary.error)}
+              actions={[{ label: 'Try again', onPress: () => void summary.refetch() }]}
+            />
           )}
         </Screen>
       </AuthorFrame>
@@ -166,16 +171,28 @@ export function AuthorScreen({ authorId }: AuthorScreenProps) {
     </View>
   );
 
-  const empty = feed.isPending ? (
-    <ActivityIndicator color={theme.colors.primary} style={styles.loading} />
-  ) : feed.isError ? (
-    <ErrorState error={feed.error} onRetry={() => void feed.refetch()} />
-  ) : (
-    <Text variant="callout" tone="muted" style={styles.loading}>
-      {profile.is_self
-        ? "You haven't shared anything yet. Post a dish you cooked from the Community tab."
-        : 'No posts to show yet.'}
-    </Text>
+  const empty = (
+    <View style={styles.state}>
+      {feed.isPending ? (
+        <CommunityStateCard loading loadingLabel="Loading posts" message="Loading posts…" />
+      ) : feed.isError ? (
+        <CommunityStateCard
+          alert
+          title="Posts could not be loaded"
+          message={errorMessageFor(feed.error)}
+          actions={[{ label: 'Try again', onPress: () => void feed.refetch() }]}
+        />
+      ) : (
+        <CommunityStateCard
+          title="No posts yet"
+          message={
+            profile.is_self
+              ? "You haven't shared anything yet. Post a dish you cooked from the Community tab."
+              : 'No posts to show yet.'
+          }
+        />
+      )}
+    </View>
   );
 
   return (
@@ -222,4 +239,5 @@ const styles = StyleSheet.create({
   },
   header: { gap: space.xl, paddingBottom: space.md, paddingHorizontal: 2 },
   loading: { paddingVertical: space.xl, paddingHorizontal: 2 },
+  state: { paddingHorizontal: 2 },
 });

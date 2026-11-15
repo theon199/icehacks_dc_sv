@@ -13,6 +13,7 @@ import {
   space,
   useTheme,
 } from '@/ui';
+import { withAlpha } from '@/ui/color';
 
 import { RatingInput } from './RatingInput';
 import { MAX_NOTES_LENGTH } from '../logic/completion';
@@ -39,6 +40,8 @@ export interface DoneReviewSheetProps {
 const HEIGHT_WITH_PHOTO = 0.66;
 const HEIGHT_WITHOUT_PHOTO = 0.74;
 const GRABBER_WIDTH = 44;
+/** A denser frost than the kit default: the sheet carries a form over a busy photo. */
+const SHEET_FROST = 0.72;
 
 /**
  * How it went, on a frosted sheet over the dish photo: an optional photo, the star rating,
@@ -75,7 +78,14 @@ export function DoneReviewSheet({
       ]}
       testID="cook-done-sheet"
     >
-      <GlassSurface radius="sheet" style={styles.surface}>
+      {/* Pinned to the app's appearance: on auto the material would darken over the photo and
+          bury the form's ink. */}
+      <GlassSurface
+        radius="sheet"
+        scheme={theme.scheme}
+        tint={withAlpha(theme.colors.surface, SHEET_FROST)}
+        style={styles.surface}
+      >
         <View style={[styles.grabber, { backgroundColor: theme.colors.borderStrong }]} />
         <ScrollView
           style={styles.scroll}

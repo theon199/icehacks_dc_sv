@@ -180,6 +180,10 @@ describe('NearbyResults', () => {
       expect(screen.getAllByText('1 of 1 member found it here').length).toBeGreaterThan(0),
     );
     expect(screen.queryByTestId('nearby-confirm-no')).toBeNull();
+    // Today's answer stays on the bar as a filled pill, out of the reading order.
+    expect(
+      screen.getByTestId('nearby-confirm-chosen', { includeHiddenElements: true }),
+    ).toBeTruthy();
   });
 
   it('leaves the camera where the person put it after an answer updates the tally', async () => {

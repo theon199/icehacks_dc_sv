@@ -12,7 +12,10 @@ const mockBack = jest.fn();
 jest.mock('@/lib/supabase/client', () => ({
   supabase: { rpc: (...args: unknown[]) => mockRpc(...args) },
 }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack, push: jest.fn() }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ back: mockBack, push: jest.fn() }),
+  useNavigation: () => ({ addListener: () => () => undefined, canGoBack: () => true }),
+}));
 
 const POST_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 const initialSession = useSessionStore.getState();

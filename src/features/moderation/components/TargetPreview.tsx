@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 
-import { Card, Chip, Text, useTheme } from '@/ui';
+import { Chip, Text, useTheme } from '@/ui';
 import { radii, space } from '@/ui/tokens';
 
 import type { QueueItem } from '../model';
@@ -19,6 +19,11 @@ export interface TargetPreviewProps {
   photos?: readonly ReviewPhoto[];
   /** Copy for a target that cannot be found, instead of the default. */
   missingText?: string;
+  /**
+   * Sets the preview in a recessed box, for a card that carries other content too. Without it the
+   * preview is bare, for a caller that gives it a card of its own.
+   */
+  inset?: boolean;
 }
 
 function statusChip(status: string | undefined) {
@@ -73,14 +78,27 @@ function PhotoGrid({ photos }: { photos: readonly ReviewPhoto[] }) {
 }
 
 /** What was reported, as the moderator needs to judge it. */
-export function TargetPreview({ item, compact = false, photos, missingText }: TargetPreviewProps) {
+export function TargetPreview({
+  item,
+  compact = false,
+  photos,
+  missingText,
+  inset = false,
+}: TargetPreviewProps) {
+  const theme = useTheme();
   const { target } = item;
   const lines = compact ? 3 : undefined;
   const owner = item.owner_handle ? `@${item.owner_handle}` : null;
   const mediaCount = target?.media?.length ?? 0;
 
   return (
-    <Card variant="outlined" padding="md">
+    <View
+      style={
+        inset
+          ? [styles.inset, { backgroundColor: theme.colors.surfaceSunken, borderRadius: radii.lg }]
+          : null
+      }
+    >
       <View style={styles.header}>
         <Text variant="label" tone="muted">
           {sentenceCase(targetNoun(item.target_kind))}
@@ -130,7 +148,7 @@ export function TargetPreview({ item, compact = false, photos, missingText }: Ta
           ) : null}
         </View>
       )}
-    </Card>
+    </View>
   );
 }
 
@@ -141,6 +159,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: space.sm,
   },
+  inset: { padding: space.md },
   body: { gap: space.xs },
   photos: { gap: space.sm, marginTop: space.xs },
   photo: { width: '100%', maxHeight: 480, borderRadius: radii.sm, overflow: 'hidden' },

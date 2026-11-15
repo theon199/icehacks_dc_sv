@@ -57,10 +57,26 @@ export function useStackScreenOptions(look: StackLook = {}): NativeStackNavigati
 }
 
 /**
- * Native iOS form sheet. `detents` are fractions of the screen height, smallest first; the person
- * can drag between them.
+ * A route that opens as a glass bottom sheet: a transparent modal with no native animation, so the
+ * screen beneath stays drawn and the route's `SheetContent` slides its own sheet up over a dim.
+ * Native sheet animations fade the whole screen, and glass under a fading ancestor draws as an
+ * empty outline, so the motion belongs to `SheetContent`.
  */
-export function sheetOptions(
+export function sheetOptions(): NativeStackNavigationOptions {
+  return {
+    presentation: 'transparentModal',
+    animation: 'none',
+    headerShown: false,
+    gestureEnabled: false,
+    contentStyle: { backgroundColor: 'transparent' },
+  };
+}
+
+/**
+ * Native iOS form sheet, for a screen that paints its own opaque page rather than rendering
+ * `SheetContent`. `detents` are fractions of the screen height, smallest first.
+ */
+export function nativeSheetOptions(
   theme: Theme,
   detents: number[] | 'fitToContents' = [0.6, 1],
 ): NativeStackNavigationOptions {

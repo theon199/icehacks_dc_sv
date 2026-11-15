@@ -1,22 +1,11 @@
 import { FlashList } from '@shopify/flash-list';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { dietMask, useRecipeSearch, type RecipeSummary } from '@/lib/catalog';
 import { usePreferencesStore } from '@/stores';
-import {
-  EmptyState,
-  ErrorState,
-  gutter,
-  IconButton,
-  SegmentedControl,
-  space,
-  Text,
-  TextField,
-  useTheme,
-} from '@/ui';
+import { EmptyState, ErrorState, GlassSheet, SegmentedControl, space, TextField } from '@/ui';
 
 import { RecipePickRow } from './RecipePickRow';
 import { useSavedRecipes } from '../hooks/useSavedRecipes';
@@ -33,11 +22,11 @@ export interface AddMealSheetProps {
 
 /**
  * Choose a recipe for an empty slot, from saved recipes or the whole catalog. Only recipes that
- * pass the person's allergen and diet rules are offered.
+ * pass the person's allergen and diet rules are offered. Mount it only while open: closing slides
+ * the sheet away first, then `onClose` runs.
  */
 export function AddMealSheet({ title, onPick, onClose }: AddMealSheetProps) {
-  const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const [open, setOpen] = useState(true);
   const saved = useSavedRecipes();
   const [source, setSource] = useState<Source>(saved.ids.length > 0 ? 'saved' : 'search');
   const [query, setQuery] = useState('');
@@ -94,38 +83,38 @@ export function AddMealSheet({ title, onPick, onClose }: AddMealSheetProps) {
   } else empty = <EmptyState icon="magnifyingglass" title="No recipes found" />;
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View
-        style={[styles.root, { backgroundColor: theme.colors.surface }]}
-        testID="add-meal-sheet"
-      >
-        <View style={styles.top}>
-          <Text variant="title3" style={styles.flex} accessibilityRole="header">
-            {`Add ${title}`}
-          </Text>
-          <IconButton icon="xmark" accessibilityLabel="Close" onPress={onClose} variant="tinted" />
-        </View>
-        <View style={styles.controls}>
-          <SegmentedControl
-            accessibilityLabel="Recipe source"
-            segments={[
-              { value: 'saved', label: 'Saved' },
-              { value: 'search', label: 'All recipes' },
-            ]}
-            value={source}
-            onChange={setSource}
-          />
-          <TextField
-            label={source === 'saved' ? 'Search saved recipes' : 'Search all recipes'}
-            icon="magnifyingglass"
-            value={query}
-            onChangeText={setQuery}
-            clearable
-            autoCorrect={false}
-            returnKeyType="search"
-            testID="add-meal-search"
-          />
-        </View>
+    <GlassSheet
+      visible={open}
+      onClose={() => setOpen(false)}
+      onClosed={onClose}
+      title={`Add ${title}`}
+      closeLabel="Close"
+      heightRatio={SHEET_HEIGHT}
+      scroll={false}
+      testID="add-meal-sheet"
+    >
+      <View style={styles.controls}>
+        <SegmentedControl
+          accessibilityLabel="Recipe source"
+          segments={[
+            { value: 'saved', label: 'Saved' },
+            { value: 'search', label: 'All recipes' },
+          ]}
+          value={source}
+          onChange={setSource}
+        />
+        <TextField
+          label={source === 'saved' ? 'Search saved recipes' : 'Search all recipes'}
+          icon="magnifyingglass"
+          value={query}
+          onChangeText={setQuery}
+          clearable
+          autoCorrect={false}
+          returnKeyType="search"
+          testID="add-meal-search"
+        />
+      </View>
+      <View style={styles.list}>
         <FlashList
           data={results}
           renderItem={renderItem}
@@ -138,26 +127,17 @@ export function AddMealSheet({ title, onPick, onClose }: AddMealSheetProps) {
             }
           }}
           ListEmptyComponent={<View style={styles.empty}>{empty}</View>}
-          contentContainerStyle={{
-            paddingHorizontal: gutter,
-            paddingBottom: insets.bottom + space.lg,
-          }}
         />
       </View>
-    </Modal>
+    </GlassSheet>
   );
 }
 
+/** A list of any length, so the sheet takes a fixed height instead of hugging its content. */
+const SHEET_HEIGHT = 0.85;
+
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  flex: { flex: 1 },
-  top: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: gutter,
-    paddingTop: space.lg,
-    gap: space.sm,
-  },
-  controls: { padding: gutter, gap: space.md },
+  controls: { gap: space.md },
+  list: { flex: 1 },
   empty: { paddingTop: space.xxl },
 });

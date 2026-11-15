@@ -4,8 +4,6 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import {
   Button,
-  EmptyState,
-  ErrorState,
   errorMessageFor,
   fontFamily,
   Skeleton,
@@ -15,11 +13,12 @@ import {
   toast,
   useTheme,
 } from '@/ui';
+import { GlassCard } from '@/ui/GlassCard';
 import { space } from '@/ui/tokens';
 
 import { APPEAL_MAX, appealStatusText, noticeCopy } from '../actions';
 import { ModerationPage } from '../components/ModerationPage';
-import { SectionCard } from '../components/SectionCard';
+import { ModerationStateCard } from '../components/ModerationStateCard';
 import type { Decision } from '../model';
 import { useAppeal, useMyDecisions } from '../queries';
 
@@ -37,7 +36,7 @@ function AppealForm({ decision }: { decision: Decision }) {
   const appeal = useAppeal();
   const trimmed = message.trim();
   return (
-    <SectionCard>
+    <GlassCard>
       <View style={styles.section}>
         <Text variant="body" accessibilityRole="header" style={styles.heading}>
           Ask for another look
@@ -72,7 +71,7 @@ function AppealForm({ decision }: { decision: Decision }) {
           testID="appeal-submit"
         />
       </View>
-    </SectionCard>
+    </GlassCard>
   );
 }
 
@@ -102,13 +101,13 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
   }
   if (decisions.isError) {
     return (
-      <ModerationPage
-        eyebrow="Moderation"
-        title="Content notice"
-        fallbackHref="/notifications"
-        scroll={false}
-      >
-        <ErrorState error={decisions.error} onRetry={() => void decisions.refetch()} />
+      <ModerationPage eyebrow="Moderation" title="Content notice" fallbackHref="/notifications">
+        <ModerationStateCard
+          alert
+          title="This notice didn't load"
+          message={errorMessageFor(decisions.error)}
+          action={{ label: 'Try again', onPress: () => void decisions.refetch() }}
+        />
       </ModerationPage>
     );
   }
@@ -116,18 +115,11 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
   const decision = decisions.data.find((d) => d.action_id === noticeId);
   if (!decision) {
     return (
-      <ModerationPage
-        eyebrow="Moderation"
-        title="Content notice"
-        fallbackHref="/notifications"
-        scroll={false}
-      >
-        <EmptyState
-          icon="checkmark.shield"
+      <ModerationPage eyebrow="Moderation" title="Content notice" fallbackHref="/notifications">
+        <ModerationStateCard
           title="Notice not found"
           message="This notice is no longer available. Decisions older than your most recent hundred are not shown."
-          actionLabel="Back"
-          onAction={() => router.back()}
+          action={{ label: 'Back', onPress: () => router.back() }}
         />
       </ModerationPage>
     );
@@ -154,7 +146,7 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
         {copy.body}
       </Text>
 
-      <SectionCard>
+      <GlassCard>
         <View style={styles.section}>
           <Text variant="body" accessibilityRole="header" style={styles.heading}>
             Reason
@@ -167,7 +159,7 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
             {decision.suspended_until ? ` · until ${formatDate(decision.suspended_until)}` : ''}
           </Text>
         </View>
-      </SectionCard>
+      </GlassCard>
 
       {link ? (
         <Button
@@ -179,7 +171,7 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
       ) : null}
 
       {status ? (
-        <SectionCard>
+        <GlassCard>
           <View style={styles.section}>
             <Text variant="body" accessibilityRole="header" style={styles.heading}>
               Appeal
@@ -193,7 +185,7 @@ export function ModerationNoticeScreen({ noticeId }: ModerationNoticeScreenProps
               </Text>
             ) : null}
           </View>
-        </SectionCard>
+        </GlassCard>
       ) : decision.appealable ? (
         <AppealForm decision={decision} />
       ) : null}

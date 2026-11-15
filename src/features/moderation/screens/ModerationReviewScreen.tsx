@@ -4,13 +4,15 @@ import { StyleSheet, View } from 'react-native';
 
 import { useSessionStore } from '@/features/auth';
 import { formatRelativeTime } from '@/lib/format';
-import { Button, Card, Chip, EmptyState, ErrorState, Text, fontFamily, toast } from '@/ui';
-import { radii, space } from '@/ui/tokens';
+import { Button, Chip, Text, errorMessageFor, fontFamily, toast, useTheme } from '@/ui';
+import { GlassCard } from '@/ui/GlassCard';
+import { space } from '@/ui/tokens';
 
 import { availableActions } from '../actions';
 import { AuditRow } from '../components/AuditRow';
 import { ModerateForm } from '../components/ModerateForm';
 import { ModerationPage } from '../components/ModerationPage';
+import { ModerationStateCard } from '../components/ModerationStateCard';
 import { ModeratorGate } from '../components/ModeratorGate';
 import { TargetPreview } from '../components/TargetPreview';
 import { reviewQueueHref } from '../links';
@@ -79,31 +81,40 @@ function ReportList({
   now: number;
   older: Omit<ShowOlderProps, 'label'>;
 }) {
+  const theme = useTheme();
   return (
-    <View style={styles.section}>
-      <Text variant="headline" accessibilityRole="header" style={styles.heading}>
+    <GlassCard>
+      <Text variant="body" accessibilityRole="header" style={styles.heading}>
         {reportHeading(reports, openCount)}
       </Text>
-      {reports.map((report) => (
-        <Card key={report.id} variant="outlined" padding="lg" style={styles.reportCard}>
-          <View style={styles.report}>
-            <View style={styles.reportTop}>
-              <Text variant="subhead" style={styles.flex}>
-                {report.automated ? 'Automatic check' : reasonLabel(report.reason)}
+      {reports.length > 0 ? (
+        <View>
+          {reports.map((report, index) => (
+            <View
+              key={report.id}
+              style={[
+                styles.report,
+                index > 0 && [styles.divided, { borderTopColor: theme.colors.hairline }],
+              ]}
+            >
+              <View style={styles.reportTop}>
+                <Text variant="subhead" style={styles.flex}>
+                  {report.automated ? 'Automatic check' : reasonLabel(report.reason)}
+                </Text>
+                {report.status === 'open' ? null : (
+                  <Chip label={report.status === 'actioned' ? 'Actioned' : 'Dismissed'} />
+                )}
+              </View>
+              {report.details ? <Text variant="callout">{report.details}</Text> : null}
+              <Text variant="footnote" tone="subtle">
+                {formatRelativeTime(report.created_at, now)}
               </Text>
-              {report.status === 'open' ? null : (
-                <Chip label={report.status === 'actioned' ? 'Actioned' : 'Dismissed'} />
-              )}
             </View>
-            {report.details ? <Text variant="callout">{report.details}</Text> : null}
-            <Text variant="footnote" tone="subtle">
-              {formatRelativeTime(report.created_at, now)}
-            </Text>
-          </View>
-        </Card>
-      ))}
+          ))}
+        </View>
+      ) : null}
       <ShowOlder {...older} label="Show older reports" />
-    </View>
+    </GlassCard>
   );
 }
 
@@ -150,31 +161,35 @@ function Review({ target }: { target: TargetRef }) {
       fallbackHref={reviewQueueHref}
     >
       {review.isPending ? (
-        <Card variant="sunken">
-          <Text variant="callout" tone="muted">
-            Loading…
-          </Text>
-        </Card>
+        <ModerationStateCard message="Loading…" />
       ) : review.isError ? (
-        <ErrorState error={review.error} onRetry={() => void review.refetch()} />
-      ) : (
-        <TargetPreview
-          item={{
-            target_kind: target.kind,
-            target_id: target.id,
-            target: review.data.snapshot,
-            owner_handle: review.data.ownerHandle,
-          }}
-          photos={review.data.photos}
-          missingText={missingText(review.data)}
+        <ModerationStateCard
+          alert
+          title="Something didn't load"
+          message={errorMessageFor(review.error)}
+          action={{ label: 'Try again', onPress: () => void review.refetch() }}
         />
+      ) : (
+        <GlassCard>
+          <TargetPreview
+            item={{
+              target_kind: target.kind,
+              target_id: target.id,
+              target: review.data.snapshot,
+              owner_handle: review.data.ownerHandle,
+            }}
+            photos={review.data.photos}
+            missingText={missingText(review.data)}
+          />
+        </GlassCard>
       )}
 
       {reports.isError ? (
-        <ErrorState
-          error={reports.error}
+        <ModerationStateCard
+          alert
           title="Reports didn't load"
-          onRetry={() => void reports.refetch()}
+          message={errorMessageFor(reports.error)}
+          action={{ label: 'Try again', onPress: () => void reports.refetch() }}
         />
       ) : reportItems ? (
         <ReportList
@@ -190,34 +205,37 @@ function Review({ target }: { target: TargetRef }) {
       ) : null}
 
       {ownTarget ? (
-        <Card variant="sunken" testID="review-own-target">
-          <Text variant="callout" tone="muted">
-            {target.kind === 'user'
+        <ModerationStateCard
+          testID="review-own-target"
+          message={
+            target.kind === 'user'
               ? 'This is your account. Another moderator has to review it.'
-              : `This is your ${targetNoun(target.kind)}. Another moderator has to review it.`}
-          </Text>
-        </Card>
-      ) : actionable ? (
-        <ModerateForm
-          options={options}
-          busy={moderate.isPending}
-          error={moderate.error}
-          onSubmit={({ action, reason, suspendDays }) =>
-            moderate.mutate(
-              { target, action, reason, ...(suspendDays ? { suspendDays } : {}) },
-              {
-                onSuccess: () => {
-                  toast.success('Decision recorded.');
-                  leaveReview(router);
-                },
-              },
-            )
+              : `This is your ${targetNoun(target.kind)}. Another moderator has to review it.`
           }
         />
+      ) : actionable ? (
+        <GlassCard>
+          <ModerateForm
+            options={options}
+            busy={moderate.isPending}
+            error={moderate.error}
+            onSubmit={({ action, reason, suspendDays }) =>
+              moderate.mutate(
+                { target, action, reason, ...(suspendDays ? { suspendDays } : {}) },
+                {
+                  onSuccess: () => {
+                    toast.success('Decision recorded.');
+                    leaveReview(router);
+                  },
+                },
+              )
+            }
+          />
+        </GlassCard>
       ) : null}
 
-      <View style={styles.section}>
-        <Text variant="headline" accessibilityRole="header" style={styles.heading}>
+      <GlassCard>
+        <Text variant="body" accessibilityRole="header" style={styles.heading}>
           History
         </Text>
         {history.length === 0 ? (
@@ -240,7 +258,7 @@ function Review({ target }: { target: TargetRef }) {
           onPress={() => void audit.fetchNextPage()}
           label="Show older"
         />
-      </View>
+      </GlassCard>
     </ModerationPage>
   );
 }
@@ -253,16 +271,9 @@ export function ModerationReviewScreen({ kind, targetId }: ModerationReviewScree
       {target ? (
         <Review target={target} />
       ) : (
-        <ModerationPage
-          eyebrow="Review"
-          title="Nothing to review"
-          scroll={false}
-          fallbackHref={reviewQueueHref}
-        >
-          <EmptyState
-            tone="danger"
-            icon="exclamationmark.triangle"
-            title="Nothing to review"
+        <ModerationPage eyebrow="Review" title="Nothing to review" fallbackHref={reviewQueueHref}>
+          <ModerationStateCard
+            alert
             message="This link does not point at a post, comment, member or recipe."
           />
         </ModerationPage>
@@ -272,10 +283,9 @@ export function ModerationReviewScreen({ kind, targetId }: ModerationReviewScree
 }
 
 const styles = StyleSheet.create({
-  section: { gap: space.sm },
-  heading: { fontFamily: fontFamily.textBold },
-  reportCard: { borderRadius: radii.tile },
-  report: { gap: space.xs },
+  heading: { fontFamily: fontFamily.textSemiBold },
+  report: { gap: space.xs, paddingVertical: space.md },
+  divided: { borderTopWidth: StyleSheet.hairlineWidth },
   reportTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   flex: { flex: 1 },
 });

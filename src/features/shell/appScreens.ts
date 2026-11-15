@@ -4,7 +4,7 @@
  */
 import type { NativeStackNavigationOptions } from 'expo-router';
 
-import { sheetOptions } from '@/ui/navigation';
+import { nativeSheetOptions, sheetOptions } from '@/ui/navigation';
 import type { Theme } from '@/ui/tokens';
 
 export interface AppScreen {
@@ -35,7 +35,7 @@ export const appScreens: readonly AppScreen[] = [
 
   // Recipes and cooking
   { name: 'recipe/[id]/index', options: titled('Recipe', { headerShown: false }) },
-  { name: 'recipe/[id]/why', options: (t) => sheetOptions(t, [0.55, 1]) },
+  { name: 'recipe/[id]/why', options: sheetOptions },
   { name: 'compare', options: titled('Compare', { headerShown: false }) },
   {
     name: 'makeover',
@@ -58,28 +58,28 @@ export const appScreens: readonly AppScreen[] = [
   // Community
   { name: 'post/[id]', options: titled('Post', { headerShown: false }) },
   { name: 'author/[id]', options: titled('', { headerShown: false }) },
-  // A tall sheet that keeps its header, so the screen's Close button stays reachable.
+  // Compose paints its own opaque page with a Close button, so it keeps the native sheet.
   {
     name: 'compose',
-    options: (t) => ({ ...sheetOptions(t, [0.9, 1]), headerShown: true, title: 'Share a dish' }),
+    options: (t) => ({ ...nativeSheetOptions(t, [0.9, 1]), title: 'Share a dish' }),
   },
   { name: 'notifications', options: titled('Notifications', { headerShown: false }) },
   { name: 'profile', options: titled('Profile', { headerShown: false }) },
   { name: 'friends', options: titled('Friends', { headerShown: false }) },
-  { name: 'invite/[code]', options: (t) => sheetOptions(t, [0.5]) },
+  { name: 'invite/[code]', options: sheetOptions },
 
   // Settings
   { name: 'settings', options: titled('Settings', { headerShown: false }) },
   { name: 'account', options: titled('Account', { headerShown: false }) },
   { name: 'preferences', options: titled('Preferences', { headerShown: false }) },
   { name: 'personal-details', options: titled('Personal details', { headerShown: false }) },
-  { name: 'ai-consent', options: (t) => sheetOptions(t, [0.75, 1]) },
+  { name: 'ai-consent', options: sheetOptions },
   { name: 'health', options: titled('Health') },
 
   // Moderation and safety
   { name: 'moderation/index', options: titled('Review queue', { headerShown: false }) },
   { name: 'moderation/review', options: titled('Review', { headerShown: false }) },
-  { name: 'moderation/report', options: (t) => sheetOptions(t, [0.6, 1]) },
+  { name: 'moderation/report', options: sheetOptions },
   { name: 'moderation/blocked', options: titled('Blocked people', { headerShown: false }) },
   { name: 'moderation/notice/[id]', options: titled('Content notice', { headerShown: false }) },
 ];

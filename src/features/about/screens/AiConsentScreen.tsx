@@ -1,15 +1,14 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
 
 import { MIN_AI_AGE, selectIsAdult, useSessionStore } from '@/features/auth';
 import { setAiConsent, useAiConsentSync } from '@/features/settings';
 import {
   Button,
-  GlassIconButton,
   Icon,
   PressableScale,
+  SheetContent,
   Text,
   fontFamily,
   radii,
@@ -35,7 +34,6 @@ const RECHECK =
 export function AiConsentScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const consent = useSessionStore((s) => s.aiConsent);
   const adult = useSessionStore((s) => selectIsAdult(s));
   const [saving, setSaving] = useState(false);
@@ -61,65 +59,14 @@ export function AiConsentScreen() {
   const title = !adult ? 'AI features' : consent ? 'AI features are on' : 'Turn on AI features?';
 
   return (
-    <View style={[styles.flex, { backgroundColor: theme.colors.surface }]}>
-      <ScrollView style={styles.flex} contentContainerStyle={styles.body}>
-        <View style={styles.titleRow}>
-          <Text variant="title2" style={styles.title}>
-            {title}
-          </Text>
-          <GlassIconButton
-            icon="xmark"
-            size={36}
-            accessibilityLabel={`Close ${title}`}
-            onPress={close}
-          />
-        </View>
-        {!adult ? (
-          <Text variant="body">
-            {`Chef, Snap and the other AI features are available from age ${MIN_AI_AGE}. Everything else in Famara works without them.`}
-          </Text>
-        ) : (
-          <>
-            <Text variant="body">
-              Chef, Snap, Make it healthier and the nearby helper use AI. Here is what that means.
-            </Text>
-            <View style={styles.list}>
-              {POINTS.map((point) => (
-                <View key={point} style={styles.row} accessible accessibilityLabel={point}>
-                  <Icon name="arrow.right" size={14} color="textMuted" style={styles.mark} />
-                  <Text variant="subhead" style={styles.grow} accessible={false}>
-                    {point}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <View
-              style={[styles.recheck, { backgroundColor: theme.colors.highlightSoft }]}
-              accessible
-              accessibilityLabel={RECHECK}
-            >
-              <Icon name="checkmark.shield.fill" size={18} color="success" />
-              <Text variant="label" color="onHighlightSoft" style={styles.grow} accessible={false}>
-                {RECHECK}
-              </Text>
-            </View>
-            <PressableScale
-              accessibilityRole="link"
-              accessibilityLabel="Read how Famara uses AI"
-              pressedOpacity={0.6}
-              pressedScale={1}
-              onPress={() => router.push('/about/ai-use')}
-              style={styles.more}
-            >
-              <Text variant="subhead" style={styles.link} accessible={false}>
-                Read how Famara uses AI
-              </Text>
-            </PressableScale>
-          </>
-        )}
-      </ScrollView>
-      <View style={[styles.footer, { paddingBottom: insets.bottom + space.xl }]}>
-        {!adult ? (
+    <SheetContent
+      title={title}
+      onClose={close}
+      dismissible={!saving}
+      maxHeightRatio={0.9}
+      testID="ai-consent-sheet"
+      footer={
+        !adult ? (
           <Button label="Got it" size="lg" fullWidth onPress={close} />
         ) : consent ? (
           <>
@@ -154,17 +101,57 @@ export function AiConsentScreen() {
               onPress={close}
             />
           </>
-        )}
-      </View>
-    </View>
+        )
+      }
+    >
+      {!adult ? (
+        <Text variant="body">
+          {`Chef, Snap and the other AI features are available from age ${MIN_AI_AGE}. Everything else in Famara works without them.`}
+        </Text>
+      ) : (
+        <>
+          <Text variant="body">
+            Chef, Snap, Make it healthier and the nearby helper use AI. Here is what that means.
+          </Text>
+          <View style={styles.list}>
+            {POINTS.map((point) => (
+              <View key={point} style={styles.row} accessible accessibilityLabel={point}>
+                <Icon name="arrow.right" size={14} color="textMuted" style={styles.mark} />
+                <Text variant="subhead" style={styles.grow} accessible={false}>
+                  {point}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <View
+            style={[styles.recheck, { backgroundColor: theme.colors.highlightSoft }]}
+            accessible
+            accessibilityLabel={RECHECK}
+          >
+            <Icon name="checkmark.shield.fill" size={18} color="success" />
+            <Text variant="label" color="onHighlightSoft" style={styles.grow} accessible={false}>
+              {RECHECK}
+            </Text>
+          </View>
+          <PressableScale
+            accessibilityRole="link"
+            accessibilityLabel="Read how Famara uses AI"
+            pressedOpacity={0.6}
+            pressedScale={1}
+            onPress={() => router.push('/about/ai-use')}
+            style={styles.more}
+          >
+            <Text variant="subhead" style={styles.link} accessible={false}>
+              Read how Famara uses AI
+            </Text>
+          </PressableScale>
+        </>
+      )}
+    </SheetContent>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  body: { padding: space.xl, paddingTop: space.xxl, gap: space.lg },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  title: { flex: 1, fontFamily: fontFamily.display },
   list: { gap: space.sm },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   mark: { marginTop: 3 },
@@ -178,5 +165,4 @@ const styles = StyleSheet.create({
   },
   more: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
   link: { fontFamily: fontFamily.textSemiBold, textDecorationLine: 'underline' },
-  footer: { paddingHorizontal: space.xl, paddingTop: space.md, gap: space.sm },
 });

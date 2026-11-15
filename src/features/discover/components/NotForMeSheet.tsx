@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import {
   NOT_FOR_ME_LABELS,
@@ -8,7 +8,16 @@ import {
   type NotForMeReason,
 } from '@/domain';
 import { useIngredients } from '@/lib/catalog';
-import { Button, ChoiceChip, ListRow, SheetContent, Text, useTheme, type IconName } from '@/ui';
+import {
+  Button,
+  ChoiceChip,
+  GlassSheet,
+  ListRow,
+  Text,
+  useSheetSession,
+  useSheetSubject,
+  type IconName,
+} from '@/ui';
 import { space } from '@/ui/tokens';
 
 export interface NotForMeSheetProps {
@@ -27,28 +36,29 @@ const REASON_ICONS: Readonly<Record<NotForMeReason, IconName>> = {
 
 /** "Not for me because…": one tap records a reason; the ingredient reason asks which one. */
 export function NotForMeSheet({ card, onClose, onPick }: NotForMeSheetProps) {
-  const theme = useTheme();
+  const visible = card !== null;
+  // The declined card stays on the sheet while it slides away; each opening starts on the reasons.
+  const shown = useSheetSubject(card);
+  const session = useSheetSession(visible);
+  if (!shown) return null;
   return (
-    <Modal
-      visible={card !== null}
-      animationType="slide"
-      presentationStyle="formSheet"
-      onRequestClose={onClose}
-    >
-      <View style={[styles.flex, { backgroundColor: theme.colors.surface }]}>
-        {card ? (
-          <SheetBody key={card.recipe.id} card={card} onClose={onClose} onPick={onPick} />
-        ) : null}
-      </View>
-    </Modal>
+    <SheetBody
+      key={`${shown.recipe.id}-${session}`}
+      visible={visible}
+      card={shown}
+      onClose={onClose}
+      onPick={onPick}
+    />
   );
 }
 
 function SheetBody({
+  visible,
   card,
   onClose,
   onPick,
 }: {
+  visible: boolean;
   card: DeckCard;
   onClose: () => void;
   onPick: NotForMeSheetProps['onPick'];
@@ -58,10 +68,13 @@ function SheetBody({
 
   if (step === 'reasons') {
     return (
-      <SheetContent
+      <GlassSheet
+        visible={visible}
+        onClose={onClose}
         title="Not for me"
         description={`Tell us why ${card.recipe.title} missed, and we'll show fewer like it.`}
         footer={<Button label="Cancel" variant="ghost" onPress={onClose} />}
+        testID="not-for-me-sheet"
       >
         <View>
           {NOT_FOR_ME_REASONS.map((reason, index) => (
@@ -78,12 +91,14 @@ function SheetBody({
             />
           ))}
         </View>
-      </SheetContent>
+      </GlassSheet>
     );
   }
 
   return (
-    <SheetContent
+    <GlassSheet
+      visible={visible}
+      onClose={onClose}
       title="Which ingredient?"
       description="We'll steer away from dishes built around it."
       footer={
@@ -100,9 +115,10 @@ function SheetBody({
           <Button label="Back" variant="ghost" onPress={() => setStep('reasons')} />
         </>
       }
+      testID="not-for-me-sheet"
     >
       <IngredientChoices card={card} selected={ingredientId} onSelect={setIngredientId} />
-    </SheetContent>
+    </GlassSheet>
   );
 }
 
@@ -152,6 +168,5 @@ function IngredientChoices({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

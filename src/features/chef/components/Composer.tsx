@@ -1,3 +1,4 @@
+import { GlassContainer } from 'expo-glass-effect';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -192,7 +193,6 @@ export function Composer({ busy, limitedUntil = null, onSend, accessory }: Compo
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.background }]}
       />
-      {accessory}
       {limited ? (
         <Text testID="chef-limit-note" variant="footnote" tone="muted" align="center">
           {limitResetNote(limitedUntil, dayStart)}
@@ -223,75 +223,95 @@ export function Composer({ busy, limitedUntil = null, onSend, accessory }: Compo
           ) : null}
         </View>
       ) : null}
-      <View style={styles.row}>
-        <GlassIconButton
-          testID="chef-attach"
-          icon="plus"
-          accessibilityLabel="Add a photo"
-          size={BAR_HEIGHT}
-          iconColor={preparing ? 'textMuted' : 'text'}
-          disabled={preparing}
-          onPress={choosePhoto}
-        />
-        <GlassSurface
-          radius={BAR_HEIGHT / 2}
-          tint="transparent"
-          style={[
-            styles.field,
-            hasLiquidGlass()
-              ? null
-              : { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.controlBorder },
-          ]}
-        >
-          <TextInput
-            testID="chef-input"
-            value={draft}
-            onChangeText={setDraft}
-            placeholder={dictation.listening ? 'Listening…' : 'Ask Chef anything about food'}
-            placeholderTextColor={theme.colors.textMuted}
-            selectionColor={theme.colors.primary}
-            accessibilityLabel="Message to Chef"
-            multiline
-            maxLength={MAX_MESSAGE_LENGTH}
-            maxFontSizeMultiplier={maxFontSizeMultiplier}
-            style={[styles.input, theme.typography.body, { color: theme.colors.text }]}
+      <ControlStack>
+        {accessory}
+        <View style={styles.row}>
+          <GlassIconButton
+            testID="chef-attach"
+            icon="plus"
+            accessibilityLabel="Add a photo"
+            size={BAR_HEIGHT}
+            iconColor={preparing ? 'textMuted' : 'text'}
+            disabled={preparing}
+            onPress={choosePhoto}
           />
-          <Pressable
-            testID="chef-dictate"
-            accessibilityRole="button"
-            accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate'}
-            accessibilityState={{ selected: dictation.listening }}
-            hitSlop={6}
-            onPress={toggleDictation}
+          <GlassSurface
+            radius={BAR_HEIGHT / 2}
+            tint="transparent"
             style={[
-              styles.inner,
-              dictation.listening && { backgroundColor: theme.colors.highlight },
+              styles.field,
+              hasLiquidGlass()
+                ? null
+                : {
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: theme.colors.controlBorder,
+                  },
             ]}
           >
-            <Icon
-              name={dictation.listening ? 'mic.fill' : 'mic'}
-              size={20}
-              color={dictation.listening ? listeningTint : 'text'}
+            <TextInput
+              testID="chef-input"
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={dictation.listening ? 'Listening…' : 'Ask Chef anything about food'}
+              placeholderTextColor={theme.colors.textMuted}
+              selectionColor={theme.colors.primary}
+              accessibilityLabel="Message to Chef"
+              multiline
+              maxLength={MAX_MESSAGE_LENGTH}
+              maxFontSizeMultiplier={maxFontSizeMultiplier}
+              style={[styles.input, theme.typography.body, { color: theme.colors.text }]}
             />
-          </Pressable>
-          <Pressable
-            testID="chef-send"
-            accessibilityRole="button"
-            // The limit note is plain text, so the disabled button carries the reason for VoiceOver.
-            accessibilityLabel={limited ? "Send. You've used today's Chef questions" : 'Send'}
-            accessibilityState={{ disabled: !canSend }}
-            disabled={!canSend}
-            onPress={send}
-            style={[
-              styles.inner,
-              { backgroundColor: canSend ? theme.colors.primary : theme.colors.primarySoft },
-            ]}
-          >
-            <Icon name="arrow.up" size={18} color={canSend ? 'onPrimary' : 'textMuted'} />
-          </Pressable>
-        </GlassSurface>
-      </View>
+            <Pressable
+              testID="chef-dictate"
+              accessibilityRole="button"
+              accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate'}
+              accessibilityState={{ selected: dictation.listening }}
+              hitSlop={6}
+              onPress={toggleDictation}
+              style={[
+                styles.inner,
+                dictation.listening && { backgroundColor: theme.colors.highlight },
+              ]}
+            >
+              <Icon
+                name={dictation.listening ? 'mic.fill' : 'mic'}
+                size={20}
+                color={dictation.listening ? listeningTint : 'text'}
+              />
+            </Pressable>
+            <Pressable
+              testID="chef-send"
+              accessibilityRole="button"
+              // The limit note is plain text, so the disabled button carries the reason for VoiceOver.
+              accessibilityLabel={limited ? "Send. You've used today's Chef questions" : 'Send'}
+              accessibilityState={{ disabled: !canSend }}
+              disabled={!canSend}
+              onPress={send}
+              style={[
+                styles.inner,
+                { backgroundColor: canSend ? theme.colors.primary : theme.colors.primarySoft },
+              ]}
+            >
+              <Icon name="arrow.up" size={18} color={canSend ? 'onPrimary' : 'textMuted'} />
+            </Pressable>
+          </GlassSurface>
+        </View>
+      </ControlStack>
     </View>
+  );
+}
+
+/**
+ * The mode switch and the field row as one glass group, so on Liquid Glass they merge and morph
+ * together. The fallback surfaces have nothing to merge and stack plainly.
+ */
+function ControlStack({ children }: { children: ReactNode }) {
+  return hasLiquidGlass() ? (
+    <GlassContainer spacing={space.sm} style={styles.stack}>
+      {children}
+    </GlassContainer>
+  ) : (
+    <View style={styles.stack}>{children}</View>
   );
 }
 
@@ -302,6 +322,7 @@ const FADE_HEIGHT = 44;
 
 const styles = StyleSheet.create({
   bar: { paddingHorizontal: space.md, paddingTop: space.xs, gap: space.sm + 2 },
+  stack: { gap: space.sm + 2 },
   fade: { position: 'absolute', left: 0, right: 0, top: -FADE_HEIGHT, height: FADE_HEIGHT },
   preview: { flexDirection: 'row', alignItems: 'flex-start', gap: space.xs },
   thumb: { width: 54, height: 54 },

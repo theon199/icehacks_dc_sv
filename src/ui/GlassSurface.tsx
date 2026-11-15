@@ -22,6 +22,11 @@ export interface GlassSurfaceProps {
    */
   scheme?: GlassScheme;
   glassStyle?: 'regular' | 'clear';
+  /**
+   * Gives the panel the material's touch response, for a surface that hosts its own pressable
+   * content such as a text field. Off by default: most surfaces only carry text.
+   */
+  interactive?: boolean;
   /** Solid colour where Liquid Glass is unavailable. */
   fallbackColor?: keyof Palette;
   style?: StyleProp<ViewStyle>;
@@ -44,6 +49,7 @@ export function GlassSurface({
   tint,
   scheme = 'auto',
   glassStyle = 'regular',
+  interactive = false,
   fallbackColor = 'surface',
   style,
   testID,
@@ -59,6 +65,7 @@ export function GlassSurface({
       <GlassView
         glassEffectStyle={glassStyle}
         colorScheme={scheme}
+        isInteractive={interactive}
         tintColor={tint ?? theme.colors.glassFrost}
         style={[styles.clip, shape, style]}
         {...(testID === undefined ? {} : { testID })}

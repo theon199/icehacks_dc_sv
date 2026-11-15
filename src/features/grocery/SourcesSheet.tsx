@@ -1,16 +1,16 @@
 import { FlashList } from '@shopify/flash-list';
 import * as WebBrowser from 'expo-web-browser';
 import { memo, useCallback } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { describeError, logger } from '@/lib/logger';
 import {
   Button,
   fontFamily,
+  GlassSheet,
   Icon,
   minTouchTarget,
   PressableScale,
-  SheetContent,
   space,
   Text,
   toast,
@@ -149,43 +149,36 @@ export function SourcesSheet({
     [onOpen],
   );
   return (
-    <Modal
+    <GlassSheet
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onClose={onClose}
+      title="Price sources"
+      description="Each item counts the share of the package the food uses. Store prices change, so check before you buy."
+      heightRatio={SHEET_HEIGHT}
+      scroll={false}
+      footer={
+        <Button label="Done" variant="secondary" onPress={onClose} fullWidth style={styles.done} />
+      }
     >
-      <SheetContent
-        title="Price sources"
-        description="Each item counts the share of the package the food uses. Store prices change, so check before you buy."
-        scroll={false}
-        footer={
-          <Button
-            label="Done"
-            variant="secondary"
-            onPress={onClose}
-            fullWidth
-            style={styles.done}
-          />
-        }
-      >
-        <View style={styles.list} testID="grocery-sources-sheet">
-          <FlashList
-            data={sources as SourceRow[]}
-            keyExtractor={(row) => row.ingredientId}
-            renderItem={renderItem}
-            ListEmptyComponent={
-              <Text variant="callout" tone="muted">
-                No prices yet.
-              </Text>
-            }
-            ListFooterComponent={<ExcludedSection excluded={excluded} />}
-          />
-        </View>
-      </SheetContent>
-    </Modal>
+      <View style={styles.list} testID="grocery-sources-sheet">
+        <FlashList
+          data={sources as SourceRow[]}
+          keyExtractor={(row) => row.ingredientId}
+          renderItem={renderItem}
+          ListEmptyComponent={
+            <Text variant="callout" tone="muted">
+              No prices yet.
+            </Text>
+          }
+          ListFooterComponent={<ExcludedSection excluded={excluded} />}
+        />
+      </View>
+    </GlassSheet>
   );
 }
+
+/** One row per priced item, so the sheet takes a fixed height instead of hugging its rows. */
+const SHEET_HEIGHT = 0.85;
 
 const styles = StyleSheet.create({
   list: { flex: 1, minHeight: 2 },

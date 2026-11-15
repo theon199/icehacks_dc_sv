@@ -39,6 +39,8 @@ export interface GlassControlProps {
   scheme?: GlassScheme;
   /** Tint inside the material. Icon controls default to untinted system glass. */
   tint?: string;
+  /** `clear` lets more of a photo through; controls over imagery use it. */
+  glassStyle?: 'regular' | 'clear';
   /**
    * The material's own press response (default on). Turn it off where the interactive material
    * renders wrong, e.g. over a frosted card back.
@@ -74,6 +76,7 @@ export function GlassControl({
   accessibilityState,
   scheme = 'auto',
   tint,
+  glassStyle = 'regular',
   interactive = true,
   disabled = false,
   fallbackColor = 'surface',
@@ -100,7 +103,7 @@ export function GlassControl({
     const { shell, content } = splitControlStyle(style);
     return (
       <GlassView
-        glassEffectStyle="regular"
+        glassEffectStyle={glassStyle}
         colorScheme={scheme}
         isInteractive={interactive && !disabled}
         style={[{ borderRadius: radius }, shell]}

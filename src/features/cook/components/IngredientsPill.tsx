@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { GlassControl, Icon, Text, space } from '@/ui';
+import { GlassControl, Icon, Text, fontFamily, space } from '@/ui';
 
 export interface IngredientsPillProps {
   bottom: number;
@@ -25,7 +25,7 @@ export function IngredientsPill({ bottom, onPress }: IngredientsPillProps) {
         testID="cook-ingredients-open"
       >
         <Icon name="cart" size={17} color="text" />
-        <Text variant="label" accessible={false}>
+        <Text variant="label" accessible={false} style={styles.label}>
           Ingredients
         </Text>
       </GlassControl>
@@ -42,4 +42,5 @@ const styles = StyleSheet.create({
     gap: space.xs,
     paddingHorizontal: space.xl,
   },
+  label: { fontFamily: fontFamily.textBold },
 });

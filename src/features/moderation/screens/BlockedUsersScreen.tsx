@@ -7,8 +7,6 @@ import { useSessionStore } from '@/features/auth';
 import {
   Avatar,
   Button,
-  EmptyState,
-  ErrorState,
   errorMessageFor,
   fontFamily,
   Skeleton,
@@ -21,6 +19,7 @@ import { gutter, space } from '@/ui/tokens';
 
 import { lookupBlocked, useBlockedDirectory } from '../blockedDirectory';
 import { ModerationPage } from '../components/ModerationPage';
+import { ModerationStateCard } from '../components/ModerationStateCard';
 import { useBlocks, useUnblockUser } from '../queries';
 
 interface BlockedRow {
@@ -90,8 +89,13 @@ export function BlockedUsersScreen() {
 
   if (blocks.isError) {
     return (
-      <ModerationPage title="Blocked people" scroll={false}>
-        <ErrorState error={blocks.error} onRetry={() => void blocks.refetch()} />
+      <ModerationPage title="Blocked people">
+        <ModerationStateCard
+          alert
+          title="Something didn't load"
+          message={errorMessageFor(blocks.error)}
+          action={{ label: 'Try again', onPress: () => void blocks.refetch() }}
+        />
       </ModerationPage>
     );
   }
@@ -105,17 +109,14 @@ export function BlockedUsersScreen() {
         contentContainerStyle={{ ...styles.padded, paddingBottom: insets.bottom + space.xl }}
         ItemSeparatorComponent={Separator}
         ListHeaderComponent={
-          rows.length > 0 ? (
-            <Text variant="body" tone="muted" style={styles.intro}>
-              {
-                "Blocked people can't see your posts, comments or profile, and you won't see theirs. They aren't told that you blocked them."
-              }
-            </Text>
-          ) : null
+          <Text variant="body" tone="muted" style={styles.intro}>
+            {
+              "Blocked people can't see your posts, comments or profile, and you won't see theirs. They aren't told that you blocked them."
+            }
+          </Text>
         }
         ListEmptyComponent={
-          <EmptyState
-            icon="hand.raised"
+          <ModerationStateCard
             title="No one is blocked"
             message="If someone makes Famara unpleasant, you can block them from their profile."
           />

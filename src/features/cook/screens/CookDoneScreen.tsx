@@ -155,7 +155,7 @@ export function CookDoneScreen({ recipeId }: CookDoneScreenProps) {
             style={styles.retake}
             testID="cook-done-retake"
           >
-            <Icon name="camera" size={16} color="onImage" />
+            <Icon name="camera.fill" size={16} color="onImage" />
             <Text variant="label" style={{ color: photoOverlay.text }} accessible={false}>
               Retake
             </Text>
