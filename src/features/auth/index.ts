@@ -15,6 +15,7 @@ export {
   type SessionStatus,
   type SignedInProfile,
 } from './sessionStore';
+export { entryHref, replaceWithEntry, setupStepFor, type SetupStep } from './entryRoute';
 export { AUTH_CALLBACK_URL } from './callback';
 export { NightTheme, night } from './components/NightTheme';
 export {

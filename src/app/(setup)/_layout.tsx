@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 
-import { ageBandFor, night, useSessionStore } from '@/features/auth';
+import { ageBandFor, night, setupStepFor, useSessionStore } from '@/features/auth';
 import { useStackScreenOptions } from '@/ui/navigation';
 
 /** The age gate keeps the welcome flow's black canvas. */
@@ -12,16 +12,16 @@ const nightCanvas = { contentStyle: { backgroundColor: night.black } };
  */
 export default function SetupLayout() {
   const screenOptions = useStackScreenOptions({ headerless: true });
-  const band = useSessionStore((s) => ageBandFor(s.birthYear));
+  const step = useSessionStore((s) => setupStepFor(ageBandFor(s.birthYear)));
   return (
     <Stack screenOptions={{ ...screenOptions, gestureEnabled: false }}>
-      <Stack.Protected guard={band === 'unknown'}>
+      <Stack.Protected guard={step === 'birth-year'}>
         <Stack.Screen name="birth-year" options={nightCanvas} />
       </Stack.Protected>
-      <Stack.Protected guard={band === 'underMinimum' || band === 'notYetEligible'}>
+      <Stack.Protected guard={step === 'not-eligible'}>
         <Stack.Screen name="not-eligible" options={nightCanvas} />
       </Stack.Protected>
-      <Stack.Protected guard={band === 'teen' || band === 'adult'}>
+      <Stack.Protected guard={step === 'onboarding'}>
         <Stack.Screen name="onboarding" />
       </Stack.Protected>
     </Stack>
