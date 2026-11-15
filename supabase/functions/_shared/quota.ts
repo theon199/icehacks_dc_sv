@@ -30,7 +30,13 @@ export const AI_QUOTAS = {
   chef: { feature: "chef", limit: 60, windowSeconds: DAY },
   makeover: { feature: "makeover", limit: 20, windowSeconds: DAY },
   snap_dish: { feature: "snap_dish", limit: 20, windowSeconds: DAY },
+  /** A fridge sweep spends one of these for the whole pass, however many batches it sends. */
   snap_pantry: { feature: "snap_pantry", limit: 20, windowSeconds: DAY },
+  /** Items said or typed outside a sweep ("I also have..."). */
+  snap_text: { feature: "snap_text", limit: 40, windowSeconds: DAY },
+  recipe_import: { feature: "recipe_import", limit: 20, windowSeconds: DAY },
+  /** Questions to the cooking coach. Timers and step changes never reach the server. */
+  coach: { feature: "coach", limit: 60, windowSeconds: DAY },
   prices: { feature: "prices", limit: 100, windowSeconds: DAY },
   nearby_chat: { feature: "nearby_chat", limit: 30, windowSeconds: DAY },
   text_review: { feature: "text_review", limit: 200, windowSeconds: DAY },

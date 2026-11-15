@@ -123,6 +123,86 @@ describe('aiApi', () => {
     expect(sent.map((request) => request.url.split('/').pop())).toEqual(['snap', 'snap', 'snap']);
   });
 
+  it('sends sweep batches and dictated text through snap', async () => {
+    const { api, sent } = setup(() =>
+      json({
+        status: 'ok',
+        mode: 'pantry',
+        items: [{ name: 'Paneer', quantity: 1, unit: 'pack', confidence: 0.9 }],
+        quota,
+      }),
+    );
+    const sweepId = '3f1c2b9e-6a0d-4f6e-9b5a-1c2d3e4f5a6b';
+    await api.readSnap({ mode: 'pantry', sweep_id: sweepId, images: ['AAAA', 'BBBB'] });
+    await api.readSnap({ mode: 'pantry', sweep_id: sweepId, text: 'paneer in the freezer' });
+    expect(sent.map((request) => request.body)).toEqual([
+      { mode: 'pantry', sweep_id: sweepId, images: ['AAAA', 'BBBB'] },
+      { mode: 'pantry', sweep_id: sweepId, text: 'paneer in the freezer' },
+    ]);
+  });
+
+  it('parses both recipe import outcomes', async () => {
+    let call = 0;
+    const { api, sent } = setup(() => {
+      call += 1;
+      return call === 1
+        ? json({
+            status: 'ok',
+            recipe: {
+              title: "Mom's chicken adobo",
+              servings: 4,
+              total_minutes: 45,
+              cuisine: 'filipino',
+              meal: 'dinner',
+              ingredients: [{ text: '1/3 cup cane vinegar', name: 'cane vinegar' }],
+              steps: ['Simmer everything for 30 minutes.'],
+              source_url: null,
+            },
+            quota,
+          })
+        : json({ status: 'not_recipe', reason: 'no_recipe', message: 'No recipe here.', quota });
+    });
+    const ok = await api.importRecipe({ source: 'text', text: 'Adobo: chicken, vinegar...' });
+    expect(ok.status === 'ok' && ok.recipe.ingredients[0]?.name).toBe('cane vinegar');
+    const none = await api.importRecipe({ source: 'link', url: 'https://example.com/about' });
+    expect(none.status).toBe('not_recipe');
+    expect(sent.map((request) => request.url.split('/').pop())).toEqual([
+      'recipe-import',
+      'recipe-import',
+    ]);
+  });
+
+  it('asks the coach and parses where the answer points', async () => {
+    const { api, sent } = setup(() =>
+      json({
+        verdict: 'not_yet',
+        answer: 'Some garam masala on the left has not mixed in. A few more stirs.',
+        focus: { x: 0.3, y: 0.4, r: 0.1 },
+        quota,
+      }),
+    );
+    const reply = await api.askCoach({
+      recipe: {
+        id: 'mealdb:52865',
+        title: 'Matar Paneer',
+        step_index: 1,
+        step_count: 3,
+        step: 'Stir in the paneer and sprinkle over the garam masala.',
+      },
+      question: 'Is this stirred enough?',
+      image: 'AAAA',
+      diet: [],
+      allergens: [],
+    });
+    expect(reply.verdict).toBe('not_yet');
+    expect(reply.focus?.x).toBe(0.3);
+    expect(sent[0]?.url.endsWith('/coach')).toBe(true);
+  });
+
+  it('answers the coach faster than other AI calls', () => {
+    expect(AI_TIMEOUTS_MS.coach).toBeLessThan(AI_TIMEOUTS_MS.snap);
+  });
+
   it('rejects a response that does not match the contract', async () => {
     const { api } = setup(() => json({ tips: ['only one'], quota }));
     const error = await api

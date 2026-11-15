@@ -14,7 +14,8 @@ Account required. Unauthenticated users see the welcome flow.
 (auth)        welcome carousel · sign in · create account · forgot/reset password · auth callback
 (setup)       birth year gate → onboarding questionnaire (one question per screen)
 (tabs)        Discover · Cookbook · Snap · Community · Search
-stack         recipe/[id] · cook/[id] · cook/[id]/done · recipe/[id]/why · compare · makeover
+stack         recipe/[id] · cook/[id] · cook/[id]/done · cook/[id]/setup · cook/[id]/coach
+              recipe/[id]/why · compare · makeover · meals · my-recipes (index, [id], add, review)
               pantry · shopping · nearby/[dish] · chef (AI chat) · snap/dish · snap/pantry
               post/[id] · author/[id] · compose · notifications · profile · friends
               settings · account · preferences · personal-details · ai-consent
@@ -84,6 +85,31 @@ Camera with Pantry | Dish toggle.
 - Pantry: photo → AI detects items → review/edit list → add to pantry → "meals you can make".
 - Dish: photo → AI identifies dish + estimated nutrition → closest catalog recipes, healthier
   version, "log it" to today.
+- Fridge sweep (Pantry): film one slow pass instead of a photo. Stills go to the AI in batches of
+  3 (at most 12) while a sheet under the camera lists what it sees; the whole pass costs one pantry
+  Snap. A mic and text field in the sheet add what the camera missed ("paneer in the freezer").
+  Review the list, add to pantry, then land on Meals for now.
+
+### 9a. Meals for now
+"From your fridge": Breakfast · Lunch · Dinner tabs, opening on the meal that fits the clock
+(lunch favours dishes under 30 minutes and lighter; dinner allows anything). Big photo cards for
+the best picks with one "why" line, then the rest, including the person's own recipes. "Cook
+something not in Famara" opens My recipes.
+
+### 9b. My recipes
+Bring in a recipe by link, photo of a card, saying it, or typing it (AI reads it into a title,
+servings, ingredients and steps). Every ingredient is matched to the catalog's allergen data; a
+recipe with any ingredient Famara cannot check stays out of suggestions until the person confirms
+it (fail-closed). Synced like other user data.
+
+### 9c. Cooking coach
+"Cook with coach" on a recipe. Setup shows, in four 3D illustrated steps, how to mount the phone:
+open the cabinet above the counter, lay the phone on the bottom shelf screen down with a third past
+the edge, set a plate on the inside end, then check what the camera sees. Coach screen is built to
+read from across the room: big step number and text, a live camera tile, and large timer cards.
+Voice: "Hey Famara, set a 2 minute timer for the peas" (on device, no AI); "is this stirred
+enough?" sends one photo with the question and the answer is read aloud with a verdict (Not yet /
+Looks good) and a ring on the spot it means. No video is streamed or stored.
 
 ### 10. Pantry & shopping
 Pantry shelves by category with quantities/expiry hints; add manually/search/snap. Shopping list
