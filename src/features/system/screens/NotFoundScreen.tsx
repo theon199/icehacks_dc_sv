@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 
+import { replaceWithEntry } from '@/features/auth';
 import { EmptyState, Screen } from '@/ui';
 
 /** Shown for links that do not match any screen. */
@@ -11,7 +12,7 @@ export function NotFoundScreen() {
         title="We couldn't find that page"
         message="The link may be out of date, or the content was removed."
         actionLabel="Go to Famara"
-        onAction={() => router.replace('/')}
+        onAction={() => replaceWithEntry(router)}
       />
     </Screen>
   );

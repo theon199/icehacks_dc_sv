@@ -8,6 +8,7 @@ import { Button, toast, useTheme } from '@/ui';
 import { hasSession, updatePassword } from '../authActions';
 import { AccountPage, PageNotice } from '../components/AccountPage';
 import { PasswordField } from '../components/PasswordField';
+import { replaceWithEntry } from '../entryRoute';
 import { useField } from '../useField';
 import { useSubmission } from '../useSubmission';
 import { MIN_PASSWORD_LENGTH, validateNewPassword } from '../validation';
@@ -52,7 +53,8 @@ export function ResetPasswordScreen() {
       }
       haptics.success();
       toast.success('Your password has been updated.');
-      router.replace('/');
+      // The recovery link may belong to an account that has not finished setup yet.
+      replaceWithEntry(router);
       return null;
     });
   };

@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/ui/ThemeProvider';
 
 import { completeCallback, hasSession } from '../authActions';
 import { authFailure } from '../authErrors';
+import { useSessionStore } from '../sessionStore';
 import { AuthCallbackScreen } from './AuthCallbackScreen';
 
 const mockRouter = { replace: jest.fn() };
@@ -53,6 +54,9 @@ describe('AuthCallbackScreen', () => {
   });
 
   it('uses each link only once across re-renders', async () => {
+    useSessionStore
+      .getState()
+      .signedIn({ userId: 'person-1', birthYear: 1980, onboardingComplete: true });
     complete.mockResolvedValue({ ok: true, value: { recovery: false } });
     const view = await show({ code: 'same' });
     await view.rerender(<AuthCallbackScreen params={{ code: 'same' }} />);

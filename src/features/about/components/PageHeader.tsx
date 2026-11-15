@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
+import { replaceWithEntry } from '@/features/auth';
 import { GlassIconButton, HEADER_TITLE_MAX_FONT_SCALE, Text, fontFamily, space } from '@/ui';
 
 export interface PageHeaderProps {
@@ -10,7 +11,10 @@ export interface PageHeaderProps {
   heading?: string;
   /** Small print under the headline, e.g. "Updated 1 November 2026". */
   caption?: string;
-  /** Called by the back control; defaults to going back. */
+  /**
+   * Called by the back control; defaults to going back, or, opened from a link with nothing to go
+   * back to, to the screen the person's session allows.
+   */
   onBack?: () => void;
 }
 
@@ -20,7 +24,7 @@ export interface PageHeaderProps {
  */
 export function PageHeader({ title, heading, caption, onBack }: PageHeaderProps) {
   const router = useRouter();
-  const back = onBack ?? (() => (router.canGoBack() ? router.back() : router.replace('/')));
+  const back = onBack ?? (() => (router.canGoBack() ? router.back() : replaceWithEntry(router)));
   return (
     <View style={styles.header}>
       <View style={styles.row}>

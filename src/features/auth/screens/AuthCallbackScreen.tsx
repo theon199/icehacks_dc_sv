@@ -8,6 +8,7 @@ import { Button, Text, space, useTheme } from '@/ui';
 import { completeCallback, hasSession } from '../authActions';
 import { callbackLinkId, readCallback } from '../callback';
 import { AccountPage, PageLink, PageNotice } from '../components/AccountPage';
+import { replaceWithEntry } from '../entryRoute';
 import { useBackToLogIn } from '../useBackToLogIn';
 
 export interface AuthCallbackScreenProps {
@@ -22,8 +23,9 @@ interface LinkFailure {
 
 /**
  * Landing screen for links back into the app: email confirmation, password recovery and the
- * Google redirect. Exchanges the link for a session, then hands over to the session guard (or to
- * the new-password screen for a recovery link).
+ * Google redirect. Exchanges the link for a session, then moves on to the screen the session guards
+ * now allow (setup for a new account, home for a returning one), or to the new-password screen for a
+ * recovery link. This route is outside the guarded groups, so a status change alone never moves it.
  */
 export function AuthCallbackScreen({ params }: AuthCallbackScreenProps) {
   const router = useRouter();
@@ -45,7 +47,8 @@ export function AuthCallbackScreen({ params }: AuthCallbackScreenProps) {
       if (!stillCurrent()) return;
       if (outcome.ok) {
         haptics.success();
-        router.replace(outcome.value.recovery ? '/auth/reset-password' : '/');
+        if (outcome.value.recovery) router.replace('/auth/reset-password');
+        else replaceWithEntry(router);
         return;
       }
       // The link may already have been used by the sign-in flow that opened it; if a session
@@ -53,7 +56,7 @@ export function AuthCallbackScreen({ params }: AuthCallbackScreenProps) {
       const signedInAnyway = action.kind !== 'error' && (await hasSession());
       if (!stillCurrent()) return;
       if (signedInAnyway) {
-        router.replace('/');
+        replaceWithEntry(router);
         return;
       }
       haptics.error();
