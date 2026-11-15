@@ -182,6 +182,8 @@ export const iconMap: Partial<Record<SFSymbol, IoniconName>> = {
   'mic.fill': 'mic',
   'mic.slash': 'mic-off-outline',
   waveform: 'pulse-outline',
+  'speaker.wave.2': 'volume-high-outline',
+  'speaker.slash': 'volume-mute-outline',
 
   // Places, contact and health
   map: 'map-outline',
