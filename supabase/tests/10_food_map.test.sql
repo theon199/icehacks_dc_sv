@@ -90,6 +90,7 @@ select tests.create_user('aaaaaaaa-0000-4000-8000-000000000001', 'ana');
 select tests.create_user('bbbbbbbb-0000-4000-8000-000000000002', 'ben');
 select tests.create_user('cccccccc-0000-4000-8000-000000000003', 'cara');
 select tests.create_user('dddddddd-0000-4000-8000-000000000004', 'dan');
+select tests.create_user('eeeeeeee-0000-4000-8000-000000000005', 'eve');
 
 -- ---------------------------------------------------------------------------------------------
 -- Cache fills run as the service role
@@ -258,6 +259,7 @@ select is(
 -- A check-in earlier than the cooldown no longer blocks.
 reset role;
 update public.food_check_ins set created_at = now() - interval '5 hours' where place_id = 'place-a';
+update private.food_check_in_cooldowns set last_at = now() - interval '5 hours' where place_id = 'place-a';
 set local role service_role;
 select is(
   tests.check_in('aaaaaaaa-0000-4000-8000-000000000001', 'place-a') ->> 'visits_here',
@@ -325,6 +327,49 @@ select is(
   tests.check_in('cccccccc-0000-4000-8000-000000000003', 'place-b') ->> 'reason',
   'daily',
   'deleting check-ins does not give back daily allowance'
+);
+
+-- ---------------------------------------------------------------------------------------------
+-- Deleting a check-in does not lift the cooldown
+-- ---------------------------------------------------------------------------------------------
+
+select is(
+  tests.check_in('eeeeeeee-0000-4000-8000-000000000005', 'place-a') ->> 'status',
+  'ok',
+  'eve checks in'
+);
+reset role;
+select tests.login('eeeeeeee-0000-4000-8000-000000000005');
+set local role authenticated;
+delete from public.food_check_ins where place_id = 'place-a';
+select is((select count(*)::integer from public.food_check_ins), 0, 'eve deletes her check-in');
+reset role;
+set local role service_role;
+select is(
+  tests.check_in('eeeeeeee-0000-4000-8000-000000000005', 'place-a') - 'retry_at',
+  '{"status": "rate_limited", "reason": "cooldown"}'::jsonb,
+  'checking in again at once is still refused after the check-in is deleted'
+);
+select is(
+  (tests.check_in('eeeeeeee-0000-4000-8000-000000000005', 'place-a') ->> 'retry_at')::timestamptz,
+  now() + interval '4 hours',
+  'the cooldown still runs from the deleted check-in'
+);
+reset role;
+select tests.login('eeeeeeee-0000-4000-8000-000000000005');
+set local role authenticated;
+select throws_ok(
+  $$select count(*) from private.food_check_in_cooldowns$$,
+  '42501', null, 'members cannot read or clear the cooldown ledger'
+);
+reset role;
+update private.food_check_in_cooldowns set last_at = now() - interval '5 hours'
+where user_id = 'eeeeeeee-0000-4000-8000-000000000005';
+select is(private.job_purge_food_map(), 1, 'the purge drops cooldown entries older than four hours');
+select is(
+  (select count(*)::integer from private.food_check_in_cooldowns where user_id = 'eeeeeeee-0000-4000-8000-000000000005'),
+  0,
+  'no cooldown entry is kept past the cooldown'
 );
 
 -- ---------------------------------------------------------------------------------------------

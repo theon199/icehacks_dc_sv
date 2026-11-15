@@ -10,6 +10,9 @@
 --   * food_region_claims: a member claimed a region by checking in at every current spot. A claim
 --     is permanent: a later change to the region's spot list never removes it.
 --   * private.food_map_cells: which geohash-5 cells have had their regions filled, and until when.
+--   * private.food_check_in_cooldowns: when a member last checked in at a place, for the 4-hour
+--     cooldown. Members cannot read or delete it, so deleting a check-in never lifts the cooldown.
+--     Rows past the cooldown are purged hourly.
 --
 -- Clients only read (RLS) and delete their own check-ins. Every write goes through the
 -- food-map and food-check-in edge functions, which call the service-role RPCs below; the
@@ -166,6 +169,17 @@ create table private.food_map_cells (
   expires_at timestamptz not null
 );
 
+-- The per-place cooldown ledger. food_check_ins cannot serve here, because members may delete
+-- their check-ins. One row per member and place; a row older than the cooldown has no effect and
+-- is purged hourly, so a place a member visited is kept here for at most about five hours.
+create table private.food_check_in_cooldowns (
+  user_id uuid not null references auth.users on delete cascade,
+  place_id text not null constraint food_check_in_cooldowns_place_length check (char_length(place_id) between 1 and 300),
+  last_at timestamptz not null,
+  primary key (user_id, place_id)
+);
+create index food_check_in_cooldowns_last_at_idx on private.food_check_in_cooldowns (last_at);
+
 -- Google place content found by the places search, looked up by place id at check-in.
 create index places_cache_place_ids_idx on public.places_cache using gin ((payload -> 'places') jsonb_path_ops);
 
@@ -182,6 +196,8 @@ alter table public.food_check_ins
 alter table public.food_region_claims
   enable row level security;
 alter table private.food_map_cells
+  enable row level security;
+alter table private.food_check_in_cooldowns
   enable row level security;
 
 create policy food_regions_select_members
@@ -210,7 +226,8 @@ create policy food_region_claims_select_own
   for select to authenticated
   using (user_id = (select auth.uid()));
 
--- private.food_map_cells has no policies: only the RPCs below touch it.
+-- private.food_map_cells and private.food_check_in_cooldowns have no policies: only the RPCs
+-- below touch them.
 
 grant select on public.food_regions, public.food_region_spots, public.food_region_claims to authenticated;
 grant select, delete on public.food_check_ins to authenticated;
@@ -527,7 +544,8 @@ $$;
 -- Records a check-in the food-check-in function has verified (distance, place position) and
 -- evaluates the region claim. Limits, counted per member under one lock so parallel requests
 -- are taken one after another:
---   * cooldown: one check-in per place every 4 hours (from the member's check-ins);
+--   * cooldown: one check-in per place every 4 hours, from private.food_check_in_cooldowns so
+--     deleting a check-in never lifts it;
 --   * daily: 12 check-ins in any 24 hours, counted in private.rate_events so deleting check-ins
 --     never frees allowance.
 -- A refused check-in returns {status: 'rate_limited', reason: 'cooldown' | 'daily', retry_at}
@@ -584,9 +602,9 @@ begin
 
   perform private.rate_lock(p_user_id, 'food_check_in');
 
-  select max(c.created_at) into v_last
-  from public.food_check_ins c
-  where c.user_id = p_user_id and c.place_id = p_place_id;
+  select k.last_at into v_last
+  from private.food_check_in_cooldowns k
+  where k.user_id = p_user_id and k.place_id = p_place_id;
   if v_last is not null and v_last > now() - c_cooldown then
     v_cooldown_until := v_last + c_cooldown;
   end if;
@@ -629,6 +647,9 @@ begin
   )
   returning id into v_check_in_id;
   perform private.record_rate(p_user_id, 'food_check_in');
+  insert into private.food_check_in_cooldowns as k (user_id, place_id, last_at)
+  values (p_user_id, p_place_id, now())
+  on conflict (user_id, place_id) do update set last_at = excluded.last_at;
 
   if v_region_id is not null then
     select
@@ -935,6 +956,7 @@ $$;
 --   * expired spots are deleted (their region is refilled on the next map view);
 --   * check-ins past place_cached_until lose their place name and position, but are kept, so
 --     visits, progress and claims stay as they were.
+-- Cooldown entries older than the 4-hour cooldown no longer matter and are deleted.
 -- Regions are never deleted, so claims keep their region.
 create function private.job_purge_food_map()
 returns integer
@@ -945,6 +967,7 @@ as $$
 declare
   v_spots integer;
   v_check_ins integer;
+  v_cooldowns integer;
 begin
   delete from public.food_region_spots s where s.expires_at < now();
   get diagnostics v_spots = row_count;
@@ -952,7 +975,9 @@ begin
   set place_name = null, place_lat = null, place_lng = null
   where c.place_name is not null and c.place_cached_until <= now();
   get diagnostics v_check_ins = row_count;
-  return v_spots + v_check_ins;
+  delete from private.food_check_in_cooldowns k where k.last_at <= now() - interval '4 hours';
+  get diagnostics v_cooldowns = row_count;
+  return v_spots + v_check_ins + v_cooldowns;
 end;
 $$;
 
