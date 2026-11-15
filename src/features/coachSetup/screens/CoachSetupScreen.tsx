@@ -68,7 +68,6 @@ export function CoachSetupScreen({ recipeId }: CoachSetupScreenProps) {
 
   return (
     <Screen
-      safeTop
       testID="coach-setup"
       footer={
         <Button
