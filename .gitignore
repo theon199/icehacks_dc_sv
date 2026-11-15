@@ -30,6 +30,10 @@ tools/data/.cache
 *.mobileprovision
 *.pem
 
+# git worktrees and agent checkouts kept inside the repo
+.worktrees/
+.claude/worktrees/
+
 # logs and OS noise
 *.log
 npm-debug.*
