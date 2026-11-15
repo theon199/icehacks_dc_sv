@@ -62,14 +62,25 @@ function decodeSegment(segment: string): string | null {
   }
 }
 
+/** The two screens a cook session runs on: cook mode, or the hands-free cooking coach. */
+export type CookSessionScreen = 'cook' | 'coach';
+
+export interface CookSessionLink {
+  /** The recipe id, decoded. */
+  id: string;
+  screen: CookSessionScreen;
+}
+
 /**
- * The recipe id in an in-app cook route such as `/cook/mealdb%3A1`, decoded, or null when the
- * route is anything else or its escapes are malformed.
+ * The recipe and screen of an in-app cook route such as `/cook/mealdb%3A1` (cook mode) or
+ * `/cook/mealdb%3A1/coach` (the coach), or null when the route is anything else or its escapes
+ * are malformed.
  */
-export function cookSessionIdFromUrl(url: string): string | null {
-  const match = /^\/cook\/([^/?#]+)\/?$/.exec(url);
+export function cookSessionFromUrl(url: string): CookSessionLink | null {
+  const match = /^\/cook\/([^/?#]+)(\/coach)?\/?$/.exec(url);
   const id = match?.[1] ? decodeSegment(match[1]) : null;
-  return id || null;
+  if (!id) return null;
+  return { id, screen: match?.[2] ? 'coach' : 'cook' };
 }
 
 /**
@@ -105,11 +116,18 @@ export type CookSessionPlacement =
   /** No screen for this session is open. */
   | 'absent';
 
-const SESSION_ROUTE = /^cook\/\[id\](?:\/index)?$/;
+const SESSION_ROUTES: Readonly<Record<CookSessionScreen, RegExp>> = {
+  cook: /^cook\/\[id\](?:\/index)?$/,
+  coach: /^cook\/\[id\]\/coach$/,
+};
 const FINISH_ROUTE = /^cook\/\[id\]\/done$/;
 
 function isCookRoute(route: NavRouteLike): boolean {
-  return SESSION_ROUTE.test(route.name) || FINISH_ROUTE.test(route.name);
+  return (
+    SESSION_ROUTES.cook.test(route.name) ||
+    SESSION_ROUTES.coach.test(route.name) ||
+    FINISH_ROUTE.test(route.name)
+  );
 }
 
 function isRouteFor(route: NavRouteLike, pattern: RegExp, recipeId: string): boolean {
@@ -120,7 +138,8 @@ function isRouteFor(route: NavRouteLike, pattern: RegExp, recipeId: string): boo
 }
 
 /**
- * Finds the cook session for `recipeId` along the focused path of `state`. Only the focused screen
+ * Finds the cook session for `recipeId` on `screen` (cook mode by default, or the coach) along
+ * the focused path of `state`. The other session screen counts as another cook screen. Only the focused screen
  * and the screens below it count: a session in another tab or a dismissed screen does not.
  *
  * Going back to a session pops to the focused screen when it has the session's route name, or else
@@ -133,7 +152,9 @@ function isRouteFor(route: NavRouteLike, pattern: RegExp, recipeId: string): boo
 export function findCookSession(
   state: NavStateLike | undefined,
   recipeId: string,
+  screen: CookSessionScreen = 'cook',
 ): CookSessionPlacement {
+  const sessionRoute = SESSION_ROUTES[screen];
   // Screens below the focus, one list per navigator from the outermost in, each bottom to top.
   const below: (readonly NavRouteLike[])[] = [];
   let focusedLeaf: NavRouteLike | null = null;
@@ -153,7 +174,7 @@ export function findCookSession(
   let blocked = false;
   if (focusedLeaf && isCookRoute(focusedLeaf)) {
     const ownFlow =
-      isRouteFor(focusedLeaf, SESSION_ROUTE, recipeId) ||
+      isRouteFor(focusedLeaf, sessionRoute, recipeId) ||
       isRouteFor(focusedLeaf, FINISH_ROUTE, recipeId);
     if (ownFlow) return 'onScreen';
     blocked = true;
@@ -163,7 +184,7 @@ export function findCookSession(
     for (let i = routes.length - 1; i >= 0; i -= 1) {
       const route = routes[i];
       if (!route || !isCookRoute(route)) continue;
-      if (isRouteFor(route, SESSION_ROUTE, recipeId)) {
+      if (isRouteFor(route, sessionRoute, recipeId)) {
         return blocked ? 'behindAnotherSession' : 'underneath';
       }
       blocked = true;

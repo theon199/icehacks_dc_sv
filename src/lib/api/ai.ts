@@ -412,6 +412,36 @@ export const COACH_LIMITS = {
   answerMaxChars: 400,
 } as const;
 
+/**
+ * Kinds of meat, fish and egg among a recipe's catalog ingredients. `unknown` stands for an
+ * ingredient the catalog could not classify; the coach treats it as meat.
+ */
+export const COACH_SAFETY_CATEGORIES = [
+  'poultry',
+  'minced_meat',
+  'whole_meat',
+  'fish',
+  'shellfish',
+  'egg',
+  'unknown',
+] as const;
+export type CoachSafetyCategory = (typeof COACH_SAFETY_CATEGORIES)[number];
+
+/** What the catalog knows about the recipe being cooked. */
+export interface CoachFacts {
+  safety: CoachSafetyCategory[];
+  /**
+   * True only when every ingredient line matched a loaded catalog ingredient and none is
+   * poultry, meat, fish, shellfish or egg. Only then may the coach say something looks right.
+   */
+  plant_only: boolean;
+}
+
+export const coachFactsSchema = z.strictObject({
+  safety: z.array(z.enum(COACH_SAFETY_CATEGORIES)).max(COACH_SAFETY_CATEGORIES.length),
+  plant_only: z.boolean(),
+});
+
 export interface CoachRequest {
   recipe: {
     id: string;
@@ -428,6 +458,8 @@ export interface CoachRequest {
   image?: string;
   diet: string[];
   allergens: AllergenId[];
+  /** Left out when the app has no catalog data; the coach then treats the recipe as meat. */
+  facts?: CoachFacts;
 }
 
 /** What `askCoach` may send; the bounds match the `coach` function's own input check. */
@@ -449,6 +481,7 @@ export const coachRequestSchema = z.strictObject({
   image: base64ImageSchema.optional(),
   diet: z.array(z.string().min(1).max(40)).max(10),
   allergens: z.array(allergenIdSchema).max(10),
+  facts: coachFactsSchema.optional(),
 });
 
 export const coachVerdictSchema = z.enum(['yes', 'not_yet', 'unsure', 'not_visible']);
@@ -466,7 +499,8 @@ export const coachResponseSchema = z.object({
       r: z.number().min(0.02).max(0.5),
     })
     .nullable(),
-  quota: aiQuotaSchema,
+  /** Null when the answer was certain without the AI, so no question was spent. */
+  quota: aiQuotaSchema.nullable(),
 });
 export type CoachResponse = z.infer<typeof coachResponseSchema>;
 

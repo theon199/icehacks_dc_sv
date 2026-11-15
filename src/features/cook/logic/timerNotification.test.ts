@@ -5,6 +5,9 @@ describe('cookTimerTapUrl', () => {
     expect(cookTimerTapUrl({ kind: COOK_TIMER_NOTIFICATION_KIND, url: '/cook/mealdb%3A1' })).toBe(
       '/cook/mealdb%3A1',
     );
+    expect(
+      cookTimerTapUrl({ kind: COOK_TIMER_NOTIFICATION_KIND, url: '/cook/mealdb%3A1/coach' }),
+    ).toBe('/cook/mealdb%3A1/coach');
   });
 
   it('ignores other notifications and anything that is not a cook route', () => {
@@ -17,5 +20,8 @@ describe('cookTimerTapUrl', () => {
       cookTimerTapUrl({ kind: COOK_TIMER_NOTIFICATION_KIND, url: 'https://example.org/cook/x' }),
     ).toBeNull();
     expect(cookTimerTapUrl({ kind: COOK_TIMER_NOTIFICATION_KIND, url: '/cook/x/done' })).toBeNull();
+    expect(
+      cookTimerTapUrl({ kind: COOK_TIMER_NOTIFICATION_KIND, url: '/cook/x/coach/y' }),
+    ).toBeNull();
   });
 });
