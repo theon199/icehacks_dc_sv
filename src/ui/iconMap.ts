@@ -78,6 +78,9 @@ export const iconMap: Partial<Record<SFSymbol, IoniconName>> = {
   'hand.thumbsup': 'thumbs-up-outline',
   'hand.thumbsdown': 'thumbs-down-outline',
   flag: 'flag-outline',
+  'flag.fill': 'flag',
+  trophy: 'trophy-outline',
+  scope: 'locate-outline',
   rosette: 'ribbon-outline',
   'square.on.square': 'copy-outline',
 

@@ -30,6 +30,8 @@ const textPairs: [keyof Palette, keyof Palette][] = [
   ['onDanger', 'danger'],
   ['onDanger', 'dangerPressed'],
   ['onDangerSoft', 'dangerSoft'],
+  ['onTerritory', 'territory'],
+  ['onTerritorySoft', 'territorySoft'],
   ['textInverse', 'text'],
 ];
 

@@ -8,7 +8,8 @@ import { Text } from './Text';
 import { useTheme } from './ThemeProvider';
 import type { Palette } from './tokens';
 
-export type ChipTone = 'neutral' | 'primary' | 'accent';
+/** `highlight` is the lime tag, for the one thing a card wants noticed. */
+export type ChipTone = 'neutral' | 'primary' | 'accent' | 'highlight';
 
 export interface ChipProps {
   label: string;
@@ -24,6 +25,7 @@ const chipColors: Record<ChipTone, { bg: keyof Palette; fg: keyof Palette }> = {
   neutral: { bg: 'surfaceSunken', fg: 'textMuted' },
   primary: { bg: 'primarySoft', fg: 'onPrimarySoft' },
   accent: { bg: 'accentSoft', fg: 'onAccentSoft' },
+  highlight: { bg: 'highlight', fg: 'onHighlight' },
 };
 
 /** Compact label or action, e.g. a cuisine tag or a reason a recipe fits. */

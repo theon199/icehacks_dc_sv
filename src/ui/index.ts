@@ -60,7 +60,12 @@ export {
   type SheetRelease,
 } from './sheetMotion';
 export { Skeleton, SkeletonGroup, type SkeletonProps } from './Skeleton';
-export { TabHeader, useTabHeaderHeight, type TabHeaderProps } from './TabHeader';
+export {
+  TabHeader,
+  useTabHeaderHeight,
+  type TabHeaderProps,
+  type TabHeaderTitleMenu,
+} from './TabHeader';
 export { Text, type TextProps, type TextTone } from './Text';
 export { TextField, type TextFieldProps } from './TextField';
 export { ThemeProvider, useTheme } from './ThemeProvider';

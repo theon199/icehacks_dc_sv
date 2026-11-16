@@ -48,6 +48,15 @@ export interface Palette {
   onDanger: string;
   dangerSoft: string;
   onDangerSoft: string;
+  /** Food map: neighbourhoods someone eats in and claims, the one cool colour in the palette. */
+  territory: string;
+  onTerritory: string;
+  /** A claimed neighbourhood's edge and label. */
+  territoryDeep: string;
+  territorySoft: string;
+  onTerritorySoft: string;
+  /** The dashed edge of a neighbourhood not started yet. */
+  territoryLine: string;
   focus: string;
   scrim: string;
   /** Hairline edge of a solid (non-glass) floating control; real glass draws its own edge. */
@@ -102,6 +111,12 @@ export const palettes: Record<ColorScheme, Palette> = {
     onDanger: '#FFFFFF',
     dangerSoft: '#F9E7E5',
     onDangerSoft: '#7D1A14',
+    territory: '#2D5BE3',
+    onTerritory: '#FFFFFF',
+    territoryDeep: '#1F44B8',
+    territorySoft: '#E6EDFD',
+    onTerritorySoft: '#1F44B8',
+    territoryLine: '#8FA9EE',
     focus: '#17191B',
     scrim: 'rgba(20, 20, 22, 0.42)',
     controlBorder: 'rgba(20, 20, 22, 0.08)',
@@ -148,6 +163,12 @@ export const palettes: Record<ColorScheme, Palette> = {
     onDanger: '#3D0A06',
     dangerSoft: '#40201C',
     onDangerSoft: '#FFC9C2',
+    territory: '#7B9BF5',
+    onTerritory: '#0B1430',
+    territoryDeep: '#A9BFFA',
+    territorySoft: '#1C2647',
+    onTerritorySoft: '#C9D6FB',
+    territoryLine: '#4E66B3',
     focus: '#D0F64A',
     scrim: 'rgba(0, 0, 0, 0.6)',
     controlBorder: 'rgba(255, 255, 255, 0.12)',

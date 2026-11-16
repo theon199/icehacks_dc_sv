@@ -23,6 +23,7 @@ import { selectCookEntries, selectSavedIds, useCookLogStore, useSavedStore } fro
 
 import type { PostKind, PublishedComment, PublishedPost } from './api/schemas';
 import { recentCookedRecipeIds } from './logic/myRecipes';
+export { distanceUnitFor, formatDistance, type DistanceUnit } from '@/features/nearby';
 export { NotificationBell } from '@/features/notifications';
 export { ProfileButton } from '@/features/shell';
 

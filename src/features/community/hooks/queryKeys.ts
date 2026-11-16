@@ -43,6 +43,12 @@ export const communityKeys = {
     [...socialScope(viewer), 'like', postId] as const,
   saveMutation: (viewer: Viewer, postId: string) =>
     [...socialScope(viewer), 'save', postId] as const,
+  /** Food map answers are the caller's own progress and check-ins, so they are viewer-scoped. */
+  foodMaps: (viewer: Viewer) => [...socialScope(viewer), 'food-map'] as const,
+  foodMap: (viewer: Viewer, cell: string) => [...socialScope(viewer), 'food-map', cell] as const,
+  /** A short-lived place photo link; kept in memory only. */
+  placePhoto: (viewer: Viewer, photoName: string, maxWidth: number) =>
+    [...socialScope(viewer), 'place-photo', photoName, maxWidth] as const,
   catalog: [ROOT, CATALOG] as const,
   recipes: (ids: readonly string[]) => [ROOT, CATALOG, 'recipes', ...ids] as const,
   recipeSearch: (text: string) => [ROOT, CATALOG, 'search', text] as const,

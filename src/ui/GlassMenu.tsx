@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { Modal, Pressable, StyleSheet, useWindowDimensions, type View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -18,17 +18,22 @@ import { fontFamily, radii, space } from './tokens';
 /** Gap between the trigger and the menu that drops out of it. */
 const MENU_GAP = 6;
 const MENU_WIDTH = 208;
+/** A menu whose rows carry a detail line needs the room for it. */
+const MENU_WIDTH_DETAILED = 248;
 const OPEN_MS = 180;
 const CLOSE_MS = 120;
 /** The menu grows from this scale, out of the trigger's corner. */
 const START_SCALE = 0.6;
 /** Where the menu opens before the trigger is measured (and stays when it cannot be). */
 const FALLBACK_ANCHOR: GlassMenuAnchor = { top: 112, right: space.lg };
+const FALLBACK_ANCHOR_LEFT: GlassMenuAnchor = { top: 112, left: space.lg };
 
 export interface GlassMenuItem {
   /** Stable key, unique within the menu. */
   key: string;
   label: string;
+  /** A short muted line under the label ("Where you eat, and what to try"). */
+  detail?: string;
   icon?: IconName;
   /** The current choice: drawn bold with a checkmark and announced as selected. */
   selected?: boolean;
@@ -40,16 +45,16 @@ export interface GlassMenuItem {
   onPress: () => void;
 }
 
-export interface GlassMenuAnchor {
-  top: number;
-  right: number;
-}
+/** Where the menu sits: under its trigger, aligned to the trigger's right edge or its left. */
+export type GlassMenuAnchor =
+  | { top: number; right: number; left?: undefined }
+  | { top: number; left: number; right?: undefined };
 
 export interface GlassMenuController {
   /** Attach to a non-collapsable `View` wrapping the trigger: `collapsable={false}`. */
   triggerRef: RefObject<View | null>;
   open: boolean;
-  /** Opens the menu under the trigger, right-aligned to it. */
+  /** Opens the menu under the trigger, aligned to it on the side chosen in `useGlassMenu`. */
   show: () => void;
   /** Closes at once, without the exit animation. */
   dismiss: () => void;
@@ -61,7 +66,9 @@ export interface GlassMenuController {
  * call `menu.show` from its `onPress`, and pass `accessibilityState={{ expanded: menu.open }}` to
  * the trigger.
  */
-export function useGlassMenu(): GlassMenuController {
+export function useGlassMenu({
+  align = 'right',
+}: { align?: 'left' | 'right' } = {}): GlassMenuController {
   const triggerRef = useRef<View>(null);
   const { width: windowWidth } = useWindowDimensions();
   const [anchor, setAnchor] = useState<GlassMenuAnchor | null>(null);
@@ -70,15 +77,17 @@ export function useGlassMenu(): GlassMenuController {
     // Open at once where a header keeps its controls, then snap to the measured spot. The
     // measurement lands while the options are still transparent; a host that cannot measure
     // (tests) keeps the estimate.
-    setAnchor(FALLBACK_ANCHOR);
+    setAnchor(align === 'left' ? FALLBACK_ANCHOR_LEFT : FALLBACK_ANCHOR);
     triggerRef.current?.measureInWindow((x, y, width, height) => {
       if (width === 0 && height === 0) return;
-      setAnchor({
-        top: y + height + MENU_GAP,
-        right: Math.max(space.md, windowWidth - (x + width)),
-      });
+      const top = y + height + MENU_GAP;
+      setAnchor(
+        align === 'left'
+          ? { top, left: Math.max(space.md, x) }
+          : { top, right: Math.max(space.md, windowWidth - (x + width)) },
+      );
     });
-  }, [windowWidth]);
+  }, [align, windowWidth]);
   const dismiss = useCallback(() => setAnchor(null), []);
 
   return { triggerRef, open: anchor !== null, show, dismiss, anchor };
@@ -146,6 +155,7 @@ export function GlassMenu({ controller, items, dismissLabel, testID }: GlassMenu
     transform: [{ scale: START_SCALE + (1 - START_SCALE) * progress.get() }],
   }));
   const optionsStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
+  const detailed = items.some((item) => item.detail !== undefined);
 
   return (
     <Modal animationType="none" transparent visible={open} onRequestClose={() => close()}>
@@ -159,7 +169,10 @@ export function GlassMenu({ controller, items, dismissLabel, testID }: GlassMenu
         <Animated.View
           style={[
             styles.menu,
-            { top: anchor.top, right: anchor.right },
+            anchor.left === undefined
+              ? { top: anchor.top, right: anchor.right }
+              : { top: anchor.top, left: anchor.left, transformOrigin: 'top left' },
+            detailed && styles.menuDetailed,
             { ...theme.elevation.high, shadowColor: theme.colors.shadow },
             menuStyle,
           ]}
@@ -176,7 +189,9 @@ export function GlassMenu({ controller, items, dismissLabel, testID }: GlassMenu
                   <Pressable
                     key={item.key}
                     accessibilityRole="button"
-                    accessibilityLabel={item.label}
+                    accessibilityLabel={
+                      item.detail === undefined ? item.label : `${item.label}, ${item.detail}`
+                    }
                     onPress={() => close(item.onPress)}
                     style={({ pressed }) => [
                       styles.option,
@@ -191,13 +206,28 @@ export function GlassMenu({ controller, items, dismissLabel, testID }: GlassMenu
                     {...(item.testID === undefined ? {} : { testID: item.testID })}
                   >
                     {item.icon ? <Icon name={item.icon} size={18} color={tone} /> : null}
-                    <Text
-                      variant="headline"
-                      color={tone}
-                      style={item.selected ? styles.selected : styles.label}
-                    >
-                      {item.label}
-                    </Text>
+                    {item.detail === undefined ? (
+                      <Text
+                        variant="headline"
+                        color={tone}
+                        style={item.selected ? styles.selected : styles.label}
+                      >
+                        {item.label}
+                      </Text>
+                    ) : (
+                      <View style={styles.copy}>
+                        <Text
+                          variant="headline"
+                          color={tone}
+                          style={item.selected ? styles.selected : styles.label}
+                        >
+                          {item.label}
+                        </Text>
+                        <Text variant="caption" color="textMuted">
+                          {item.detail}
+                        </Text>
+                      </View>
+                    )}
                     {item.selected ? <Icon name="checkmark" size={18} color="text" /> : null}
                   </Pressable>
                 );
@@ -217,6 +247,8 @@ const styles = StyleSheet.create({
     transformOrigin: 'top right',
     borderRadius: radii.lg,
   },
+  menuDetailed: { width: MENU_WIDTH_DETAILED },
+  copy: { flex: 1, paddingVertical: space.sm },
   surface: { paddingVertical: space.xs, borderWidth: 1 },
   option: {
     minHeight: 48,

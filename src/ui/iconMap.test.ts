@@ -34,6 +34,7 @@ const NOT_ICONS = new Set([
   'eyebrow',
   'info',
   'italic',
+  'left',
   'link',
   'network',
   'note',

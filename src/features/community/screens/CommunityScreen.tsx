@@ -9,6 +9,7 @@ import { GlassIconButton, TabHeader, gutter, space, useTheme } from '@/ui';
 import { feedModeSchema, type FeedMode } from '../api/schemas';
 import type { Post } from '../api/types';
 import { CommunityStateCard } from '../components/CommunityStateCard';
+import { useCommunityViewMenu } from '../components/CommunityViewMenu';
 import { FeedEmpty, FeedError } from '../components/FeedEmpty';
 import { FeedModeButton } from '../components/FeedModeButton';
 import { PostCard } from '../components/PostCard';
@@ -33,7 +34,8 @@ const openCompose = () => router.push('/compose');
 
 /**
  * The Community tab: this week's most-cooked dishes, then the feed. Which feed (Following,
- * Popular, New) is chosen from the glass menu on the header's filter circle.
+ * Popular, New) is chosen from the glass menu on the header's filter circle; the title opens the
+ * food map instead.
  */
 export function CommunityScreen() {
   const theme = useTheme();
@@ -41,6 +43,7 @@ export function CommunityScreen() {
   const [mode, setMode] = useState<FeedMode>(readLastMode);
   const feed = useFeed(mode);
   const openMenu = usePostMenu();
+  const viewMenu = useCommunityViewMenu('feed');
   // Only a pull shows the spinner; background refetches stay quiet.
   const [isPulling, setIsPulling] = useState<boolean>(false);
 
@@ -97,7 +100,9 @@ export function CommunityScreen() {
   return (
     <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
       <TabHeader
-        title="Community"
+        title={viewMenu.title}
+        titleMenu={viewMenu.titleMenu}
+        titleMenuRef={viewMenu.titleMenuRef}
         testID="community-header"
         trailing={
           <>
@@ -113,6 +118,7 @@ export function CommunityScreen() {
           </>
         }
       />
+      {viewMenu.menu}
       <FlashList
         key={mode}
         data={feed.posts}

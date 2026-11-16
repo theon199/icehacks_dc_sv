@@ -1,9 +1,12 @@
+import { BlurView } from 'expo-blur';
 import { GlassContainer } from 'expo-glass-effect';
-import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import type { ReactNode, RefObject } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { withAlpha } from './color';
 import { hasLiquidGlass } from './glass';
+import { Icon } from './Icon';
 import {
   HEADER_CONTROL_SIZE,
   HEADER_TITLE_MAX_FONT_SCALE,
@@ -14,7 +17,19 @@ import {
 } from './layout';
 import { Text } from './Text';
 import { useTheme } from './ThemeProvider';
-import { space } from './tokens';
+import { radii, space } from './tokens';
+
+/** Makes the title a button that opens a menu, drawn with a chevron after it. */
+export interface TabHeaderTitleMenu {
+  onPress: () => void;
+  expanded: boolean;
+  accessibilityHint?: string;
+  testID?: string;
+}
+
+/** How much of the canvas a frosted header keeps over a map. */
+const FROST_ALPHA = 0.74;
+const CHEVRON_SIZE = 30;
 
 export interface TabHeaderProps {
   title: string;
@@ -24,6 +39,17 @@ export interface TabHeaderProps {
   trailing: ReactNode;
   /** Pin to the top over scrolling content, which then starts at `useTabHeaderHeight()`. */
   floating?: boolean;
+  /** The title opens a menu (Community's Feed and Food map). */
+  titleMenu?: TabHeaderTitleMenu;
+  /** The title menu's trigger ref (`useGlassMenu().triggerRef`), so it opens under the title. */
+  titleMenuRef?: RefObject<View | null>;
+  /** A row under the title row, inside the header's surface (the food map's stats). */
+  below?: ReactNode;
+  /**
+   * `frost` blurs what is behind a floating header (a map) instead of covering it with the opaque
+   * canvas.
+   */
+  surface?: 'canvas' | 'frost';
   testID?: string;
 }
 
@@ -53,10 +79,27 @@ export function TabHeader({
   leading,
   trailing,
   floating = false,
+  titleMenu,
+  titleMenuRef,
+  below,
+  surface = 'canvas',
   testID = 'tab-header',
 }: TabHeaderProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const frost = surface === 'frost';
+  const titleText = (
+    <Text
+      variant="title1"
+      accessibilityRole="header"
+      numberOfLines={1}
+      maxFontSizeMultiplier={HEADER_TITLE_MAX_FONT_SCALE}
+      style={titleMenu ? styles.titleInMenu : styles.title}
+      testID={`${testID}-title`}
+    >
+      {title}
+    </Text>
+  );
   return (
     <View
       testID={testID}
@@ -64,22 +107,47 @@ export function TabHeader({
         styles.header,
         {
           paddingTop: insets.top + HEADER_TOP_OFFSET,
-          backgroundColor: theme.colors.background,
+          backgroundColor: frost
+            ? withAlpha(theme.colors.background, FROST_ALPHA)
+            : theme.colors.background,
         },
+        frost && { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border },
         floating && styles.floating,
       ]}
     >
+      {frost ? (
+        <BlurView
+          intensity={40}
+          tint={theme.scheme === 'dark' ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       <View style={styles.row} testID={`${testID}-row`}>
-        <Text
-          variant="title1"
-          accessibilityRole="header"
-          numberOfLines={1}
-          maxFontSizeMultiplier={HEADER_TITLE_MAX_FONT_SCALE}
-          style={styles.title}
-          testID={`${testID}-title`}
-        >
-          {title}
-        </Text>
+        {titleMenu ? (
+          <View style={styles.title}>
+            <View ref={titleMenuRef} collapsable={false} style={styles.titleTrigger}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={title}
+                accessibilityState={{ expanded: titleMenu.expanded }}
+                onPress={titleMenu.onPress}
+                hitSlop={space.sm}
+                style={({ pressed }) => [styles.titleButton, pressed && styles.pressed]}
+                {...(titleMenu.accessibilityHint === undefined
+                  ? {}
+                  : { accessibilityHint: titleMenu.accessibilityHint })}
+                {...(titleMenu.testID === undefined ? {} : { testID: titleMenu.testID })}
+              >
+                {titleText}
+                <View style={[styles.chevron, { backgroundColor: theme.colors.hairline }]}>
+                  <Icon name={titleMenu.expanded ? 'chevron.up' : 'chevron.down'} size={17} />
+                </View>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          titleText
+        )}
         {leading}
         {/* One container lets neighbouring controls render as one material instead of each
             sampling the other's glass. Spacing 0 keeps them visually apart at rest. */}
@@ -91,6 +159,7 @@ export function TabHeader({
           <View style={styles.trailing}>{trailing}</View>
         )}
       </View>
+      {below}
     </View>
   );
 }
@@ -108,6 +177,17 @@ const styles = StyleSheet.create({
     height: HEADER_CONTROL_SIZE,
   },
   title: { flex: 1 },
+  titleInMenu: { flexShrink: 1 },
+  titleTrigger: { alignSelf: 'flex-start', maxWidth: '100%' },
+  titleButton: { flexDirection: 'row', alignItems: 'center', gap: space.xs + space.xxs },
+  pressed: { opacity: 0.6 },
+  chevron: {
+    width: CHEVRON_SIZE,
+    height: CHEVRON_SIZE,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   trailing: {
     flexDirection: 'row',
     alignItems: 'center',
