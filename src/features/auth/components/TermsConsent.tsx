@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
-import { Icon, PressableScale, Text, minTouchTarget, useTheme } from '@/ui';
+import { Icon, PressableScale, Text, fontFamily, minTouchTarget, useTheme } from '@/ui';
 
 import { night } from './NightTheme';
 
@@ -57,15 +57,38 @@ function LegalLink({
   );
 }
 
-/** Footnote under provider buttons: continuing with Apple or Google creates an account on terms. */
+/**
+ * Footnote under provider buttons: continuing with Apple or Google creates an account on terms.
+ * One sentence with the two documents as inline links, as on the Aptiva sheet.
+ */
 export function LegalNote() {
+  const { openTerms, openPrivacy } = useLegalLinks();
   return (
-    <View>
-      <Text variant="footnote" align="center" style={styles.muted}>
-        By continuing you agree to Famara’s Terms of Use and Privacy Policy.
+    <Text variant="footnote" align="center" style={styles.muted}>
+      By continuing you agree to the Famara{' '}
+      <Text
+        testID="legal-terms"
+        variant="footnote"
+        accessibilityRole="link"
+        accessibilityLabel="Read the Terms of Use"
+        onPress={openTerms}
+        style={[styles.linkText, styles.inlineLink]}
+      >
+        Terms of Use
+      </Text>{' '}
+      and{' '}
+      <Text
+        testID="legal-privacy"
+        variant="footnote"
+        accessibilityRole="link"
+        accessibilityLabel="Read the Privacy Policy"
+        onPress={openPrivacy}
+        style={[styles.linkText, styles.inlineLink]}
+      >
+        Privacy Policy
       </Text>
-      <LegalLinks />
-    </View>
+      .
+    </Text>
   );
 }
 
@@ -148,6 +171,7 @@ const styles = StyleSheet.create({
   // Lines the links up under the label text: box width plus row gap, less the link padding.
   checkboxLinks: { alignItems: 'flex-start', marginLeft: 28 },
   linkText: { color: night.ink, textDecorationLine: 'underline' },
+  inlineLink: { fontFamily: fontFamily.textSemiBold },
   muted: { color: night.inkMuted },
   onNight: { color: night.ink },
   link: {

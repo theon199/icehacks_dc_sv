@@ -21,7 +21,7 @@ const startProvider: Record<Provider, () => Promise<ProviderResult>> = {
 };
 
 export interface ProviderButtonsProps {
-  /** Someone logging back in sees "Sign in with Apple"; a newcomer sees "Continue with Apple". */
+  /** Someone logging back in sees "Sign in with Apple"; a newcomer sees "Sign up with Apple". */
   intent: 'log-in' | 'get-started';
   /** More ways in, drawn under the providers and above any provider failure. */
   children?: ReactNode;
@@ -57,7 +57,7 @@ export function ProviderButtons({ intent, children }: ProviderButtonsProps) {
   const appleKind =
     intent === 'log-in'
       ? AppleAuthenticationButtonType.SIGN_IN
-      : AppleAuthenticationButtonType.CONTINUE;
+      : AppleAuthenticationButtonType.SIGN_UP;
 
   return (
     <View style={styles.stack}>
