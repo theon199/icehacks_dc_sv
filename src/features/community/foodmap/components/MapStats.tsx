@@ -60,7 +60,7 @@ function Stat({
  */
 export function MapStats({ view, onAchievements, onTarget }: MapStatsProps) {
   const { glow, target } = view;
-  const regions = view.regions.length;
+  const regions = view.claimable.length;
   return (
     <ScrollView
       horizontal
@@ -78,15 +78,17 @@ export function MapStats({ view, onAchievements, onTarget }: MapStatsProps) {
         onPress={onAchievements}
         testID="food-map-glow"
       />
-      <Stat
-        icon="flag"
-        dot="territory"
-        ink="onTerritory"
-        label={`${view.claimedHere} of ${regions}`}
-        accessibilityLabel={`${view.claimedHere} of ${regions} neighbourhoods claimed. Open achievements`}
-        onPress={onAchievements}
-        testID="food-map-claims"
-      />
+      {regions === 0 ? null : (
+        <Stat
+          icon="flag"
+          dot="territory"
+          ink="onTerritory"
+          label={`${view.claimedHere} of ${regions}`}
+          accessibilityLabel={`${view.claimedHere} of ${regions} neighbourhoods claimed. Open achievements`}
+          onPress={onAchievements}
+          testID="food-map-claims"
+        />
+      )}
       {target ? (
         <Stat
           icon="scope"

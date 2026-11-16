@@ -67,12 +67,12 @@ export function AchievementsSheet({ visible, view, onClose }: AchievementsSheetP
             Neighbourhoods
           </Text>
           <View style={[styles.card, styles.list, card]}>
-            {view.regions.length === 0 ? (
+            {view.claimable.length === 0 ? (
               <Text variant="footnote" color="textMuted" style={styles.emptyRow}>
-                No neighbourhoods around you yet.
+                No neighbourhoods with healthy spots around you yet.
               </Text>
             ) : (
-              view.regions.map((region, index) => {
+              view.claimable.map((region, index) => {
                 const claimed = region.state === 'claimed';
                 const status = claimed
                   ? 'Claimed'
@@ -84,7 +84,7 @@ export function AchievementsSheet({ visible, view, onClose }: AchievementsSheetP
                     key={region.id}
                     style={[
                       styles.row,
-                      index < view.regions.length - 1 && {
+                      index < view.claimable.length - 1 && {
                         borderBottomWidth: StyleSheet.hairlineWidth,
                         borderColor: colors.hairline,
                       },

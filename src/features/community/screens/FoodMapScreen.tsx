@@ -94,7 +94,7 @@ export function FoodMapScreen({ location = expoFoodMapLocation }: FoodMapScreenP
   const checkIn = useCheckIn(location);
   const { mutate } = checkIn;
   const claimedHere = view?.claimedHere ?? 0;
-  const regionCount = view?.regions.length ?? 0;
+  const regionCount = view?.claimable.length ?? 0;
   const startCheckIn = useCallback(
     (spot: SpotView) => {
       haptics.impact('medium');

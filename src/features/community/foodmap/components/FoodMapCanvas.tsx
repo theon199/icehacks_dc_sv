@@ -6,6 +6,7 @@ import { Icon, Text, fontFamily, useTheme } from '@/ui';
 import { withAlpha } from '@/ui/color';
 
 import {
+  isClaimable,
   regionFillOpacity,
   type CheckInDot,
   type MapPoint,
@@ -30,6 +31,11 @@ const CAMERA_MS = 650;
 const START_DELTA = 0.016;
 const PIN = 26;
 const PIN_SELECTED = 34;
+const PIN_NAME_HEIGHT = 28;
+const PIN_NAME_GAP = 4;
+const HALO = 50;
+/** From the pin's centre to the name's centre: half the halo, a gap, half the name. */
+const NAME_LIFT = HALO / 2 + PIN_NAME_GAP + PIN_NAME_HEIGHT / 2;
 
 function dotSize(visits: number): number {
   return 2 * (4 + Math.min(visits, 8) * 0.5);
@@ -88,8 +94,11 @@ function FoodMapCanvasView({
       testID="food-map-canvas"
     >
       {regions.map((region) => {
+        // A region with no spots is only drawn while recent visits warm it.
+        if (!isClaimable(region) && region.shade === 0) return null;
         const claimed = region.state === 'claimed';
-        const open = region.state === 'open' || region.state === 'empty';
+        const open = region.state === 'open';
+        const edgeless = region.state === 'empty';
         return (
           <Polygon
             key={region.id}
@@ -99,7 +108,7 @@ function FoodMapCanvasView({
             strokeColor={
               claimed ? colors.territoryDeep : open ? colors.territoryLine : colors.territory
             }
-            strokeWidth={claimed ? 3 : open ? 1.8 : 2}
+            strokeWidth={edgeless ? 0 : claimed ? 3 : open ? 1.8 : 2}
             {...(open ? { lineDashPattern: [6, 5] } : {})}
             tappable
             onPress={onRegionPress}
@@ -133,7 +142,7 @@ function FoodMapCanvasView({
         );
       })}
 
-      {regions.map((region) => (
+      {regions.filter(isClaimable).map((region) => (
         <Marker
           key={`label-${region.id}`}
           coordinate={region.labelAt}
@@ -184,48 +193,60 @@ function FoodMapCanvasView({
             // A new key when the selection changes redraws the pin's snapshot.
             key={`pin-${spot.placeId}-${on ? 'on' : 'off'}`}
             coordinate={spot.point}
-            anchor={{ x: 0.5, y: on ? 0.78 : 0.5 }}
+            anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
             onPress={() => onSelectSpot(spot.placeId)}
             zIndex={on ? 4 : 3}
             accessibilityLabel={spot.name}
             testID={`food-map-pin-${spot.placeId}`}
           >
-            <View style={styles.pinWrap}>
-              {on ? (
-                <View style={[styles.pinName, { backgroundColor: colors.primary }]}>
-                  <Text
-                    style={[styles.pinNameText, { color: colors.onPrimary }]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={1.2}
-                  >
-                    {spot.name}
-                  </Text>
-                </View>
-              ) : null}
+            <View
+              style={[
+                on ? styles.halo : null,
+                on ? { backgroundColor: withAlpha(colors.highlight, 0.35) } : null,
+              ]}
+            >
               <View
                 style={[
-                  on ? styles.halo : null,
-                  on ? { backgroundColor: withAlpha(colors.highlight, 0.35) } : null,
+                  styles.pin,
+                  on ? styles.pinOn : null,
+                  {
+                    backgroundColor: on ? colors.primary : colors.surface,
+                    borderColor: on ? colors.highlight : colors.primary,
+                  },
                 ]}
               >
-                <View
-                  style={[
-                    styles.pin,
-                    on ? styles.pinOn : null,
-                    {
-                      backgroundColor: on ? colors.primary : colors.surface,
-                      borderColor: on ? colors.highlight : colors.primary,
-                    },
-                  ]}
-                >
-                  <Icon name="leaf" size={on ? 17 : 14} color={on ? 'highlight' : 'primary'} />
-                </View>
+                <Icon name="leaf" size={on ? 17 : 14} color={on ? 'highlight' : 'primary'} />
               </View>
             </View>
           </Marker>
         );
       })}
+
+      {selected ? (
+        // The selected spot's name rides above its pin as a marker of its own: Apple Maps places
+        // a tall marker view unreliably, so each view stays small and the name is lifted by
+        // `centerOffset` (iOS) or anchored by its bottom edge (Android).
+        <Marker
+          key={`name-${selected.placeId}`}
+          coordinate={selected.point}
+          centerOffset={{ x: 0, y: -NAME_LIFT }}
+          anchor={{ x: 0.5, y: 1 + NAME_LIFT / PIN_NAME_HEIGHT - 0.5 }}
+          tracksViewChanges={false}
+          zIndex={5}
+          onPress={() => onSelectSpot(selected.placeId)}
+        >
+          <View style={[styles.pinName, { backgroundColor: colors.primary }]}>
+            <Text
+              style={[styles.pinNameText, { color: colors.onPrimary }]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.2}
+            >
+              {selected.name}
+            </Text>
+          </View>
+        </Marker>
+      ) : null}
     </MapView>
   );
 }
@@ -249,20 +270,18 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
     textShadowOffset: { width: 0, height: 0 },
   },
-  pinWrap: { alignItems: 'center' },
   pinName: {
-    height: 28,
-    borderRadius: 14,
+    height: PIN_NAME_HEIGHT,
+    borderRadius: PIN_NAME_HEIGHT / 2,
     paddingHorizontal: 12,
     justifyContent: 'center',
-    marginBottom: 4,
     maxWidth: 220,
   },
   pinNameText: { fontFamily: fontFamily.textBold, fontSize: 12.5, lineHeight: 16 },
   halo: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: HALO,
+    height: HALO,
+    borderRadius: HALO / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },

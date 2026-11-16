@@ -82,7 +82,12 @@ export interface FoodMapView {
   readonly dots: readonly CheckInDot[];
   readonly glow: GlowLevel;
   readonly totals: FoodMapResponse['totals'];
-  /** Claimed regions on this map, out of `regions.length`. */
+  /**
+   * Regions that can be claimed: they have spots, or are claimed already. A region with no spots
+   * (most grid cells, or every region while Places is off) is neither outlined nor listed.
+   */
+  readonly claimable: readonly RegionView[];
+  /** Claimed regions on this map, out of `claimable.length`. */
   readonly claimedHere: number;
   readonly target: ClaimTargetView | null;
   /** Some regions' spots are still being looked up: the card list will grow. */
@@ -214,6 +219,7 @@ export function buildFoodMapView({ response, origin, now }: BuildFoodMapInput): 
 
   return {
     regions,
+    claimable: regions.filter(isClaimable),
     spots,
     dots,
     glow: glowLevel(response.totals.checkIns),
@@ -230,6 +236,11 @@ export function buildFoodMapView({ response, origin, now }: BuildFoodMapInput): 
     spotsUnavailable:
       !response.configured || response.regions.every((r) => r.spotsStatus === 'unavailable'),
   };
+}
+
+/** A region worth drawing and listing: it has spots to visit, or it is claimed. */
+export function isClaimable(region: Pick<RegionView, 'state'>): boolean {
+  return region.state !== 'empty';
 }
 
 /** Fill opacity of a region: a claim is solid, progress and recent visits tint the rest. */

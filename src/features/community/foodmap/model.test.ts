@@ -106,6 +106,8 @@ describe('buildFoodMapView', () => {
       ['empty', null],
     ]);
     expect(view.claimedHere).toBe(1);
+    // A region with no spots is not one to claim.
+    expect(view.claimable.map((r) => r.name)).toEqual(['Claimed one', 'Started', 'Open']);
   });
 
   it('lists each spot once, under its smallest region, nearest first', () => {
